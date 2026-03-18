@@ -79,6 +79,12 @@ public sealed class RgbaImage
         }
     }
 
+    public void DrawHLine(int x0, int x1, int y, RGBAColor32 color)
+        => FillRect(x0, y, x1, y + 1, color);
+
+    public void DrawVLine(int x, int y0, int y1, RGBAColor32 color)
+        => FillRect(x, y0, x + 1, y1, color);
+
     public void BlitRgba(int dstX, int dstY, byte[] src, int srcW, int srcH)
     {
         var pixels = Pixels;

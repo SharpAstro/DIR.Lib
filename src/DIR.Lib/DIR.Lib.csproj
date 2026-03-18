@@ -16,8 +16,6 @@
     <RepositoryType>git</RepositoryType>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <DebugType>embedded</DebugType>
-    <!-- FreeType.Native 2.14.1-r6 is prerelease only because it added win-arm64 binaries -->
-    <NoWarn>$(NoWarn);NU5104</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="FreeType.Native" />
+    <PackageReference Include="MonoGame.Library.FreeType" />
   </ItemGroup>
 
   <ItemGroup>
