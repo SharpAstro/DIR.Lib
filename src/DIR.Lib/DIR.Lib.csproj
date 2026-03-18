@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="MonoGame.Library.FreeType" />
+    <PackageReference Include="FreeTypeSharp" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,3 +1,4 @@
+using System.Text;
 using Shouldly;
 
 namespace DIR.Lib.Tests;
@@ -66,6 +67,46 @@ public class RenderAcceptanceTests : IDisposable
         CompareBaseline(img, "mixed_rect_text.bmp");
     }
 
+    [Fact]
+    public void RenderColorGlyphs_Xiangqi()
+    {
+        var xiangqiFont = Path.Combine(AppContext.BaseDirectory, "Fonts", "BabelStoneXiangqiColour.ttf");
+        if (!File.Exists(xiangqiFont))
+        {
+            // Skip if font not available
+            return;
+        }
+
+        var img = CreateGridImage(300, 80, gridSpacing: 20);
+
+        // Render Xiangqi pieces — these should be colored (COLR font)
+        var pieces = "\U0001FA60\U0001FA61\U0001FA62\U0001FA63"; // first 4 Xiangqi pieces
+        RenderColorText(img, pieces, xiangqiFont, 48f, 10, 5);
+
+        CompareBaseline(img, "color_xiangqi.bmp");
+    }
+
+    [Fact]
+    public void ColorGlyph_IsColored_Flag()
+    {
+        var xiangqiFont = Path.Combine(AppContext.BaseDirectory, "Fonts", "BabelStoneXiangqiColour.ttf");
+        if (!File.Exists(xiangqiFont))
+            return;
+
+        // U+1FA60 is a Xiangqi piece — should render as colored (COLR font → BGRA bitmap)
+        var glyph = _rasterizer.RasterizeGlyph(xiangqiFont, 48f, new Rune(0x1FA60));
+
+        glyph.Width.ShouldBeGreaterThan(0);
+        glyph.IsColored.ShouldBeTrue("Xiangqi glyph should be a color glyph");
+    }
+
+    [Fact]
+    public void GrayscaleGlyph_IsNotColored()
+    {
+        var glyph = _rasterizer.RasterizeGlyph(FontPath, 24f, new Rune('A'));
+        glyph.IsColored.ShouldBeFalse("DejaVuSans 'A' should be a grayscale glyph");
+    }
+
     public void Dispose() => _rasterizer.Dispose();
 
     /// <summary>
@@ -100,32 +141,30 @@ public class RenderAcceptanceTests : IDisposable
         var penX = (float)x;
         fontSize = MathF.Round(fontSize);
 
-        // First pass: measure max ascent for baseline
         var maxAscent = 0;
-        foreach (var ch in text)
+        foreach (var rune in text.EnumerateRunes())
         {
-            var g = _rasterizer.RasterizeGlyph(fontPath, fontSize, ch);
+            var g = _rasterizer.RasterizeGlyph(fontPath, fontSize, rune);
             if (g.BearingY > maxAscent) maxAscent = g.BearingY;
         }
 
         var baseline = y + maxAscent;
 
-        foreach (var ch in text)
+        foreach (var rune in text.EnumerateRunes())
         {
-            if (char.IsWhiteSpace(ch))
+            if (Rune.IsWhiteSpace(rune))
             {
-                var space = _rasterizer.RasterizeGlyph(fontPath, fontSize, 'n');
+                var space = _rasterizer.RasterizeGlyph(fontPath, fontSize, new Rune('n'));
                 penX += space.AdvanceX;
                 continue;
             }
 
-            var glyph = _rasterizer.RasterizeGlyph(fontPath, fontSize, ch);
-            if (glyph.Width == 0) continue;
+            var glyph = _rasterizer.RasterizeGlyph(fontPath, fontSize, rune);
+            if (glyph.Width == 0) { penX += glyph.AdvanceX; continue; }
 
             var gx = (int)(penX + glyph.BearingX);
             var gy = baseline - glyph.BearingY;
 
-            // Tint glyph with color
             BlitGlyphTinted(img, gx, gy, glyph, color);
             penX += glyph.AdvanceX;
         }
@@ -170,6 +209,37 @@ public class RenderAcceptanceTests : IDisposable
                     pixels[di + 3] = (byte)Math.Min(255, pixels[di + 3] + alpha - (pixels[di + 3] * alpha >> 8));
                 }
             }
+        }
+    }
+
+    private void RenderColorText(RgbaImage img, string text, string fontPath, float fontSize, int x, int y)
+    {
+        var penX = (float)x;
+        fontSize = MathF.Round(fontSize);
+
+        var maxAscent = 0;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            var g = _rasterizer.RasterizeGlyph(fontPath, fontSize, rune);
+            if (g.BearingY > maxAscent) maxAscent = g.BearingY;
+        }
+
+        var baseline = y + maxAscent;
+
+        foreach (var rune in text.EnumerateRunes())
+        {
+            var glyph = _rasterizer.RasterizeGlyph(fontPath, fontSize, rune);
+            if (glyph.Width == 0) { penX += glyph.AdvanceX; continue; }
+
+            var gx = (int)(penX + glyph.BearingX);
+            var gy = baseline - glyph.BearingY;
+
+            if (glyph.IsColored)
+                img.BlitRgba(gx, gy, glyph.Rgba, glyph.Width, glyph.Height);
+            else
+                BlitGlyphTinted(img, gx, gy, glyph, new RGBAColor32(255, 255, 255, 255));
+
+            penX += glyph.AdvanceX;
         }
     }
 
