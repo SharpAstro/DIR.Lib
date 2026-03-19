@@ -101,6 +101,51 @@ public class RenderAcceptanceTests : IDisposable
     }
 
     [Fact]
+    public void RenderColorGlyphs_NotoEmoji()
+    {
+        var emojiFont = Path.Combine(AppContext.BaseDirectory, "Fonts", "Noto-COLRv1.ttf");
+        if (!File.Exists(emojiFont))
+            return;
+
+        var img = CreateGridImage(300, 80, gridSpacing: 20);
+
+        // 😀🎉🌍🔥 — common emoji
+        RenderColorText(img, "\U0001F600\U0001F389\U0001F30D\U0001F525", emojiFont, 48f, 10, 5);
+
+        CompareBaseline(img, "color_noto_emoji.bmp");
+    }
+
+    [Fact]
+    public void ColorGlyph_NotoEmoji_IsColored()
+    {
+        var emojiFont = Path.Combine(AppContext.BaseDirectory, "Fonts", "Noto-COLRv1.ttf");
+        if (!File.Exists(emojiFont))
+            return;
+
+        var glyph = _rasterizer.RasterizeGlyph(emojiFont, 48f, new Rune(0x1F600)); // 😀
+        glyph.Width.ShouldBeGreaterThan(0);
+        glyph.IsColored.ShouldBeTrue("Noto COLRv1 emoji should be a color glyph");
+    }
+
+    [Fact]
+    public void RenderText_ChessPieces()
+    {
+        var meridaFont = Path.Combine(AppContext.BaseDirectory, "Fonts", "Merida.ttf");
+        if (!File.Exists(meridaFont))
+            return;
+
+        var img = CreateGridImage(400, 80, gridSpacing: 20);
+
+        // Chess pieces: ♔♕♖♗♘♙ (white) ♚♛♜♝♞♟ (black)
+        RenderText(img, "\u2654\u2655\u2656\u2657\u2658\u2659", meridaFont, 48f,
+            new RGBAColor32(255, 255, 255, 255), 10, 5);
+        RenderText(img, "\u265A\u265B\u265C\u265D\u265E\u265F", meridaFont, 48f,
+            new RGBAColor32(40, 40, 40, 255), 10, 40);
+
+        CompareBaseline(img, "text_chess_pieces.bmp");
+    }
+
+    [Fact]
     public void GrayscaleGlyph_IsNotColored()
     {
         var glyph = _rasterizer.RasterizeGlyph(FontPath, 24f, new Rune('A'));

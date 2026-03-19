@@ -31,17 +31,21 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
         if (FT_Load_Glyph(face, glyphIndex, FT_LOAD.FT_LOAD_RENDER | FT_LOAD.FT_LOAD_COLOR) is not FT_Error.FT_Err_Ok)
             return default;
 
-        if (FT_Render_Glyph(face->glyph, FT_Render_Mode_.FT_RENDER_MODE_NORMAL) is not FT_Error.FT_Err_Ok)
-            return default;
-
         ref var bitmap = ref face->glyph->bitmap;
         var width = (int)bitmap.width;
         var height = (int)bitmap.rows;
         var pitch = bitmap.pitch;
         var buffer = bitmap.buffer;
 
+        // If bitmap is empty, try COLRv1 paint tree rendering
         if (width == 0 || height == 0 || buffer == null)
+        {
+            var palette = GetPalette(face, out var paletteSize);
+            var colrResult = ColrV1Renderer.TryRender(face, glyphIndex, fontSize, palette, paletteSize);
+            if (colrResult.HasValue)
+                return colrResult.Value;
             return default;
+        }
 
         var isColored = bitmap.pixel_mode == FT_Pixel_Mode_.FT_PIXEL_MODE_BGRA;
         var bitmapLeft = face->glyph->bitmap_left;
@@ -86,6 +90,20 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
         return new GlyphBitmap(rgba, width, height, bitmapLeft, bitmapTop, advanceX, isColored);
     }
 
+    private static FT_Color_* GetPalette(FT_FaceRec_* face, out int size)
+    {
+        FT_Color_* palette = null;
+        FT_Palette_Select(face, 0, &palette);
+
+        FT_Palette_Data_ paletteData;
+        if (FT_Palette_Data_Get(face, &paletteData) is FT_Error.FT_Err_Ok)
+            size = paletteData.num_palette_entries;
+        else
+            size = palette != null ? 256 : 0;
+
+        return palette;
+    }
+
     private FT_FaceRec_* GetOrLoadFace(string fontPath)
     {
         if (_faces.TryGetValue(fontPath, out var existing))
@@ -97,6 +115,11 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
             FT_FaceRec_* face;
             if (FT_New_Face(_library.Native, (byte*)pathPtr, 0, &face) is not FT_Error.FT_Err_Ok)
                 throw new InvalidOperationException($"FT_New_Face failed for '{fontPath}'");
+
+            // Activate color palette for COLR/COLRv1 fonts
+            if (((long)face->face_flags & (long)FT_FACE_FLAG.FT_FACE_FLAG_COLOR) != 0)
+                FT_Palette_Select(face, 0, null);
+
             _faces[fontPath] = (nint)face;
             return face;
         }

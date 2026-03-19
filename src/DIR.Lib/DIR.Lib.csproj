@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="FreeTypeSharp" />
+    <PackageReference Include="SharpAstro.FreeType" />
   </ItemGroup>
 
   <ItemGroup>

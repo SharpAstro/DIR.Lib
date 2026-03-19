@@ -123,6 +123,16 @@ public sealed class RgbaImage
         }
     }
 
+    /// <summary>
+    /// Alpha-blends a color onto the pixel at (x, y). Safe for out-of-bounds coordinates.
+    /// </summary>
+    public void BlendPixelAt(int x, int y, RGBAColor32 color)
+    {
+        if (x < 0 || x >= Width || y < 0 || y >= Height) return;
+        var i = (y * Width + x) * 4;
+        BlendPixel(Pixels, i, color.Red, color.Green, color.Blue, color.Alpha);
+    }
+
     private static void BlendPixel(byte[] pixels, int i, byte sr, byte sg, byte sb, byte sa)
     {
         var da = pixels[i + 3];

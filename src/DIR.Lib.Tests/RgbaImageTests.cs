@@ -131,6 +131,42 @@ public class RgbaImageTests
     }
 
     [Fact]
+    public void BlendPixelAt_OpaqueOnBlack()
+    {
+        var img = new RgbaImage(4, 4);
+        img.Clear(new RGBAColor32(0, 0, 0, 255));
+        var red = new RGBAColor32(255, 0, 0, 255);
+
+        img.BlendPixelAt(1, 1, red);
+
+        GetPixel(img, 1, 1).ShouldBe(red);
+    }
+
+    [Fact]
+    public void BlendPixelAt_SemiTransparent()
+    {
+        var img = new RgbaImage(2, 2);
+        img.Clear(new RGBAColor32(0, 0, 255, 255)); // blue
+        var semiRed = new RGBAColor32(255, 0, 0, 128);
+
+        img.BlendPixelAt(0, 0, semiRed);
+
+        var pixel = GetPixel(img, 0, 0);
+        pixel.Red.ShouldBeGreaterThan((byte)0);
+        pixel.Blue.ShouldBeGreaterThan((byte)0);
+        pixel.Alpha.ShouldBe((byte)255);
+    }
+
+    [Fact]
+    public void BlendPixelAt_OutOfBounds_NoThrow()
+    {
+        var img = new RgbaImage(2, 2);
+        img.BlendPixelAt(-1, 0, new RGBAColor32(255, 0, 0, 255));
+        img.BlendPixelAt(0, 5, new RGBAColor32(255, 0, 0, 255));
+        // Should not throw
+    }
+
+    [Fact]
     public void Resize_AllocatesNewBuffer()
     {
         var img = new RgbaImage(2, 2);
