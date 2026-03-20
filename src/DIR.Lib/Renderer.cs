@@ -16,6 +16,12 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
         TextAlign horizAlignment = TextAlign.Center, TextAlign vertAlignment = TextAlign.Near);
 
     /// <summary>
+    /// Measures the size of the given text in pixels at the specified font size.
+    /// Returns (width, height) where height is the line height.
+    /// </summary>
+    public abstract (float Width, float Height) MeasureText(ReadOnlySpan<char> text, string fontFamily, float fontSize);
+
+    /// <summary>
     /// Fills multiple rectangles in a single batched draw call.
     /// Default implementation falls back to individual FillRectangle calls.
     /// </summary>

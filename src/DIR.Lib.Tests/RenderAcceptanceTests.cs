@@ -127,6 +127,41 @@ public class RenderAcceptanceTests : IDisposable
         glyph.IsColored.ShouldBeTrue("Noto COLRv1 emoji should be a color glyph");
     }
 
+    [Theory]
+    [InlineData(0x1F52D, "telescope")]
+    [InlineData(0x1F4C5, "calendar")]
+    [InlineData(0x1F30C, "milky_way")]
+    [InlineData(0x1F3AF, "bullseye")]
+    public void RenderColorGlyph_TianWenSidebarEmoji(int codepoint, string name)
+    {
+        var emojiFont = Path.Combine(AppContext.BaseDirectory, "Fonts", "Noto-COLRv1.ttf");
+        if (!File.Exists(emojiFont))
+            return;
+
+        var rune = new Rune(codepoint);
+        var glyph = _rasterizer.RasterizeGlyph(emojiFont, 32f, rune);
+
+        glyph.Width.ShouldBeGreaterThan(0, $"Emoji U+{codepoint:X4} ({name}) should have non-zero width");
+        glyph.Height.ShouldBeGreaterThan(0, $"Emoji U+{codepoint:X4} ({name}) should have non-zero height");
+        glyph.IsColored.ShouldBeTrue($"Emoji U+{codepoint:X4} ({name}) should be a color glyph");
+        glyph.AdvanceX.ShouldBeGreaterThan(0, $"Emoji U+{codepoint:X4} ({name}) should have non-zero advance");
+    }
+
+    [Fact]
+    public void RenderColorGlyphs_TianWenSidebar()
+    {
+        var emojiFont = Path.Combine(AppContext.BaseDirectory, "Fonts", "Noto-COLRv1.ttf");
+        if (!File.Exists(emojiFont))
+            return;
+
+        var img = CreateGridImage(300, 80, gridSpacing: 20);
+
+        // TianWen GUI sidebar icons: 🔭📅🌌🎯
+        RenderColorText(img, "\U0001F52D\U0001F4C5\U0001F30C\U0001F3AF", emojiFont, 48f, 10, 5);
+
+        CompareBaseline(img, "color_tianwen_sidebar.bmp");
+    }
+
     [Fact]
     public void RenderText_ChessPieces()
     {
