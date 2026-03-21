@@ -12,6 +12,12 @@ public interface IWidget
     bool HandleKeyDown(InputKey key, InputModifier modifiers) => false;
 
     /// <summary>
+    /// Handles a mouse button press at the given pixel coordinates. Returns true if consumed.
+    /// For widgets using <see cref="IPixelWidget.HitTestAndDispatch"/>, this is typically not needed.
+    /// </summary>
+    bool HandleMouseDown(float x, float y) => false;
+
+    /// <summary>
     /// Handles a mouse wheel event. Returns true if consumed.
     /// </summary>
     bool HandleMouseWheel(float scrollY, float mouseX, float mouseY) => false;

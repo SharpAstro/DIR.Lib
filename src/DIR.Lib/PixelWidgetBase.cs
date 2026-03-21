@@ -139,6 +139,12 @@ namespace DIR.Lib
         public virtual bool HandleKeyDown(InputKey key, InputModifier modifiers) => false;
 
         /// <summary>
+        /// Handles a mouse button press at the given pixel coordinates. Returns true if consumed.
+        /// For complex hit testing, use <see cref="HitTestAndDispatch"/> instead.
+        /// </summary>
+        public virtual bool HandleMouseDown(float x, float y) => false;
+
+        /// <summary>
         /// Handles a mouse wheel event. Returns true if consumed.
         /// Override in tabs to implement scroll zones.
         /// </summary>
