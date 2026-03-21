@@ -6,7 +6,7 @@ namespace DIR.Lib;
 /// <summary>
 /// Dock direction for <see cref="DockLayout{T}"/>.
 /// </summary>
-public enum DockStyle { Top, Bottom, Left, Right }
+public enum DockStyle { Top, Bottom, Left, Right, Fill }
 
 /// <summary>
 /// Generic axis-aligned rectangle with numeric coordinates.

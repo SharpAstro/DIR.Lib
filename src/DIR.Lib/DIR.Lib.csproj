@@ -8,7 +8,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsAotCompatible>true</IsAotCompatible>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <VersionPrefix>1.3.66</VersionPrefix>
+    <VersionPrefix>1.3.68</VersionPrefix>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <PackageID>DIR.Lib</PackageID>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
