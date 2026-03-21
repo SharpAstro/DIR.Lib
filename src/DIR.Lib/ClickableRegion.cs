@@ -22,4 +22,10 @@ public record HitResult
 
     /// <summary>A list item was clicked at the given index.</summary>
     public sealed record ListItemHit(string ListId, int Index) : HitResult;
+
+    /// <summary>A slot was clicked for assignment. Payload is app-specific.</summary>
+    public sealed record SlotHit<T>(T Slot) : HitResult;
+
+    /// <summary>A slider was clicked/dragged at the given index.</summary>
+    public sealed record SliderHit(int SliderIndex) : HitResult;
 }
