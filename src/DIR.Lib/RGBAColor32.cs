@@ -8,10 +8,10 @@ public readonly record struct RGBAColor32(byte Red, byte Green, byte Blue, byte 
     /// Linearly interpolates between two colors by factor t (0..1).
     /// </summary>
     public static RGBAColor32 Lerp(RGBAColor32 a, RGBAColor32 b, float t) => new(
-        (byte)(a.Red + (b.Red - a.Red) * t),
-        (byte)(a.Green + (b.Green - a.Green) * t),
-        (byte)(a.Blue + (b.Blue - a.Blue) * t),
-        (byte)(a.Alpha + (b.Alpha - a.Alpha) * t));
+        (byte)Math.Round(a.Red + (b.Red - a.Red) * t),
+        (byte)Math.Round(a.Green + (b.Green - a.Green) * t),
+        (byte)Math.Round(a.Blue + (b.Blue - a.Blue) * t),
+        (byte)Math.Round(a.Alpha + (b.Alpha - a.Alpha) * t));
 
     /// <summary>
     /// Returns this color with alpha premultiplied by the given mask alpha.

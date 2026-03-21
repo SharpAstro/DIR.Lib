@@ -150,6 +150,105 @@ namespace DIR.Lib
         /// </summary>
         public virtual bool HandleMouseWheel(float scrollY, float mouseX, float mouseY) => false;
 
+        // --- Dropdown menu ---
+
+        /// <summary>
+        /// Renders a dropdown menu overlay. <b>Must be called last</b> in the render pass
+        /// so that its clickable regions win hit testing (paint order = z-order).
+        /// Registers a full-screen backdrop that dismisses the dropdown on click-outside.
+        /// </summary>
+        protected void RenderDropdownMenu(
+            DropdownMenuState dropdown,
+            string fontPath,
+            float fontSize,
+            RGBAColor32 bgColor,
+            RGBAColor32 highlightColor,
+            RGBAColor32 textColor,
+            RGBAColor32 borderColor,
+            float viewportWidth,
+            float viewportHeight,
+            float maxHeight = 0f)
+        {
+            if (!dropdown.IsOpen || dropdown.Items.Count == 0)
+            {
+                return;
+            }
+
+            var rowH = fontSize * 1.8f;
+            var padding = fontSize * 0.5f;
+            var totalItems = dropdown.Items.Count + (dropdown.HasCustomEntry ? 1 : 0);
+            var dropdownH = totalItems * rowH;
+            if (maxHeight > 0f && dropdownH > maxHeight)
+            {
+                dropdownH = maxHeight;
+            }
+
+            var x = dropdown.AnchorX;
+            var y = dropdown.AnchorY;
+            var w = dropdown.AnchorWidth;
+
+            // Full-screen backdrop — closes dropdown on click-outside
+            RegisterClickable(0, 0, viewportWidth, viewportHeight, new HitResult.ButtonHit("DropdownBackdrop"),
+                () => dropdown.Close());
+
+            // Border
+            FillRect(x - 1f, y - 1f, w + 2f, dropdownH + 2f, borderColor);
+            // Background
+            FillRect(x, y, w, dropdownH, bgColor);
+
+            // Items
+            var itemY = y;
+            for (var i = 0; i < dropdown.Items.Count && itemY + rowH <= y + dropdownH; i++)
+            {
+                if (i == dropdown.HighlightIndex)
+                {
+                    FillRect(x, itemY, w, rowH, highlightColor);
+                }
+
+                DrawText(dropdown.Items[i].AsSpan(), fontPath,
+                    x + padding, itemY, w - padding * 2f, rowH,
+                    fontSize, textColor, TextAlign.Near, TextAlign.Center);
+
+                var capturedI = i;
+                var capturedItem = dropdown.Items[i];
+                RegisterClickable(x, itemY, w, rowH, new HitResult.ListItemHit("Dropdown", i),
+                    () =>
+                    {
+                        dropdown.OnSelect?.Invoke(capturedI, capturedItem);
+                        dropdown.Close();
+                    });
+
+                itemY += rowH;
+            }
+
+            // "Custom..." entry
+            if (dropdown.HasCustomEntry && itemY + rowH <= y + dropdownH)
+            {
+                var customIdx = dropdown.Items.Count;
+                if (customIdx == dropdown.HighlightIndex)
+                {
+                    FillRect(x, itemY, w, rowH, highlightColor);
+                }
+
+                // Slightly dimmed, blue-shifted text for the "Custom..." entry
+                var customColor = new RGBAColor32(
+                    (byte)((textColor.Red * 3 + 2) / 4),
+                    (byte)((textColor.Green * 3 + 2) / 4),
+                    (byte)Math.Min(255, textColor.Blue + 40),
+                    textColor.Alpha);
+                DrawText(dropdown.CustomEntryLabel.AsSpan(), fontPath,
+                    x + padding, itemY, w - padding * 2f, rowH,
+                    fontSize, customColor, TextAlign.Near, TextAlign.Center);
+
+                RegisterClickable(x, itemY, w, rowH, new HitResult.ListItemHit("Dropdown", customIdx),
+                    () =>
+                    {
+                        dropdown.OnCustom?.Invoke();
+                        dropdown.Close();
+                    });
+            }
+        }
+
         // --- Drawing helpers ---
 
         protected void FillRect(float x, float y, float w, float h, RGBAColor32 color)

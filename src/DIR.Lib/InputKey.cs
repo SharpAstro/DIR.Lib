@@ -52,3 +52,30 @@ public enum InputModifier
     Ctrl  = 2,
     Alt   = 4,
 }
+
+/// <summary>
+/// Extension methods for mapping <see cref="InputKey"/> to <see cref="TextInputKey"/>.
+/// </summary>
+public static class InputKeyExtensions
+{
+    extension(InputKey key)
+    {
+        /// <summary>
+        /// Maps an <see cref="InputKey"/> and <see cref="InputModifier"/> to a <see cref="TextInputKey"/>,
+        /// or null if not applicable. Handles Ctrl+A → SelectAll.
+        /// </summary>
+        public TextInputKey? ToTextInputKey(InputModifier modifiers = InputModifier.None) => key switch
+        {
+            InputKey.Backspace => TextInputKey.Backspace,
+            InputKey.Delete => TextInputKey.Delete,
+            InputKey.Left => TextInputKey.Left,
+            InputKey.Right => TextInputKey.Right,
+            InputKey.Home => TextInputKey.Home,
+            InputKey.End => TextInputKey.End,
+            InputKey.Enter => TextInputKey.Enter,
+            InputKey.Escape => TextInputKey.Escape,
+            InputKey.A when (modifiers & InputModifier.Ctrl) != 0 => TextInputKey.SelectAll,
+            _ => null
+        };
+    }
+}
