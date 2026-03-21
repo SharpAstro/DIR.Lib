@@ -1,6 +1,6 @@
 # DIR.Lib
 
-Device-Independent Rendering and Input library for .NET. Provides the shared foundation for both GPU (SDL3 + Vulkan) and terminal (Console) applications.
+**D**evice-**I**ndependent input + **R**endering library for .NET. Provides the shared foundation for both GPU (SDL3 + Vulkan) and terminal (Console) applications.
 
 ## Rendering Primitives
 
