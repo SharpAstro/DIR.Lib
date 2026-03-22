@@ -38,7 +38,7 @@ namespace DIR.Lib
         /// Optional signal bus for deferred inter-component communication.
         /// Set via object initializer at construction time.
         /// </summary>
-        protected SignalBus? Bus { get; init; }
+        public SignalBus? Bus { get; init; }
 
         /// <summary>
         /// Posts a signal to the bus for delivery at the next <see cref="SignalBus.ProcessPending"/> call.
