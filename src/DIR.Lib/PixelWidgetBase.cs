@@ -34,6 +34,18 @@ namespace DIR.Lib
 
         protected Renderer<TSurface> Renderer { get; } = renderer;
 
+        /// <summary>
+        /// Optional signal bus for deferred inter-component communication.
+        /// Set via object initializer at construction time.
+        /// </summary>
+        protected SignalBus? Bus { get; init; }
+
+        /// <summary>
+        /// Posts a signal to the bus for delivery at the next <see cref="SignalBus.ProcessPending"/> call.
+        /// No-op if <see cref="Bus"/> is null.
+        /// </summary>
+        protected void PostSignal<T>(T signal) where T : notnull => Bus?.Post(signal);
+
         /// <summary>Frame counter for cursor blink etc.</summary>
         public long FrameCount { get; set; }
 
