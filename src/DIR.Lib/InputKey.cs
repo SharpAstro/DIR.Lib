@@ -39,6 +39,15 @@ public enum InputKey
     // Symbols
     Plus,
     Minus,
+    Period,
+    Comma,
+    Slash,
+    Backslash,
+    Semicolon,
+    Quote,
+    BracketLeft,
+    BracketRight,
+    Grave,
 }
 
 /// <summary>

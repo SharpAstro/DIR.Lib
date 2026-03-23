@@ -6,7 +6,7 @@ namespace DIR.Lib;
 /// A clickable region registered during rendering. The hit test walks these
 /// in reverse order (last-registered = on top) to find what was clicked.
 /// </summary>
-public readonly record struct ClickableRegion(float X, float Y, float Width, float Height, HitResult Result, Action? OnClick = null);
+public readonly record struct ClickableRegion(float X, float Y, float Width, float Height, HitResult Result, Action<InputModifier>? OnClick = null);
 
 /// <summary>
 /// Describes what was hit during a click. Open hierarchy — extend with

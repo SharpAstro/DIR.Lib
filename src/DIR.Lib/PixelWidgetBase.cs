@@ -17,7 +17,7 @@ namespace DIR.Lib
         HitResult? HitTest(float x, float y);
 
         /// <summary>Hit-tests and invokes the <see cref="ClickableRegion.OnClick"/> handler if present.</summary>
-        HitResult? HitTestAndDispatch(float x, float y);
+        HitResult? HitTestAndDispatch(float x, float y, InputModifier modifiers = InputModifier.None);
 
         /// <summary>Returns all registered text inputs in order (for Tab cycling).</summary>
         List<TextInputState> GetRegisteredTextInputs();
@@ -30,7 +30,7 @@ namespace DIR.Lib
     /// </summary>
     public abstract class PixelWidgetBase<TSurface>(Renderer<TSurface> renderer) : IPixelWidget
     {
-        private readonly List<ClickableRegion> _clickableRegions = [];
+        private readonly ClickableRegionTracker _tracker = new();
 
         protected Renderer<TSurface> Renderer { get; } = renderer;
 
@@ -52,18 +52,13 @@ namespace DIR.Lib
         /// <summary>
         /// Clears clickable regions. Call at the start of each Render pass.
         /// </summary>
-        protected void BeginFrame()
-        {
-            _clickableRegions.Clear();
-        }
+        protected void BeginFrame() => _tracker.BeginFrame();
 
         /// <summary>
         /// Registers a clickable region with an optional direct click handler.
         /// </summary>
-        protected void RegisterClickable(float x, float y, float w, float h, HitResult result, Action? onClick = null)
-        {
-            _clickableRegions.Add(new ClickableRegion(x, y, w, h, result, onClick));
-        }
+        protected void RegisterClickable(float x, float y, float w, float h, HitResult result, Action<InputModifier>? onClick = null)
+            => _tracker.Register(x, y, w, h, result, onClick);
 
         /// <summary>
         /// Registers a text input field — renders it and registers the clickable region.
@@ -78,7 +73,7 @@ namespace DIR.Lib
         /// Renders a button and registers the clickable region with an optional direct handler.
         /// </summary>
         protected void RenderButton(string label, float x, float y, float w, float h, string fontPath, float fontSize,
-            RGBAColor32 bgColor, RGBAColor32 textColor, string action, Action? onClick = null)
+            RGBAColor32 bgColor, RGBAColor32 textColor, string action, Action<InputModifier>? onClick = null)
         {
             FillRect(x, y, w, h, bgColor);
             DrawText(label.AsSpan(), fontPath, x, y, w, h, fontSize, textColor, TextAlign.Center, TextAlign.Center);
@@ -93,74 +88,20 @@ namespace DIR.Lib
             return Renderer.MeasureText(label.AsSpan(), fontPath, fontSize).Width + padding * 2f;
         }
 
-        /// <summary>
-        /// Returns all TextInputState instances registered during the last Render call,
-        /// in registration order. Used for Tab/Shift+Tab cycling.
-        /// </summary>
-        public List<TextInputState> GetRegisteredTextInputs()
-        {
-            var result = new List<TextInputState>();
-            foreach (var r in _clickableRegions)
-            {
-                if (r.Result is HitResult.TextInputHit { Input: { } input } && !result.Contains(input))
-                {
-                    result.Add(input);
-                }
-            }
-            return result;
-        }
+        /// <inheritdoc/>
+        public List<TextInputState> GetRegisteredTextInputs() => _tracker.GetRegisteredTextInputs();
+
+        /// <inheritdoc/>
+        public HitResult? HitTest(float x, float y) => _tracker.HitTest(x, y);
+
+        /// <inheritdoc/>
+        public HitResult? HitTestAndDispatch(float x, float y, InputModifier modifiers = InputModifier.None) => _tracker.HitTestAndDispatch(x, y, modifiers);
 
         /// <summary>
-        /// Hit-tests using regions registered during the last Render call.
-        /// Returns the last (topmost) matching region's result.
+        /// Handles an input event. Returns true if consumed.
+        /// Override in tabs to pattern match on <see cref="InputEvent"/> subtypes.
         /// </summary>
-        public HitResult? HitTest(float x, float y)
-        {
-            for (var i = _clickableRegions.Count - 1; i >= 0; i--)
-            {
-                var r = _clickableRegions[i];
-                if (x >= r.X && x < r.X + r.Width && y >= r.Y && y < r.Y + r.Height)
-                {
-                    return r.Result;
-                }
-            }
-            return null;
-        }
-
-        /// <summary>
-        /// Hit-tests and invokes the OnClick handler if present. Returns the hit result.
-        /// </summary>
-        public HitResult? HitTestAndDispatch(float x, float y)
-        {
-            for (var i = _clickableRegions.Count - 1; i >= 0; i--)
-            {
-                var r = _clickableRegions[i];
-                if (x >= r.X && x < r.X + r.Width && y >= r.Y && y < r.Y + r.Height)
-                {
-                    r.OnClick?.Invoke();
-                    return r.Result;
-                }
-            }
-            return null;
-        }
-
-        /// <summary>
-        /// Handles a key press while this widget/tab is active. Returns true if consumed.
-        /// Override in tabs to implement tab-specific keyboard shortcuts.
-        /// </summary>
-        public virtual bool HandleKeyDown(InputKey key, InputModifier modifiers) => false;
-
-        /// <summary>
-        /// Handles a mouse button press at the given pixel coordinates. Returns true if consumed.
-        /// For complex hit testing, use <see cref="HitTestAndDispatch"/> instead.
-        /// </summary>
-        public virtual bool HandleMouseDown(float x, float y) => false;
-
-        /// <summary>
-        /// Handles a mouse wheel event. Returns true if consumed.
-        /// Override in tabs to implement scroll zones.
-        /// </summary>
-        public virtual bool HandleMouseWheel(float scrollY, float mouseX, float mouseY) => false;
+        public virtual bool HandleInput(InputEvent evt) => false;
 
         // --- Dropdown menu ---
 
@@ -201,7 +142,7 @@ namespace DIR.Lib
 
             // Full-screen backdrop — closes dropdown on click-outside
             RegisterClickable(0, 0, viewportWidth, viewportHeight, new HitResult.ButtonHit("DropdownBackdrop"),
-                () => dropdown.Close());
+                _ => dropdown.Close());
 
             // Border
             FillRect(x - 1f, y - 1f, w + 2f, dropdownH + 2f, borderColor);
@@ -224,7 +165,7 @@ namespace DIR.Lib
                 var capturedI = i;
                 var capturedItem = dropdown.Items[i];
                 RegisterClickable(x, itemY, w, rowH, new HitResult.ListItemHit("Dropdown", i),
-                    () =>
+                    _ =>
                     {
                         dropdown.OnSelect?.Invoke(capturedI, capturedItem);
                         dropdown.Close();
@@ -253,7 +194,7 @@ namespace DIR.Lib
                     fontSize, customColor, TextAlign.Near, TextAlign.Center);
 
                 RegisterClickable(x, itemY, w, rowH, new HitResult.ListItemHit("Dropdown", customIdx),
-                    () =>
+                    _ =>
                     {
                         dropdown.OnCustom?.Invoke();
                         dropdown.Close();
