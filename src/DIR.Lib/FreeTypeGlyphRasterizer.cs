@@ -13,11 +13,45 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
 {
     private readonly FreeTypeLibrary _library = new();
     private readonly Dictionary<string, nint> _faces = new();
+    private readonly List<GCHandle> _pinnedBuffers = new(); // keep memory-loaded font data alive
 
     /// <summary>
     /// Rasterizes a single glyph. Supports both grayscale and colored (COLR/CBDT) fonts.
     /// Accepts <see cref="Rune"/> for full Unicode support including supplementary planes.
     /// </summary>
+    /// <summary>
+    /// Rasterizes a glyph for CID subset fonts using multiple lookup strategies:
+    /// 1. Unicode via font's cmap (works if font has Unicode cmap)
+    /// 2. CharCode via font's cmap (works if cmap maps CIDs)
+    /// 3. CharCode as direct glyph index (works if CIDToGIDMap is Identity)
+    /// </summary>
+    public GlyphBitmap RasterizeGlyphWithCharCode(string fontPath, float fontSize, Rune codepoint, uint charCode)
+    {
+        var face = GetOrLoadFace(fontPath);
+        FT_Set_Pixel_Sizes(face, 0, (uint)MathF.Round(fontSize));
+
+        // Try 1: Unicode lookup via font's cmap
+        var glyphIndex = FT_Get_Char_Index(face, (uint)codepoint.Value);
+        var strategy = 1;
+
+        // Try 2: CharCode via font's cmap (CID fonts may have CID-based cmap)
+        if (glyphIndex == 0 && charCode > 0)
+        {
+            glyphIndex = FT_Get_Char_Index(face, charCode);
+            strategy = 2;
+        }
+
+        // Try 3: CharCode as direct glyph index (Identity CIDToGIDMap)
+        if (glyphIndex == 0 && charCode > 0)
+        {
+            glyphIndex = charCode;
+            strategy = 3;
+        }
+
+        if (glyphIndex == 0) return default;
+        return RenderLoadedGlyph(face, glyphIndex, fontSize);
+    }
+
     public GlyphBitmap RasterizeGlyph(string fontPath, float fontSize, Rune codepoint)
     {
         var face = GetOrLoadFace(fontPath);
@@ -28,6 +62,11 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
         if (glyphIndex == 0)
             return default;
 
+        return RenderLoadedGlyph(face, glyphIndex, fontSize);
+    }
+
+    private static GlyphBitmap RenderLoadedGlyph(FT_FaceRec_* face, uint glyphIndex, float fontSize)
+    {
         if (FT_Load_Glyph(face, glyphIndex, FT_LOAD.FT_LOAD_RENDER | FT_LOAD.FT_LOAD_COLOR) is not FT_Error.FT_Err_Ok)
             return default;
 
@@ -104,10 +143,42 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
         return palette;
     }
 
+    /// <summary>
+    /// Registers a font from raw bytes (any format FreeType supports: TTF, OTF, Type1, CFF, CID).
+    /// The font is keyed by the given ID string for subsequent RasterizeGlyph calls.
+    /// The byte array is pinned in memory for the lifetime of this rasterizer.
+    /// </summary>
+    public bool RegisterFontFromMemory(string fontId, byte[] fontData)
+    {
+        if (_faces.ContainsKey(fontId))
+            return true;
+
+        var handle = GCHandle.Alloc(fontData, GCHandleType.Pinned);
+        var ptr = (byte*)handle.AddrOfPinnedObject();
+
+        FT_FaceRec_* face;
+        if (FT_New_Memory_Face(_library.Native, ptr, (nint)fontData.Length, 0, &face) is not FT_Error.FT_Err_Ok)
+        {
+            handle.Free();
+            return false;
+        }
+
+        if (((long)face->face_flags & (long)FT_FACE_FLAG.FT_FACE_FLAG_COLOR) != 0)
+            FT_Palette_Select(face, 0, null);
+
+        _pinnedBuffers.Add(handle);
+        _faces[fontId] = (nint)face;
+        return true;
+    }
+
     private FT_FaceRec_* GetOrLoadFace(string fontPath)
     {
         if (_faces.TryGetValue(fontPath, out var existing))
             return (FT_FaceRec_*)existing;
+
+        // Memory-registered fonts must already be in _faces
+        if (fontPath.StartsWith("mem:"))
+            throw new InvalidOperationException($"Memory font not registered: '{fontPath}'");
 
         var pathPtr = Marshal.StringToCoTaskMemUTF8(fontPath);
         try
@@ -134,6 +205,9 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
         foreach (var face in _faces.Values)
             FT_Done_Face((FT_FaceRec_*)face);
         _faces.Clear();
+        foreach (var handle in _pinnedBuffers)
+            handle.Free();
+        _pinnedBuffers.Clear();
         _library.Dispose();
     }
 }
