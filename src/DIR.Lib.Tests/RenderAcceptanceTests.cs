@@ -180,6 +180,45 @@ public class RenderAcceptanceTests : IDisposable
         CompareBaseline(img, "text_chess_pieces.bmp");
     }
 
+    [Theory]
+    [InlineData(256, 2)]
+    [InlineData(48, 2)]
+    [InlineData(32, 1)]
+    [InlineData(24, 1)]
+    [InlineData(16, 1)]
+    public void RenderChess_WhiteKnightOnCheckerboard(int size, int tiles)
+    {
+        var meridaFont = Path.Combine(AppContext.BaseDirectory, "Fonts", "Merida.ttf");
+        if (!File.Exists(meridaFont))
+            return;
+
+        var tileSize = size / tiles;
+        var blackSquare = new RGBAColor32(0xD1, 0x8B, 0x47, 0xff);
+        var whiteSquare = new RGBAColor32(0xFF, 0xCE, 0x9E, 0xff);
+
+        var img = new RgbaImage(size, size);
+
+        // Draw checkerboard
+        for (var row = 0; row < tiles; row++)
+        for (var col = 0; col < tiles; col++)
+        {
+            var isDark = (row + col) % 2 == 0;
+            var fill = isDark ? blackSquare : whiteSquare;
+            img.FillRect(col * tileSize, row * tileSize, (col + 1) * tileSize, (row + 1) * tileSize, fill);
+        }
+
+        // Draw white knight centered on the image,
+        // same technique as GameUI.DrawPiece: outline glyph first, then fill glyph
+        var fontColorWhite = new RGBAColor32(0xfd, 0xfd, 0xfd, 0xff);
+        var fontColorBlack = new RGBAColor32(0, 0, 0, 0xff);
+        var fontSize = size * 0.8f;
+
+        RenderCenteredPiece(img, "\u265E", meridaFont, fontSize, fontColorWhite, 0, 0, size);
+        RenderCenteredPiece(img, "\u2658", meridaFont, fontSize, fontColorBlack, 0, 0, size);
+
+        CompareBaseline(img, $"chess_white_knight_{size}x{size}.bmp");
+    }
+
     [Fact]
     public void GrayscaleGlyph_IsNotColored()
     {
@@ -290,6 +329,20 @@ public class RenderAcceptanceTests : IDisposable
                 }
             }
         }
+    }
+
+    private void RenderCenteredPiece(RgbaImage img, string text, string fontPath, float fontSize, RGBAColor32 color, int cellX, int cellY, int cellSize)
+    {
+        fontSize = MathF.Round(fontSize);
+        var rune = text.EnumerateRunes().First();
+        var glyph = _rasterizer.RasterizeGlyph(fontPath, fontSize, rune);
+        if (glyph.Width == 0) return;
+
+        // Center the glyph within the cell
+        var gx = cellX + (cellSize - glyph.Width) / 2;
+        var gy = cellY + (cellSize - glyph.Height) / 2;
+
+        BlitGlyphTinted(img, gx, gy, glyph, color);
     }
 
     private void RenderColorText(RgbaImage img, string text, string fontPath, float fontSize, int x, int y)
