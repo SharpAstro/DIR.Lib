@@ -212,6 +212,46 @@ namespace DIR.Lib
                 color);
         }
 
+        /// <summary>
+        /// Fills a circle centered at (<paramref name="cx"/>, <paramref name="cy"/>).
+        /// </summary>
+        protected void FillCircle(float cx, float cy, float radius, RGBAColor32 color)
+        {
+            if (radius <= 0) return;
+            var r = (int)radius;
+            Renderer.FillEllipse(
+                new RectInt(new PointInt((int)(cx + r), (int)(cy + r)), new PointInt((int)(cx - r), (int)(cy - r))),
+                color);
+        }
+
+        /// <summary>
+        /// Draws a 1px circle outline centered at (<paramref name="cx"/>, <paramref name="cy"/>).
+        /// Uses individual pixel plots (no stroke API on the renderer).
+        /// </summary>
+        protected void DrawCircle(float cx, float cy, float radius, RGBAColor32 color)
+        {
+            if (radius <= 0) return;
+            var steps = Math.Max(32, (int)(radius * 2));
+            for (var i = 0; i < steps; i++)
+            {
+                var angle = 2.0 * Math.PI * i / steps;
+                var px = (int)(cx + radius * Math.Cos(angle));
+                var py = (int)(cy + radius * Math.Sin(angle));
+                FillRect(px, py, 1, 1, color);
+            }
+        }
+
+        /// <summary>
+        /// Fills an axis-aligned ellipse bounded by the given rectangle.
+        /// </summary>
+        protected void FillEllipse(float x, float y, float w, float h, RGBAColor32 color)
+        {
+            if (w <= 0 || h <= 0) return;
+            Renderer.FillEllipse(
+                new RectInt(new PointInt((int)(x + w), (int)(y + h)), new PointInt((int)x, (int)y)),
+                color);
+        }
+
         protected void DrawText(ReadOnlySpan<char> text, string fontPath, float x, float y, float w, float h,
             float fontSize, RGBAColor32 color, TextAlign horizAlign = TextAlign.Near, TextAlign vertAlign = TextAlign.Center)
         {
