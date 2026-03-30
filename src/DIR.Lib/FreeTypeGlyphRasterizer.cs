@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Text;
 using FreeTypeSharp;
@@ -12,8 +13,8 @@ namespace DIR.Lib;
 public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
 {
     private readonly FreeTypeLibrary _library = new();
-    private readonly Dictionary<string, nint> _faces = new();
-    private readonly List<GCHandle> _pinnedBuffers = new(); // keep memory-loaded font data alive
+    private readonly ConcurrentDictionary<string, nint> _faces = new();
+    private readonly ConcurrentBag<GCHandle> _pinnedBuffers = new(); // keep memory-loaded font data alive
 
     /// <summary>
     /// Rasterizes a single glyph. Supports both grayscale and colored (COLR/CBDT) fonts.
@@ -167,7 +168,11 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
             FT_Palette_Select(face, 0, null);
 
         _pinnedBuffers.Add(handle);
-        _faces[fontId] = (nint)face;
+        if (!_faces.TryAdd(fontId, (nint)face))
+        {
+            // Another thread registered it first — dispose our duplicate
+            FT_Done_Face(face);
+        }
         return true;
     }
 
@@ -191,8 +196,12 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
             if (((long)face->face_flags & (long)FT_FACE_FLAG.FT_FACE_FLAG_COLOR) != 0)
                 FT_Palette_Select(face, 0, null);
 
-            _faces[fontPath] = (nint)face;
-            return face;
+            if (!_faces.TryAdd(fontPath, (nint)face))
+            {
+                // Another thread loaded it first — dispose our duplicate and use theirs
+                FT_Done_Face(face);
+            }
+            return (FT_FaceRec_*)_faces[fontPath];
         }
         finally
         {
@@ -205,9 +214,8 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
         foreach (var face in _faces.Values)
             FT_Done_Face((FT_FaceRec_*)face);
         _faces.Clear();
-        foreach (var handle in _pinnedBuffers)
+        while (_pinnedBuffers.TryTake(out var handle))
             handle.Free();
-        _pinnedBuffers.Clear();
         _library.Dispose();
     }
 }
