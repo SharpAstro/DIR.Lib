@@ -33,27 +33,31 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
 
         uint glyphIndex;
 
-        if (isCidFont && charCode > 0)
+        // Try 1: Unicode lookup via font's cmap
+        glyphIndex = FT_Get_Char_Index(face, (uint)codepoint.Value);
+
+        // Try 2: CharCode via font's cmap (some subset fonts map charCodes directly)
+        if (glyphIndex == 0 && charCode > 0)
+            glyphIndex = FT_Get_Char_Index(face, charCode);
+
+        // Try 3: Private Use Area — PDF subset fonts often use Symbol encoding
+        // where glyphs are at U+F000+charCode. Try selecting the Symbol charmap.
+        if (glyphIndex == 0 && charCode > 0)
         {
-            // CID fonts with Identity CIDToGIDMap: charCode = CID = GID directly.
-            // The subset font's Unicode cmap is often wrong for CID subsets,
-            // so use charCode as GID first.
+            // Try with Symbol charmap explicitly selected
+            if (FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_MS_SYMBOL) == FT_Error.FT_Err_Ok)
+            {
+                glyphIndex = FT_Get_Char_Index(face, 0xF000 + charCode);
+                if (glyphIndex == 0)
+                    glyphIndex = FT_Get_Char_Index(face, charCode);
+            }
+            // Restore Unicode charmap for subsequent calls
+            FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_UNICODE);
+        }
+
+        // Try 4: CharCode as direct glyph index (Identity CIDToGIDMap)
+        if (glyphIndex == 0 && charCode > 0)
             glyphIndex = charCode;
-            if (glyphIndex == 0) glyphIndex = FT_Get_Char_Index(face, (uint)codepoint.Value);
-        }
-        else
-        {
-            // Simple fonts: Unicode lookup via font's cmap is reliable
-            glyphIndex = FT_Get_Char_Index(face, (uint)codepoint.Value);
-
-            // Fallback: CharCode via font's cmap
-            if (glyphIndex == 0 && charCode > 0)
-                glyphIndex = FT_Get_Char_Index(face, charCode);
-
-            // Fallback: CharCode as direct glyph index
-            if (glyphIndex == 0 && charCode > 0)
-                glyphIndex = charCode;
-        }
 
         if (glyphIndex == 0) return default;
         return RenderLoadedGlyph(face, glyphIndex, fontSize);
