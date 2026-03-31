@@ -31,28 +31,29 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
         var face = GetOrLoadFace(fontPath);
         FT_Set_Pixel_Sizes(face, 0, (uint)MathF.Round(fontSize));
 
-        // For embedded subset fonts (mem:), the PDF charCode typically IS the glyph index.
-        // Subset fonts renumber glyphs sequentially (1, 2, 3...) and the charCode from the
-        // content stream matches these sequential IDs. The Unicode cmap in the subset font
-        // often still maps to the ORIGINAL font's GIDs, which are wrong for the subset.
-        // Strategy: try charCode as GID first, fall back to Unicode cmap if charCode fails.
-        uint glyphIndex = 0;
+        uint glyphIndex;
 
-        if (charCode > 0)
+        if (isCidFont && charCode > 0)
         {
-            // Verify the charCode is a valid glyph index in this font
-            var numGlyphs = (uint)face->num_glyphs;
-            if (charCode < numGlyphs)
-                glyphIndex = charCode;
+            // CID fonts with Identity CIDToGIDMap: charCode = CID = GID directly.
+            // The subset font's Unicode cmap is often wrong for CID subsets,
+            // so use charCode as GID first.
+            glyphIndex = charCode;
+            if (glyphIndex == 0) glyphIndex = FT_Get_Char_Index(face, (uint)codepoint.Value);
         }
-
-        // Fallback: Unicode lookup via font's cmap
-        if (glyphIndex == 0)
+        else
+        {
+            // Simple fonts: Unicode lookup via font's cmap is reliable
             glyphIndex = FT_Get_Char_Index(face, (uint)codepoint.Value);
 
-        // Fallback: CharCode via font's cmap
-        if (glyphIndex == 0 && charCode > 0)
-            glyphIndex = FT_Get_Char_Index(face, charCode);
+            // Fallback: CharCode via font's cmap
+            if (glyphIndex == 0 && charCode > 0)
+                glyphIndex = FT_Get_Char_Index(face, charCode);
+
+            // Fallback: CharCode as direct glyph index
+            if (glyphIndex == 0 && charCode > 0)
+                glyphIndex = charCode;
+        }
 
         if (glyphIndex == 0) return default;
         return RenderLoadedGlyph(face, glyphIndex, fontSize);
