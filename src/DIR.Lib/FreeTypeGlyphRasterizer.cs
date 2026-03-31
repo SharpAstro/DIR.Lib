@@ -31,29 +31,25 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
         var face = GetOrLoadFace(fontPath);
         FT_Set_Pixel_Sizes(face, 0, (uint)MathF.Round(fontSize));
 
-        uint glyphIndex;
+        uint glyphIndex = 0;
 
-        // Try 1: Unicode lookup via font's cmap
-        glyphIndex = FT_Get_Char_Index(face, (uint)codepoint.Value);
-
-        // Try 2: CharCode via font's cmap (some subset fonts map charCodes directly)
-        if (glyphIndex == 0 && charCode > 0)
-            glyphIndex = FT_Get_Char_Index(face, charCode);
-
-        // Try 3: Private Use Area — PDF subset fonts often use Symbol encoding
-        // where glyphs are at U+F000+charCode. Try selecting the Symbol charmap.
-        if (glyphIndex == 0 && charCode > 0)
+        // Try 1: Symbol charmap with PUA mapping — PDF subset fonts (e.g. Revit)
+        // often use Symbol encoding where glyphs are at U+F000+charCode.
+        // Must try this BEFORE Unicode cmap, which returns wrong GIDs for these fonts.
+        if (charCode > 0 && FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_MS_SYMBOL) == FT_Error.FT_Err_Ok)
         {
-            // Try with Symbol charmap explicitly selected
-            if (FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_MS_SYMBOL) == FT_Error.FT_Err_Ok)
-            {
-                glyphIndex = FT_Get_Char_Index(face, 0xF000 + charCode);
-                if (glyphIndex == 0)
-                    glyphIndex = FT_Get_Char_Index(face, charCode);
-            }
-            // Restore Unicode charmap for subsequent calls
+            glyphIndex = FT_Get_Char_Index(face, 0xF000 + charCode);
+            // Restore default charmap
             FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_UNICODE);
         }
+
+        // Try 2: Unicode lookup via font's cmap
+        if (glyphIndex == 0)
+            glyphIndex = FT_Get_Char_Index(face, (uint)codepoint.Value);
+
+        // Try 3: CharCode via font's cmap
+        if (glyphIndex == 0 && charCode > 0)
+            glyphIndex = FT_Get_Char_Index(face, charCode);
 
         // Try 4: CharCode as direct glyph index (Identity CIDToGIDMap)
         if (glyphIndex == 0 && charCode > 0)
