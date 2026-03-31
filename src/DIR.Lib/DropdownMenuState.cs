@@ -72,7 +72,7 @@ namespace DIR.Lib
                 return false;
             }
 
-            var totalItems = Items.Count + (HasCustomEntry ? 1 : 0);
+            var totalItems = Items.Length + (HasCustomEntry ? 1 : 0);
 
             switch (key)
             {
@@ -85,12 +85,12 @@ namespace DIR.Lib
                     return true;
 
                 case InputKey.Enter:
-                    if (HighlightIndex >= 0 && HighlightIndex < Items.Count)
+                    if (HighlightIndex >= 0 && HighlightIndex < Items.Length)
                     {
                         OnSelect?.Invoke(HighlightIndex, Items[HighlightIndex]);
                         Close();
                     }
-                    else if (HasCustomEntry && HighlightIndex == Items.Count)
+                    else if (HasCustomEntry && HighlightIndex == Items.Length)
                     {
                         OnCustom?.Invoke();
                         Close();

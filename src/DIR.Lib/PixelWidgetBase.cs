@@ -122,14 +122,14 @@ namespace DIR.Lib
             float viewportHeight,
             float maxHeight = 0f)
         {
-            if (!dropdown.IsOpen || dropdown.Items.Count == 0)
+            if (!dropdown.IsOpen || dropdown.Items.Length == 0)
             {
                 return;
             }
 
             var rowH = fontSize * 1.8f;
             var padding = fontSize * 0.5f;
-            var totalItems = dropdown.Items.Count + (dropdown.HasCustomEntry ? 1 : 0);
+            var totalItems = dropdown.Items.Length + (dropdown.HasCustomEntry ? 1 : 0);
             var dropdownH = totalItems * rowH;
             if (maxHeight > 0f && dropdownH > maxHeight)
             {
@@ -151,7 +151,7 @@ namespace DIR.Lib
 
             // Items
             var itemY = y;
-            for (var i = 0; i < dropdown.Items.Count && itemY + rowH <= y + dropdownH; i++)
+            for (var i = 0; i < dropdown.Items.Length && itemY + rowH <= y + dropdownH; i++)
             {
                 if (i == dropdown.HighlightIndex)
                 {
@@ -177,7 +177,7 @@ namespace DIR.Lib
             // "Custom..." entry
             if (dropdown.HasCustomEntry && itemY + rowH <= y + dropdownH)
             {
-                var customIdx = dropdown.Items.Count;
+                var customIdx = dropdown.Items.Length;
                 if (customIdx == dropdown.HighlightIndex)
                 {
                     FillRect(x, itemY, w, rowH, highlightColor);
