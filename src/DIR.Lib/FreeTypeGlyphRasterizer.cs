@@ -35,10 +35,16 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
 
         // Try 1: Symbol charmap with PUA mapping — PDF subset fonts (e.g. Revit)
         // often use Symbol encoding where glyphs are at U+F000+charCode.
-        // Must try this BEFORE Unicode cmap, which returns wrong GIDs for these fonts.
-        if (charCode > 0 && FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_MS_SYMBOL) == FT_Error.FT_Err_Ok)
+        if (charCode > 0)
         {
-            glyphIndex = FT_Get_Char_Index(face, 0xF000 + charCode);
+            // Try Mac Roman cmap first (platformID=1) — direct charCode mapping
+            if (FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_APPLE_ROMAN) == FT_Error.FT_Err_Ok)
+                glyphIndex = FT_Get_Char_Index(face, charCode);
+
+            // Try Symbol cmap with PUA offset
+            if (glyphIndex == 0 && FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_MS_SYMBOL) == FT_Error.FT_Err_Ok)
+                glyphIndex = FT_Get_Char_Index(face, 0xF000 + charCode);
+
             // Restore default charmap
             FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_UNICODE);
         }
