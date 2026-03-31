@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Generic;
+using System.Collections.Immutable;
 
 namespace DIR.Lib
 {
@@ -11,7 +11,7 @@ namespace DIR.Lib
     public class DropdownMenuState
     {
         public bool IsOpen { get; set; }
-        public IReadOnlyList<string> Items { get; set; } = [];
+        public ImmutableArray<string> Items { get; set; } = [];
         public int HighlightIndex { get; set; } = -1;
 
         // Anchor geometry — set by the trigger during normal layout
@@ -35,7 +35,7 @@ namespace DIR.Lib
         /// Opens the dropdown anchored below the trigger at the given position.
         /// </summary>
         public void Open(float x, float y, float width,
-                         IReadOnlyList<string> items,
+                         ImmutableArray<string> items,
                          Action<int, string> onSelect,
                          bool hasCustomEntry = false,
                          Action? onCustom = null,
