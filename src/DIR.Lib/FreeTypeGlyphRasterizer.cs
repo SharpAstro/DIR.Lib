@@ -33,17 +33,26 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
 
         uint glyphIndex;
 
-        // For embedded subset fonts (mem:), the charCode from the PDF content stream
-        // IS the glyph index — subset fonts use sequential IDs (1, 2, 3...) that
-        // don't match the original font's Unicode cmap. Always prefer charCode as GID.
-        if (charCode > 0)
+        if (isCidFont && charCode > 0)
         {
+            // CID fonts with Identity CIDToGIDMap: charCode = CID = GID directly.
+            // The subset font's Unicode cmap is often wrong for CID subsets,
+            // so use charCode as GID first.
             glyphIndex = charCode;
+            if (glyphIndex == 0) glyphIndex = FT_Get_Char_Index(face, (uint)codepoint.Value);
         }
         else
         {
-            // No charCode — fall back to Unicode cmap lookup
+            // Simple fonts: Unicode lookup via font's cmap is reliable
             glyphIndex = FT_Get_Char_Index(face, (uint)codepoint.Value);
+
+            // Fallback: CharCode via font's cmap
+            if (glyphIndex == 0 && charCode > 0)
+                glyphIndex = FT_Get_Char_Index(face, charCode);
+
+            // Fallback: CharCode as direct glyph index
+            if (glyphIndex == 0 && charCode > 0)
+                glyphIndex = charCode;
         }
 
         if (glyphIndex == 0) return default;
