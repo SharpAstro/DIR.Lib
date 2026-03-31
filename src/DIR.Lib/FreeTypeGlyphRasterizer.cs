@@ -26,27 +26,33 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
     /// 2. CharCode via font's cmap (works if cmap maps CIDs)
     /// 3. CharCode as direct glyph index (works if CIDToGIDMap is Identity)
     /// </summary>
-    public GlyphBitmap RasterizeGlyphWithCharCode(string fontPath, float fontSize, Rune codepoint, uint charCode)
+    public GlyphBitmap RasterizeGlyphWithCharCode(string fontPath, float fontSize, Rune codepoint, uint charCode, bool isCidFont = false)
     {
         var face = GetOrLoadFace(fontPath);
         FT_Set_Pixel_Sizes(face, 0, (uint)MathF.Round(fontSize));
 
-        // Try 1: Unicode lookup via font's cmap
-        var glyphIndex = FT_Get_Char_Index(face, (uint)codepoint.Value);
-        var strategy = 1;
+        uint glyphIndex;
 
-        // Try 2: CharCode via font's cmap (CID fonts may have CID-based cmap)
-        if (glyphIndex == 0 && charCode > 0)
+        if (isCidFont && charCode > 0)
         {
-            glyphIndex = FT_Get_Char_Index(face, charCode);
-            strategy = 2;
-        }
-
-        // Try 3: CharCode as direct glyph index (Identity CIDToGIDMap)
-        if (glyphIndex == 0 && charCode > 0)
-        {
+            // CID fonts with Identity CIDToGIDMap: charCode = CID = GID directly.
+            // The subset font's Unicode cmap is often wrong for CID subsets,
+            // so use charCode as GID first.
             glyphIndex = charCode;
-            strategy = 3;
+            if (glyphIndex == 0) glyphIndex = FT_Get_Char_Index(face, (uint)codepoint.Value);
+        }
+        else
+        {
+            // Simple fonts: Unicode lookup via font's cmap is reliable
+            glyphIndex = FT_Get_Char_Index(face, (uint)codepoint.Value);
+
+            // Fallback: CharCode via font's cmap
+            if (glyphIndex == 0 && charCode > 0)
+                glyphIndex = FT_Get_Char_Index(face, charCode);
+
+            // Fallback: CharCode as direct glyph index
+            if (glyphIndex == 0 && charCode > 0)
+                glyphIndex = charCode;
         }
 
         if (glyphIndex == 0) return default;
