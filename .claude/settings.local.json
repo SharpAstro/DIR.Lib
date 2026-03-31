@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/SebastianGodelet/source/repos/sebgod/chess/Chess.GUI//**)",
+      "Read(//c/Users/SebastianGodelet/source/repos/sebgod/chess/Chess.ImageMagick//**)",
+      "Read(//c/Users/SebastianGodelet/source/repos/sebgod/chess/Chess.Tests//**)",
+      "Read(//c/Users/SebastianGodelet/source/repos/sebgod/chess/Chess.Lib//**)",
+      "Read(//c/Users/SebastianGodelet/source/repos/sebgod/chess/SdlVulkan.Renderer//**)",
+      "Read(//c/Users/SebastianGodelet/source/repos/sebgod/chess/Chess.Engine//**)",
+      "Read(//c/Users/SebastianGodelet/source/repos/sebgod/chess/Chess.Console.Tests//**)",
+      "Read(//c/Users/SebastianGodelet/source/repos/sebgod/chess/Chess.Console//**)",
+      "Bash(find /c/Users/SebastianGodelet/source/repos/sharpastro/DIR.Lib -name *.bmp)",
+      "Bash(find /c/Users/SebastianGodelet/source/repos/sharpastro/DIR.Lib -name *.ttf -o -name *.otf)",
+      "Bash(DIR_LIB_UPDATE_BASELINES=1 dotnet test src/DIR.Lib.Tests --filter \"RenderChess_WhiteKnightOnCheckerboard\" 2>&1)"
+    ]
+  }
+}
