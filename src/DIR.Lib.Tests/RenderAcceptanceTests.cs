@@ -116,6 +116,21 @@ public class RenderAcceptanceTests : IDisposable
     }
 
     [Fact]
+    public void RenderColorGlyphs_NotoEmoji_Dice()
+    {
+        var emojiFont = Path.Combine(AppContext.BaseDirectory, "Fonts", "Noto-COLRv1.ttf");
+        if (!File.Exists(emojiFont))
+            return;
+
+        var img = CreateGridImage(100, 80, gridSpacing: 20);
+
+        // 🎲 — game die
+        RenderColorText(img, "\U0001F3B2", emojiFont, 48f, 10, 5);
+
+        CompareBaseline(img, "color_noto_emoji_dice.bmp");
+    }
+
+    [Fact]
     public void ColorGlyph_NotoEmoji_IsColored()
     {
         var emojiFont = Path.Combine(AppContext.BaseDirectory, "Fonts", "Noto-COLRv1.ttf");
@@ -132,6 +147,7 @@ public class RenderAcceptanceTests : IDisposable
     [InlineData(0x1F4C5, "calendar")]
     [InlineData(0x1F30C, "milky_way")]
     [InlineData(0x1F3AF, "bullseye")]
+    [InlineData(0x1F3B2, "game_die")]
     public void RenderColorGlyph_TianWenSidebarEmoji(int codepoint, string name)
     {
         var emojiFont = Path.Combine(AppContext.BaseDirectory, "Fonts", "Noto-COLRv1.ttf");
