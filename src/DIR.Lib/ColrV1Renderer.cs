@@ -17,7 +17,7 @@ internal static unsafe class ColrV1Renderer
     // FT_PaintFormat values
     private const int COLR_LAYERS = 1, SOLID = 2, LINEAR_GRADIENT = 4, RADIAL_GRADIENT = 6,
         SWEEP_GRADIENT = 8, GLYPH = 10, COLR_GLYPH = 11,
-        TRANSFORM = 12, TRANSLATE = 14, SCALE = 16, COMPOSITE = 32;
+        TRANSFORM = 12, TRANSLATE = 14, SCALE = 16, ROTATE = 24, SKEW = 28, COMPOSITE = 32;
 
     // FT_COLR_Paint_ is a union that the generator skips — we define it manually.
     // The union data starts at offset 8 (pointer-aligned after the 4-byte format enum).
@@ -135,13 +135,53 @@ internal static unsafe class ColrV1Renderer
 
             case SCALE:
             {
-                // PaintScale: { FT_Opaque_Paint_ paint, FT_Fixed scaleX, FT_Fixed scaleY, ... }
+                // PaintScale: { FT_Opaque_Paint_ paint, FT_Fixed scaleX, FT_Fixed scaleY, FT_Fixed centerX, FT_Fixed centerY }
                 var childPaint = *(FT_Opaque_Paint_*)data;
                 var scBase = data + sizeof(FT_Opaque_Paint_);
+                var ps = nint.Size;
                 var sx = *(nint*)scBase / 65536f;
-                var sy = *(nint*)(scBase + nint.Size) / 65536f;
+                var sy = *(nint*)(scBase + ps) / 65536f;
+                var cx = *(nint*)(scBase + ps * 2) / 65536f;
+                var cy = *(nint*)(scBase + ps * 3) / 65536f;
                 RenderPaint(face, childPaint, surface, palette, paletteSize, fontSize,
-                    Matrix3x2.CreateScale(sx, sy) * xform);
+                    Matrix3x2.CreateScale(sx, sy, new Vector2(cx, cy)) * xform);
+                break;
+            }
+
+            case ROTATE:
+            {
+                // PaintRotate: { FT_Opaque_Paint_ paint, FT_Fixed angle, FT_Fixed centerX, FT_Fixed centerY }
+                var childPaint = *(FT_Opaque_Paint_*)data;
+                var rotBase = data + sizeof(FT_Opaque_Paint_);
+                var ps = nint.Size;
+                var angle = *(nint*)rotBase / 65536f; // turns (1.0 = 360°)
+                var cx = *(nint*)(rotBase + ps) / 65536f;
+                var cy = *(nint*)(rotBase + ps * 2) / 65536f;
+                var radians = angle * 2f * MathF.PI;
+                RenderPaint(face, childPaint, surface, palette, paletteSize, fontSize,
+                    Matrix3x2.CreateRotation(radians, new Vector2(cx, cy)) * xform);
+                break;
+            }
+
+            case SKEW:
+            {
+                // PaintSkew: { FT_Opaque_Paint_ paint, FT_Fixed xSkewAngle, FT_Fixed ySkewAngle, FT_Fixed centerX, FT_Fixed centerY }
+                var childPaint = *(FT_Opaque_Paint_*)data;
+                var skBase = data + sizeof(FT_Opaque_Paint_);
+                var ps = nint.Size;
+                var xAngle = *(nint*)skBase / 65536f; // turns
+                var yAngle = *(nint*)(skBase + ps) / 65536f;
+                var cx = *(nint*)(skBase + ps * 2) / 65536f;
+                var cy = *(nint*)(skBase + ps * 3) / 65536f;
+                var xTan = MathF.Tan(xAngle * 2f * MathF.PI);
+                var yTan = MathF.Tan(yAngle * 2f * MathF.PI);
+                // translate(-center) * skew * translate(center)
+                var center = new Vector2(cx, cy);
+                var skew = Matrix3x2.CreateTranslation(-center)
+                    * new Matrix3x2(1, yTan, xTan, 1, 0, 0)
+                    * Matrix3x2.CreateTranslation(center);
+                RenderPaint(face, childPaint, surface, palette, paletteSize, fontSize,
+                    skew * xform);
                 break;
             }
 
@@ -165,26 +205,60 @@ internal static unsafe class ColrV1Renderer
 
         // Unwrap transforms, accumulating them for gradient coordinate mapping
         var fillXform = Matrix3x2.Identity;
-        while (fill.format is TRANSFORM or TRANSLATE or SCALE)
+        while (fill.format is TRANSFORM or TRANSLATE or SCALE or ROTATE or SKEW)
         {
             var innerPaint = *(FT_Opaque_Paint_*)fill.data;
-            if (fill.format == TRANSFORM)
+            var ps = nint.Size;
+            var fBase = fill.data + sizeof(FT_Opaque_Paint_);
+            switch (fill.format)
             {
-                var ab = fill.data + sizeof(FT_Opaque_Paint_);
-                var ps = nint.Size;
-                var xx = *(nint*)ab / 65536f;
-                var xy = *(nint*)(ab + ps) / 65536f;
-                var tdx = *(nint*)(ab + ps * 2) / 65536f;
-                var yx = *(nint*)(ab + ps * 3) / 65536f;
-                var yy = *(nint*)(ab + ps * 4) / 65536f;
-                var tdy = *(nint*)(ab + ps * 5) / 65536f;
-                fillXform = new Matrix3x2(xx, yx, xy, yy, tdx, tdy) * fillXform;
-            }
-            else if (fill.format == TRANSLATE)
-            {
-                var tdx = *(nint*)(fill.data + sizeof(FT_Opaque_Paint_)) / 65536f;
-                var tdy = *(nint*)(fill.data + sizeof(FT_Opaque_Paint_) + nint.Size) / 65536f;
-                fillXform = Matrix3x2.CreateTranslation(tdx, tdy) * fillXform;
+                case TRANSFORM:
+                {
+                    var xx = *(nint*)fBase / 65536f;
+                    var xy = *(nint*)(fBase + ps) / 65536f;
+                    var tdx = *(nint*)(fBase + ps * 2) / 65536f;
+                    var yx = *(nint*)(fBase + ps * 3) / 65536f;
+                    var yy = *(nint*)(fBase + ps * 4) / 65536f;
+                    var tdy = *(nint*)(fBase + ps * 5) / 65536f;
+                    fillXform = new Matrix3x2(xx, yx, xy, yy, tdx, tdy) * fillXform;
+                    break;
+                }
+                case TRANSLATE:
+                {
+                    var tdx = *(nint*)fBase / 65536f;
+                    var tdy = *(nint*)(fBase + ps) / 65536f;
+                    fillXform = Matrix3x2.CreateTranslation(tdx, tdy) * fillXform;
+                    break;
+                }
+                case SCALE:
+                {
+                    var sx = *(nint*)fBase / 65536f;
+                    var sy = *(nint*)(fBase + ps) / 65536f;
+                    var cx = *(nint*)(fBase + ps * 2) / 65536f;
+                    var cy = *(nint*)(fBase + ps * 3) / 65536f;
+                    fillXform = Matrix3x2.CreateScale(sx, sy, new Vector2(cx, cy)) * fillXform;
+                    break;
+                }
+                case ROTATE:
+                {
+                    var angle = *(nint*)fBase / 65536f;
+                    var cx = *(nint*)(fBase + ps) / 65536f;
+                    var cy = *(nint*)(fBase + ps * 2) / 65536f;
+                    fillXform = Matrix3x2.CreateRotation(angle * 2f * MathF.PI, new Vector2(cx, cy)) * fillXform;
+                    break;
+                }
+                case SKEW:
+                {
+                    var xAngle = *(nint*)fBase / 65536f;
+                    var yAngle = *(nint*)(fBase + ps) / 65536f;
+                    var cx = *(nint*)(fBase + ps * 2) / 65536f;
+                    var cy = *(nint*)(fBase + ps * 3) / 65536f;
+                    var center = new Vector2(cx, cy);
+                    fillXform = (Matrix3x2.CreateTranslation(-center)
+                        * new Matrix3x2(1, MathF.Tan(yAngle * 2f * MathF.PI), MathF.Tan(xAngle * 2f * MathF.PI), 1, 0, 0)
+                        * Matrix3x2.CreateTranslation(center)) * fillXform;
+                    break;
+                }
             }
             if (FT_Get_Paint(face, innerPaint, &fill) == 0)
                 return;
