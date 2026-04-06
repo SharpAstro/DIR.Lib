@@ -147,7 +147,14 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
                 var gx = (int)(penX + glyph.BearingX);
                 var gy = (int)(baseline - glyph.BearingY);
 
-                BlitGlyphTinted(gx, gy, glyph, fontColor);
+                if (glyph.IsColored)
+                {
+                    Surface.BlitRgba(gx, gy, glyph.Rgba, glyph.Width, glyph.Height);
+                }
+                else
+                {
+                    BlitGlyphTinted(gx, gy, glyph, fontColor);
+                }
 
                 penX += glyph.AdvanceX;
             }
