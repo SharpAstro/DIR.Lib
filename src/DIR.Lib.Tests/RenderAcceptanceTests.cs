@@ -235,6 +235,61 @@ public class RenderAcceptanceTests : IDisposable
         CompareBaseline(img, $"chess_white_knight_{size}x{size}.bmp");
     }
 
+    [Theory]
+    [InlineData(0x1F327, "cloud_with_rain")]     // 🌧
+    [InlineData(0x1F32B, "fog")]                  // 🌫
+    [InlineData(0x1F319, "crescent_moon")]        // 🌙
+    [InlineData(0x2601,  "cloud")]                // ☁
+    [InlineData(0x26C5,  "sun_behind_cloud")]     // ⛅
+    [InlineData(0x2600,  "sun")]                  // ☀
+    [InlineData(0x26C8,  "thunder")]              // ⛈
+    [InlineData(0x2744,  "snowflake")]            // ❄
+    public void RenderColorGlyph_WeatherEmoji(int codepoint, string name)
+    {
+        var emojiFont = Path.Combine(AppContext.BaseDirectory, "Fonts", "Noto-COLRv1.ttf");
+        if (!File.Exists(emojiFont))
+            return;
+
+        var rune = new Rune(codepoint);
+        var glyph = _rasterizer.RasterizeGlyph(emojiFont, 32f, rune);
+
+        glyph.Width.ShouldBeGreaterThan(0, $"Weather emoji U+{codepoint:X4} ({name}) should have non-zero width");
+        glyph.Height.ShouldBeGreaterThan(0, $"Weather emoji U+{codepoint:X4} ({name}) should have non-zero height");
+        glyph.AdvanceX.ShouldBeGreaterThan(0, $"Weather emoji U+{codepoint:X4} ({name}) should have non-zero advance");
+    }
+
+    [Fact]
+    public void RenderColorGlyphs_WeatherBand()
+    {
+        var emojiFont = Path.Combine(AppContext.BaseDirectory, "Fonts", "Noto-COLRv1.ttf");
+        if (!File.Exists(emojiFont))
+            return;
+
+        var img = CreateGridImage(400, 60, gridSpacing: 20);
+
+        // All weather icons used in the planner: 🌧🌫☁⛅☀🌙⛈❄
+        RenderColorText(img, "\U0001F327\U0001F32B\u2601\u26C5\u2600\U0001F319\u26C8\u2744", emojiFont, 32f, 10, 5);
+
+        CompareBaseline(img, "color_weather_emoji.bmp");
+    }
+
+    [Fact]
+    public void DrawText_SupplementaryPlaneEmoji_DoesNotCrash()
+    {
+        var emojiFont = Path.Combine(AppContext.BaseDirectory, "Fonts", "Noto-COLRv1.ttf");
+        if (!File.Exists(emojiFont))
+            return;
+
+        // Regression test: supplementary plane characters (U+10000+) previously crashed
+        // RgbaImageRenderer.DrawText due to char-based iteration splitting surrogate pairs
+        using var renderer = new RgbaImageRenderer(200, 60);
+        var layout = new RectInt(new PointInt(200, 60), new PointInt(0, 0));
+
+        // Should not throw ArgumentOutOfRangeException
+        renderer.DrawText("\U0001F327\U0001F319\U0001F32B", emojiFont, 24f,
+            new RGBAColor32(255, 255, 255, 255), layout, TextAlign.Center, TextAlign.Center);
+    }
+
     [Fact]
     public void GrayscaleGlyph_IsNotColored()
     {
