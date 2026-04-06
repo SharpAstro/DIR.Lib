@@ -306,15 +306,13 @@ internal static unsafe class ColrV1Renderer
             var colorLineSize = sizeof(int) + 4 + sizeof(uint) * 2 + nint.Size + 8; // approximate
             var vecBase = fill.data + colorLineSize;
             var posSize = nint.Size;
-            // Gradient coordinates are in font design units (FT_Pos as 16.16 fixed point)
             // Gradient geometry and glyph mask are both in design units (upem rendering)
-            var scale = 1.0f;
-            cx0 = *(nint*)vecBase / 65536f * scale;
-            cy0 = *(nint*)(vecBase + posSize) / 65536f * scale;
-            r0 = *(nint*)(vecBase + posSize * 2) / 65536f * scale;
-            cx1 = *(nint*)(vecBase + posSize * 3) / 65536f * scale;
-            cy1 = *(nint*)(vecBase + posSize * 4) / 65536f * scale;
-            r1 = *(nint*)(vecBase + posSize * 5) / 65536f * scale;
+            cx0 = *(nint*)vecBase / 65536f;
+            cy0 = *(nint*)(vecBase + posSize) / 65536f;
+            r0 = *(nint*)(vecBase + posSize * 2) / 65536f;
+            cx1 = *(nint*)(vecBase + posSize * 3) / 65536f;
+            cy1 = *(nint*)(vecBase + posSize * 4) / 65536f;
+            r1 = *(nint*)(vecBase + posSize * 5) / 65536f;
         }
 
         for (var y = 0; y < bmp.rows; y++)
