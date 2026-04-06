@@ -80,6 +80,16 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
 
     private static GlyphBitmap RenderLoadedGlyph(FT_FaceRec_* face, uint glyphIndex, float fontSize)
     {
+        // Use our COLRv1 paint tree renderer — handles coordinate transforms correctly
+        // and renders color glyphs that FreeType's FT_LOAD_COLOR may render incompletely.
+        {
+            var palette = GetPalette(face, out var paletteSize);
+            var colrResult = ColrV1Renderer.TryRender(face, glyphIndex, fontSize, palette, paletteSize);
+            if (colrResult.HasValue)
+                return colrResult.Value;
+        }
+
+        // Fallback: FT_LOAD_COLOR for non-COLRv1 color fonts (CBDT, sbix, COLR v0)
         if (FT_Load_Glyph(face, glyphIndex, FT_LOAD.FT_LOAD_RENDER | FT_LOAD.FT_LOAD_COLOR) is not FT_Error.FT_Err_Ok)
             return default;
 
@@ -89,15 +99,8 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
         var pitch = bitmap.pitch;
         var buffer = bitmap.buffer;
 
-        // If bitmap is empty, try COLRv1 paint tree rendering
         if (width == 0 || height == 0 || buffer == null)
-        {
-            var palette = GetPalette(face, out var paletteSize);
-            var colrResult = ColrV1Renderer.TryRender(face, glyphIndex, fontSize, palette, paletteSize);
-            if (colrResult.HasValue)
-                return colrResult.Value;
             return default;
-        }
 
         var isColored = bitmap.pixel_mode == FT_Pixel_Mode_.FT_PIXEL_MODE_BGRA;
         var bitmapLeft = face->glyph->bitmap_left;

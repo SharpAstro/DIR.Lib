@@ -265,10 +265,10 @@ public class RenderAcceptanceTests : IDisposable
         if (!File.Exists(emojiFont))
             return;
 
-        var img = CreateGridImage(400, 60, gridSpacing: 20);
+        var img = CreateGridImage(800, 120, gridSpacing: 20);
 
         // All weather icons used in the planner: 🌧🌫☁⛅☀🌙⛈❄
-        RenderColorText(img, "\U0001F327\U0001F32B\u2601\u26C5\u2600\U0001F319\u26C8\u2744", emojiFont, 32f, 10, 5);
+        RenderColorText(img, "\U0001F327\U0001F32B\u2601\u26C5\u2600\U0001F319\u26C8\u2744", emojiFont, 80f, 10, 10);
 
         CompareBaseline(img, "color_weather_emoji.bmp");
     }

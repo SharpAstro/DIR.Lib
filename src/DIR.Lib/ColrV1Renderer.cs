@@ -44,15 +44,21 @@ internal static unsafe class ColrV1Renderer
     public static GlyphBitmap? TryRender(FT_FaceRec_* face, uint glyphIndex, float fontSize, FT_Color_* palette, int paletteSize)
     {
         FT_Opaque_Paint_ rootPaint = default;
-        if (FT_Get_Color_Glyph_Paint(face, glyphIndex, FT_COLOR_NO_ROOT_TRANSFORM, &rootPaint) == 0)
+        if (FT_Get_Color_Glyph_Paint(face, glyphIndex, FT_COLOR_INCLUDE_ROOT_TRANSFORM, &rootPaint) == 0)
             return null;
 
+        // Load glyph metrics (needed for advance width even though we render via paint tree)
+        FT_Load_Glyph(face, glyphIndex, FT_LOAD.FT_LOAD_DEFAULT | FT_LOAD.FT_LOAD_NO_BITMAP);
         var advance = (int)(face->glyph->advance.x / 64);
         var size = Math.Max(advance, (int)MathF.Round(fontSize));
         if (size <= 0) size = (int)MathF.Round(fontSize);
 
-        var surface = new RgbaImage(size, size);
-        RenderPaint(face, rootPaint, surface, palette, paletteSize, fontSize, Matrix3x2.Identity);
+        // Use generous surface — FindBounds will crop to actual content
+        var surfaceSize = size * 2;
+        var surface = new RgbaImage(surfaceSize, surfaceSize);
+        // Font coordinates are y-up, surface is y-down: flip Y and center vertically
+        var yFlip = new Matrix3x2(1, 0, 0, -1, 0, surfaceSize / 2);
+        RenderPaint(face, rootPaint, surface, palette, paletteSize, fontSize, yFlip);
 
         var (x0, y0, x1, y1) = FindBounds(surface);
         if (x0 >= x1 || y0 >= y1)
@@ -203,6 +209,7 @@ internal static unsafe class ColrV1Renderer
         if (FT_Get_Paint(face, fillPaint, &fill) == 0)
             return;
 
+
         // Unwrap transforms, accumulating them for gradient coordinate mapping
         var fillXform = Matrix3x2.Identity;
         while (fill.format is TRANSFORM or TRANSLATE or SCALE or ROTATE or SKEW)
@@ -264,16 +271,27 @@ internal static unsafe class ColrV1Renderer
                 return;
         }
 
-        // Render the glyph outline as a grayscale mask
-        if (FT_Load_Glyph(face, glyphID, FT_LOAD.FT_LOAD_RENDER | FT_LOAD.FT_LOAD_NO_BITMAP) is not FT_Error.FT_Err_Ok)
+
+        // Render the glyph outline as a grayscale mask at upem size (design units)
+        // so paint tree transforms (which operate in design units) can map to pixels.
+        var upem = (uint)face->units_per_EM;
+        FT_Set_Pixel_Sizes(face, 0, upem);
+        var loadResult = FT_Load_Glyph(face, glyphID, FT_LOAD.FT_LOAD_RENDER | FT_LOAD.FT_LOAD_NO_BITMAP);
+        // Restore original pixel size
+        FT_Set_Pixel_Sizes(face, 0, (uint)MathF.Round(fontSize));
+        if (loadResult is not FT_Error.FT_Err_Ok)
+        {
             return;
+        }
 
         ref var bmp = ref face->glyph->bitmap;
         if (bmp.width == 0 || bmp.rows == 0 || bmp.buffer == null)
+        {
             return;
+        }
 
         var left = face->glyph->bitmap_left;
-        var top = (int)(fontSize - face->glyph->bitmap_top);
+        var bitmapTop = face->glyph->bitmap_top; // distance above baseline (y-up)
 
         // Read color stops for gradients
         var stops = ReadColorStops(face, &fill, palette, paletteSize);
@@ -289,7 +307,8 @@ internal static unsafe class ColrV1Renderer
             var vecBase = fill.data + colorLineSize;
             var posSize = nint.Size;
             // Gradient coordinates are in font design units (FT_Pos as 16.16 fixed point)
-            var scale = fontSize / face->units_per_EM;
+            // Gradient geometry and glyph mask are both in design units (upem rendering)
+            var scale = 1.0f;
             cx0 = *(nint*)vecBase / 65536f * scale;
             cy0 = *(nint*)(vecBase + posSize) / 65536f * scale;
             r0 = *(nint*)(vecBase + posSize * 2) / 65536f * scale;
@@ -302,7 +321,11 @@ internal static unsafe class ColrV1Renderer
         {
             for (var x = 0; x < bmp.width; x++)
             {
-                var pos = Vector2.Transform(new Vector2(left + x, top + y), xform);
+                // Font coordinates: x goes right, y goes UP.
+                // bitmap row y=0 is at bitmapTop, increasing y moves down.
+                var fontX = left + x;
+                var fontY = bitmapTop - y;
+                var pos = Vector2.Transform(new Vector2(fontX, fontY), xform);
                 var dx = (int)MathF.Round(pos.X);
                 var dy = (int)MathF.Round(pos.Y);
 
@@ -321,14 +344,14 @@ internal static unsafe class ColrV1Renderer
                 {
                     // Map pixel position into gradient space via inverse fill transform
                     Matrix3x2.Invert(fillXform, out var invFill);
-                    var gradPos = Vector2.Transform(new Vector2(left + x, top + y), invFill);
+                    var gradPos = Vector2.Transform(new Vector2(fontX, fontY), invFill);
                     var t = ComputeRadialGradientT(gradPos.X, gradPos.Y, cx0, cy0, r0, cx1, cy1, r1);
                     color = InterpolateStops(stops, t);
                 }
                 else if (fill.format is LINEAR_GRADIENT or SWEEP_GRADIENT && stops.Length > 0)
                 {
                     Matrix3x2.Invert(fillXform, out var invFill);
-                    var gradPos = Vector2.Transform(new Vector2(left + x, top + y), invFill);
+                    var gradPos = Vector2.Transform(new Vector2(fontX, fontY), invFill);
                     var t = gradPos.X / Math.Max(1, bmp.width);
                     color = InterpolateStops(stops, Math.Clamp(t, 0f, 1f));
                 }
