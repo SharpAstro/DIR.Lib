@@ -13,8 +13,8 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
 {
     private readonly FreeTypeGlyphRasterizer _rasterizer = new();
 
-    // Glyph cache: (fontPath, fontSize, character) → GlyphBitmap
-    private readonly Dictionary<(string Font, float Size, char Char), GlyphBitmap> _glyphCache = new();
+    // Glyph cache: (fontPath, fontSize, rune) → GlyphBitmap
+    private readonly Dictionary<(string Font, float Size, Rune Rune), GlyphBitmap> _glyphCache = new();
 
     public RgbaImageRenderer(uint width, uint height)
         : base(new RgbaImage((int)width, (int)height)) { }
@@ -112,7 +112,7 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
             var maxAscent = 0;
             var maxDescent = 0;
             var first = true;
-            foreach (var mc in line)
+            foreach (var mc in line.EnumerateRunes())
             {
                 var g = GetGlyph(fontFamily, fontSize, mc);
                 if (first && g.Width > 0) { firstBearingX = g.BearingX; first = false; }
@@ -135,7 +135,7 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
             // Place baseline so visual bounds are centered in line
             var baseline = penY + (lineHeight + maxAscent - maxDescent) / 2f;
 
-            foreach (var ch in line)
+            foreach (var ch in line.EnumerateRunes())
             {
                 var glyph = GetGlyph(fontFamily, fontSize, ch);
                 if (glyph.Width == 0)
@@ -154,22 +154,22 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
         }
     }
 
-    private GlyphBitmap GetGlyph(string fontPath, float fontSize, char character)
+    private GlyphBitmap GetGlyph(string fontPath, float fontSize, Rune rune)
     {
         fontSize = MathF.Round(fontSize);
-        var key = (fontPath, fontSize, character);
+        var key = (fontPath, fontSize, rune);
         if (_glyphCache.TryGetValue(key, out var cached))
             return cached;
 
-        if (char.IsWhiteSpace(character))
+        if (Rune.IsWhiteSpace(rune))
         {
-            var refGlyph = GetGlyph(fontPath, fontSize, 'n');
+            var refGlyph = GetGlyph(fontPath, fontSize, new Rune('n'));
             var space = new GlyphBitmap([], 0, 0, 0, 0, refGlyph.AdvanceX);
             _glyphCache[key] = space;
             return space;
         }
 
-        var bitmap = _rasterizer.RasterizeGlyph(fontPath, fontSize, new Rune(character));
+        var bitmap = _rasterizer.RasterizeGlyph(fontPath, fontSize, rune);
         _glyphCache[key] = bitmap;
         return bitmap;
     }
@@ -229,7 +229,7 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
         var width = 0f;
         var maxAscent = 0;
         var maxDescent = 0;
-        foreach (var ch in text)
+        foreach (var ch in text.EnumerateRunes())
         {
             var glyph = GetGlyph(fontFamily, fontSize, ch);
             width += glyph.AdvanceX;
