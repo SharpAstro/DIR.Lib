@@ -41,12 +41,12 @@ public class SubsetFontGlyphTests
 
         foreach (var (charCode, expected) in KnownGlyphs)
         {
-            // With isCidFont=true: charCode is used as direct GID
+            // With EmbeddedSubset hint: Unicode → Symbol PUA → direct GID
             var bitmap = rasterizer.RasterizeGlyphWithCharCode(
-                "mem:test_subset", 24f, new Rune(expected), charCode, isCidFont: true);
+                "mem:test_subset", 24f, new Rune(expected), charCode, GlyphMapHint.EmbeddedSubset);
 
             Console.Error.WriteLine($"  cc={charCode} expected='{expected}': {bitmap.Width}x{bitmap.Height} bearingX={bitmap.BearingX} bearingY={bitmap.BearingY}");
-            Assert.True(bitmap.Width > 0, $"CharCode {charCode} ('{expected}') produced empty glyph with isCidFont=true");
+            Assert.True(bitmap.Width > 0, $"CharCode {charCode} ('{expected}') produced empty glyph with EmbeddedSubset");
         }
     }
 
@@ -58,16 +58,15 @@ public class SubsetFontGlyphTests
         using var rasterizer = new FreeTypeGlyphRasterizer();
         rasterizer.RegisterFontFromMemory("mem:test_subset", File.ReadAllBytes(FontPath));
 
-        // Without isCidFont: Unicode cmap is used, which may return wrong glyph
-        // Compare the bitmap from Unicode lookup vs charCode-as-GID
+        // Compare EmbeddedSubset (skips Mac Roman) vs Auto (tries everything including Mac Roman)
         var mismatchCount = 0;
         foreach (var (charCode, expected) in KnownGlyphs)
         {
             var cidBitmap = rasterizer.RasterizeGlyphWithCharCode(
-                "mem:test_subset", 24f, new Rune(expected), charCode, isCidFont: true);
+                "mem:test_subset", 24f, new Rune(expected), charCode, GlyphMapHint.EmbeddedSubset);
 
             var unicodeBitmap = rasterizer.RasterizeGlyphWithCharCode(
-                "mem:test_subset", 24f, new Rune(expected), charCode, isCidFont: false);
+                "mem:test_subset", 24f, new Rune(expected), charCode, GlyphMapHint.Auto);
 
             var sameSize = cidBitmap.Width == unicodeBitmap.Width && cidBitmap.Height == unicodeBitmap.Height;
             var samePixels = sameSize && cidBitmap.Rgba.AsSpan().SequenceEqual(unicodeBitmap.Rgba.AsSpan());

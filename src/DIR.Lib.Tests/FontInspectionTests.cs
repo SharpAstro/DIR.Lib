@@ -24,11 +24,11 @@ public class FontInspectionTests
             Console.WriteLine($"  U+{(int)ch:X4} '{ch}': {bitmap.Width}x{bitmap.Height}");
         }
 
-        // Try charCode as GID (via isCidFont=true)
+        // Try charCode as GID (via CharCodeIsGID hint)
         Console.WriteLine("\n=== CharCode as GID ===");
         for (uint i = 0; i <= 70; i++)
         {
-            var bitmap = rasterizer.RasterizeGlyphWithCharCode("mem:test", 24f, new Rune('?'), i, isCidFont: true);
+            var bitmap = rasterizer.RasterizeGlyphWithCharCode("mem:test", 24f, new Rune('?'), i, GlyphMapHint.CharCodeIsGID);
             if (bitmap.Width > 0)
                 Console.WriteLine($"  GID {i}: {bitmap.Width}x{bitmap.Height}");
         }

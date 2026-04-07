@@ -83,7 +83,7 @@ public sealed class SignalBusTests
     }
 
     [Fact]
-    public void AsyncHandler_SubmittedToTracker()
+    public async Task AsyncHandler_SubmittedToTracker()
     {
         var bus = new SignalBus();
         var tracker = new BackgroundTaskTracker();
@@ -99,7 +99,7 @@ public sealed class SignalBusTests
         bus.ProcessPending(tracker);
 
         // Task was submitted to tracker — drain to complete
-        tracker.DrainAsync().GetAwaiter().GetResult();
+        await tracker.DrainAsync().WaitAsync(TestContext.Current.CancellationToken);
         ran.ShouldBeTrue();
     }
 
@@ -114,7 +114,7 @@ public sealed class SignalBusTests
     }
 
     [Fact]
-    public void PostFromAnotherThread_DeliveredOnProcessThread()
+    public async Task PostFromAnotherThread_DeliveredOnProcessThread()
     {
         var bus = new SignalBus();
         var deliveredOnThread = -1;
@@ -123,8 +123,8 @@ public sealed class SignalBusTests
         bus.Subscribe<RequestRedrawSignal>(_ => deliveredOnThread = Environment.CurrentManagedThreadId);
 
         // Post from a different thread
-        var postTask = Task.Run(() => bus.Post(new RequestRedrawSignal()));
-        postTask.Wait();
+        var postTask = Task.Run(() => bus.Post(new RequestRedrawSignal()), TestContext.Current.CancellationToken);
+        await postTask.WaitAsync(TestContext.Current.CancellationToken);
 
         // Process on main thread
         bus.ProcessPending();

@@ -7,6 +7,24 @@ using static FreeTypeSharp.FT;
 namespace DIR.Lib;
 
 /// <summary>
+/// Hints for how to map a PDF charCode to a FreeType glyph index.
+/// PDF fonts use different encoding strategies; this tells the rasterizer
+/// which cmap lookup order to use.
+/// </summary>
+public enum GlyphMapHint
+{
+    /// <summary>Try all strategies: Unicode → Symbol → Mac Roman → charCode → direct GID.</summary>
+    Auto = 0,
+    /// <summary>Embedded subset font: Unicode → Symbol PUA → direct GID. Skips Mac Roman
+    /// (which often maps charCodes to wrong GIDs in subset fonts).</summary>
+    EmbeddedSubset,
+    /// <summary>CharCode is the glyph index directly (Identity CIDToGIDMap, custom subset encoding).</summary>
+    CharCodeIsGID,
+    /// <summary>Standard encoding (WinAnsi/MacRoman) — Unicode cmap is reliable.</summary>
+    Unicode,
+}
+
+/// <summary>
 /// Rasterizes glyphs to RGBA bitmaps using FreeType2 via FreeTypeSharp.
 /// Supports both grayscale and colored (COLR/CBDT) fonts.
 /// </summary>
@@ -26,40 +44,70 @@ public sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
     /// 2. CharCode via font's cmap (works if cmap maps CIDs)
     /// 3. CharCode as direct glyph index (works if CIDToGIDMap is Identity)
     /// </summary>
-    public GlyphBitmap RasterizeGlyphWithCharCode(string fontPath, float fontSize, Rune codepoint, uint charCode, bool isCidFont = false)
+    public GlyphBitmap RasterizeGlyphWithCharCode(string fontPath, float fontSize, Rune codepoint, uint charCode, GlyphMapHint hint = GlyphMapHint.Auto)
     {
         var face = GetOrLoadFace(fontPath);
         FT_Set_Pixel_Sizes(face, 0, (uint)MathF.Round(fontSize));
 
         uint glyphIndex = 0;
 
-        // Try 1: Symbol charmap with PUA mapping — PDF subset fonts (e.g. Revit)
-        // often use Symbol encoding where glyphs are at U+F000+charCode.
-        if (charCode > 0)
+        switch (hint)
         {
-            // Try Mac Roman cmap first (platformID=1) — direct charCode mapping
-            if (FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_APPLE_ROMAN) == FT_Error.FT_Err_Ok)
-                glyphIndex = FT_Get_Char_Index(face, charCode);
+            case GlyphMapHint.CharCodeIsGID:
+                // Subset fonts with Identity CIDToGIDMap or custom encoding:
+                // charCode maps directly to glyph index, skip all cmap lookups.
+                if (charCode > 0)
+                    glyphIndex = charCode;
+                break;
 
-            // Try Symbol cmap with PUA offset
-            if (glyphIndex == 0 && FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_MS_SYMBOL) == FT_Error.FT_Err_Ok)
-                glyphIndex = FT_Get_Char_Index(face, 0xF000 + charCode);
+            case GlyphMapHint.EmbeddedSubset:
+                // Embedded subset fonts: skip Mac Roman (which often maps charCodes
+                // to wrong GIDs). Try Unicode → Symbol PUA → direct charCode as GID.
+                glyphIndex = FT_Get_Char_Index(face, (uint)codepoint.Value);
+                if (glyphIndex == 0 && charCode > 0)
+                {
+                    if (FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_MS_SYMBOL) == FT_Error.FT_Err_Ok)
+                        glyphIndex = FT_Get_Char_Index(face, 0xF000 + charCode);
+                    FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_UNICODE);
+                }
+                // CharCode as direct GID (Identity mapping, common in subsets)
+                if (glyphIndex == 0 && charCode > 0)
+                    glyphIndex = charCode;
+                break;
 
-            // Restore default charmap
-            FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_UNICODE);
+            case GlyphMapHint.Unicode:
+                // Standard-encoded fonts (WinAnsi, MacRoman): Unicode cmap is reliable.
+                glyphIndex = FT_Get_Char_Index(face, (uint)codepoint.Value);
+                // Fallback: charCode via Unicode cmap
+                if (glyphIndex == 0 && charCode > 0)
+                    glyphIndex = FT_Get_Char_Index(face, charCode);
+                break;
+
+            default: // Auto — try everything
+                // Try Unicode first
+                glyphIndex = FT_Get_Char_Index(face, (uint)codepoint.Value);
+                // Try Symbol cmap with PUA offset
+                if (glyphIndex == 0 && charCode > 0)
+                {
+                    if (FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_MS_SYMBOL) == FT_Error.FT_Err_Ok)
+                        glyphIndex = FT_Get_Char_Index(face, 0xF000 + charCode);
+                    FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_UNICODE);
+                }
+                // Try Mac Roman
+                if (glyphIndex == 0 && charCode > 0)
+                {
+                    if (FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_APPLE_ROMAN) == FT_Error.FT_Err_Ok)
+                        glyphIndex = FT_Get_Char_Index(face, charCode);
+                    FT_Select_Charmap(face, FT_Encoding_.FT_ENCODING_UNICODE);
+                }
+                // Try charCode via Unicode cmap
+                if (glyphIndex == 0 && charCode > 0)
+                    glyphIndex = FT_Get_Char_Index(face, charCode);
+                // Last resort: direct GID
+                if (glyphIndex == 0 && charCode > 0)
+                    glyphIndex = charCode;
+                break;
         }
-
-        // Try 2: Unicode lookup via font's cmap
-        if (glyphIndex == 0)
-            glyphIndex = FT_Get_Char_Index(face, (uint)codepoint.Value);
-
-        // Try 3: CharCode via font's cmap
-        if (glyphIndex == 0 && charCode > 0)
-            glyphIndex = FT_Get_Char_Index(face, charCode);
-
-        // Try 4: CharCode as direct glyph index (Identity CIDToGIDMap)
-        if (glyphIndex == 0 && charCode > 0)
-            glyphIndex = charCode;
 
         if (glyphIndex == 0) return default;
         return RenderLoadedGlyph(face, glyphIndex, fontSize);
