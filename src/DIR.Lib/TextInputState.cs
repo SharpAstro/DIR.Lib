@@ -163,6 +163,12 @@ public class TextInputState
                 SelectAll();
                 return true;
 
+            case TextInputKey.Paste:
+            case TextInputKey.Copy:
+                // Handled by the host (clipboard is platform-specific).
+                // Returning true signals the key was consumed.
+                return true;
+
             default:
                 return false;
         }
@@ -286,5 +292,7 @@ public enum TextInputKey
     End,
     Enter,
     Escape,
-    SelectAll
+    SelectAll,
+    Paste,
+    Copy
 }

@@ -84,6 +84,8 @@ public static class InputKeyExtensions
             InputKey.Enter => TextInputKey.Enter,
             InputKey.Escape => TextInputKey.Escape,
             InputKey.A when (modifiers & InputModifier.Ctrl) != 0 => TextInputKey.SelectAll,
+            InputKey.V when (modifiers & InputModifier.Ctrl) != 0 => TextInputKey.Paste,
+            InputKey.C when (modifiers & InputModifier.Ctrl) != 0 => TextInputKey.Copy,
             _ => null
         };
     }
