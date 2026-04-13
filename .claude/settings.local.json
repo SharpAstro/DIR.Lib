@@ -12,7 +12,16 @@
       "Bash(find /c/Users/SebastianGodelet/source/repos/sharpastro/DIR.Lib -name *.bmp)",
       "Bash(find /c/Users/SebastianGodelet/source/repos/sharpastro/DIR.Lib -name *.ttf -o -name *.otf)",
       "Bash(DIR_LIB_UPDATE_BASELINES=1 dotnet test src/DIR.Lib.Tests --filter \"RenderChess_WhiteKnightOnCheckerboard\" 2>&1)",
-      "Bash(DIR_LIB_UPDATE_BASELINES=1 dotnet test src/DIR.Lib.Tests --filter \"RenderColorGlyphs_NotoEmoji_Dice\" --no-restore)"
+      "Bash(DIR_LIB_UPDATE_BASELINES=1 dotnet test src/DIR.Lib.Tests --filter \"RenderColorGlyphs_NotoEmoji_Dice\" --no-restore)",
+      "Bash(dotnet new:*)",
+      "Bash(dotnet sln:*)",
+      "Bash(dotnet build:*)",
+      "Bash(ls:*)",
+      "Bash(dotnet test:*)",
+      "Bash(curl -sL -o SourceSans3VF-Roman.ttf \"https://raw.githubusercontent.com/adobe-fonts/source-sans/release/VAR/SourceSans3VF-Roman.ttf\")",
+      "Bash(xxd)",
+      "Bash(rm SourceSans3VF-Roman.ttf)",
+      "Bash(curl -sL -o RobotoFlex.ttf \"https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/robotoflex/RobotoFlex%5BGRAD%2CXOPQ%2CXTRA%2CYOPQ%2CYTAS%2CYTDE%2CYTFI%2CYTLC%2CYTUC%2Copsz%2Cslnt%2Cwdth%2Cwght%5D.ttf\")"
     ]
   }
 }

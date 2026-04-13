@@ -33,6 +33,22 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
+  <!--
+    SharpAstro.Fonts (managed font loader/rasterizer) is referenced via
+    ProjectReference when a sibling working copy exists, so iteration on
+    Phase 12 can happen in-tree. CI / package builds without the sibling
+    fall through to PackageReference automatically.
+  -->
+  <PropertyGroup>
+    <UseLocalFontsLib Condition="'$(UseLocalFontsLib)' == '' AND Exists('..\..\..\Fonts.Lib\src\SharpAstro.Fonts\SharpAstro.Fonts.csproj')">true</UseLocalFontsLib>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(UseLocalFontsLib)' == 'true'">
+    <ProjectReference Include="..\..\..\Fonts.Lib\src\SharpAstro.Fonts\SharpAstro.Fonts.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalFontsLib)' != 'true'">
+    <PackageReference Include="SharpAstro.Fonts" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.SourceLink.GitHub">
       <PrivateAssets>all</PrivateAssets>

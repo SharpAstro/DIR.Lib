@@ -6,12 +6,13 @@ namespace DIR.Lib;
 
 /// <summary>
 /// Software renderer that draws onto an <see cref="RgbaImage"/> pixel buffer.
-/// Uses <see cref="FreeTypeGlyphRasterizer"/> for text rendering.
-/// Renderer-agnostic — usable in GUI (chart caching), TUI (Sixel), and tests.
+/// Uses <see cref="ManagedFontRasterizer"/> (pure-managed, AOT-compatible)
+/// for text rendering. Renderer-agnostic — usable in GUI (chart caching),
+/// TUI (Sixel), and tests.
 /// </summary>
 public class RgbaImageRenderer : Renderer<RgbaImage>
 {
-    private readonly FreeTypeGlyphRasterizer _rasterizer = new();
+    private readonly ManagedFontRasterizer _rasterizer = new();
 
     // Glyph cache: (fontPath, fontSize, rune) → GlyphBitmap
     private readonly Dictionary<(string Font, float Size, Rune Rune), GlyphBitmap> _glyphCache = new();
