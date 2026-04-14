@@ -99,7 +99,7 @@ public sealed class ManagedFontRasterizer : IDisposable
                 color.Left, color.Top, advance, IsColored: true);
         }
 
-        var gray = font.RenderGlyph(gid, pixelsPerEm);
+        var gray = font.RenderGlyphHinted(gid, pixelsPerEm);
         if (gray.IsEmpty) return default;
 
         // Expand grayscale alpha to white-RGBA for compositing parity with
