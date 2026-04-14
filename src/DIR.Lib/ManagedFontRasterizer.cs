@@ -63,6 +63,18 @@ public sealed class ManagedFontRasterizer : IDisposable
         }
     }
 
+    /// <summary>
+    /// Rasterize a glyph as a signed distance field by Unicode codepoint.
+    /// Returns a single-channel SDF bitmap suitable for GPU SDF text rendering.
+    /// </summary>
+    public SdfGlyphBitmap RasterizeGlyphSdf(string fontPath, float fontSize, Rune codepoint, float spread = 4f)
+    {
+        var font = GetOrLoad(fontPath);
+        var gid = font.GetGlyphId((uint)codepoint.Value);
+        if (gid == 0) return default;
+        return RenderSdf(font, gid, fontSize, spread);
+    }
+
     public void Dispose()
     {
         // Managed fonts don't own native resources — clearing the cache is
@@ -118,5 +130,17 @@ public sealed class ManagedFontRasterizer : IDisposable
             : 0f;
         return new GlyphBitmap(rgba, gray.Width, gray.Height,
             gray.Left, gray.Top, advanceX, IsColored: false);
+    }
+
+    private static SdfGlyphBitmap RenderSdf(OpenTypeFont font, uint gid, float pixelsPerEm, float spread)
+    {
+        var sdf = font.RenderSdf(gid, pixelsPerEm, spread);
+        if (sdf.IsEmpty) return default;
+
+        var advanceX = font.Hmtx is not null
+            ? font.Hmtx.GetAdvanceWidth(gid) * pixelsPerEm / font.UnitsPerEm
+            : 0f;
+        return new SdfGlyphBitmap(sdf.Alpha, sdf.Width, sdf.Height,
+            sdf.Left, sdf.Top, advanceX, spread);
     }
 }
