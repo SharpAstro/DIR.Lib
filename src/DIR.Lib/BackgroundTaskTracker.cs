@@ -51,6 +51,18 @@ namespace DIR.Lib
         /// <summary>Number of pending tasks.</summary>
         public int PendingCount => _pending.Count;
 
+        /// <summary>Descriptions of all currently pending tasks.</summary>
+        public IEnumerable<string> PendingDescriptions
+        {
+            get
+            {
+                foreach (var (_, desc) in _pending)
+                {
+                    yield return desc;
+                }
+            }
+        }
+
         /// <summary>
         /// Awaits all pending tasks (swallowing exceptions). Call at shutdown.
         /// </summary>

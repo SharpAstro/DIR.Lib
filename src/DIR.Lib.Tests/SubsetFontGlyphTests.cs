@@ -36,7 +36,7 @@ public class SubsetFontGlyphTests
     {
         if (!File.Exists(FontPath)) { Console.Error.WriteLine("SKIP"); return; }
 
-        using var rasterizer = new FreeTypeGlyphRasterizer();
+        using var rasterizer = new ManagedFontRasterizer();
         rasterizer.RegisterFontFromMemory("mem:test_subset", File.ReadAllBytes(FontPath));
 
         foreach (var (charCode, expected) in KnownGlyphs)
@@ -55,7 +55,7 @@ public class SubsetFontGlyphTests
     {
         if (!File.Exists(FontPath)) { Console.Error.WriteLine("SKIP"); return; }
 
-        using var rasterizer = new FreeTypeGlyphRasterizer();
+        using var rasterizer = new ManagedFontRasterizer();
         rasterizer.RegisterFontFromMemory("mem:test_subset", File.ReadAllBytes(FontPath));
 
         // Compare EmbeddedSubset (skips Mac Roman) vs Auto (tries everything including Mac Roman)

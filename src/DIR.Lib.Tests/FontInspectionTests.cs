@@ -12,7 +12,7 @@ public class FontInspectionTests
     {
         if (!File.Exists(FontPath)) return;
 
-        using var rasterizer = new FreeTypeGlyphRasterizer();
+        using var rasterizer = new ManagedFontRasterizer();
         var fontData = File.ReadAllBytes(FontPath);
         rasterizer.RegisterFontFromMemory("mem:test", fontData);
 

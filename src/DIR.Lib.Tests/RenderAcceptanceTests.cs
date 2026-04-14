@@ -14,7 +14,7 @@ public class RenderAcceptanceTests : IDisposable
     private static readonly string SourceBaselineDir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "Baselines");
     private static readonly bool UpdateBaselines = Environment.GetEnvironmentVariable("DIR_LIB_UPDATE_BASELINES") == "1";
 
-    private readonly FreeTypeGlyphRasterizer _rasterizer = new();
+    private readonly ManagedFontRasterizer _rasterizer = new();
 
     [Fact]
     public void RenderGrid_WithCenterlines()

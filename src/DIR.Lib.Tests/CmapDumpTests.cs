@@ -17,7 +17,7 @@ public class CmapDumpTests
         var fontPath = Path.Combine("Fonts", fontFile);
         if (!File.Exists(fontPath)) { Console.Out.WriteLine($"SKIP: {fontPath}"); return; }
 
-        using var rasterizer = new FreeTypeGlyphRasterizer();
+        using var rasterizer = new ManagedFontRasterizer();
         var fontId = $"mem:dump_{fontFile}";
         rasterizer.RegisterFontFromMemory(fontId, File.ReadAllBytes(fontPath));
 

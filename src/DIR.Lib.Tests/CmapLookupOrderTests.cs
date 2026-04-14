@@ -24,7 +24,7 @@ public class CmapLookupOrderTests
         const string systemFont = @"C:\Windows\Fonts\tahoma.ttf";
         if (!File.Exists(systemFont)) return;
 
-        using var rasterizer = new FreeTypeGlyphRasterizer();
+        using var rasterizer = new ManagedFontRasterizer();
 
         foreach (var ch in "AaBbWw123")
         {
@@ -43,7 +43,7 @@ public class CmapLookupOrderTests
         const string systemFont = @"C:\Windows\Fonts\tahoma.ttf";
         if (!File.Exists(systemFont)) return;
 
-        using var rasterizer = new FreeTypeGlyphRasterizer();
+        using var rasterizer = new ManagedFontRasterizer();
 
         // EN DASH (U+2013) — WinAnsi charCode 0x96
         var autoResult = rasterizer.RasterizeGlyphWithCharCode(
@@ -63,7 +63,7 @@ public class CmapLookupOrderTests
         // EmbeddedSubset tries Symbol PUA before falling back to direct GID.
         if (!File.Exists(SubsetFontPath)) return;
 
-        using var rasterizer = new FreeTypeGlyphRasterizer();
+        using var rasterizer = new ManagedFontRasterizer();
         rasterizer.RegisterFontFromMemory("mem:subset", File.ReadAllBytes(SubsetFontPath));
 
         // XXTIIT+Arial subset: charCode 1='w', 2='.', 3='a'
@@ -78,7 +78,7 @@ public class CmapLookupOrderTests
         // EmbeddedSubset mode: should find glyphs via Symbol PUA or direct GID fallback
         if (!File.Exists(SubsetFontPath)) return;
 
-        using var rasterizer = new FreeTypeGlyphRasterizer();
+        using var rasterizer = new ManagedFontRasterizer();
         rasterizer.RegisterFontFromMemory("mem:subset2", File.ReadAllBytes(SubsetFontPath));
 
         // XXTIIT+Arial has Symbol cmap with PUA mapping
@@ -96,7 +96,7 @@ public class CmapLookupOrderTests
         // while Auto would also try Mac Roman which returns different (wrong) GIDs.
         if (!File.Exists(SubsetFontPath)) return;
 
-        using var rasterizer = new FreeTypeGlyphRasterizer();
+        using var rasterizer = new ManagedFontRasterizer();
         rasterizer.RegisterFontFromMemory("mem:subset3", File.ReadAllBytes(SubsetFontPath));
 
         // Verify multiple charCodes produce non-empty glyphs via EmbeddedSubset
