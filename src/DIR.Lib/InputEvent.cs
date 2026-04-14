@@ -36,4 +36,11 @@ public abstract record InputEvent
 
     /// <summary>Mouse wheel scroll at pixel coordinates. Positive delta = scroll up.</summary>
     public sealed record Scroll(float Delta, float X, float Y, InputModifier Modifiers = default) : InputEvent;
+
+    /// <summary>Touch pinch gesture. Scale is absolute from pinch start (1.0 = start, &gt;1 = spread, &lt;1 = squeeze).
+    /// X/Y are the midpoint between fingers in pixel coordinates.</summary>
+    public sealed record Pinch(float Scale, float X, float Y) : InputEvent;
+
+    /// <summary>Touch pinch gesture ended (fingers lifted).</summary>
+    public sealed record PinchEnd() : InputEvent;
 }
