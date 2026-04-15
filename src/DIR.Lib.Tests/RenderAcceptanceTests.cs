@@ -236,6 +236,37 @@ public class RenderAcceptanceTests : IDisposable
     }
 
     [Theory]
+    [InlineData(256)]
+    [InlineData(48)]
+    [InlineData(32)]
+    [InlineData(24)]
+    [InlineData(16)]
+    public void RenderMilkyWayIcon(int size)
+    {
+        var emojiFont = Path.Combine(AppContext.BaseDirectory, "Fonts", "Noto-COLRv1.ttf");
+        if (!File.Exists(emojiFont))
+            return;
+
+        var img = new RgbaImage(size, size);
+
+        // Dark space background
+        img.FillRect(0, 0, size, size, new RGBAColor32(0x0a, 0x0a, 0x2e, 0xff));
+
+        // Render milky way emoji (U+1F30C 🌌) — color glyph, use BlitRgba
+        var fontSize = size * 0.85f;
+        var rune = new Rune(0x1F30C);
+        var glyph = _rasterizer.RasterizeGlyph(emojiFont, fontSize, rune);
+        if (glyph.Width > 0)
+        {
+            var gx = (size - glyph.Width) / 2;
+            var gy = (size - glyph.Height) / 2;
+            img.BlitRgba(gx, gy, glyph.Rgba, glyph.Width, glyph.Height);
+        }
+
+        CompareBaseline(img, $"milky_way_icon_{size}x{size}.bmp");
+    }
+
+    [Theory]
     [InlineData(0x1F327, "cloud_with_rain")]     // 🌧
     [InlineData(0x1F32B, "fog")]                  // 🌫
     [InlineData(0x1F319, "crescent_moon")]        // 🌙

@@ -18,10 +18,19 @@
       "Bash(dotnet build:*)",
       "Bash(ls:*)",
       "Bash(dotnet test:*)",
-      "Bash(curl -sL -o SourceSans3VF-Roman.ttf \"https://raw.githubusercontent.com/adobe-fonts/source-sans/release/VAR/SourceSans3VF-Roman.ttf\")",
       "Bash(xxd)",
-      "Bash(rm SourceSans3VF-Roman.ttf)",
-      "Bash(curl -sL -o RobotoFlex.ttf \"https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/robotoflex/RobotoFlex%5BGRAD%2CXOPQ%2CXTRA%2CYOPQ%2CYTAS%2CYTDE%2CYTFI%2CYTLC%2CYTUC%2Copsz%2Cslnt%2Cwdth%2Cwght%5D.ttf\")"
+      "Bash(git -C \"C:/Users/SebastianGodelet/source/repos/sharpastro/Fonts.Lib\" log --oneline --all)",
+      "Bash(git -C \"C:/Users/SebastianGodelet/source/repos/sharpastro/Fonts.Lib\" log --format=\"%H %s\" --all)",
+      "Bash(git -C \"C:/Users/SebastianGodelet/source/repos/sharpastro/Fonts.Lib\" log --format=\"%s%n%b%n---\" --all)",
+      "Bash(git -C C:/Users/SebastianGodelet/source/repos/sharpastro/Fonts.Lib worktree list)",
+      "Bash(git -C ../Fonts.Lib worktree list)",
+      "Bash(git -C ../Fonts.Lib status --short)",
+      "Bash(git -C ../Fonts.Lib log --oneline -1)",
+      "Bash(git -C ../Fonts.Lib rev-parse --show-toplevel)",
+      "Bash(git -C C:/Users/SebastianGodelet/source/repos/sharpastro/Fonts.Lib status --short)",
+      "Bash(gh run:*)",
+      "Read(//tmp/**)",
+      "Bash(git push:*)"
     ]
   }
 }
