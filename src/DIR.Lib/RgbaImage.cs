@@ -119,6 +119,20 @@ public sealed class RgbaImage
                     // Narrow back to byte
                     var result = System.Numerics.Vector.Narrow(blendLo, blendHi);
                     result.CopyTo(rowSpan.Slice(pos, vecCount));
+
+                    // Fix up alpha channel with Porter-Duff "over" compositing.
+                    // The SIMD blend applied the RGB formula to alpha too, which is
+                    // wrong for non-opaque destinations. Skip when destination was
+                    // opaque (dstVec alpha bytes are all 0xFF) - the result is always 255.
+                    if (dstVec[3] != 0xFF)
+                    {
+                        for (var k = pos + 3; k < pos + vecCount; k += 4)
+                        {
+                            var origDa = dstVec[k - pos];
+                            rowSpan[k] = (byte)Math.Min(255, a + origDa - (origDa * a >> 8));
+                        }
+                    }
+
                     pos += vecCount;
                 }
 
@@ -186,24 +200,17 @@ public sealed class RgbaImage
         BlendPixel(Pixels, i, color.Red, color.Green, color.Blue, color.Alpha);
     }
 
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     private static void BlendPixel(byte[] pixels, int i, byte sr, byte sg, byte sb, byte sa)
     {
-        var da = pixels[i + 3];
-        if (da == 0)
-        {
-            pixels[i] = sr;
-            pixels[i + 1] = sg;
-            pixels[i + 2] = sb;
-            pixels[i + 3] = sa;
-        }
-        else
-        {
-            var a = sa + 1;
-            var inv = 256 - sa;
-            pixels[i] = (byte)((sr * a + pixels[i] * inv) >> 8);
-            pixels[i + 1] = (byte)((sg * a + pixels[i + 1] * inv) >> 8);
-            pixels[i + 2] = (byte)((sb * a + pixels[i + 2] * inv) >> 8);
-            pixels[i + 3] = (byte)Math.Min(255, da + sa - (da * sa >> 8));
-        }
+        // Branch-free blend matching the SIMD path.
+        // RGB: (src * (a+1) + dst * (256-a)) >> 8
+        // Alpha: srcA + dstA - (dstA * srcA >> 8) (standard Porter-Duff "over" compositing)
+        var a = sa + 1;
+        var inv = 256 - sa;
+        pixels[i] = (byte)((sr * a + pixels[i] * inv) >> 8);
+        pixels[i + 1] = (byte)((sg * a + pixels[i + 1] * inv) >> 8);
+        pixels[i + 2] = (byte)((sb * a + pixels[i + 2] * inv) >> 8);
+        pixels[i + 3] = (byte)Math.Min(255, sa + pixels[i + 3] - (pixels[i + 3] * sa >> 8));
     }
 }
