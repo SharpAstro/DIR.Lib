@@ -1,5 +1,15 @@
 namespace DIR.Lib;
 
+/// <summary>
+/// Integer pixel rectangle defined by its lower-right (exclusive) and upper-left (inclusive)
+/// corners. Used by <see cref="Renderer{TSurface}.FillRectangle"/>,
+/// <see cref="Renderer{TSurface}.DrawRectangle"/>, and <see cref="Renderer{TSurface}.DrawText"/>.
+/// <para>
+/// Convention: <see cref="UpperLeft"/> is the inclusive top-left corner,
+/// <see cref="LowerRight"/> is the exclusive bottom-right corner.
+/// A rect from (10, 20) to (50, 40) covers pixels x=10..49, y=20..39.
+/// </para>
+/// </summary>
 public readonly record struct RectInt(PointInt LowerRight, PointInt UpperLeft)
 {
     public long Width => Math.Abs(LowerRight.X - UpperLeft.X);
