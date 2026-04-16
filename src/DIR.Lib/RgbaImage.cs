@@ -25,14 +25,8 @@ public sealed class RgbaImage
 
     public void Clear(RGBAColor32 color)
     {
-        var pixels = Pixels;
-        for (var i = 0; i < pixels.Length; i += 4)
-        {
-            pixels[i] = color.Red;
-            pixels[i + 1] = color.Green;
-            pixels[i + 2] = color.Blue;
-            pixels[i + 3] = color.Alpha;
-        }
+        var packed = (uint)color.Red | ((uint)color.Green << 8) | ((uint)color.Blue << 16) | ((uint)color.Alpha << 24);
+        System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(Pixels.AsSpan()).Fill(packed);
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
