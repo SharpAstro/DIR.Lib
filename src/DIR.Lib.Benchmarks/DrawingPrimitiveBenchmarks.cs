@@ -117,6 +117,20 @@ public class DrawingPrimitiveBenchmarks
         }
     }
 
+    // --- Alpha blend ---
+
+    private static readonly RGBAColor32 SemiWhite = new(0xFF, 0xFF, 0xFF, 0x80);
+
+    [Benchmark(Description = "FillRect alpha 100x100")]
+    public void FillRect_Alpha_100x100()
+        => _renderer.FillRectangle(
+            new RectInt(new PointInt(200, 200), new PointInt(100, 100)), SemiWhite);
+
+    [Benchmark(Description = "FillRect alpha 1000x10")]
+    public void FillRect_Alpha_1000x10()
+        => _renderer.FillRectangle(
+            new RectInt(new PointInt(1100, 510), new PointInt(100, 500)), SemiWhite);
+
     // --- DrawLine: various angles (short, uses Bresenham heuristic) ---
 
     [Benchmark(Description = "DrawLine 15-deg 100px")]
