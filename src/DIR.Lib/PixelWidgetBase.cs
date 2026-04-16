@@ -213,6 +213,12 @@ namespace DIR.Lib
         }
 
         /// <summary>
+        /// Draws a line between two points with the given color and thickness.
+        /// </summary>
+        protected void DrawLine(float x0, float y0, float x1, float y1, RGBAColor32 color, int thickness = 1)
+            => Renderer.DrawLine(x0, y0, x1, y1, color, thickness);
+
+        /// <summary>
         /// Fills a circle centered at (<paramref name="cx"/>, <paramref name="cy"/>).
         /// </summary>
         protected void FillCircle(float cx, float cy, float radius, RGBAColor32 color)
@@ -225,20 +231,28 @@ namespace DIR.Lib
         }
 
         /// <summary>
-        /// Draws a 1px circle outline centered at (<paramref name="cx"/>, <paramref name="cy"/>).
-        /// Uses individual pixel plots (no stroke API on the renderer).
+        /// Draws a circle outline centered at (<paramref name="cx"/>, <paramref name="cy"/>).
+        /// Delegates to <see cref="Renderer{TSurface}.DrawEllipse"/> for GPU-efficient rendering
+        /// when available.
         /// </summary>
-        protected void DrawCircle(float cx, float cy, float radius, RGBAColor32 color)
+        protected void DrawCircle(float cx, float cy, float radius, RGBAColor32 color, float strokeWidth = 1f)
         {
             if (radius <= 0) return;
-            var steps = Math.Max(32, (int)(radius * 2));
-            for (var i = 0; i < steps; i++)
-            {
-                var angle = 2.0 * Math.PI * i / steps;
-                var px = (int)(cx + radius * Math.Cos(angle));
-                var py = (int)(cy + radius * Math.Sin(angle));
-                FillRect(px, py, 1, 1, color);
-            }
+            var r = (int)radius;
+            Renderer.DrawEllipse(
+                new RectInt(new PointInt((int)(cx + r), (int)(cy + r)), new PointInt((int)(cx - r), (int)(cy - r))),
+                color, strokeWidth);
+        }
+
+        /// <summary>
+        /// Draws an ellipse outline bounded by the given rectangle.
+        /// </summary>
+        protected void DrawEllipse(float x, float y, float w, float h, RGBAColor32 color, float strokeWidth = 1f)
+        {
+            if (w <= 0 || h <= 0) return;
+            Renderer.DrawEllipse(
+                new RectInt(new PointInt((int)(x + w), (int)(y + h)), new PointInt((int)x, (int)y)),
+                color, strokeWidth);
         }
 
         /// <summary>

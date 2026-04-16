@@ -48,6 +48,192 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
         Surface.FillRect(x1 - sw, y0 + sw, x1, y1 - sw, strokeColor); // Right
     }
 
+    /// <summary>
+    /// CPU-optimized DrawLine: calls Surface.FillRect directly, bypassing virtual FillRectangle dispatch.
+    /// </summary>
+    public override void DrawLine(float x0, float y0, float x1, float y1, RGBAColor32 color, int thickness = 1)
+    {
+        var t = Math.Max(1, thickness);
+        var halfT = (t - 1) / 2;
+        var ix0 = (int)x0;
+        var iy0 = (int)y0;
+        var ix1 = (int)x1;
+        var iy1 = (int)y1;
+        var img = Surface;
+
+        // Horizontal
+        if (iy0 == iy1)
+        {
+            var xMin = Math.Min(ix0, ix1);
+            var xMax = Math.Max(ix0, ix1);
+            img.FillRect(xMin, iy0 - halfT, xMax + 1, iy0 - halfT + t, color);
+            return;
+        }
+
+        // Vertical
+        if (ix0 == ix1)
+        {
+            var yMin = Math.Min(iy0, iy1);
+            var yMax = Math.Max(iy0, iy1);
+            img.FillRect(ix0 - halfT, yMin, ix0 - halfT + t, yMax + 1, color);
+            return;
+        }
+
+        // Short diagonal: Bresenham directly to pixel buffer
+        var fdx = (double)(ix1 - ix0);
+        var fdy = (double)(iy1 - iy0);
+        var lenSq = fdx * fdx + fdy * fdy;
+        if (lenSq < 0.25) return;
+
+        if (lenSq < 200 * 200)
+        {
+            var dx = Math.Abs(ix1 - ix0);
+            var dy = Math.Abs(iy1 - iy0);
+            var sx = ix0 < ix1 ? 1 : -1;
+            var sy = iy0 < iy1 ? 1 : -1;
+            var err = dx - dy;
+
+            while (true)
+            {
+                img.FillRect(ix0 - halfT, iy0 - halfT, ix0 - halfT + t, iy0 - halfT + t, color);
+                if (ix0 == ix1 && iy0 == iy1) break;
+                var e2 = 2 * err;
+                if (e2 > -dy) { err -= dy; ix0 += sx; }
+                if (e2 < dx) { err += dx; iy0 += sy; }
+            }
+            return;
+        }
+
+        // Long diagonal: scanline quad directly to pixel buffer
+        var len = Math.Sqrt(lenSq);
+        var hw = t * 0.5;
+        var nx = -fdy / len * hw;
+        var ny = fdx / len * hw;
+
+        double c0x = ix0 + nx, c0y = iy0 + ny;
+        double c1x = ix0 - nx, c1y = iy0 - ny;
+        double c2x = ix1 - nx, c2y = iy1 - ny;
+        double c3x = ix1 + nx, c3y = iy1 + ny;
+
+        var scanYMin = (int)Math.Floor(Math.Min(Math.Min(c0y, c1y), Math.Min(c2y, c3y)));
+        var scanYMax = (int)Math.Ceiling(Math.Max(Math.Max(c0y, c1y), Math.Max(c2y, c3y)));
+
+        ReadOnlySpan<double> edgeX = [c0x, c3x, c2x, c1x, c0x];
+        ReadOnlySpan<double> edgeY = [c0y, c3y, c2y, c1y, c0y];
+
+        for (var y = scanYMin; y <= scanYMax; y++)
+        {
+            var scanY = y + 0.5;
+            var xLeft = double.MaxValue;
+            var xRight = double.MinValue;
+
+            for (var e = 0; e < 4; e++)
+            {
+                var ey0d = edgeY[e];
+                var ey1d = edgeY[e + 1];
+                if ((ey0d <= scanY && ey1d > scanY) || (ey1d <= scanY && ey0d > scanY))
+                {
+                    var et = (scanY - ey0d) / (ey1d - ey0d);
+                    var ex = edgeX[e] + et * (edgeX[e + 1] - edgeX[e]);
+                    if (ex < xLeft) xLeft = ex;
+                    if (ex > xRight) xRight = ex;
+                }
+            }
+
+            if (xLeft <= xRight)
+            {
+                var spanLeft = (int)Math.Round(xLeft);
+                var spanRight = (int)Math.Round(xRight);
+                if (spanRight <= spanLeft) spanRight = spanLeft + 1;
+                img.FillRect(spanLeft, y, spanRight, y + 1, color);
+            }
+        }
+    }
+
+    /// <summary>
+    /// CPU-optimized DrawEllipse: midpoint algorithm calling Surface.FillRect directly.
+    /// </summary>
+    public override void DrawEllipse(in RectInt rect, RGBAColor32 strokeColor, float strokeWidth = 1f)
+    {
+        var icx = (rect.UpperLeft.X + rect.LowerRight.X) / 2;
+        var icy = (rect.UpperLeft.Y + rect.LowerRight.Y) / 2;
+        var irx = Math.Abs(rect.LowerRight.X - rect.UpperLeft.X) / 2;
+        var iry = Math.Abs(rect.LowerRight.Y - rect.UpperLeft.Y) / 2;
+        if (irx < 1 || iry < 1) return;
+
+        var sw = Math.Max(1, (int)strokeWidth);
+        var img = Surface;
+
+        if (sw <= 1)
+        {
+            // Midpoint algorithm with direct pixel buffer writes
+            long rx2 = (long)irx * irx;
+            long ry2 = (long)iry * iry;
+            long twoRx2 = 2 * rx2;
+            long twoRy2 = 2 * ry2;
+
+            var x = 0;
+            var y = iry;
+            long px = 0;
+            long py = twoRx2 * y;
+
+            var spanX0 = 0;
+            var spanY = y;
+            var d1 = ry2 - rx2 * iry + rx2 / 4.0;
+            while (px < py)
+            {
+                x++;
+                px += twoRy2;
+                if (d1 < 0)
+                {
+                    d1 += ry2 + px;
+                }
+                else
+                {
+                    EmitSpanDirect(img, icx, icy, spanX0, x - 1, spanY, strokeColor);
+                    y--;
+                    py -= twoRx2;
+                    d1 += ry2 + px - py;
+                    spanX0 = x;
+                    spanY = y;
+                }
+            }
+            EmitSpanDirect(img, icx, icy, spanX0, x, spanY, strokeColor);
+
+            var d2 = ry2 * (x + 0.5) * (x + 0.5) + rx2 * (y - 1.0) * (y - 1.0) - rx2 * ry2;
+            while (y >= 0)
+            {
+                y--;
+                py -= twoRx2;
+                if (d2 > 0)
+                {
+                    d2 += rx2 - py;
+                }
+                else
+                {
+                    x++;
+                    px += twoRy2;
+                    d2 += rx2 - py + px;
+                }
+                EmitSpanDirect(img, icx, icy, x, x, y, strokeColor);
+            }
+        }
+        else
+        {
+            // Thick: fall back to base scanline ring (already uses FillRectangle virtual)
+            base.DrawEllipse(rect, strokeColor, strokeWidth);
+        }
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static void EmitSpanDirect(RgbaImage img, int cx, int cy, int x0, int x1, int y, RGBAColor32 color)
+    {
+        img.FillRect(cx + x0, cy + y, cx + x1 + 1, cy + y + 1, color);
+        img.FillRect(cx + x0, cy - y, cx + x1 + 1, cy - y + 1, color);
+        img.FillRect(cx - x1, cy + y, cx - x0 + 1, cy + y + 1, color);
+        img.FillRect(cx - x1, cy - y, cx - x0 + 1, cy - y + 1, color);
+    }
+
     public override void FillEllipse(in RectInt rect, RGBAColor32 fillColor)
     {
         var x0 = rect.UpperLeft.X;

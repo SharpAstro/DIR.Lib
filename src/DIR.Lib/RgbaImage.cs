@@ -35,6 +35,7 @@ public sealed class RgbaImage
         }
     }
 
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void FillRect(int x0, int y0, int x1, int y1, RGBAColor32 color)
     {
         // Clamp to bounds
@@ -50,18 +51,25 @@ public sealed class RgbaImage
 
         if (a == 255)
         {
-            // Opaque fast path
+            // Pack RGBA into a single uint32 for fast single-write
+            var packed = (uint)color.Red | ((uint)color.Green << 8) | ((uint)color.Blue << 16) | 0xFF000000u;
+
+            // Single-pixel fast path: skip inner loop overhead
+            if (x1 - x0 == 1 && y1 - y0 == 1)
+            {
+                var i = (y0 * w + x0) * 4;
+                System.Runtime.CompilerServices.Unsafe.WriteUnaligned(ref pixels[i], packed);
+                return;
+            }
+
+            // Opaque span path: cast to uint span and Fill per row (memset-like)
             for (var y = y0; y < y1; y++)
             {
-                var rowOffset = y * w * 4;
-                for (var x = x0; x < x1; x++)
-                {
-                    var i = rowOffset + x * 4;
-                    pixels[i] = color.Red;
-                    pixels[i + 1] = color.Green;
-                    pixels[i + 2] = color.Blue;
-                    pixels[i + 3] = 255;
-                }
+                var byteOffset = (y * w + x0) * 4;
+                var spanWidth = x1 - x0;
+                System.Runtime.InteropServices.MemoryMarshal
+                    .Cast<byte, uint>(pixels.AsSpan(byteOffset, spanWidth * 4))
+                    .Fill(packed);
             }
         }
         else if (a > 0)
