@@ -75,6 +75,20 @@ public sealed class ManagedFontRasterizer : IDisposable
         return RenderSdf(font, gid, fontSize, spread);
     }
 
+    /// <summary>
+    /// Rasterize a glyph as a signed distance field using PDF char-code + cmap lookup hint.
+    /// Mirrors <see cref="RasterizeGlyphWithCharCode"/> for CID and embedded-subset fonts
+    /// whose Unicode cmap is absent or unreliable.
+    /// </summary>
+    public SdfGlyphBitmap RasterizeGlyphSdfWithCharCode(string fontPath, float fontSize,
+        Rune codepoint, uint charCode, GlyphMapHint hint = GlyphMapHint.Auto, float spread = 4f)
+    {
+        var font = GetOrLoad(fontPath);
+        var gid = font.GetGlyphId((uint)codepoint.Value, charCode, (FontsHint)hint);
+        if (gid == 0) return default;
+        return RenderSdf(font, gid, fontSize, spread);
+    }
+
     public void Dispose()
     {
         // Managed fonts don't own native resources — clearing the cache is
