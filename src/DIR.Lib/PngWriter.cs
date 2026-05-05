@@ -41,50 +41,82 @@ public static class PngWriter
         ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
         WriteChunk(ms, "IHDR"u8, ihdr);
 
-        // IDAT: each scanline prefixed with 1 filter byte, then zlib-
-        // compressed. We try all 5 filters per row and pick the one with the
-        // smallest sum of |signed bytes| (libpng's "minsum" heuristic — gets
-        // ~95% of the optimal compression for ~5x the cost of None-only).
+        // IDAT: filter each scanline (libpng's "minsum" heuristic over filters
+        // 0/Sub/Up/Average/Paeth) and stream the result directly into the
+        // outer MemoryStream, ZLibStream-wrapped, so we never materialize
+        // either the H×(W*4+1) filtered buffer or a separate compressed
+        // buffer. We back-patch the length field once we know the IDAT size,
+        // and compute the chunk's CRC over the just-written slice of ms's
+        // backing array.
         const int Bpp = 4; // RGBA, 8-bit channels
         var stride = width * Bpp;
-        var filtered = new byte[height * (1 + stride)];
-        var prevRow = new byte[stride]; // row -1 is all zeros
-        var candidateBuf = new byte[5 * stride];
+        var prevRow = new byte[stride];        // row -1 is all zeros
+        var candidateBuf = new byte[5 * stride]; // 5 candidate filters per row
         var sums = new long[5];
 
-        for (int y = 0; y < height; y++)
+        // Reserve the IDAT length field (patched at the end) and write the type.
+        long lengthFieldPos = ms.Position;
+        Span<byte> placeholder = stackalloc byte[4];
+        ms.Write(placeholder);
+        long typeAndDataStart = ms.Position;
+        ms.Write("IDAT"u8);
+
+        // Scope the ZLibStream so its trailing zlib bytes are flushed before we
+        // measure ms.Position to compute the chunk length.
+        using (var z = new ZLibStream(ms, CompressionLevel.Optimal, leaveOpen: true))
         {
-            var current = rgba.Slice(y * stride, stride);
-            // Build all 5 candidate filters and score each.
-            FilterRow(current, prevRow, candidateBuf.AsSpan(0 * stride, stride), 0, Bpp);
-            FilterRow(current, prevRow, candidateBuf.AsSpan(1 * stride, stride), 1, Bpp);
-            FilterRow(current, prevRow, candidateBuf.AsSpan(2 * stride, stride), 2, Bpp);
-            FilterRow(current, prevRow, candidateBuf.AsSpan(3 * stride, stride), 3, Bpp);
-            FilterRow(current, prevRow, candidateBuf.AsSpan(4 * stride, stride), 4, Bpp);
-            sums[0] = SumAbsSigned(candidateBuf.AsSpan(0 * stride, stride));
-            sums[1] = SumAbsSigned(candidateBuf.AsSpan(1 * stride, stride));
-            sums[2] = SumAbsSigned(candidateBuf.AsSpan(2 * stride, stride));
-            sums[3] = SumAbsSigned(candidateBuf.AsSpan(3 * stride, stride));
-            sums[4] = SumAbsSigned(candidateBuf.AsSpan(4 * stride, stride));
-
-            int bestFilter = 0;
-            long bestSum = sums[0];
-            for (int f = 1; f < 5; f++)
+            for (int y = 0; y < height; y++)
             {
-                if (sums[f] < bestSum) { bestSum = sums[f]; bestFilter = f; }
+                var current = rgba.Slice(y * stride, stride);
+
+                // Compute all 5 filter candidates into separate slices of
+                // candidateBuf, score each, write out the smallest. Keeping
+                // 5 buffers (instead of redoing the chosen filter) avoids
+                // ~20% extra filtering work per row at the cost of 4×stride
+                // bytes of scratch per call, which is negligible.
+                FilterRow(current, prevRow, candidateBuf.AsSpan(0 * stride, stride), 0, Bpp);
+                FilterRow(current, prevRow, candidateBuf.AsSpan(1 * stride, stride), 1, Bpp);
+                FilterRow(current, prevRow, candidateBuf.AsSpan(2 * stride, stride), 2, Bpp);
+                FilterRow(current, prevRow, candidateBuf.AsSpan(3 * stride, stride), 3, Bpp);
+                FilterRow(current, prevRow, candidateBuf.AsSpan(4 * stride, stride), 4, Bpp);
+                sums[0] = SumAbsSigned(candidateBuf.AsSpan(0 * stride, stride));
+                sums[1] = SumAbsSigned(candidateBuf.AsSpan(1 * stride, stride));
+                sums[2] = SumAbsSigned(candidateBuf.AsSpan(2 * stride, stride));
+                sums[3] = SumAbsSigned(candidateBuf.AsSpan(3 * stride, stride));
+                sums[4] = SumAbsSigned(candidateBuf.AsSpan(4 * stride, stride));
+
+                int bestFilter = 0;
+                long bestSum = sums[0];
+                for (int f = 1; f < 5; f++)
+                {
+                    if (sums[f] < bestSum) { bestSum = sums[f]; bestFilter = f; }
+                }
+
+                z.WriteByte((byte)bestFilter);
+                z.Write(candidateBuf, bestFilter * stride, stride);
+
+                // Save the unfiltered current row as next iteration's "previous
+                // row" — filter formulas reference the *original* values of the
+                // pixel above, not the encoded ones.
+                current.CopyTo(prevRow);
             }
-
-            int dstRow = y * (1 + stride);
-            filtered[dstRow] = (byte)bestFilter;
-            candidateBuf.AsSpan(bestFilter * stride, stride).CopyTo(filtered.AsSpan(dstRow + 1));
-
-            // Save the unfiltered current row as next iteration's "previous
-            // row" — filter formulas reference the *original* values of the
-            // pixel above, not the encoded ones.
-            current.CopyTo(prevRow);
         }
-        var compressed = DeflateZlib(filtered);
-        WriteChunk(ms, "IDAT"u8, compressed);
+
+        // Patch the IDAT length field now that the deflate stream is closed.
+        long idatEnd = ms.Position;
+        long idatDataLength = idatEnd - typeAndDataStart - 4; // -4 for "IDAT" type
+        Span<byte> lenBuf = stackalloc byte[4];
+        WriteBE(lenBuf, (uint)idatDataLength);
+        ms.Position = lengthFieldPos;
+        ms.Write(lenBuf);
+        ms.Position = idatEnd;
+
+        // CRC over [type + data] — read directly from ms's backing buffer; no
+        // intermediate copy.
+        var crcSpan = ms.GetBuffer().AsSpan((int)typeAndDataStart, (int)(idatEnd - typeAndDataStart));
+        Span<byte> crcBuf = stackalloc byte[4];
+        WriteBE(crcBuf, Crc32(crcSpan, ReadOnlySpan<byte>.Empty));
+        ms.Write(crcBuf);
 
         // IEND: empty data.
         WriteChunk(ms, "IEND"u8, ReadOnlySpan<byte>.Empty);
