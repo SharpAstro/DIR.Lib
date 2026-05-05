@@ -118,18 +118,24 @@ public sealed class SignalBusTests
     {
         var bus = new SignalBus();
         var deliveredOnThread = -1;
-        var mainThread = Environment.CurrentManagedThreadId;
 
         bus.Subscribe<RequestRedrawSignal>(_ => deliveredOnThread = Environment.CurrentManagedThreadId);
 
-        // Post from a different thread
+        // Post from a different thread.
         var postTask = Task.Run(() => bus.Post(new RequestRedrawSignal()), TestContext.Current.CancellationToken);
         await postTask.WaitAsync(TestContext.Current.CancellationToken);
 
-        // Process on main thread
+        // Capture the thread we're *about to call ProcessPending on*, NOT
+        // at the start of the test — xUnit v3 runs async tests on the
+        // thread pool with no SynchronizationContext, so the await above
+        // can resume on a different thread than the test entry. Capturing
+        // here, immediately before the call, is what the assertion below
+        // actually means: "delivery happens on the thread that calls
+        // ProcessPending, not on the thread that posted".
+        var processingThread = Environment.CurrentManagedThreadId;
         bus.ProcessPending();
 
-        deliveredOnThread.ShouldBe(mainThread);
+        deliveredOnThread.ShouldBe(processingThread);
     }
 
     [Fact]
