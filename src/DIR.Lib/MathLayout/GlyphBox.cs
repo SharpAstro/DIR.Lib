@@ -59,6 +59,11 @@ public sealed class GlyphBox : Box
     public override float Height => _height;
     public override float Depth => _depth;
 
+    /// <summary>Raw text rendered by this glyph box — exposed so callers can
+    /// rebuild the same glyph at a different font size without losing the
+    /// source string. Used by the LaTeX visitor's script-shrinking path.</summary>
+    public string Text => _text;
+
     public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style)
     {
         // DrawText computes baseline = rectTop + (lineHeight + ascent -

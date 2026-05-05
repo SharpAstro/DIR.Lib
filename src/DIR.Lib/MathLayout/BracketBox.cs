@@ -52,7 +52,15 @@ public sealed class BracketBox : Box
 
     private void DrawBracket(RgbaImageRenderer renderer, float xOrigin, float top, float bottom, bool openLeft, BoxStyle style)
     {
-        int thickness = (int)MathF.Max(1f, _ruleThickness);
+        // Curved/vertical bracket strokes are drawn ~2× the rule thickness
+        // so they don't read as a single-pixel hairline at typical font
+        // sizes — the fraction bar / sqrt vinculum naturally look heavier
+        // because their length amortizes the same thickness, but a short
+        // paren stroke at 1 px reads as much thinner. Square brackets'
+        // serifs share the same thickness as the rule (these are short
+        // horizontal strokes, same role as the fraction bar).
+        int curveThickness = (int)MathF.Max(2f, _ruleThickness * 2f);
+        int ruleThickness = (int)MathF.Max(1f, _ruleThickness);
         var color = style.Foreground;
         float bw = _bracketWidth;
 
@@ -61,12 +69,15 @@ public sealed class BracketBox : Box
             case BracketKind.Square:
             {
                 // Vertical stroke at the inner edge, plus top/bottom serifs.
+                // The vertical stroke is the main visual weight — give it the
+                // curve thickness; serifs stay at rule thickness like a
+                // fraction bar.
                 float vx = openLeft ? xOrigin + bw * 0.55f : xOrigin + bw * 0.45f;
                 float serifLeft = openLeft ? xOrigin + bw * 0.55f : xOrigin + bw * 0.2f;
                 float serifRight = openLeft ? xOrigin + bw * 0.85f : xOrigin + bw * 0.45f;
-                renderer.DrawLine(vx, top, vx, bottom, color, thickness);
-                renderer.DrawLine(serifLeft, top, serifRight, top, color, thickness);
-                renderer.DrawLine(serifLeft, bottom, serifRight, bottom, color, thickness);
+                renderer.DrawLine(vx, top, vx, bottom, color, curveThickness);
+                renderer.DrawLine(serifLeft, top, serifRight, top, color, ruleThickness);
+                renderer.DrawLine(serifLeft, bottom, serifRight, bottom, color, ruleThickness);
                 break;
             }
             case BracketKind.Curly:
@@ -79,10 +90,10 @@ public sealed class BracketBox : Box
                 float tipX = openLeft ? xOrigin + bw * 0.85f : xOrigin + bw * 0.15f;
                 float farX = openLeft ? xOrigin + bw * 0.30f : xOrigin + bw * 0.70f;
                 float spineX = openLeft ? xOrigin + bw * 0.55f : xOrigin + bw * 0.45f;
-                renderer.DrawLine(farX, top, spineX, top + (midY - top) * 0.3f, color, thickness);
-                renderer.DrawLine(spineX, top + (midY - top) * 0.3f, tipX, midY, color, thickness);
-                renderer.DrawLine(tipX, midY, spineX, midY + (bottom - midY) * 0.7f, color, thickness);
-                renderer.DrawLine(spineX, midY + (bottom - midY) * 0.7f, farX, bottom, color, thickness);
+                renderer.DrawLine(farX, top, spineX, top + (midY - top) * 0.3f, color, curveThickness);
+                renderer.DrawLine(spineX, top + (midY - top) * 0.3f, tipX, midY, color, curveThickness);
+                renderer.DrawLine(tipX, midY, spineX, midY + (bottom - midY) * 0.7f, color, curveThickness);
+                renderer.DrawLine(spineX, midY + (bottom - midY) * 0.7f, farX, bottom, color, curveThickness);
                 break;
             }
             case BracketKind.Paren:
@@ -101,7 +112,7 @@ public sealed class BracketBox : Box
                 float[] xs = [tipX, (tipX + midX) / 2, midX, (tipX + midX) / 2, tipX];
                 float[] ys = [top, upperMidY, midY, lowerMidY, bottom];
                 for (int i = 0; i < xs.Length - 1; i++)
-                    renderer.DrawLine(xs[i], ys[i], xs[i + 1], ys[i + 1], color, thickness);
+                    renderer.DrawLine(xs[i], ys[i], xs[i + 1], ys[i + 1], color, curveThickness);
                 break;
             }
         }
