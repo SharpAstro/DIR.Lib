@@ -8,8 +8,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsAotCompatible>true</IsAotCompatible>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <VersionPrefix>2.5.0</VersionPrefix>
-    <AssemblyVersion>2.5.0.0</AssemblyVersion>
+    <VersionPrefix>2.6.0</VersionPrefix>
+    <AssemblyVersion>2.6.0.0</AssemblyVersion>
     <PackageID>DIR.Lib</PackageID>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>

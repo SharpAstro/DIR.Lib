@@ -1,0 +1,235 @@
+using System.IO.Compression;
+
+namespace DIR.Lib;
+
+/// <summary>
+/// Pure-managed PNG writer for 8-bit RGBA images. Emits a fully-conformant
+/// PNG with adaptive per-row filter selection (libpng's "minimum sum of
+/// absolute values" heuristic over filters 0/Sub/Up/Average/Paeth) and
+/// <see cref="CompressionLevel.Optimal"/> deflate. No interlacing, no
+/// palette, no ancillary chunks — just the smallest 8-bit-RGBA PNG that
+/// every standard decoder will accept.
+///
+/// Sibling to <c>BmpWriter</c> (test-only, internal). PNG is preferred for
+/// committed baselines and "save my <see cref="RgbaImage"/> render to disk"
+/// use cases; BMP is preferred for quick local inspection.
+///
+/// The filter encoders below are the dual of <c>IO.Lib.PngPredictor</c>
+/// (PDF/TIFF code path's PNG row unfilter): same Sub / Up / Average / Paeth
+/// formulas with the signs flipped.
+/// </summary>
+public static class PngWriter
+{
+    private static readonly byte[] Signature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+
+    /// <summary>
+    /// Encode an 8-bit RGBA pixel buffer (row-major, no padding) as a PNG.
+    /// </summary>
+    public static byte[] Encode(ReadOnlySpan<byte> rgba, int width, int height)
+    {
+        if (width <= 0 || height <= 0) throw new ArgumentException("width and height must be positive");
+        if (rgba.Length != width * height * 4) throw new ArgumentException("rgba length must equal width*height*4");
+
+        using var ms = new MemoryStream();
+        ms.Write(Signature);
+
+        // IHDR: width, height, bit depth (8), color type (6 = RGBA),
+        // compression (0 = deflate), filter (0 = adaptive), interlace (0).
+        Span<byte> ihdr = stackalloc byte[13];
+        WriteBE(ihdr.Slice(0, 4), (uint)width);
+        WriteBE(ihdr.Slice(4, 4), (uint)height);
+        ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+        WriteChunk(ms, "IHDR"u8, ihdr);
+
+        // IDAT: each scanline prefixed with 1 filter byte, then zlib-
+        // compressed. We try all 5 filters per row and pick the one with the
+        // smallest sum of |signed bytes| (libpng's "minsum" heuristic — gets
+        // ~95% of the optimal compression for ~5x the cost of None-only).
+        const int Bpp = 4; // RGBA, 8-bit channels
+        var stride = width * Bpp;
+        var filtered = new byte[height * (1 + stride)];
+        var prevRow = new byte[stride]; // row -1 is all zeros
+        var candidateBuf = new byte[5 * stride];
+        var sums = new long[5];
+
+        for (int y = 0; y < height; y++)
+        {
+            var current = rgba.Slice(y * stride, stride);
+            // Build all 5 candidate filters and score each.
+            FilterRow(current, prevRow, candidateBuf.AsSpan(0 * stride, stride), 0, Bpp);
+            FilterRow(current, prevRow, candidateBuf.AsSpan(1 * stride, stride), 1, Bpp);
+            FilterRow(current, prevRow, candidateBuf.AsSpan(2 * stride, stride), 2, Bpp);
+            FilterRow(current, prevRow, candidateBuf.AsSpan(3 * stride, stride), 3, Bpp);
+            FilterRow(current, prevRow, candidateBuf.AsSpan(4 * stride, stride), 4, Bpp);
+            sums[0] = SumAbsSigned(candidateBuf.AsSpan(0 * stride, stride));
+            sums[1] = SumAbsSigned(candidateBuf.AsSpan(1 * stride, stride));
+            sums[2] = SumAbsSigned(candidateBuf.AsSpan(2 * stride, stride));
+            sums[3] = SumAbsSigned(candidateBuf.AsSpan(3 * stride, stride));
+            sums[4] = SumAbsSigned(candidateBuf.AsSpan(4 * stride, stride));
+
+            int bestFilter = 0;
+            long bestSum = sums[0];
+            for (int f = 1; f < 5; f++)
+            {
+                if (sums[f] < bestSum) { bestSum = sums[f]; bestFilter = f; }
+            }
+
+            int dstRow = y * (1 + stride);
+            filtered[dstRow] = (byte)bestFilter;
+            candidateBuf.AsSpan(bestFilter * stride, stride).CopyTo(filtered.AsSpan(dstRow + 1));
+
+            // Save the unfiltered current row as next iteration's "previous
+            // row" — filter formulas reference the *original* values of the
+            // pixel above, not the encoded ones.
+            current.CopyTo(prevRow);
+        }
+        var compressed = DeflateZlib(filtered);
+        WriteChunk(ms, "IDAT"u8, compressed);
+
+        // IEND: empty data.
+        WriteChunk(ms, "IEND"u8, ReadOnlySpan<byte>.Empty);
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Encode <paramref name="rgba"/> as a PNG and write it to
+    /// <paramref name="path"/>. Convenience wrapper paralleling
+    /// <c>BmpWriter.Save</c>.
+    /// </summary>
+    public static void Save(string path, ReadOnlySpan<byte> rgba, int width, int height)
+    {
+        var png = Encode(rgba, width, height);
+        File.WriteAllBytes(path, png);
+    }
+
+    private static void WriteChunk(Stream output, ReadOnlySpan<byte> type, ReadOnlySpan<byte> data)
+    {
+        Span<byte> lenBuf = stackalloc byte[4];
+        WriteBE(lenBuf, (uint)data.Length);
+        output.Write(lenBuf);
+        output.Write(type);
+        output.Write(data);
+
+        // CRC32 over type + data, big-endian.
+        var crc = Crc32(type, data);
+        Span<byte> crcBuf = stackalloc byte[4];
+        WriteBE(crcBuf, crc);
+        output.Write(crcBuf);
+    }
+
+    private static void WriteBE(Span<byte> dst, uint value)
+    {
+        dst[0] = (byte)(value >> 24);
+        dst[1] = (byte)(value >> 16);
+        dst[2] = (byte)(value >> 8);
+        dst[3] = (byte)value;
+    }
+
+    private static byte[] DeflateZlib(ReadOnlySpan<byte> raw)
+    {
+        // ZLibStream wraps deflate with a 2-byte header + 4-byte Adler32
+        // trailer, which is exactly what the PNG IDAT spec asks for. Use
+        // Optimal — the encoding cost is dwarfed by the file-size win on
+        // anything bigger than a postage stamp.
+        using var ms = new MemoryStream();
+        using (var z = new ZLibStream(ms, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            z.Write(raw);
+        }
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Apply a PNG filter to one scanline. <paramref name="filterType"/>:
+    /// 0=None, 1=Sub (subtract left neighbour), 2=Up (subtract pixel above),
+    /// 3=Average (subtract floor((left+above)/2)), 4=Paeth.
+    /// </summary>
+    private static void FilterRow(ReadOnlySpan<byte> raw, ReadOnlySpan<byte> prev,
+        Span<byte> dst, int filterType, int bpp)
+    {
+        switch (filterType)
+        {
+            case 0:
+                raw.CopyTo(dst);
+                break;
+            case 1:
+                for (int i = 0; i < bpp; i++) dst[i] = raw[i];
+                for (int i = bpp; i < raw.Length; i++) dst[i] = (byte)(raw[i] - raw[i - bpp]);
+                break;
+            case 2:
+                for (int i = 0; i < raw.Length; i++) dst[i] = (byte)(raw[i] - prev[i]);
+                break;
+            case 3:
+                for (int i = 0; i < raw.Length; i++)
+                {
+                    int left = i >= bpp ? raw[i - bpp] : 0;
+                    int above = prev[i];
+                    dst[i] = (byte)(raw[i] - (left + above) / 2);
+                }
+                break;
+            case 4:
+                for (int i = 0; i < raw.Length; i++)
+                {
+                    int left = i >= bpp ? raw[i - bpp] : 0;
+                    int above = prev[i];
+                    int upperLeft = i >= bpp ? prev[i - bpp] : 0;
+                    dst[i] = (byte)(raw[i] - PaethPredictor(left, above, upperLeft));
+                }
+                break;
+        }
+    }
+
+    /// <summary>
+    /// libpng's "minsum" filter selection score: sum of absolute values of
+    /// the bytes interpreted as signed (so 0xFF → 1, 0x80 → 128). Smaller
+    /// score correlates with better deflate compression on the row.
+    /// </summary>
+    private static long SumAbsSigned(ReadOnlySpan<byte> row)
+    {
+        long sum = 0;
+        for (int i = 0; i < row.Length; i++)
+        {
+            sbyte s = (sbyte)row[i];
+            sum += s < 0 ? -s : s;
+        }
+        return sum;
+    }
+
+    private static int PaethPredictor(int a, int b, int c)
+    {
+        int p = a + b - c;
+        int pa = p >= a ? p - a : a - p;
+        int pb = p >= b ? p - b : b - p;
+        int pc = p >= c ? p - c : c - p;
+        if (pa <= pb && pa <= pc) return a;
+        return pb <= pc ? b : c;
+    }
+
+    /// <summary>
+    /// Standard PNG CRC32 (polynomial 0xEDB88320, IEEE 802.3). Computed on
+    /// the concatenation of <paramref name="a"/> and <paramref name="b"/>
+    /// without materializing either span.
+    /// </summary>
+    private static uint Crc32(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+    {
+        uint c = 0xFFFFFFFFu;
+        foreach (var x in a) c = CrcTable[(c ^ x) & 0xFF] ^ (c >> 8);
+        foreach (var x in b) c = CrcTable[(c ^ x) & 0xFF] ^ (c >> 8);
+        return c ^ 0xFFFFFFFFu;
+    }
+
+    private static readonly uint[] CrcTable = BuildCrcTable();
+
+    private static uint[] BuildCrcTable()
+    {
+        var t = new uint[256];
+        for (uint n = 0; n < 256; n++)
+        {
+            var c = n;
+            for (int k = 0; k < 8; k++)
+                c = ((c & 1) != 0) ? 0xEDB88320u ^ (c >> 1) : (c >> 1);
+            t[n] = c;
+        }
+        return t;
+    }
+}
