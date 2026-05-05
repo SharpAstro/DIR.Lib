@@ -59,6 +59,7 @@ public sealed class MathLayoutBaselineTests
     [InlineData("limits-int-0-inf")]
     [InlineData("limits-sum-i-n")]
     [InlineData("hbox-int-eq-half")]
+    [InlineData("integral-formula-full")]
     public void Baseline(string name)
     {
         var (box, style) = BuildScene(name);
@@ -182,6 +183,37 @@ public sealed class MathLayoutBaselineTests
                 new KernBox(style.FontSize * 0.3f),
                 new FracBox(
                     new GlyphBox("1", style),
+                    new GlyphBox("2", style),
+                    style)),
+            // Full ∫₀^∞ e^(-x²) dx = √π/2 — the formula in the user-
+            // reported alignment bug. The integral's centre, the '='
+            // sign, and the fraction bar should all sit on the math axis;
+            // baseline-letter glyphs (e, dx) stay at the line baseline.
+            "integral-formula-full" => new HBox(
+                new LimitsBox(
+                    new GlyphBox("∫", style, style.FontSize * 1.5f),
+                    new GlyphBox("0", style.Smaller()),
+                    new GlyphBox("∞", style.Smaller()),
+                    style),
+                new KernBox(style.FontSize * 0.1f),
+                new SupSubBox(
+                    new GlyphBox("e", style),
+                    new HBox(
+                        new GlyphBox("−", style.Smaller()),
+                        new SupSubBox(
+                            new GlyphBox("x", style.Smaller()),
+                            new GlyphBox("2", style.Smaller().Smaller()),
+                            null,
+                            style.Smaller())),
+                    null,
+                    style),
+                new KernBox(style.FontSize * 0.2f),
+                new GlyphBox("dx", style),
+                new KernBox(style.FontSize * 0.3f),
+                new GlyphBox("=", style),
+                new KernBox(style.FontSize * 0.3f),
+                new FracBox(
+                    new SqrtBox(new GlyphBox("π", style), style),
                     new GlyphBox("2", style),
                     style)),
             _ => throw new ArgumentException($"unknown scene '{name}'"),

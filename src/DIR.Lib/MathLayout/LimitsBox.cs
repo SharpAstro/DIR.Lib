@@ -24,6 +24,7 @@ public sealed class LimitsBox : Box
     private readonly float _gap;
     private readonly float _baseShift;
     private readonly float _baseHalf;
+    private readonly float _mathAxis;
     private readonly float _width;
     private readonly float _height;
     private readonly float _depth;
@@ -37,18 +38,23 @@ public sealed class LimitsBox : Box
         // matches what TeX uses for \displaystyle limits.
         _gap = style.FontSize * 0.1f;
 
-        // The base sits with its *visual centre* at the LimitsBox baseline
-        // (TeX's "math axis" alignment for big operators in display style).
-        // That way an HBox sibling like '=' or '+', whose own visual centre
-        // is at roughly the same line, aligns with the operator's middle —
-        // not with the operator's bottom. baseShift > 0 means we draw the
-        // base lower than baselineY by exactly enough to centre it.
-        _baseShift = (_base.Height - _base.Depth) / 2f;
+        // Centre the base on the *math axis*, not the parent baseline.
+        // Math axis sits ~0.25·em above the line baseline; that's where
+        // '=' / '+' / '−' glyphs visually centre, where fraction bars
+        // land, and where a centred operator should sit too. Without this
+        // upward offset, a tall LimitsBox(∫) inside an HBox alongside '='
+        // looks low — its visual centre stuck on the line baseline while
+        // surrounding inline-math glyphs sit a quarter-em higher.
+        _mathAxis = style.FontSize * 0.25f;
+        _baseShift = (_base.Height - _base.Depth) / 2f - _mathAxis;
         _baseHalf = _base.TotalHeight / 2f;
 
         _width = MathF.Max(_base.Width, MathF.Max(lower?.Width ?? 0, upper?.Width ?? 0));
-        _height = _baseHalf + (upper is not null ? _gap + upper.TotalHeight : 0);
-        _depth  = _baseHalf + (lower is not null ? _gap + lower.TotalHeight  : 0);
+        // Box extends mathAxis higher (top side) and mathAxis less (bottom
+        // side) than a baseline-centred version would, since we lifted the
+        // whole base by mathAxis above the line baseline.
+        _height = _baseHalf + _mathAxis + (upper is not null ? _gap + upper.TotalHeight : 0);
+        _depth  = MathF.Max(0f, _baseHalf - _mathAxis) + (lower is not null ? _gap + lower.TotalHeight : 0);
     }
 
     public override float Width => _width;
@@ -66,21 +72,23 @@ public sealed class LimitsBox : Box
 
         if (_upper is not null)
         {
-            // Upper sits above the base: its bottom edge = top of base - gap.
-            // Top of base = baselineY - _baseHalf (after shift). Upper's
-            // own baseline is upper.Depth above its bottom edge.
+            // Upper sits above the base. After the math-axis lift, base's
+            // top = baselineY − _baseHalf − _mathAxis. Upper's bottom edge
+            // = top of base − _gap; upper's own baseline is _upper.Depth
+            // above its bottom.
             float upperX = centerX - _upper.Width / 2f;
-            float upperBaseline = baselineY - _baseHalf - _gap - _upper.Depth;
+            float upperBaseline = baselineY - _baseHalf - _mathAxis - _gap - _upper.Depth;
             _upper.Draw(renderer, upperX, upperBaseline, style);
         }
 
         if (_lower is not null)
         {
-            // Lower sits below the base: its top edge = bottom of base + gap.
-            // Bottom of base = baselineY + _baseHalf (after shift). Lower's
-            // baseline is lower.Height below its top edge.
+            // Lower sits below the base. After the math-axis lift, base's
+            // bottom = baselineY + _baseHalf − _mathAxis. Lower's top edge
+            // = bottom of base + _gap; lower's baseline is _lower.Height
+            // below its top.
             float lowerX = centerX - _lower.Width / 2f;
-            float lowerBaseline = baselineY + _baseHalf + _gap + _lower.Height;
+            float lowerBaseline = baselineY + _baseHalf - _mathAxis + _gap + _lower.Height;
             _lower.Draw(renderer, lowerX, lowerBaseline, style);
         }
     }
