@@ -1,5 +1,6 @@
 using System.Reflection;
 using DIR.Lib.MathLayout;
+using SharpAstro.Fonts;
 using StbImageSharp;
 using Xunit;
 
@@ -355,13 +356,17 @@ public sealed class MathLayoutBaselineTests
         var k = new KernBox(style.FontSize * 0.2f);
         var thin = new KernBox(style.FontSize * 0.12f);
 
-        // ψ with a macron on top, drawn via AccentBox so the bar anchors
-        // on the font's MathTopAccentAttachment (italic ψ leans, so the
-        // attachment is offset from advance/2 in math fonts). U+00AF is
-        // the spacing macron — picked over the combining U+0304 because
-        // its glyph has a positive advance and a predictable visual
-        // extent, so AccentBox's explicit positioning works regardless
-        // of whether the font supplies GPOS mark anchoring.
+        // Latin-letter atoms render as math italic via MathGlyphBox: F,
+        // D, V, y, i and the index letters i/j get remapped to the
+        // U+1D434 italic block when the font's cmap covers it (STIX,
+        // Cambria Math, Latin Modern Math). Body fonts (DejaVu) miss
+        // the cmap lookup and fall back to upright — same visual result
+        // as before MathGlyphBox existed for those fonts. Greek letters
+        // (ψ, μ, ν, φ) keep their plain codepoints since math fonts
+        // already render them italic by font-design convention. Numbers,
+        // operators, and the "h.c." text stay upright.
+        Box it(string text, BoxStyle s) => new MathGlyphBox(text, s, MathStyle.Italic);
+
         Box psiBar(BoxStyle s) => new AccentBox(
             new GlyphBox("ψ", s),
             new GlyphBox("¯", s),
@@ -370,17 +375,18 @@ public sealed class MathLayoutBaselineTests
         // F_μν F^μν — same letter, one with sub then one with super,
         // back-to-back. Reads as the contraction in index notation.
         Box fmunuDownUp() => new HBox(
-            new SupSubBox(new GlyphBox("F", style), null, new GlyphBox("μν", style.Smaller()), style),
+            new SupSubBox(it("F", style), null, new GlyphBox("μν", style.Smaller()), style),
             thin,
-            new SupSubBox(new GlyphBox("F", style), new GlyphBox("μν", style.Smaller()), null, style));
+            new SupSubBox(it("F", style), new GlyphBox("μν", style.Smaller()), null, style));
 
-        // Yukawa term: ψ̄_i y_ij ψ_j φ.
+        // Yukawa term: ψ̄_i y_ij ψ_j φ. Indices i / j / ij are italic
+        // letters too — they're math letters, not opaque labels.
         Box yukawa() => new HBox(
-            new SupSubBox(psiBar(style), null, new GlyphBox("i", style.Smaller()), style),
+            new SupSubBox(psiBar(style), null, it("i", style.Smaller()), style),
             thin,
-            new SupSubBox(new GlyphBox("y", style), null, new GlyphBox("ij", style.Smaller()), style),
+            new SupSubBox(it("y", style), null, it("ij", style.Smaller()), style),
             thin,
-            new SupSubBox(new GlyphBox("ψ", style), null, new GlyphBox("j", style.Smaller()), style),
+            new SupSubBox(new GlyphBox("ψ", style), null, it("j", style.Smaller()), style),
             thin,
             new GlyphBox("φ", style));
 
@@ -389,7 +395,7 @@ public sealed class MathLayoutBaselineTests
         Box higgsKinetic() => new SupSubBox(
             new HBox(
                 new GlyphBox("|", style),
-                new SupSubBox(new GlyphBox("D", style), null, new GlyphBox("μ", style.Smaller()), style),
+                new SupSubBox(it("D", style), null, new GlyphBox("μ", style.Smaller()), style),
                 thin,
                 new GlyphBox("φ", style),
                 new GlyphBox("|", style)),
@@ -410,13 +416,13 @@ public sealed class MathLayoutBaselineTests
             k,
             new GlyphBox("+", style),
             k,
-            new GlyphBox("i", style),
+            it("i", style),
             thin,
             // ψ̄ D̸ ψ — bar via AccentBox, slash via OverlayBox (a
-            // forward-slash glyph drawn through D's centre).
+            // forward-slash glyph drawn through italic D's centre).
             psiBar(style),
             thin,
-            new OverlayBox(new GlyphBox("D", style), new GlyphBox("/", style)),
+            new OverlayBox(it("D", style), new GlyphBox("/", style)),
             thin,
             new GlyphBox("ψ", style),
             k,
@@ -426,6 +432,8 @@ public sealed class MathLayoutBaselineTests
             k,
             new GlyphBox("+", style),
             k,
+            // "h.c." stays upright — it's a text label (Hermitian
+            // conjugate), not a math expression.
             new GlyphBox("h.c.", style),
             k,
             new GlyphBox("+", style),
@@ -434,7 +442,7 @@ public sealed class MathLayoutBaselineTests
             k,
             new GlyphBox("−", style),
             k,
-            new GlyphBox("V", style),
+            it("V", style),
             new BracketBox(new GlyphBox("φ", style), BracketKind.Paren, style));
     }
 

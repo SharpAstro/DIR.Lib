@@ -103,6 +103,30 @@ public sealed class ManagedFontRasterizer : IDisposable
     }
 
     /// <summary>
+    /// Try to return the styled-variant rune (italic, bold, script, …)
+    /// for <paramref name="codepoint"/> in the font at
+    /// <paramref name="fontPath"/>. Returns the rune corresponding to
+    /// the Unicode math-alphanumeric codepoint when (a) a Unicode
+    /// mapping exists for (codepoint, style) and (b) the font's cmap
+    /// covers that mapped codepoint. Returns null otherwise — caller
+    /// should fall back to the original codepoint, which is exactly
+    /// what <see cref="MathLayout.GlyphBox"/> does at construction
+    /// time when this helper is wrapped behind a styled-glyph
+    /// constructor.
+    /// </summary>
+    public Rune? TryGetMathStyledRune(string fontPath, Rune codepoint, MathStyle style)
+    {
+        if (style == MathStyle.Normal) return codepoint;
+        var font = GetOrLoad(fontPath);
+        var gid = font.GetMathVariantGlyphId((uint)codepoint.Value, style);
+        if (gid == 0) return null;
+        // The styled-variant codepoint is what the cmap matched against;
+        // recompute it (cheap pure lookup) so the caller can rebuild text.
+        var mapped = MathAlphanumerics.MapCodepoint((uint)codepoint.Value, style);
+        return mapped.HasValue ? new Rune((int)mapped.Value) : null;
+    }
+
+    /// <summary>
     /// Top-accent attachment x-coordinate (pixels, measured from the
     /// glyph's left edge at the requested font size) for the given
     /// codepoint. Drives where a math accent (macron, hat, tilde, …)
