@@ -36,6 +36,7 @@ public sealed class StretchyVerticalBox : Box
     private readonly GlyphBitmap _bitmap;
     private readonly float _height;
     private readonly float _depth;
+    private readonly uint _variantGlyphId;
 
     /// <summary>
     /// Compose a stretchy delimiter for <paramref name="codepoint"/> covering
@@ -47,7 +48,7 @@ public sealed class StretchyVerticalBox : Box
     public StretchyVerticalBox(int codepoint, float requiredHeightPx, BoxStyle style)
     {
         var rune = new Rune(codepoint);
-        _bitmap = SharedRasterizer.RasterizeStretchyVertical(style.FontPath, style.FontSize, rune, requiredHeightPx);
+        _bitmap = SharedRasterizer.RasterizeStretchyVertical(style.FontPath, style.FontSize, rune, requiredHeightPx, out _variantGlyphId);
 
         if (_bitmap.Rgba is null || _bitmap.Width == 0 || _bitmap.Height == 0)
         {
@@ -73,6 +74,16 @@ public sealed class StretchyVerticalBox : Box
     /// all. <see cref="Width"/> / <see cref="Height"/> / <see cref="Depth"/>
     /// will all be zero in that case.</summary>
     public bool IsAvailable => _bitmap.Rgba is not null && _bitmap.Width > 0;
+
+    /// <summary>The glyph id of the variant the font picked to satisfy
+    /// <c>requiredHeightPx</c>. Non-zero when <see cref="IsAvailable"/>;
+    /// equal to the BASE glyph's id when the bitmap was composed via
+    /// MATH assembly (no single id covers the result, so the base is
+    /// the sensible fallback for metric lookups). Used by
+    /// <see cref="SupSubBox"/> to query the variant's own
+    /// <c>MathItalicsCorrection</c> rather than scaling the base's
+    /// — designers tune the value per variant size.</summary>
+    public uint VariantGlyphId => _variantGlyphId;
 
     /// <summary>The composed RGBA bitmap (variant or assembly). Exposed so
     /// e.g. <see cref="SqrtBox"/> can scan the top rows to find the radical

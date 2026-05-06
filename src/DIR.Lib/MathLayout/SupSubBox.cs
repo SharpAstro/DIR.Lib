@@ -85,12 +85,11 @@ public sealed class SupSubBox : Box
 
     /// <summary>
     /// Resolve the (rune, render-font-size) pair for a base box that
-    /// represents a single glyph at a known size. Covers two cases:
-    /// a single-rune <see cref="GlyphBox"/> (the common case — italic
-    /// letters, plain operators) and a <see cref="BigOperatorBox"/>
-    /// (∫, ∑ rendered at displaystyle size). Returns null for any
-    /// other shape — composite HBox, FracBox, etc. — since per-glyph
-    /// font metrics don't generalise.
+    /// represents a single glyph at a known size. Covers single-rune
+    /// <see cref="GlyphBox"/> and <see cref="BigOperatorBox"/>'s
+    /// fallback path. The variant path of <see cref="BigOperatorBox"/>
+    /// is handled separately because its variant glyph id can't be
+    /// reached by codepoint via the cmap.
     /// </summary>
     private static (Rune rune, float fontSize)? TryGetSingleGlyph(Box @base)
     {
@@ -107,7 +106,7 @@ public sealed class SupSubBox : Box
                 return (rune, gb.FontSize);
             }
             case BigOperatorBox big:
-                return (new Rune(big.Codepoint), big.MetricFontSize);
+                return (new Rune(big.Codepoint), big.RenderFontSize);
             default:
                 return null;
         }
@@ -129,11 +128,29 @@ public sealed class SupSubBox : Box
 
     /// <summary>
     /// Resolve the italic correction (pixels at the box's render size)
-    /// for the underlying glyph when the font supplies the metric;
-    /// otherwise zero.
+    /// for the underlying glyph.
+    ///
+    /// <para>For ordinary slanted bases — italic letters in math context —
+    /// italic correction is the right placement metric: the slope's
+    /// top-right is at advance + correction, and the script needs to
+    /// follow. Returns the codepoint's value via cmap.</para>
+    ///
+    /// <para>For <see cref="BigOperatorBox"/>, italic correction is
+    /// the wrong metric, even though the font sets one. The displaystyle
+    /// integral's correction in STIX is 540 FU; applied linearly at
+    /// the displaystyle render size that's a ~120 px shift on each
+    /// side — far too aggressive. MathJax handles big-operator scripts
+    /// via math corner kerns (or no shift at all when none are set),
+    /// not italic correction. We follow that convention: when the
+    /// base is a <see cref="BigOperatorBox"/> and corner kerns aren't
+    /// present (TryGetCornerKern already covers that path), return 0
+    /// here so scripts land at the unshifted advance + scriptKern.
+    /// The font-supplied corner kerns, when present, fully position
+    /// the scripts; italic correction is reserved for letter bases.</para>
     /// </summary>
     private static float TryGetItalicsCorrection(Box @base, BoxStyle style)
     {
+        if (@base is BigOperatorBox) return 0f;
         var glyph = TryGetSingleGlyph(@base);
         if (glyph is null) return 0f;
         return BoxStyle.SharedRasterizer.GetItalicsCorrectionPx(

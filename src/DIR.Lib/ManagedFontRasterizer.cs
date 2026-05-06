@@ -175,6 +175,28 @@ public sealed class ManagedFontRasterizer : IDisposable
     }
 
     /// <summary>
+    /// Italic correction (pixels at the requested font size) for a
+    /// glyph identified directly by its glyph id. Used to look up
+    /// metrics on stretchy variant glyphs that aren't reachable via
+    /// the cmap — the variant's id comes from
+    /// <see cref="RasterizeStretchyVertical(string, float, Rune, float, out uint)"/>'s
+    /// out parameter, then this accessor finds the correction the
+    /// font designer set for that specific size of the glyph.
+    /// Returns null when the glyph isn't in the italic-correction
+    /// coverage; caller should fall back to the base codepoint's
+    /// correction (or zero for upright glyphs).
+    /// </summary>
+    public float? GetItalicsCorrectionByGidPx(string fontPath, float fontSize, uint glyphId)
+    {
+        var font = GetOrLoad(fontPath);
+        var info = font.Math?.GlyphInfo;
+        if (info is null || glyphId == 0) return null;
+        var fu = info.GetItalicsCorrection((ushort)glyphId);
+        if (fu == 0) return null;
+        return fu * fontSize / font.UnitsPerEm;
+    }
+
+    /// <summary>
     /// Top-accent attachment x-coordinate (pixels, measured from the
     /// glyph's left edge at the requested font size) for the given
     /// codepoint. Drives where a math accent (macron, hat, tilde, …)
@@ -218,7 +240,25 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// </summary>
     public GlyphBitmap RasterizeStretchyVertical(string fontPath, float fontSize,
         Rune codepoint, float requiredHeightPx)
+        => RasterizeStretchyVertical(fontPath, fontSize, codepoint, requiredHeightPx, out _);
+
+    /// <summary>
+    /// Same as <see cref="RasterizeStretchyVertical(string, float, Rune, float)"/>
+    /// but also returns the glyph id of the variant that was rendered.
+    /// <list type="bullet">
+    /// <item>Variant path or "base already tall enough" path → the
+    /// chosen single glyph's id (caller can look up its
+    /// <c>MathItalicsCorrection</c>, corner kerns, etc.).</item>
+    /// <item>Assembly path → the BASE glyph's id (assembly-composed
+    /// glyphs don't have a single glyph id, so the base is the only
+    /// reasonable fallback for metric lookup).</item>
+    /// <item>No coverage → 0 (caller should use base codepoint).</item>
+    /// </list>
+    /// </summary>
+    public GlyphBitmap RasterizeStretchyVertical(string fontPath, float fontSize,
+        Rune codepoint, float requiredHeightPx, out uint variantGlyphId)
     {
+        variantGlyphId = 0;
         var font = GetOrLoad(fontPath);
         var baseGid = font.GetGlyphId((uint)codepoint.Value);
         if (baseGid == 0) return default;
@@ -227,7 +267,11 @@ public sealed class ManagedFontRasterizer : IDisposable
         //    This branch fires for short content even on math-less fonts and
         //    is the cheap path: just render the unstretched glyph and return.
         var baseGlyph = Render(font, baseGid, fontSize);
-        if (baseGlyph.Height >= requiredHeightPx) return baseGlyph;
+        if (baseGlyph.Height >= requiredHeightPx)
+        {
+            variantGlyphId = baseGid;
+            return baseGlyph;
+        }
 
         // The base glyph isn't tall enough. From here we need MATH data — if
         // the font has none (or doesn't cover this codepoint vertically),
@@ -247,18 +291,29 @@ public sealed class ManagedFontRasterizer : IDisposable
         foreach (var v in construction.Variants)
         {
             if (v.AdvanceMeasurement >= requiredFUnits)
+            {
+                variantGlyphId = v.GlyphId;
                 return Render(font, v.GlyphId, fontSize);
+            }
         }
 
-        // 2) Assembly path — needed when no variant fits, or no variants at all.
+        // 2) Assembly path — composed from multiple parts; no single glyph
+        //    id. Report the base glyph id so callers can still look up
+        //    metrics (italic correction, etc.) against something sensible.
         if (construction.Assembly is { } asm)
+        {
+            variantGlyphId = baseGid;
             return ComposeVerticalAssembly(font, asm, math.MinConnectorOverlap, unitsPerEm, fontSize, requiredFUnits);
+        }
 
         // 3) Largest variant if any (still possibly short of the request, but
         //    closer than the base). If the construction has neither variants
         //    nor assembly we already returned default above.
         if (construction.Variants.Count > 0)
+        {
+            variantGlyphId = construction.Variants[^1].GlyphId;
             return Render(font, construction.Variants[^1].GlyphId, fontSize);
+        }
         return default;
     }
 
