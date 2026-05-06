@@ -37,6 +37,7 @@ public sealed class StretchyVerticalBox : Box
     private readonly float _height;
     private readonly float _depth;
     private readonly uint _variantGlyphId;
+    private readonly int _inkRightX;
 
     /// <summary>
     /// Compose a stretchy delimiter for <paramref name="codepoint"/> covering
@@ -54,6 +55,7 @@ public sealed class StretchyVerticalBox : Box
         {
             _height = 0;
             _depth = 0;
+            _inkRightX = 0;
             return;
         }
 
@@ -67,6 +69,34 @@ public sealed class StretchyVerticalBox : Box
         _height = axis + halfHeight;
         _depth = halfHeight - axis;
         if (_depth < 0) _depth = 0;
+
+        _inkRightX = ScanInkRight(_bitmap);
+    }
+
+    /// <summary>
+    /// Find the rightmost column with non-transparent pixels in
+    /// <paramref name="bitmap"/>. Used by big-operator script placement
+    /// to anchor sub/super against the operator's actual ink rather
+    /// than its design advance — STIX's displaystyle ∫ variant has a
+    /// significant trailing right bearing built into its width, so a
+    /// script at <c>bitmap.Width + scriptKern</c> sits visually
+    /// detached from the operator. <c>inkRightX + scriptKern</c> sits
+    /// flush against the ink, matching MathJax's placement.
+    /// </summary>
+    private static int ScanInkRight(GlyphBitmap bitmap)
+    {
+        var rgba = bitmap.Rgba;
+        var w = bitmap.Width;
+        var h = bitmap.Height;
+        for (int x = w - 1; x >= 0; x--)
+        {
+            for (int y = 0; y < h; y++)
+            {
+                // Stride is 4 bytes per pixel (RGBA); alpha is byte 3.
+                if (rgba[(y * w + x) * 4 + 3] != 0) return x + 1;
+            }
+        }
+        return 0;
     }
 
     /// <summary>True when the font produced a real bitmap for this codepoint.
@@ -92,6 +122,47 @@ public sealed class StretchyVerticalBox : Box
     /// bounding-box top edge (which usually has a row or two of transparent
     /// padding).</summary>
     internal GlyphBitmap Bitmap => _bitmap;
+
+    /// <summary>One past the rightmost column index that contains non-
+    /// transparent ink across the whole bitmap. Equals <see cref="Width"/>
+    /// for tight bitmaps; less than Width when the variant glyph has
+    /// trailing-right design padding.</summary>
+    internal int InkRightX => _inkRightX;
+
+    /// <summary>Find one past the rightmost column with non-transparent
+    /// ink, restricted to the row range
+    /// <c>[<paramref name="yMin"/>, <paramref name="yMax"/>)</c>
+    /// (clamped to the bitmap). Returns 0 when the band is empty.
+    ///
+    /// <para>Lets <see cref="SupSubBox"/> kern scripts to the operator
+    /// glyph's visible ink at the script's own vertical position rather
+    /// than to the global rightmost ink — for ∫ the body slants from
+    /// upper-right to lower-left, so the rightmost ink in the sub's
+    /// y-band sits well to the left of the rightmost ink in the
+    /// super's y-band, and a single anchor would misplace one or the
+    /// other. Equivalent to a per-script math kern computed from the
+    /// rendered shape, which is what we'd otherwise pull from MATH's
+    /// <c>MathKernInfo</c> when the font supplies it (STIX doesn't,
+    /// for ∫).</para>
+    /// </summary>
+    internal int InkRightAtY(int yMin, int yMax)
+    {
+        var rgba = _bitmap.Rgba;
+        if (rgba is null) return 0;
+        var w = _bitmap.Width;
+        var h = _bitmap.Height;
+        yMin = Math.Max(0, yMin);
+        yMax = Math.Min(h, yMax);
+        if (yMin >= yMax) return 0;
+        for (int x = w - 1; x >= 0; x--)
+        {
+            for (int y = yMin; y < yMax; y++)
+            {
+                if (rgba[(y * w + x) * 4 + 3] != 0) return x + 1;
+            }
+        }
+        return 0;
+    }
 
     public override float Width => _bitmap.Width;
     public override float Height => _height;

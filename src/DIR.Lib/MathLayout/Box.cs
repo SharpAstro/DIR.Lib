@@ -163,12 +163,23 @@ public sealed record BoxStyle(string FontPath, float FontSize, RGBAColor32 Foreg
             // Without the floor, the "big operator" ends up smaller
             // than the surrounding glyphs, making the script-size
             // bounds look enormous next to it.
+            //
+            // 1.3× scale on the font's spec value bumps the threshold
+            // up enough to pick the more cursive next-up variant in
+            // fonts whose chain is set up for MathJax-style displaystyle
+            // (STIX2's ∫ has ~2.15em as MinHeight, and 1.3× lands on the
+            // cursive variant the spec's bare value misses). The spec's
+            // value is the *minimum*; designers expect typesetters to
+            // go larger for displaystyle. Going much higher (1.8+) skips
+            // past the curly variant to a taller-but-thinner one that
+            // looks less cursive again.
+            const float displayScale = 1.3f;
             var floor = FontSize * 1.5f;
             var info = SharedRasterizer.GetMathConstants(FontPath);
             if (info is null) return floor;
             ushort minH = info.Value.constants.DisplayOperatorMinHeight;
             if (minH == 0) return floor;
-            return MathF.Max(floor, FontSize * minH / info.Value.unitsPerEm);
+            return MathF.Max(floor, displayScale * FontSize * minH / info.Value.unitsPerEm);
         }
     }
 

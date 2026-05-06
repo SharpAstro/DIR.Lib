@@ -41,36 +41,48 @@ public sealed class SupSubBox : Box
         var subDropMin = c?.subDropMin     ?? _base.Depth * 0.85f;
         _supShift = MathF.Max(supShiftUp, _base.Height - supDropMax);
         _subShift = MathF.Max(subShiftDown, _base.Depth + subDropMin);
-        _scriptKern = style.FontSize * 0.04f;
+        // Letters get a small kern past advance so the script doesn't
+        // sit directly on the glyph's right side bearing. Big operators
+        // already have wide right bearings designed in (∫'s top hook
+        // alone defines the advance; the rest of the glyph sits well
+        // to the left), so an extra kern there visibly detaches the
+        // scripts from the operator. Match MathJax: zero kern for big
+        // ops, 4% em for everything else.
+        _scriptKern = @base is BigOperatorBox ? 0f : style.FontSize * 0.04f;
 
-        // Per-corner horizontal shifts. The OpenType MATH table can
-        // supply per-glyph corner kerns (TopRight for sup, BottomRight
-        // for sub) that are evaluated at the script's contact height —
-        // a strictly more precise placement than italic correction,
-        // which is a single global value for the whole glyph. We
-        // prefer corner kerns when present, fall back to italic
-        // correction otherwise.
+        // Per-corner horizontal shifts.
         //
-        // <para>For ordinary slanted bases (italic letters) the sign
-        // convention is symmetric: super shifts right by +italic, sub
-        // shifts left by −italic — places both at the slope's contact
-        // corners.</para>
+        // <para>For ordinary slanted bases (italic letters) the OpenType
+        // MATH corner kerns (TopRight for sup, BottomRight for sub) are
+        // evaluated at the script's contact height — strictly more
+        // precise than italic correction. When the font has no per-
+        // corner kern data, we fall back to ±italic correction: super
+        // shifts right by +italic, sub shifts left by −italic, placing
+        // both at the slope's contact corners.</para>
         //
-        // <para>For <see cref="BigOperatorBox"/> the placement is
-        // asymmetric: super shifts right by +italic, sub stays at
-        // advance (no leftward pull). Empirical match to MathJax —
-        // ∫'s top curl sits roughly at the advance position, and
-        // MathJax aligns the sub with the top curl rather than the
-        // bottom one. Pulling sub left to the slope's bottom-left
-        // corner detaches it from the rest of the formula and
-        // overlaps the bottom curl's ink.</para>
+        // <para>For <see cref="BigOperatorBox"/> with a stretchy variant
+        // (STIX's ∫ at displaystyle) the script anchor is already the
+        // y-band ink-right (see <c>SupAnchor</c> / <c>SubAnchor</c>),
+        // which kerns the script flush with the visible ink at the
+        // script's own height. Italic correction on top would
+        // double-shift — the bitmap scan already accounts for slope.
+        // Both shifts are zero here so scripts land at exactly the
+        // ink-right anchor.</para>
+        //
+        // <para>For BigOperatorBox with a fallback GlyphBox (no MATH
+        // variants — body fonts), the anchor is the glyph's advance,
+        // so we still need ±italic correction to handle the slope:
+        // super shifts right, sub stays at advance (asymmetric, matching
+        // MathJax convention for big ops).</para>
         var italic = TryGetItalicsCorrection(@base, style);
         // Lookup heights for the corner kern step functions — the
         // sub/super's contact y above the main baseline. We pass these
         // in pixels; the rasterizer converts to FU for the lookup.
         var supContactY = _supShift - (_sup?.Depth ?? 0);
         var subContactY = -_subShift + (_sub?.Height ?? 0);
-        _supXShift = TryGetCornerKern(@base, style, MathKernCorner.TopRight, supContactY) ?? italic;
+        bool bigWithVariant = @base is BigOperatorBox big && big.HasVariant;
+        _supXShift = TryGetCornerKern(@base, style, MathKernCorner.TopRight, supContactY)
+            ?? (bigWithVariant ? 0f : italic);
         _subXShift = TryGetCornerKern(@base, style, MathKernCorner.BottomRight, subContactY)
             ?? (@base is BigOperatorBox ? 0f : -italic);
     }
@@ -220,21 +232,62 @@ public sealed class SupSubBox : Box
     /// apply).</summary>
     internal float ScriptKern => _scriptKern;
 
+    /// <summary>X position (relative to the box's left edge) where the
+    /// super anchor sits, before <see cref="SupXShift"/> and
+    /// <see cref="ScriptKern"/> apply. For ordinary bases this is the
+    /// base's advance. For <see cref="BigOperatorBox"/> it's the
+    /// rightmost ink column in the super's vertical band — places ∞
+    /// flush to the integral's top hook rather than to the design
+    /// advance (which extends past the visible glyph).</summary>
+    private float SupAnchor
+    {
+        get
+        {
+            if (_sup is null) return _base.Width;
+            if (_base is not BigOperatorBox big) return _base.Width;
+            // Super baseline is at baselineY − supShift; in bitmap-top
+            // coordinates (top = baselineY − base.Height) the band runs
+            // from base.Height − supShift − sup.Height down to
+            // base.Height − supShift + sup.Depth.
+            int yMin = (int)MathF.Floor(_base.Height - _supShift - _sup.Height);
+            int yMax = (int)MathF.Ceiling(_base.Height - _supShift + _sup.Depth);
+            return big.InkRightAtY(yMin, yMax);
+        }
+    }
+
+    /// <summary>X position (relative to the box's left edge) where the
+    /// sub anchor sits. For big operators this is the rightmost ink in
+    /// the sub's vertical band — for ∫'s slanted body the body sits
+    /// well left of the global rightmost ink at the sub's height, so
+    /// using the band-restricted scan places 0 flush to the body's
+    /// lower-left curl rather than under the upper top-hook tip.</summary>
+    private float SubAnchor
+    {
+        get
+        {
+            if (_sub is null) return _base.Width;
+            if (_base is not BigOperatorBox big) return _base.Width;
+            int yMin = (int)MathF.Floor(_base.Height + _subShift - _sub.Height);
+            int yMax = (int)MathF.Ceiling(_base.Height + _subShift + _sub.Depth);
+            return big.InkRightAtY(yMin, yMax);
+        }
+    }
+
     public override float Width
     {
         get
         {
-            // Box width includes the per-corner horizontal shift on
-            // each script — the super at +shift may extend past the
-            // unshifted right edge; we need canvas room for it so a
-            // standalone SupSubBox doesn't clip and an HBox sibling
-            // doesn't overlap. Sub at -shift may pull left of the
-            // unshifted edge but doesn't reduce width below base.Width
-            // (script.Width overhangs cleanly into the base's advance).
-            float supRight = _sup is null ? 0 : _supXShift + _scriptKern + _sup.Width;
-            float subRight = _sub is null ? 0 : _subXShift + _scriptKern + _sub.Width;
-            float scriptExtent = MathF.Max(supRight, subRight);
-            return _base.Width + MathF.Max(0, scriptExtent);
+            // Box width is the max of the base advance and the script
+            // right edges. Each script anchors at its own x — for big
+            // operators that's the height-aware ink-right (different
+            // for sup vs sub when the operator is slanted). Sub right
+            // edge may sit inside the base advance for ∫ (sub anchored
+            // at the body's lower extent), in which case Width = advance.
+            float baseWidth = _base.Width;
+            float supRight = _sup is null ? 0 : SupAnchor + _supXShift + _scriptKern + _sup.Width;
+            float subRight = _sub is null ? 0 : SubAnchor + _subXShift + _scriptKern + _sub.Width;
+            float scriptRight = MathF.Max(supRight, subRight);
+            return MathF.Max(baseWidth, scriptRight);
         }
     }
 
@@ -268,9 +321,8 @@ public sealed class SupSubBox : Box
         // past the top hook. For italic letters the smaller italic-
         // correction fallback applies when the font has no per-glyph
         // kern data.
-        float anchor = penX + _base.Width + _scriptKern;
-        float supX = anchor + _supXShift;
-        float subX = anchor + _subXShift;
+        float supX = penX + SupAnchor + _scriptKern + _supXShift;
+        float subX = penX + SubAnchor + _scriptKern + _subXShift;
         if (_sup is not null)
         {
             // Sup baseline sits at (baseline - shift) — sup.Height is its

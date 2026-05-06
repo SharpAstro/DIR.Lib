@@ -57,27 +57,36 @@ public sealed class MathSupSubLayoutTests
     }
 
     /// <summary>
-    /// SupSubBox over a BigOperatorBox(∫) must shift the super right of
-    /// advance so ∞ follows the top hook. The sub stays at advance (zero
-    /// shift) — empirical match to MathJax's placement, where the 0 sits
-    /// near the operator's horizontal centerline rather than tucked under
-    /// the bottom curl. Pulling the sub left by full italic correction
-    /// detaches it from the rest of the formula visually.
+    /// For ∫ at displaystyle (stretchy variant path), both
+    /// <see cref="SupSubBox.SupXShift"/> and <see cref="SupSubBox.SubXShift"/>
+    /// are zero — the kerning is folded into the bitmap-scanned anchors
+    /// (sup anchored at top-hook ink-right, sub at bottom-curl ink-right).
+    /// Italic correction would double-shift on top of the anchor scan.
+    ///
+    /// <para>The sub anchor must sit strictly left of the box width
+    /// (advance) — that's the height-aware kern pulling the sub flush
+    /// with the bottom curl, well inside the design advance.</para>
     /// </summary>
     [Fact]
-    public void Stix_IntegralSupSub_SubAtAdvance_SuperShiftsRight()
+    public void Stix_IntegralSupSub_VariantPath_AnchorsScanned_NoShifts()
     {
         var style = Style(StixPath);
+        var big = new BigOperatorBox(0x222B, style);
         var box = new SupSubBox(
-            new BigOperatorBox(0x222B, style),
+            big,
             new GlyphBox("∞", style.Smaller()),
             new GlyphBox("0", style.Smaller()),
             style);
 
-        box.SupXShift.ShouldBeGreaterThan(0f,
-            "super should shift right (italic correction for slanted ∫ variant)");
+        box.SupXShift.ShouldBe(0f, tolerance: 0.01f,
+            "stretchy variant path skips italic correction — bitmap scan handles slope");
         box.SubXShift.ShouldBe(0f, tolerance: 0.01f,
-            "sub stays at advance for big operators — MathJax convention");
+            "sub same — kern is in the anchor, not the shift");
+
+        // Variant rendered: HasVariant should be true so we know the
+        // scanned-anchor path was taken (rather than the GlyphBox
+        // fallback which would still apply italic correction).
+        big.VariantGlyphId.ShouldBeGreaterThan(0u);
     }
 
     /// <summary>
