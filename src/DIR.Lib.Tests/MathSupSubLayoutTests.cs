@@ -57,13 +57,15 @@ public sealed class MathSupSubLayoutTests
     }
 
     /// <summary>
-    /// The regression case. A SupSubBox over a BigOperatorBox(∫) must place
-    /// the super to the right of the unshifted advance and the sub to the
-    /// left, so the "0" lands under the integral's bottom curl while "∞"
-    /// follows the top hook.
+    /// SupSubBox over a BigOperatorBox(∫) must shift the super right of
+    /// advance so ∞ follows the top hook. The sub stays at advance (zero
+    /// shift) — empirical match to MathJax's placement, where the 0 sits
+    /// near the operator's horizontal centerline rather than tucked under
+    /// the bottom curl. Pulling the sub left by full italic correction
+    /// detaches it from the rest of the formula visually.
     /// </summary>
     [Fact]
-    public void Stix_IntegralSupSub_SubShiftsLeft_SuperShiftsRight()
+    public void Stix_IntegralSupSub_SubAtAdvance_SuperShiftsRight()
     {
         var style = Style(StixPath);
         var box = new SupSubBox(
@@ -74,13 +76,8 @@ public sealed class MathSupSubLayoutTests
 
         box.SupXShift.ShouldBeGreaterThan(0f,
             "super should shift right (italic correction for slanted ∫ variant)");
-        box.SubXShift.ShouldBeLessThan(0f,
-            "sub should shift left so it aligns with ∫'s bottom curl, not with super");
-        // Symmetric placement: the corner-kern path is preferred when the
-        // font supplies one, but STIX has no MathKernInfo for ∫ so we fall
-        // back to ±italic correction. The shifts should be exactly opposite.
-        (box.SupXShift + box.SubXShift).ShouldBe(0f, tolerance: 0.01f,
-            "fallback path uses ±italic correction so shifts are antipodal");
+        box.SubXShift.ShouldBe(0f, tolerance: 0.01f,
+            "sub stays at advance for big operators — MathJax convention");
     }
 
     /// <summary>

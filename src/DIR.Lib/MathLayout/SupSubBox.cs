@@ -48,10 +48,22 @@ public sealed class SupSubBox : Box
         // for sub) that are evaluated at the script's contact height —
         // a strictly more precise placement than italic correction,
         // which is a single global value for the whole glyph. We
-        // prefer corner kerns when present, fall back to ±italic
-        // correction otherwise. The TeX-style sign convention applies
-        // either way: super shifts right, sub shifts left, on a slanted
-        // base (italic letters, big integrals).
+        // prefer corner kerns when present, fall back to italic
+        // correction otherwise.
+        //
+        // <para>For ordinary slanted bases (italic letters) the sign
+        // convention is symmetric: super shifts right by +italic, sub
+        // shifts left by −italic — places both at the slope's contact
+        // corners.</para>
+        //
+        // <para>For <see cref="BigOperatorBox"/> the placement is
+        // asymmetric: super shifts right by +italic, sub stays at
+        // advance (no leftward pull). Empirical match to MathJax —
+        // ∫'s top curl sits roughly at the advance position, and
+        // MathJax aligns the sub with the top curl rather than the
+        // bottom one. Pulling sub left to the slope's bottom-left
+        // corner detaches it from the rest of the formula and
+        // overlaps the bottom curl's ink.</para>
         var italic = TryGetItalicsCorrection(@base, style);
         // Lookup heights for the corner kern step functions — the
         // sub/super's contact y above the main baseline. We pass these
@@ -59,7 +71,8 @@ public sealed class SupSubBox : Box
         var supContactY = _supShift - (_sup?.Depth ?? 0);
         var subContactY = -_subShift + (_sub?.Height ?? 0);
         _supXShift = TryGetCornerKern(@base, style, MathKernCorner.TopRight, supContactY) ?? italic;
-        _subXShift = TryGetCornerKern(@base, style, MathKernCorner.BottomRight, subContactY) ?? -italic;
+        _subXShift = TryGetCornerKern(@base, style, MathKernCorner.BottomRight, subContactY)
+            ?? (@base is BigOperatorBox ? 0f : -italic);
     }
 
     /// <summary>
@@ -167,7 +180,8 @@ public sealed class SupSubBox : Box
             // or the base codepoint as fallback. Scale by style.FontSize,
             // not big.RenderFontSize, so the shift magnitude tracks the
             // surrounding script-size context, not the inflated
-            // displaystyle operator size.
+            // displaystyle operator size. Only super uses this value —
+            // the sub stays at advance for big operators (see ctor).
             if (big.VariantGlyphId != 0)
             {
                 return BoxStyle.SharedRasterizer.GetItalicsCorrectionByGidPx(
