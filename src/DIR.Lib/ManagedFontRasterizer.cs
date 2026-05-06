@@ -127,6 +127,30 @@ public sealed class ManagedFontRasterizer : IDisposable
     }
 
     /// <summary>
+    /// Italic correction (pixels at the requested font size) for the
+    /// given codepoint — the extra horizontal space a slanted glyph's
+    /// top extends past its advance width. OpenType MATH supplies this
+    /// in <c>MathItalicsCorrectionInfo</c>; it's the canonical input
+    /// for placing a superscript on a slanted base (italic <c>f</c>,
+    /// big integral, big radical) so the script clears the slope.
+    /// Returns null when the font has no MATH table, no
+    /// <c>MathGlyphInfo</c> subtable, or the glyph isn't in the italic-
+    /// correction coverage — caller treats that as "no correction"
+    /// (zero shift, same as upright glyphs).
+    /// </summary>
+    public float? GetItalicsCorrectionPx(string fontPath, float fontSize, Rune codepoint)
+    {
+        var font = GetOrLoad(fontPath);
+        var info = font.Math?.GlyphInfo;
+        if (info is null) return null;
+        var gid = font.GetGlyphId((uint)codepoint.Value);
+        if (gid == 0) return null;
+        var fu = info.GetItalicsCorrection((ushort)gid);
+        if (fu == 0) return null;
+        return fu * fontSize / font.UnitsPerEm;
+    }
+
+    /// <summary>
     /// Top-accent attachment x-coordinate (pixels, measured from the
     /// glyph's left edge at the requested font size) for the given
     /// codepoint. Drives where a math accent (macron, hat, tilde, …)

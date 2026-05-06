@@ -135,6 +135,44 @@ public sealed record BoxStyle(string FontPath, float FontSize, RGBAColor32 Foreg
     }
 
     /// <summary>
+    /// Font size (pixels) to render a display-style big operator (∫,
+    /// ∑, ∏, ⋃, ∮, …) at, derived from the font's OpenType MATH
+    /// <c>DisplayOperatorMinHeight</c> constant — the minimum height
+    /// the spec asks display-style operators to reach. We convert from
+    /// FUnits to pixels at the surrounding em and feed that as a font
+    /// size to <see cref="GlyphBox"/>, which is approximately equivalent
+    /// to "draw the operator's base glyph at the height the font wants
+    /// for displaystyle". STIX gives ~2.4em, MathJax matches; body fonts
+    /// without a MATH table fall back to 1.5em — same heuristic the
+    /// scenes used before this property was wired up.
+    ///
+    /// <para>This is a heuristic: properly, displaystyle operators
+    /// should be picked from <c>MathVariants</c> rather than scaled, so
+    /// the font designer's specific large-operator glyph is used. Until
+    /// <see cref="StretchyVerticalBox"/> handles big-operator dispatch
+    /// for ordinary integrals, this property is what scenes use.</para>
+    /// </summary>
+    public float DisplayOperatorFontSize
+    {
+        get
+        {
+            // Always at least 1.5·em — a sanity floor for fonts whose
+            // MATH table sets DisplayOperatorMinHeight to a value
+            // smaller than the surrounding text (DejaVu's value works
+            // out to less than 1·em in pixels at our render sizes).
+            // Without the floor, the "big operator" ends up smaller
+            // than the surrounding glyphs, making the script-size
+            // bounds look enormous next to it.
+            var floor = FontSize * 1.5f;
+            var info = SharedRasterizer.GetMathConstants(FontPath);
+            if (info is null) return floor;
+            ushort minH = info.Value.constants.DisplayOperatorMinHeight;
+            if (minH == 0) return floor;
+            return MathF.Max(floor, FontSize * minH / info.Value.unitsPerEm);
+        }
+    }
+
+    /// <summary>
     /// Reference height (pixels above the baseline) at which a top accent
     /// anchors. Read from <c>MathConstants.AccentBaseHeight</c> when the
     /// font ships a MATH table; falls back to <see cref="ExHeight"/>

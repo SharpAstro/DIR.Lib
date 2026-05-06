@@ -87,7 +87,7 @@ public sealed class MathLayoutBaselineTests
         "bracket-paren",
         "bracket-square",
         "matrix-2x2",
-        "limits-int-0-inf",
+        "int-0-inf",
         "limits-sum-i-n",
         "hbox-int-eq-half",
         "integral-formula-full",
@@ -163,33 +163,44 @@ public sealed class MathLayoutBaselineTests
         // strokes are legible against any image-viewer background.
         var style = new BoxStyle(fontPath, BaselineFontSize, new RGBAColor32(0, 0, 0, 255));
 
+        // Latin-letter atoms in math contexts render as math italic via
+        // MathGlyphBox: the rune is remapped to the Unicode U+1D434
+        // italic-Latin block when the font's cmap covers it (STIX),
+        // otherwise it falls back to upright (DejaVu and other body
+        // fonts have no math-italic coverage). This matches MathJax
+        // and TeX convention: "x" in sqrt(x) renders italic, while
+        // numbers, operators, brackets, and Greek (which math fonts
+        // already render italic by design) keep their plain codepoints.
+        Box it(string text, BoxStyle s) => new MathGlyphBox(text, s, MathStyle.Italic);
+
         Box box = name switch
         {
+            // "Hello" is a text label, not a math expression — kept upright.
             "glyph-hello" => new GlyphBox("Hello", style),
             "hbox-a-plus-b" => new HBox(
-                new GlyphBox("a", style),
+                it("a", style),
                 new KernBox(style.FontSize * 0.2f),
                 new GlyphBox("+", style),
                 new KernBox(style.FontSize * 0.2f),
-                new GlyphBox("b", style)),
+                it("b", style)),
             "frac-half" => new FracBox(
                 new GlyphBox("1", style),
                 new GlyphBox("2", style),
                 style),
             "frac-nested" => new FracBox(
-                new GlyphBox("a", style),
+                it("a", style),
                 new FracBox(
-                    new GlyphBox("b", style),
-                    new GlyphBox("c", style),
+                    it("b", style),
+                    it("c", style),
                     style),
                 style),
             "sqrt-x2-plus-y2" => new SqrtBox(
                 new HBox(
-                    new SupSubBox(new GlyphBox("x", style), new GlyphBox("2", style.Smaller()), null, style),
+                    new SupSubBox(it("x", style), new GlyphBox("2", style.Smaller()), null, style),
                     new KernBox(style.FontSize * 0.2f),
                     new GlyphBox("+", style),
                     new KernBox(style.FontSize * 0.2f),
-                    new SupSubBox(new GlyphBox("y", style), new GlyphBox("2", style.Smaller()), null, style)),
+                    new SupSubBox(it("y", style), new GlyphBox("2", style.Smaller()), null, style)),
                 style),
             // Fourth root — exercises SqrtBox's optional index parameter.
             // The "4" is rendered at scriptscript size (Smaller().Smaller())
@@ -197,50 +208,55 @@ public sealed class MathLayoutBaselineTests
             // RadicalKern* / RadicalDegreeBottomRaisePercent (STIX) or the
             // TeX-style fallback (DejaVu).
             "sqrt-fourth-root" => new SqrtBox(
-                new GlyphBox("x", style),
+                it("x", style),
                 new GlyphBox("4", style.Smaller().Smaller()),
                 style),
             "supsub-e-i-pi" => new SupSubBox(
-                new GlyphBox("e", style),
+                it("e", style),
                 new HBox(
-                    new GlyphBox("i", style.Smaller()),
-                    new GlyphBox("p", style.Smaller())),
+                    it("i", style.Smaller()),
+                    it("p", style.Smaller())),
                 null,
                 style),
             "bracket-paren" => new BracketBox(
-                new GlyphBox("x", style), BracketKind.Paren, style),
+                it("x", style), BracketKind.Paren, style),
             "bracket-square" => new BracketBox(
                 new HBox(
-                    new GlyphBox("a", style),
+                    it("a", style),
                     new GlyphBox(",", style),
-                    new GlyphBox("b", style)),
+                    it("b", style)),
                 BracketKind.Square, style),
             "matrix-2x2" => BuildMatrix2x2(style),
-            "limits-int-0-inf" => new LimitsBox(
-                // \int rendered at 1.5x the base font — big operators
-                // are scaled up in display style.
-                new GlyphBox("∫", style, style.FontSize * 1.5f),
-                new GlyphBox("0", style.Smaller()),
+            // ∫ with bounds in script-style placement (TeX \nolimits / MathJax
+            // default for inline integrals): ∞ at top-right, 0 at bottom-right.
+            // SupSubBox applies italic correction so the integral's slanted
+            // top pushes the super further right than the sub. \sum / \prod
+            // / \lim use limit-style placement instead — see limits-sum-i-n.
+            "int-0-inf" => new SupSubBox(
+                new GlyphBox("∫", style, style.DisplayOperatorFontSize),
                 new GlyphBox("∞", style.Smaller()),
+                new GlyphBox("0", style.Smaller()),
                 style),
             "limits-sum-i-n" => new LimitsBox(
-                new GlyphBox("∑", style, style.FontSize * 1.5f),
+                new GlyphBox("∑", style, style.DisplayOperatorFontSize),
                 new HBox(
-                    new GlyphBox("i", style.Smaller()),
+                    it("i", style.Smaller()),
                     new GlyphBox("=", style.Smaller()),
                     new GlyphBox("0", style.Smaller())),
-                new GlyphBox("n", style.Smaller()),
+                it("n", style.Smaller()),
                 style),
-            // Captures the math-axis alignment: a tall LimitsBox(∫) sitting
-            // inside an HBox alongside a regular '=' GlyphBox and a fraction.
-            // The integral's *visual centre* should align with the '=', not
-            // its baseline — otherwise the '=' looks low against the tall
-            // operator's extent.
+            // Captures the math-axis alignment: a tall integral with
+            // script-style bounds inside an HBox alongside a regular
+            // '=' GlyphBox and a fraction. The integral's *visual centre*
+            // should align with the '=', not its baseline — otherwise
+            // the '=' looks low against the tall operator's extent.
+            // (limits-int-0-inf below covers the limit-style placement
+            // separately as a primitive test of LimitsBox.)
             "hbox-int-eq-half" => new HBox(
-                new LimitsBox(
-                    new GlyphBox("∫", style, style.FontSize * 1.5f),
-                    new GlyphBox("0", style.Smaller()),
+                new SupSubBox(
+                    new GlyphBox("∫", style, style.DisplayOperatorFontSize),
                     new GlyphBox("∞", style.Smaller()),
+                    new GlyphBox("0", style.Smaller()),
                     style),
                 new KernBox(style.FontSize * 0.3f),
                 new GlyphBox("=", style),
@@ -253,26 +269,35 @@ public sealed class MathLayoutBaselineTests
             // reported alignment bug. The integral's centre, the '='
             // sign, and the fraction bar should all sit on the math axis;
             // baseline-letter glyphs (e, dx) stay at the line baseline.
+            // e, x, d, x are math letters → italic; π is Greek (font
+            // renders italic by design); 0, ∞, 2 stay upright.
+            //
+            // \int uses script-style bounds (top-right / bottom-right)
+            // rather than limit-style (above / below) — TeX's \nolimits
+            // convention, also what MathJax does for inline integrals.
+            // \sum / \prod / \lim use the opposite, limit-style placement
+            // (see the limits-* scenes); SupSubBox vs LimitsBox is the
+            // toggle.
             "integral-formula-full" => new HBox(
-                new LimitsBox(
-                    new GlyphBox("∫", style, style.FontSize * 1.5f),
-                    new GlyphBox("0", style.Smaller()),
+                new SupSubBox(
+                    new GlyphBox("∫", style, style.DisplayOperatorFontSize),
                     new GlyphBox("∞", style.Smaller()),
+                    new GlyphBox("0", style.Smaller()),
                     style),
                 new KernBox(style.FontSize * 0.1f),
                 new SupSubBox(
-                    new GlyphBox("e", style),
+                    it("e", style),
                     new HBox(
                         new GlyphBox("−", style.Smaller()),
                         new SupSubBox(
-                            new GlyphBox("x", style.Smaller()),
+                            it("x", style.Smaller()),
                             new GlyphBox("2", style.Smaller().Smaller()),
                             null,
                             style.Smaller())),
                     null,
                     style),
                 new KernBox(style.FontSize * 0.2f),
-                new GlyphBox("dx", style),
+                it("dx", style),
                 new KernBox(style.FontSize * 0.3f),
                 new GlyphBox("=", style),
                 new KernBox(style.FontSize * 0.3f),
@@ -305,13 +330,13 @@ public sealed class MathLayoutBaselineTests
                 new KernBox(style.FontSize * 0.15f),
                 new FracBox(
                     new SupSubBox(
-                        new GlyphBox("e", style),
+                        it("e", style),
                         new GlyphBox("2", style.Smaller()),
                         null,
                         style),
                     new HBox(
                         new GlyphBox("ℏ", style),
-                        new GlyphBox("c", style)),
+                        it("c", style)),
                     style),
                 new KernBox(style.FontSize * 0.3f),
                 new GlyphBox("≈", style),
@@ -328,11 +353,13 @@ public sealed class MathLayoutBaselineTests
 
     private static Box BuildMatrix2x2(BoxStyle style)
     {
+        // Matrix entries are math letters → italic where the font has it.
+        Box it(string text) => new MathGlyphBox(text, style, MathStyle.Italic);
         var cells = new Box[2, 2];
-        cells[0, 0] = new GlyphBox("a", style);
-        cells[0, 1] = new GlyphBox("b", style);
-        cells[1, 0] = new GlyphBox("c", style);
-        cells[1, 1] = new GlyphBox("d", style);
+        cells[0, 0] = it("a");
+        cells[0, 1] = it("b");
+        cells[1, 0] = it("c");
+        cells[1, 1] = it("d");
         return new BracketBox(new MatrixBox(cells, style), BracketKind.Paren, style);
     }
 
