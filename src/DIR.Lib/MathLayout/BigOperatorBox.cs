@@ -30,8 +30,24 @@ public sealed class BigOperatorBox : Box
 {
     private readonly Box _inner;
 
+    /// <summary>The codepoint this box was constructed for. Exposed so
+    /// <see cref="SupSubBox"/> can look up <c>MathItalicsCorrection</c>
+    /// and corner kerns against the base codepoint when this box is
+    /// the script's parent — wrapper boxes don't otherwise expose
+    /// their underlying glyph.</summary>
+    public int Codepoint { get; }
+
+    /// <summary>Font size (pixels) the underlying glyph was rendered
+    /// at — needed by <see cref="SupSubBox"/> to query font metrics
+    /// at the right scale. For the variant path this is the display-
+    /// operator min height; for the fallback path the same value is
+    /// used as the GlyphBox font size.</summary>
+    public float RenderFontSize { get; }
+
     public BigOperatorBox(int codepoint, BoxStyle style)
     {
+        Codepoint = codepoint;
+        RenderFontSize = style.DisplayOperatorFontSize;
         var stretchy = new StretchyVerticalBox(codepoint, style.DisplayOperatorMinHeightPx, style);
         if (stretchy.IsAvailable)
         {
@@ -42,7 +58,7 @@ public sealed class BigOperatorBox : Box
         // result isn't a "designed" big-operator glyph but the scene
         // gets a recognizable big ∫ / ∑ even on body fonts without
         // MATH variant coverage.
-        _inner = new GlyphBox(new Rune(codepoint).ToString(), style, style.DisplayOperatorFontSize);
+        _inner = new GlyphBox(new Rune(codepoint).ToString(), style, RenderFontSize);
     }
 
     public override float Width => _inner.Width;

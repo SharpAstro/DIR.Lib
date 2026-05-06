@@ -1,3 +1,4 @@
+using System.Text;
 using SharpAstro.Fonts.Tables.OpenTypeMath;
 
 namespace DIR.Lib.MathLayout;
@@ -83,40 +84,60 @@ public sealed class SupSubBox : Box
     }
 
     /// <summary>
+    /// Resolve the (rune, render-font-size) pair for a base box that
+    /// represents a single glyph at a known size. Covers two cases:
+    /// a single-rune <see cref="GlyphBox"/> (the common case — italic
+    /// letters, plain operators) and a <see cref="BigOperatorBox"/>
+    /// (∫, ∑ rendered at displaystyle size). Returns null for any
+    /// other shape — composite HBox, FracBox, etc. — since per-glyph
+    /// font metrics don't generalise.
+    /// </summary>
+    private static (Rune rune, float fontSize)? TryGetSingleGlyph(Box @base)
+    {
+        switch (@base)
+        {
+            case GlyphBox gb:
+            {
+                var text = gb.Text;
+                if (text.Length == 0) return null;
+                var e = text.EnumerateRunes();
+                if (!e.MoveNext()) return null;
+                var rune = e.Current;
+                if (e.MoveNext()) return null;
+                return (rune, gb.FontSize);
+            }
+            case BigOperatorBox big:
+                return (new Rune(big.Codepoint), big.RenderFontSize);
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>
     /// Resolve the corner kern (pixels at the base's render size) for
-    /// a slanted base when it's a single-rune <see cref="GlyphBox"/>
-    /// and the font supplies <c>MathKernInfo</c> for that glyph. The
-    /// height parameter is the script's contact y above the main
-    /// baseline (positive). Returns null when the font has no kern
-    /// data — caller falls back to italic correction.
+    /// a slanted base when the font supplies <c>MathKernInfo</c> for
+    /// the underlying glyph. Returns null when no kern data — caller
+    /// falls back to italic correction.
     /// </summary>
     private static float? TryGetCornerKern(Box @base, BoxStyle style, MathKernCorner corner, float heightPx)
     {
-        if (@base is not GlyphBox gb) return null;
-        var text = gb.Text;
-        if (text.Length == 0) return null;
-        var enumerator = text.EnumerateRunes();
-        if (!enumerator.MoveNext()) return null;
-        var rune = enumerator.Current;
-        if (enumerator.MoveNext()) return null;
-        return BoxStyle.SharedRasterizer.GetMathCornerKernPx(style.FontPath, gb.FontSize, rune, corner, heightPx);
+        var glyph = TryGetSingleGlyph(@base);
+        if (glyph is null) return null;
+        return BoxStyle.SharedRasterizer.GetMathCornerKernPx(
+            style.FontPath, glyph.Value.fontSize, glyph.Value.rune, corner, heightPx);
     }
 
     /// <summary>
     /// Resolve the italic correction (pixels at the box's render size)
-    /// for the base when it's a single-rune <see cref="GlyphBox"/> and
-    /// the font supplies the metric; otherwise zero.
+    /// for the underlying glyph when the font supplies the metric;
+    /// otherwise zero.
     /// </summary>
     private static float TryGetItalicsCorrection(Box @base, BoxStyle style)
     {
-        if (@base is not GlyphBox gb) return 0f;
-        var text = gb.Text;
-        if (text.Length == 0) return 0f;
-        var enumerator = text.EnumerateRunes();
-        if (!enumerator.MoveNext()) return 0f;
-        var rune = enumerator.Current;
-        if (enumerator.MoveNext()) return 0f; // multi-rune — no single italic correction
-        return BoxStyle.SharedRasterizer.GetItalicsCorrectionPx(style.FontPath, gb.FontSize, rune) ?? 0f;
+        var glyph = TryGetSingleGlyph(@base);
+        if (glyph is null) return 0f;
+        return BoxStyle.SharedRasterizer.GetItalicsCorrectionPx(
+            style.FontPath, glyph.Value.fontSize, glyph.Value.rune) ?? 0f;
     }
 
     public override float Width
