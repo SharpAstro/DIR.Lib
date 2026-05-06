@@ -61,6 +61,13 @@ public sealed class GlyphBox : Box
     /// source string. Used by the LaTeX visitor's script-shrinking path.</summary>
     public string Text => _text;
 
+    /// <summary>Font size (pixels) this glyph box was constructed with —
+    /// exposed so wrappers like <see cref="AccentBox"/> can query font
+    /// metrics at the same scale the box was actually rasterized at.
+    /// Distinct from <c>BoxStyle.FontSize</c>, which is the surrounding
+    /// layout's size and may differ for scripts.</summary>
+    public float FontSize => _fontSize;
+
     public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style)
     {
         // DrawText computes baseline = rectTop + (lineHeight + maxAscent

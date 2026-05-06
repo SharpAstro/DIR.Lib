@@ -133,4 +133,23 @@ public sealed record BoxStyle(string FontPath, float FontSize, RGBAColor32 Foreg
             return MathF.Max(1f, px);
         }
     }
+
+    /// <summary>
+    /// Reference height (pixels above the baseline) at which a top accent
+    /// anchors. Read from <c>MathConstants.AccentBaseHeight</c> when the
+    /// font ships a MATH table; falls back to <see cref="ExHeight"/>
+    /// otherwise — the same proxy MathJax uses for non-math fonts. Used
+    /// by <see cref="AccentBox"/> to keep accents at a consistent height
+    /// over short bases (so x̄ and ψ̄ have visually matching macrons),
+    /// but to ride above the actual glyph top for tall bases.
+    /// </summary>
+    public float AccentBaseHeight
+    {
+        get
+        {
+            var info = SharedRasterizer.GetMathConstants(FontPath);
+            if (info is null) return ExHeight;
+            return info.Value.constants.AccentBaseHeight * FontSize / info.Value.unitsPerEm;
+        }
+    }
 }

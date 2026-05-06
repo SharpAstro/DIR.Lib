@@ -91,6 +91,7 @@ public sealed class MathLayoutBaselineTests
         "hbox-int-eq-half",
         "integral-formula-full",
         "fine-structure-constant",
+        "standard-model-lagrangian",
     ];
 
     /// <summary>Cross product of (font, scene) — every scene runs once per
@@ -318,6 +319,7 @@ public sealed class MathLayoutBaselineTests
                     new GlyphBox("1", style),
                     new GlyphBox("137", style),
                     style)),
+            "standard-model-lagrangian" => BuildStandardModelLagrangian(style),
             _ => throw new ArgumentException($"unknown scene '{name}'"),
         };
         return (box, style);
@@ -331,6 +333,110 @@ public sealed class MathLayoutBaselineTests
         cells[1, 0] = new GlyphBox("c", style);
         cells[1, 1] = new GlyphBox("d", style);
         return new BracketBox(new MatrixBox(cells, style), BracketKind.Paren, style);
+    }
+
+    /// <summary>
+    /// CERN-coffee-mug compact form of the Standard Model Lagrangian:
+    /// ℒ = -¼ F<sub>μν</sub> F<sup>μν</sup> + iψ̄ D̸ ψ + ψ̄<sub>i</sub> y<sub>ij</sub> ψ<sub>j</sub> φ + h.c. + |D<sub>μ</sub>φ|² − V(φ).
+    /// Stresses every script-bearing primitive simultaneously: same-base
+    /// SupSubBox with sub-then-super (F<sub>μν</sub> next to F<sup>μν</sup>),
+    /// long sub strings ("ij"), and <see cref="AccentBox"/> bars over ψ
+    /// (anchored via OpenType MATH <c>MathTopAccentAttachment</c> on
+    /// math fonts; centred on advance/2 otherwise). The Dirac slash on D̸
+    /// is still drawn via the combining solidus rune for now — that's an
+    /// overlay, not a top accent, and needs a separate primitive. The
+    /// "|…|²" group uses plain '|' GlyphBoxes flanking an HBox rather
+    /// than a stretchy norm bracket — BracketKind has no Bar variant
+    /// yet, and the inner content here is single-line so non-stretchy
+    /// pipes look correct.
+    /// </summary>
+    private static Box BuildStandardModelLagrangian(BoxStyle style)
+    {
+        var k = new KernBox(style.FontSize * 0.2f);
+        var thin = new KernBox(style.FontSize * 0.12f);
+
+        // ψ with a macron on top, drawn via AccentBox so the bar anchors
+        // on the font's MathTopAccentAttachment (italic ψ leans, so the
+        // attachment is offset from advance/2 in math fonts). U+00AF is
+        // the spacing macron — picked over the combining U+0304 because
+        // its glyph has a positive advance and a predictable visual
+        // extent, so AccentBox's explicit positioning works regardless
+        // of whether the font supplies GPOS mark anchoring.
+        Box psiBar(BoxStyle s) => new AccentBox(
+            new GlyphBox("ψ", s),
+            new GlyphBox("¯", s),
+            s);
+
+        // F_μν F^μν — same letter, one with sub then one with super,
+        // back-to-back. Reads as the contraction in index notation.
+        Box fmunuDownUp() => new HBox(
+            new SupSubBox(new GlyphBox("F", style), null, new GlyphBox("μν", style.Smaller()), style),
+            thin,
+            new SupSubBox(new GlyphBox("F", style), new GlyphBox("μν", style.Smaller()), null, style));
+
+        // Yukawa term: ψ̄_i y_ij ψ_j φ.
+        Box yukawa() => new HBox(
+            new SupSubBox(psiBar(style), null, new GlyphBox("i", style.Smaller()), style),
+            thin,
+            new SupSubBox(new GlyphBox("y", style), null, new GlyphBox("ij", style.Smaller()), style),
+            thin,
+            new SupSubBox(new GlyphBox("ψ", style), null, new GlyphBox("j", style.Smaller()), style),
+            thin,
+            new GlyphBox("φ", style));
+
+        // |D_μ φ|² — plain pipes around the content, then square the
+        // whole HBox via SupSubBox.
+        Box higgsKinetic() => new SupSubBox(
+            new HBox(
+                new GlyphBox("|", style),
+                new SupSubBox(new GlyphBox("D", style), null, new GlyphBox("μ", style.Smaller()), style),
+                thin,
+                new GlyphBox("φ", style),
+                new GlyphBox("|", style)),
+            new GlyphBox("2", style.Smaller()),
+            null,
+            style);
+
+        return new HBox(
+            new GlyphBox("ℒ", style),
+            k,
+            new GlyphBox("=", style),
+            k,
+            new GlyphBox("−", style),
+            thin,
+            new FracBox(new GlyphBox("1", style), new GlyphBox("4", style), style),
+            thin,
+            fmunuDownUp(),
+            k,
+            new GlyphBox("+", style),
+            k,
+            new GlyphBox("i", style),
+            thin,
+            // ψ̄ D̸ ψ — bar via AccentBox; D̸ still uses the combining
+            // solidus rune (an overlay, not a top accent — needs its
+            // own primitive in a follow-up).
+            psiBar(style),
+            thin,
+            new GlyphBox("D̸", style),
+            thin,
+            new GlyphBox("ψ", style),
+            k,
+            new GlyphBox("+", style),
+            k,
+            yukawa(),
+            k,
+            new GlyphBox("+", style),
+            k,
+            new GlyphBox("h.c.", style),
+            k,
+            new GlyphBox("+", style),
+            k,
+            higgsKinetic(),
+            k,
+            new GlyphBox("−", style),
+            k,
+            new GlyphBox("V", style),
+            new BracketBox(new GlyphBox("φ", style), BracketKind.Paren, style));
     }
 
     private static void DumpFailed(string font, string scene, byte[] rgba, int w, int h)

@@ -103,6 +103,29 @@ public sealed class ManagedFontRasterizer : IDisposable
     }
 
     /// <summary>
+    /// Top-accent attachment x-coordinate (pixels, measured from the
+    /// glyph's left edge at the requested font size) for the given
+    /// codepoint. Drives where a math accent (macron, hat, tilde, …)
+    /// anchors over a base — without this the accent floats at
+    /// <c>advance / 2</c>, which lands off-centre on slanted letters
+    /// (italic ψ leans, so its visual centre isn't at half the advance).
+    /// Returns null when the font has no MATH table, no <c>MathGlyphInfo</c>
+    /// subtable, or the glyph isn't in the <c>MathTopAccentAttachment</c>
+    /// coverage. Callers should fall back to <c>advance / 2</c>.
+    /// </summary>
+    public float? GetTopAccentAttachmentPx(string fontPath, float fontSize, Rune codepoint)
+    {
+        var font = GetOrLoad(fontPath);
+        var info = font.Math?.GlyphInfo;
+        if (info is null) return null;
+        var gid = font.GetGlyphId((uint)codepoint.Value);
+        if (gid == 0) return null;
+        var fu = info.GetTopAccentAttachment((ushort)gid);
+        if (fu is null) return null;
+        return fu.Value * fontSize / font.UnitsPerEm;
+    }
+
+    /// <summary>
     /// Rasterize a stretchy delimiter (paren, bracket, brace, radical, etc.)
     /// at a height that covers <paramref name="requiredHeightPx"/> using the
     /// font's OpenType MATH vertical-construction recipe. Algorithm:
