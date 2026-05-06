@@ -41,14 +41,10 @@ public sealed class SupSubBox : Box
         var subDropMin = c?.subDropMin     ?? _base.Depth * 0.85f;
         _supShift = MathF.Max(supShiftUp, _base.Height - supDropMax);
         _subShift = MathF.Max(subShiftDown, _base.Depth + subDropMin);
-        // Letters get a small kern past advance so the script doesn't
-        // sit directly on the glyph's right side bearing. Big operators
-        // already have wide right bearings designed in (∫'s top hook
-        // alone defines the advance; the rest of the glyph sits well
-        // to the left), so an extra kern there visibly detaches the
-        // scripts from the operator. Match MathJax: zero kern for big
-        // ops, 4% em for everything else.
-        _scriptKern = @base is BigOperatorBox ? 0f : style.FontSize * 0.04f;
+        // 4% em past the script anchor for breathing space — for
+        // letters that's past advance, for big operators that's past
+        // the bitmap-scanned ink-right.
+        _scriptKern = style.FontSize * 0.04f;
 
         // Per-corner horizontal shifts.
         //
