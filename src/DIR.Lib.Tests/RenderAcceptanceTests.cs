@@ -1,5 +1,6 @@
 using System.Text;
 using Shouldly;
+using StbImageSharp;
 
 namespace DIR.Lib.Tests;
 
@@ -20,7 +21,7 @@ public class RenderAcceptanceTests : IDisposable
     public void RenderGrid_WithCenterlines()
     {
         var img = CreateGridImage(200, 200, gridSpacing: 20);
-        CompareBaseline(img, "grid_200x200.bmp");
+        CompareBaseline(img, "grid_200x200.png");
     }
 
     [Fact]
@@ -28,7 +29,7 @@ public class RenderAcceptanceTests : IDisposable
     {
         var img = CreateGridImage(300, 60, gridSpacing: 20);
         RenderText(img, "Hello, World!", FontPath, 24f, new RGBAColor32(255, 255, 255, 255), 10, 10);
-        CompareBaseline(img, "text_hello_world.bmp");
+        CompareBaseline(img, "text_hello_world.png");
     }
 
     [Fact]
@@ -37,7 +38,7 @@ public class RenderAcceptanceTests : IDisposable
         // Renders "Agp" — characters with ascenders, x-height, and descenders
         var img = CreateGridImage(200, 80, gridSpacing: 20);
         RenderText(img, "Agp", FontPath, 36f, new RGBAColor32(255, 200, 0, 255), 10, 10);
-        CompareBaseline(img, "text_baseline_agp.bmp");
+        CompareBaseline(img, "text_baseline_agp.png");
     }
 
     [Fact]
@@ -47,7 +48,7 @@ public class RenderAcceptanceTests : IDisposable
         RenderText(img, "Line 1", FontPath, 20f, new RGBAColor32(255, 255, 255, 255), 10, 5);
         RenderText(img, "Line 2", FontPath, 20f, new RGBAColor32(200, 200, 100, 255), 10, 35);
         RenderText(img, "Sizes!", FontPath, 32f, new RGBAColor32(100, 200, 255, 255), 10, 65);
-        CompareBaseline(img, "text_multiline.bmp");
+        CompareBaseline(img, "text_multiline.png");
     }
 
     [Fact]
@@ -64,7 +65,7 @@ public class RenderAcceptanceTests : IDisposable
         img.FillRect(40, 80, 160, 160, new RGBAColor32(200, 50, 50, 128));
         RenderText(img, "Alpha", FontPath, 24f, new RGBAColor32(255, 255, 255, 255), 50, 100);
 
-        CompareBaseline(img, "mixed_rect_text.bmp");
+        CompareBaseline(img, "mixed_rect_text.png");
     }
 
     [Fact]
@@ -83,7 +84,7 @@ public class RenderAcceptanceTests : IDisposable
         var pieces = "\U0001FA60\U0001FA61\U0001FA62\U0001FA63"; // first 4 Xiangqi pieces
         RenderColorText(img, pieces, xiangqiFont, 48f, 10, 5);
 
-        CompareBaseline(img, "color_xiangqi.bmp");
+        CompareBaseline(img, "color_xiangqi.png");
     }
 
     [Fact]
@@ -112,7 +113,7 @@ public class RenderAcceptanceTests : IDisposable
         // 😀🎉🌍🔥 — common emoji
         RenderColorText(img, "\U0001F600\U0001F389\U0001F30D\U0001F525", emojiFont, 48f, 10, 5);
 
-        CompareBaseline(img, "color_noto_emoji.bmp");
+        CompareBaseline(img, "color_noto_emoji.png");
     }
 
     [Fact]
@@ -127,7 +128,7 @@ public class RenderAcceptanceTests : IDisposable
         // 🎲 — game die
         RenderColorText(img, "\U0001F3B2", emojiFont, 48f, 10, 5);
 
-        CompareBaseline(img, "color_noto_emoji_dice.bmp");
+        CompareBaseline(img, "color_noto_emoji_dice.png");
     }
 
     [Fact]
@@ -175,7 +176,7 @@ public class RenderAcceptanceTests : IDisposable
         // TianWen GUI sidebar icons: 🔭📅🌌🎯
         RenderColorText(img, "\U0001F52D\U0001F4C5\U0001F30C\U0001F3AF", emojiFont, 48f, 10, 5);
 
-        CompareBaseline(img, "color_tianwen_sidebar.bmp");
+        CompareBaseline(img, "color_tianwen_sidebar.png");
     }
 
     [Fact]
@@ -193,7 +194,7 @@ public class RenderAcceptanceTests : IDisposable
         RenderText(img, "\u265A\u265B\u265C\u265D\u265E\u265F", meridaFont, 48f,
             new RGBAColor32(40, 40, 40, 255), 10, 40);
 
-        CompareBaseline(img, "text_chess_pieces.bmp");
+        CompareBaseline(img, "text_chess_pieces.png");
     }
 
     [Theory]
@@ -232,7 +233,7 @@ public class RenderAcceptanceTests : IDisposable
         RenderCenteredPiece(img, "\u265E", meridaFont, fontSize, fontColorWhite, 0, 0, size);
         RenderCenteredPiece(img, "\u2658", meridaFont, fontSize, fontColorBlack, 0, 0, size);
 
-        CompareBaseline(img, $"chess_white_knight_{size}x{size}.bmp");
+        CompareBaseline(img, $"chess_white_knight_{size}x{size}.png");
     }
 
     [Theory]
@@ -263,7 +264,7 @@ public class RenderAcceptanceTests : IDisposable
             img.BlitRgba(gx, gy, glyph.Rgba, glyph.Width, glyph.Height);
         }
 
-        CompareBaseline(img, $"milky_way_icon_{size}x{size}.bmp");
+        CompareBaseline(img, $"milky_way_icon_{size}x{size}.png");
     }
 
     [Theory]
@@ -301,7 +302,7 @@ public class RenderAcceptanceTests : IDisposable
         // All weather icons used in the planner: 🌧🌫☁⛅☀🌙⛈❄
         RenderColorText(img, "\U0001F327\U0001F32B\u2601\u26C5\u2600\U0001F319\u26C8\u2744", emojiFont, 80f, 10, 10);
 
-        CompareBaseline(img, "color_weather_emoji.bmp");
+        CompareBaseline(img, "color_weather_emoji.png");
     }
 
     [Fact]
@@ -485,24 +486,34 @@ public class RenderAcceptanceTests : IDisposable
 
         if (UpdateBaselines)
         {
+            // Re-bless: write to both the source tree (committed copy) and the
+            // bin/ output (so this same test run reads back the new bytes).
             Directory.CreateDirectory(SourceBaselineDir);
-            BmpWriter.Save(sourceBaselinePath, img.Pixels, img.Width, img.Height);
+            Directory.CreateDirectory(BaselineDir);
+            var pngBytes = PngWriter.Encode(img.Pixels, img.Width, img.Height);
+            File.WriteAllBytes(sourceBaselinePath, pngBytes);
+            File.WriteAllBytes(baselinePath, pngBytes);
             return;
         }
 
         if (!File.Exists(baselinePath))
         {
             Directory.CreateDirectory(BaselineDir);
-            BmpWriter.Save(baselinePath, img.Pixels, img.Width, img.Height);
+            PngWriter.Save(baselinePath, img.Pixels, img.Width, img.Height);
             Assert.Fail($"Baseline '{name}' did not exist — generated. Re-run tests or set DIR_LIB_UPDATE_BASELINES=1.");
             return;
         }
 
-        var (baseline, bw, bh) = BmpReader.Load(baselinePath);
-        bw.ShouldBe(img.Width, $"Width mismatch for '{name}'");
-        bh.ShouldBe(img.Height, $"Height mismatch for '{name}'");
+        // PNG decode via StbImageSharp (transitively available through SharpAstro.Fonts).
+        // Same approach as MathLayoutBaselineTests — direct byte equality on the
+        // decoded RGBA buffer is reliable; PNG byte equality isn't, since deflate
+        // can emit different valid encodings of the same pixels.
+        var baselineImg = ImageResult.FromMemory(File.ReadAllBytes(baselinePath), ColorComponents.RedGreenBlueAlpha);
+        baselineImg.Width.ShouldBe(img.Width, $"Width mismatch for '{name}'");
+        baselineImg.Height.ShouldBe(img.Height, $"Height mismatch for '{name}'");
 
-        // Allow small per-pixel differences (anti-aliasing may vary slightly)
+        // Allow small per-pixel differences (anti-aliasing may vary slightly).
+        var baseline = baselineImg.Data;
         var maxDiff = 0;
         var diffCount = 0;
         for (var i = 0; i < baseline.Length; i++)
@@ -514,8 +525,8 @@ public class RenderAcceptanceTests : IDisposable
 
         if (maxDiff > 2)
         {
-            var actualPath = Path.ChangeExtension(baselinePath, ".actual.bmp");
-            BmpWriter.Save(actualPath, img.Pixels, img.Width, img.Height);
+            var actualPath = Path.ChangeExtension(baselinePath, ".actual.png");
+            PngWriter.Save(actualPath, img.Pixels, img.Width, img.Height);
             Assert.Fail($"Baseline mismatch for '{name}': {diffCount} pixels differ, max diff={maxDiff}. Actual saved to '{actualPath}'.");
         }
     }

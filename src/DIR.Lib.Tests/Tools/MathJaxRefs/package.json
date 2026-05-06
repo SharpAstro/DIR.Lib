@@ -1,0 +1,15 @@
+{
+  "name": "dir-lib-mathjax-refs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Render LaTeX expressions through MathJax to produce 'golden' reference PNGs alongside DIR.Lib.MathLayout's own renders. See README.md.",
+  "scripts": {
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "mathjax-full": "^3.2.2",
+    "pngjs": "^7.0.0"
+  }
+}

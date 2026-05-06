@@ -34,18 +34,26 @@ public sealed class LimitsBox : Box
         _base = @base;
         _lower = lower;
         _upper = upper;
-        // Small visible separation between base and each limit. ~0.1·em
-        // matches what TeX uses for \displaystyle limits.
-        _gap = style.FontSize * 0.1f;
+        // Visible separation between base and each limit. TeX's
+        // \displaystyle uses upper/lower limit gaps in the 0.15–0.20·em range
+        // depending on the font's MATH constants. The previous 0.1·em was
+        // tuned against an older GlyphBox bug that accidentally added extra
+        // padding above/below glyphs; with that fixed the prescribed gap
+        // shows up as-is, and 0.1·em looked too tight (the upper limit's
+        // bottom edge sat almost on the operator's top hook). 0.2·em
+        // matches the OpenType MATH UpperLimitGapMin / LowerLimitGapMin
+        // typical values for STIX, Latin Modern, etc.
+        _gap = style.FontSize * 0.2f;
 
         // Centre the base on the *math axis*, not the parent baseline.
-        // Math axis sits ~0.25·em above the line baseline; that's where
-        // '=' / '+' / '−' glyphs visually centre, where fraction bars
-        // land, and where a centred operator should sit too. Without this
-        // upward offset, a tall LimitsBox(∫) inside an HBox alongside '='
-        // looks low — its visual centre stuck on the line baseline while
-        // surrounding inline-math glyphs sit a quarter-em higher.
-        _mathAxis = style.FontSize * 0.25f;
+        // That's where '=' / '+' / '−' glyphs visually centre, where fraction
+        // bars land, and where a centred operator should sit too. Without
+        // this upward offset, a tall LimitsBox(∫) inside an HBox alongside
+        // '=' looks low — its visual centre stuck on the line baseline while
+        // surrounding inline-math glyphs sit on the axis. BoxStyle.AxisHeight
+        // is currently the historical 0.25·em magic number; see its docstring
+        // for why we don't read MATH.AxisHeight directly yet.
+        _mathAxis = style.AxisHeight;
         _baseShift = (_base.Height - _base.Depth) / 2f - _mathAxis;
         _baseHalf = _base.TotalHeight / 2f;
 

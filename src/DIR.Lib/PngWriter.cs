@@ -10,9 +10,10 @@ namespace DIR.Lib;
 /// palette, no ancillary chunks — just the smallest 8-bit-RGBA PNG that
 /// every standard decoder will accept.
 ///
-/// Sibling to <c>BmpWriter</c> (test-only, internal). PNG is preferred for
-/// committed baselines and "save my <see cref="RgbaImage"/> render to disk"
-/// use cases; BMP is preferred for quick local inspection.
+/// Used by both production code ("save my <see cref="RgbaImage"/> render to
+/// disk") and the test suite (committed baselines for golden-image regression
+/// tests live as PNGs and are decoded back via <c>StbImageSharp</c> for
+/// pixel-equality comparison).
 ///
 /// The filter encoders below are the dual of <c>IO.Lib.PngPredictor</c>
 /// (PDF/TIFF code path's PNG row unfilter): same Sub / Up / Average / Paeth
@@ -125,8 +126,7 @@ public static class PngWriter
 
     /// <summary>
     /// Encode <paramref name="rgba"/> as a PNG and write it to
-    /// <paramref name="path"/>. Convenience wrapper paralleling
-    /// <c>BmpWriter.Save</c>.
+    /// <paramref name="path"/>.
     /// </summary>
     public static void Save(string path, ReadOnlySpan<byte> rgba, int width, int height)
     {

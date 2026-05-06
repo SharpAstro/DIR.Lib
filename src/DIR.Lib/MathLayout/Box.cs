@@ -43,9 +43,27 @@ public abstract class Box
 /// Rendering parameters threaded through the box layout. Kept as a record so
 /// callers can produce variants (smaller font for scripts, for example)
 /// without mutating shared state.
+///
+/// <para>Pixel-valued math metrics (<see cref="AxisHeight"/>,
+/// <see cref="FractionRuleThickness"/>, <see cref="RadicalRuleThickness"/>)
+/// are read from the font's OpenType MATH table when available, falling back
+/// to TeX-style ratios of <see cref="FontSize"/> when the font has no MATH
+/// table. This means a BoxStyle pointed at a math font (STIX Two, Latin Modern
+/// Math, Cambria Math) lays out exactly to that font's design, while a
+/// BoxStyle pointed at a general-purpose UI font (DejaVu, Roboto) still gets
+/// reasonable defaults — the parametric fallback paths in
+/// <see cref="BracketBox"/> / <see cref="SqrtBox"/> use the same metrics.</para>
 /// </summary>
 public sealed record BoxStyle(string FontPath, float FontSize, RGBAColor32 Foreground)
 {
+    /// <summary>
+    /// Shared rasterizer used for all metric lookups (AxisHeight,
+    /// RadicalRuleThickness, FractionRuleThickness) and for stretchy delimiter
+    /// rasterization in <see cref="StretchyVerticalBox"/>. Single instance so
+    /// the per-font OpenType cache is hit across every BoxStyle.
+    /// </summary>
+    internal static readonly ManagedFontRasterizer SharedRasterizer = new();
+
     public BoxStyle(string fontPath, float fontSize)
         : this(fontPath, fontSize, new RGBAColor32(255, 255, 255, 255))
     { }
@@ -53,9 +71,66 @@ public sealed record BoxStyle(string FontPath, float FontSize, RGBAColor32 Foreg
     /// <summary>Smaller-em-size variant used for super/subscripts.</summary>
     public BoxStyle Smaller(float scale = 0.7f) => this with { FontSize = FontSize * scale };
 
-    /// <summary>Stroke thickness in pixels for fraction bars, root vinculums, etc.</summary>
+    /// <summary>Stroke thickness in pixels for generic strokes (parametric
+    /// bracket strokes, etc.) when no font-specific value applies. Math
+    /// rules use the more specific <see cref="FractionRuleThickness"/> /
+    /// <see cref="RadicalRuleThickness"/> instead.</summary>
     public float RuleThickness => MathF.Max(1f, FontSize / 18f);
 
     /// <summary>The "ex height" — used for vertical positioning of operators.</summary>
     public float ExHeight => FontSize * 0.5f;
+
+    /// <summary>
+    /// Distance (pixels, positive up) from the baseline to the math axis —
+    /// the level on which fraction bars, '+' / '=' / '−' centres, and big-
+    /// operator centres sit.
+    ///
+    /// <para><b>Why this is a magic number, not <c>MathConstants.AxisHeight</c>:</b>
+    /// MATH.AxisHeight in real fonts (DejaVu = ~13.7%) sits notably lower than
+    /// where text-style operator glyphs ('=', '+', '−') actually centre — those
+    /// are designed assuming axis ≈ ex-height/2 ≈ <c>FontSize * 0.25</c>. Using
+    /// the true MATH.AxisHeight without first wrapping operator glyphs in an
+    /// axis-centring box (so '=' shifts down to meet the bar) decouples the
+    /// fraction bar from '=' visually. Until that wrapper exists, structural
+    /// layout pins to the same magic number that GlyphBox-rendered operators
+    /// naturally sit at.</para>
+    /// </summary>
+    public float AxisHeight => FontSize * 0.25f;
+
+    /// <summary>
+    /// Default fraction-rule thickness (pixels). Read from
+    /// <c>MathConstants.FractionRuleThickness</c> when the font ships a MATH
+    /// table; falls back to <see cref="RuleThickness"/> otherwise. The MATH
+    /// value matches the font's stem thickness — designed to harmonise with
+    /// the surrounding glyphs — so on math fonts this is visibly better than
+    /// the generic <c>FontSize / 18</c> heuristic.
+    /// </summary>
+    public float FractionRuleThickness
+    {
+        get
+        {
+            var info = SharedRasterizer.GetMathConstants(FontPath);
+            if (info is null) return RuleThickness;
+            var px = info.Value.constants.FractionRuleThickness * FontSize / info.Value.unitsPerEm;
+            // Always render at least one pixel so a small font size doesn't
+            // collapse the bar to zero (matches RuleThickness's lower bound).
+            return MathF.Max(1f, px);
+        }
+    }
+
+    /// <summary>
+    /// Default radical (sqrt) vinculum thickness (pixels). Read from
+    /// <c>MathConstants.RadicalRuleThickness</c> when the font ships a MATH
+    /// table; falls back to <see cref="RuleThickness"/> otherwise.
+    /// </summary>
+    public float RadicalRuleThickness
+    {
+        get
+        {
+            var info = SharedRasterizer.GetMathConstants(FontPath);
+            if (info is null) return RuleThickness;
+            var px = info.Value.constants.RadicalRuleThickness * FontSize / info.Value.unitsPerEm;
+            return MathF.Max(1f, px);
+        }
+    }
 }

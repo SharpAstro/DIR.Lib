@@ -5,12 +5,24 @@ namespace DIR.Lib.MathLayout;
 public enum BracketKind { Paren, Square, Curly }
 
 /// <summary>
-/// A scalable bracket pair wrapping content. Brackets are drawn
-/// parametrically as Bezier-ish strokes sized to the inner content, so they
-/// stretch arbitrarily — the matrix case (tall content needing tall
-/// brackets) works without needing OpenType MATH or font-specific tricks.
+/// A scalable bracket pair wrapping content. Two rendering paths:
 ///
-/// The three shapes:
+/// <list type="bullet">
+///   <item><b>Font-driven (preferred)</b> — when the loaded font ships an
+///   OpenType MATH table and has a vertical-stretch construction for the
+///   chosen delimiter codepoints. The brackets are rasterized via
+///   <see cref="StretchyVerticalBox"/>: pre-drawn variants for common sizes,
+///   assembly recipes (top hook + extender + bottom hook) for arbitrary
+///   heights. STIX Two Math, Latin Modern Math, Cambria Math, DejaVu Sans's
+///   bundled MATH build and similar fonts all hit this path.</item>
+///
+///   <item><b>Parametric fallback</b> — when no MATH coverage exists for
+///   the codepoint, brackets are drawn as Bezier-ish strokes sized to the
+///   inner content. Keeps the matrix case (tall content needing tall
+///   brackets) working with general-purpose UI fonts that ship no MATH.</item>
+/// </list>
+///
+/// The parametric three shapes:
 /// <list type="bullet">
 ///   <item><c>Paren</c>: smooth crescents drawn as ellipse arcs.</item>
 ///   <item><c>Square</c>: two vertical strokes plus short horizontal serifs.</item>
@@ -25,6 +37,12 @@ public sealed class BracketBox : Box
     private readonly float _padding;
     private readonly float _ruleThickness;
 
+    /// <summary>Left/right delimiter glyphs from the font's MATH table.
+    /// Both non-null when the font-driven path is in use; both null when
+    /// falling back to parametric drawing.</summary>
+    private readonly StretchyVerticalBox? _leftFont;
+    private readonly StretchyVerticalBox? _rightFont;
+
     public BracketBox(Box inner, BracketKind kind, BoxStyle style)
     {
         _inner = inner;
@@ -32,16 +50,69 @@ public sealed class BracketBox : Box
         _ruleThickness = style.RuleThickness;
         // Bracket width grows slightly with content height so tall brackets
         // don't look pinched. Matches what TeX's \big/\Big variants do.
+        // Used by the parametric fallback path.
         _bracketWidth = style.FontSize * 0.3f + inner.TotalHeight * 0.04f;
-        _padding = style.FontSize * 0.08f;
+        // Horizontal padding between bracket glyphs and inner content. Set
+        // to ~0.15 em so brackets visibly breathe around the content (they
+        // were 0.08 em — visibly tight against letters in (x), [a,b], and
+        // pmatrix). Matches MathJax/TeX visual spacing where the inner
+        // baseline width does not equal the bracket-to-bracket interior.
+        _padding = style.FontSize * 0.15f;
+
+        // Try MATH-driven brackets first. requiredHeight = the inner content's
+        // own extent, no extra padding — fonts with sparse stretch coverage
+        // (DejaVu only ships base + tall-assembly with nothing in between)
+        // would otherwise see a ~10% over-request push past the base glyph
+        // and snap to the much taller assembly, producing badly disproportionate
+        // brackets around 1em-tall content. Visual padding is added externally
+        // by Width/Height around the chosen delimiter, not by inflating the
+        // request to the font.
+        var requiredHeight = inner.TotalHeight;
+        var (leftCp, rightCp) = BracketCodepoints(kind);
+        var left = new StretchyVerticalBox(leftCp, requiredHeight, style);
+        var right = new StretchyVerticalBox(rightCp, requiredHeight, style);
+        if (left.IsAvailable && right.IsAvailable)
+        {
+            _leftFont = left;
+            _rightFont = right;
+        }
     }
 
-    public override float Width => 2 * _bracketWidth + 2 * _padding + _inner.Width;
-    public override float Height => _inner.Height + _padding * 0.5f;
-    public override float Depth  => _inner.Depth + _padding * 0.5f;
+    private static (int left, int right) BracketCodepoints(BracketKind kind) => kind switch
+    {
+        BracketKind.Paren  => ('(', ')'),
+        BracketKind.Square => ('[', ']'),
+        BracketKind.Curly  => ('{', '}'),
+        _ => ('(', ')'),
+    };
+
+    public override float Width => _leftFont is not null
+        ? _leftFont.Width + _padding + _inner.Width + _padding + _rightFont!.Width
+        : 2 * _bracketWidth + 2 * _padding + _inner.Width;
+
+    public override float Height => _leftFont is not null
+        ? MathF.Max(_inner.Height + _padding * 0.5f, MathF.Max(_leftFont.Height, _rightFont!.Height))
+        : _inner.Height + _padding * 0.5f;
+
+    public override float Depth => _leftFont is not null
+        ? MathF.Max(_inner.Depth + _padding * 0.5f, MathF.Max(_leftFont.Depth, _rightFont!.Depth))
+        : _inner.Depth + _padding * 0.5f;
 
     public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style)
     {
+        if (_leftFont is not null)
+        {
+            // MATH-driven path: each StretchyVerticalBox knows how to centre
+            // itself on the math axis, so passing the same baselineY to all
+            // three sub-boxes keeps the brackets visually centred on the
+            // axis along with the inner content's relational/operator glyphs.
+            _leftFont.Draw(renderer, penX, baselineY, style);
+            _inner.Draw(renderer, penX + _leftFont.Width + _padding, baselineY, style);
+            _rightFont!.Draw(renderer, penX + _leftFont.Width + _padding + _inner.Width + _padding, baselineY, style);
+            return;
+        }
+
+        // Parametric fallback for fonts without MATH coverage.
         float top = baselineY - Height;
         float bottom = baselineY + Depth;
 

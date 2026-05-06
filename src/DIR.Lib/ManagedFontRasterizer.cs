@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using SharpAstro.Fonts;
 using FontsHint = SharpAstro.Fonts.Tables.Cmap.GlyphMapHint;
+using Tables = SharpAstro.Fonts.Tables;
 
 namespace DIR.Lib;
 
@@ -42,6 +43,275 @@ public sealed class ManagedFontRasterizer : IDisposable
         var gid = font.GetGlyphId((uint)codepoint.Value);
         if (gid == 0) return default;
         return Render(font, gid, fontSize);
+    }
+
+    /// <summary>
+    /// Rasterize a glyph directly by glyph id, bypassing cmap lookup. Useful
+    /// when the caller already has a gid in hand — e.g. an OpenType MATH
+    /// variant or assembly piece, where the relevant glyphs are referenced by
+    /// id and may not have any Unicode codepoint mapped to them at all.
+    /// </summary>
+    public GlyphBitmap RasterizeGlyphByGid(string fontPath, float fontSize, uint gid)
+    {
+        if (gid == 0) return default;
+        var font = GetOrLoad(fontPath);
+        return Render(font, gid, fontSize);
+    }
+
+    /// <summary>
+    /// Look up the OpenType MATH vertical-stretch construction for a Unicode
+    /// codepoint — the recipe used to build a scalable radical, paren, brace,
+    /// or other delimiter at an arbitrary height. Returns null if the font
+    /// has no MATH table, or if this codepoint is not in the table's vertical
+    /// coverage. Use the returned <see cref="MathGlyphConstruction"/> to walk
+    /// pre-drawn variants and (beyond the largest variant) the assembly recipe.
+    /// </summary>
+    public Tables.OpenTypeMath.MathGlyphConstruction? GetVerticalMathConstruction(string fontPath, Rune codepoint)
+    {
+        var font = GetOrLoad(fontPath);
+        var math = font.Math;
+        if (math is null) return null;
+        var gid = font.GetGlyphId((uint)codepoint.Value);
+        if (gid == 0) return null;
+        return math.GetVerticalConstruction((ushort)gid);
+    }
+
+    /// <summary>
+    /// MATH-table units-per-em + global stretch metadata for a font, exposed
+    /// so callers doing assembly composition can convert the part records'
+    /// FUnit measurements (full advance, connector lengths, MinConnectorOverlap)
+    /// to pixel space at the desired font size. Returns null if the font has
+    /// no MATH table.
+    /// </summary>
+    public (ushort unitsPerEm, ushort minConnectorOverlap)? GetMathStretchInfo(string fontPath)
+    {
+        var font = GetOrLoad(fontPath);
+        return font.Math is null ? null : (font.UnitsPerEm, font.Math.MinConnectorOverlap);
+    }
+
+    /// <summary>
+    /// Global OpenType MATH metrics (axis height, fraction/radical rule thickness, etc.)
+    /// for a font, paired with the font's UnitsPerEm so callers can convert the
+    /// FUnit values to pixels via <c>fUnits * fontSize / unitsPerEm</c>. Returns
+    /// null if the font has no MATH table — caller should fall back to ad-hoc
+    /// defaults (e.g. <see cref="MathLayout.BoxStyle"/>'s magic-number defaults).
+    /// </summary>
+    public (Tables.OpenTypeMath.MathConstants constants, ushort unitsPerEm)? GetMathConstants(string fontPath)
+    {
+        var font = GetOrLoad(fontPath);
+        return font.Math is null ? null : (font.Math.Constants, font.UnitsPerEm);
+    }
+
+    /// <summary>
+    /// Rasterize a stretchy delimiter (paren, bracket, brace, radical, etc.)
+    /// at a height that covers <paramref name="requiredHeightPx"/> using the
+    /// font's OpenType MATH vertical-construction recipe. Algorithm:
+    /// <list type="number">
+    /// <item>If the unstretched base glyph is already tall enough, use it.</item>
+    /// <item>Else walk the construction's pre-drawn variants and pick the
+    /// smallest whose advance covers the request.</item>
+    /// <item>Else compose the assembly: each non-extender part appears once,
+    /// extender parts repeat as many times as needed to reach the request.</item>
+    /// </list>
+    /// Returns a default <see cref="GlyphBitmap"/> (Rgba == null, Width == 0)
+    /// when the result wouldn't be useful — codepoint not in the font, or the
+    /// font has no MATH data and the unstretched base glyph isn't tall
+    /// enough to cover the request. Callers must handle this by falling back
+    /// to a non-MATH path (e.g. parametric drawing in SqrtBox / BracketBox).
+    /// When the base glyph IS tall enough, it's returned unchanged regardless
+    /// of MATH presence.
+    /// </summary>
+    public GlyphBitmap RasterizeStretchyVertical(string fontPath, float fontSize,
+        Rune codepoint, float requiredHeightPx)
+    {
+        var font = GetOrLoad(fontPath);
+        var baseGid = font.GetGlyphId((uint)codepoint.Value);
+        if (baseGid == 0) return default;
+
+        // 0) Base glyph already covers the request — no stretching needed.
+        //    This branch fires for short content even on math-less fonts and
+        //    is the cheap path: just render the unstretched glyph and return.
+        var baseGlyph = Render(font, baseGid, fontSize);
+        if (baseGlyph.Height >= requiredHeightPx) return baseGlyph;
+
+        // The base glyph isn't tall enough. From here we need MATH data — if
+        // the font has none (or doesn't cover this codepoint vertically),
+        // return empty so the caller can pick a non-MATH fallback (e.g.
+        // parametric drawing in SqrtBox / BracketBox). Returning the too-
+        // short base glyph would silently produce visually wrong output for
+        // tall content like matrices and big radicands.
+        var math = font.Math;
+        if (math is null) return default;
+
+        var construction = math.GetVerticalConstruction((ushort)baseGid);
+        if (construction is null) return default;
+
+        // 1) Variants — pick smallest whose AdvanceMeasurement (FUnits) covers the request.
+        var unitsPerEm = font.UnitsPerEm;
+        var requiredFUnits = (int)Math.Ceiling(requiredHeightPx * unitsPerEm / fontSize);
+        foreach (var v in construction.Variants)
+        {
+            if (v.AdvanceMeasurement >= requiredFUnits)
+                return Render(font, v.GlyphId, fontSize);
+        }
+
+        // 2) Assembly path — needed when no variant fits, or no variants at all.
+        if (construction.Assembly is { } asm)
+            return ComposeVerticalAssembly(font, asm, math.MinConnectorOverlap, unitsPerEm, fontSize, requiredFUnits);
+
+        // 3) Largest variant if any (still possibly short of the request, but
+        //    closer than the base). If the construction has neither variants
+        //    nor assembly we already returned default above.
+        if (construction.Variants.Count > 0)
+            return Render(font, construction.Variants[^1].GlyphId, fontSize);
+        return default;
+    }
+
+    /// <summary>
+    /// Compose a stretchy vertical glyph from an OT MATH assembly recipe.
+    /// Stacks the parts (extenders repeated as needed) into a single RGBA
+    /// bitmap, using the maximum permissible overlap between adjacent pieces
+    /// — clamped to the table's <c>MinConnectorOverlap</c>. Parts are listed
+    /// bottom-up by spec; we draw from the bottom of the canvas upward.
+    ///
+    /// <para>This is a pragmatic "stack the rasterized bitmaps with FUnit-derived
+    /// overlap" implementation. Visible seams between extender repeats may
+    /// occur because the part bitmaps are positioned by their visible-ink
+    /// extents rather than by FullAdvance + bearings — the parts were designed
+    /// to mate seamlessly, but the math depends on subpixel-precise placement.
+    /// Adequate for renderer-grade output at typical math sizes.</para>
+    /// </summary>
+    private static GlyphBitmap ComposeVerticalAssembly(
+        OpenTypeFont font, Tables.OpenTypeMath.MathGlyphAssembly asm,
+        ushort minOverlap, ushort unitsPerEm, float fontSize, int requiredFUnits)
+    {
+        if (asm.Parts.Count == 0) return default;
+
+        // Compute the total FUnit-space advance with one copy of each part
+        // and max overlap between adjacent pairs.
+        var advanceWithOnce = 0;
+        for (var i = 0; i < asm.Parts.Count; i++) advanceWithOnce += asm.Parts[i].FullAdvance;
+
+        var startOverlap = 0;
+        for (var i = 0; i < asm.Parts.Count - 1; i++)
+            startOverlap += ClampedOverlap(asm.Parts[i], asm.Parts[i + 1], minOverlap);
+        var totalFUnits = advanceWithOnce - startOverlap;
+
+        // Repeat the first extender until we reach the target.
+        var extenderRepeats = new int[asm.Parts.Count];
+        for (var i = 0; i < asm.Parts.Count; i++) extenderRepeats[i] = 1;
+
+        var firstExtender = -1;
+        for (var i = 0; i < asm.Parts.Count; i++)
+            if (asm.Parts[i].IsExtender) { firstExtender = i; break; }
+
+        if (firstExtender >= 0)
+        {
+            const int safetyCap = 64;  // assemblies of >64 extenders are pathological
+            while (totalFUnits < requiredFUnits && extenderRepeats[firstExtender] < safetyCap)
+            {
+                var p = asm.Parts[firstExtender];
+                var selfOv = ClampedOverlap(p, p, minOverlap);
+                totalFUnits += p.FullAdvance - selfOv;
+                extenderRepeats[firstExtender]++;
+            }
+        }
+
+        // Materialise the runtime sequence (extenders unrolled) and rasterize each
+        // unique part once — extenders share a single bitmap across copies.
+        var totalParts = 0;
+        for (var i = 0; i < asm.Parts.Count; i++) totalParts += extenderRepeats[i];
+        var sequence = new Tables.OpenTypeMath.MathGlyphPart[totalParts];
+        var sIdx = 0;
+        for (var i = 0; i < asm.Parts.Count; i++)
+            for (var r = 0; r < extenderRepeats[i]; r++)
+                sequence[sIdx++] = asm.Parts[i];
+
+        var bitmapCache = new Dictionary<ushort, GlyphBitmap>();
+        var bitmaps = new GlyphBitmap[sequence.Length];
+        for (var i = 0; i < sequence.Length; i++)
+        {
+            var gid = sequence[i].GlyphId;
+            if (!bitmapCache.TryGetValue(gid, out var bm))
+            {
+                bm = Render(font, gid, fontSize);
+                bitmapCache[gid] = bm;
+            }
+            bitmaps[i] = bm;
+        }
+
+        // Pixel-space overlaps between adjacent sequence positions.
+        var overlapPx = new int[Math.Max(0, sequence.Length - 1)];
+        for (var i = 0; i < sequence.Length - 1; i++)
+        {
+            var ovFunits = ClampedOverlap(sequence[i], sequence[i + 1], minOverlap);
+            overlapPx[i] = (int)Math.Round(ovFunits * fontSize / unitsPerEm);
+        }
+
+        // Canvas dimensions:
+        //   width  = the bbox spanning every part's inked extent — for each
+        //            part, its ink lives in [BearingX, BearingX + Width).
+        //            Different parts often have different BearingX values
+        //            (extender bitmaps are narrower than hook bitmaps), so
+        //            we take the union, not just the max width.
+        //   height = sum of part heights minus per-pair overlaps.
+        // Parts are positioned by their BearingX: the font designer assigned
+        // each part a BearingX that makes the parts mate seamlessly when
+        // drawn at the same glyph-origin. Centring bitmaps horizontally
+        // (the older bug) misaligned wider hooks against narrower extenders,
+        // producing two visible vertical strokes for paren assemblies — the
+        // hook's ink at canvas-x=0 and the extender's ink at canvas-x=~half-width.
+        var height = 0;
+        var minBearing = int.MaxValue;
+        var maxRight = int.MinValue;
+        for (var i = 0; i < bitmaps.Length; i++)
+        {
+            height += bitmaps[i].Height;
+            if (bitmaps[i].BearingX < minBearing) minBearing = bitmaps[i].BearingX;
+            var right = bitmaps[i].BearingX + bitmaps[i].Width;
+            if (right > maxRight) maxRight = right;
+        }
+        for (var i = 0; i < overlapPx.Length; i++) height -= overlapPx[i];
+        var width = maxRight - minBearing;
+        if (height <= 0) height = 1;
+        if (width <= 0) width = 1;
+
+        // Composite bottom-up: parts[0] sits at the bottom of the canvas.
+        var canvas = new RgbaImage(width, height);
+        canvas.Clear(new RGBAColor32(0, 0, 0, 0));
+
+        var pen = height;  // bottom edge
+        for (var i = 0; i < sequence.Length; i++)
+        {
+            var bm = bitmaps[i];
+            pen -= bm.Height;
+            // Translate by minBearing so the smallest BearingX lands at x=0.
+            var x = bm.BearingX - minBearing;
+            if (bm.Rgba is { Length: > 0 })
+                canvas.BlitRgba(x, pen, bm.Rgba, bm.Width, bm.Height);
+            // Slide back down by overlap so the next part sits inside this one's footprint.
+            if (i < overlapPx.Length) pen += overlapPx[i];
+        }
+
+        // BearingY = height keeps the whole thing above the baseline by default;
+        // callers that want a math-axis-centred placement adjust their pen.
+        return new GlyphBitmap(canvas.Pixels, width, height, BearingX: 0, BearingY: height, AdvanceX: 0f);
+    }
+
+    /// <summary>
+    /// Permissible overlap between part <paramref name="lower"/> (below) and
+    /// part <paramref name="upper"/> (above), in FUnits. Per OT MATH spec the
+    /// overlap may be in [MinConnectorOverlap, max], where
+    /// max = min(lower.EndConnectorLength, upper.StartConnectorLength). We
+    /// pick the maximum to keep the assembly compact.
+    /// </summary>
+    private static int ClampedOverlap(
+        Tables.OpenTypeMath.MathGlyphPart lower,
+        Tables.OpenTypeMath.MathGlyphPart upper,
+        ushort minOverlap)
+    {
+        var max = Math.Min((int)lower.EndConnectorLength, (int)upper.StartConnectorLength);
+        return Math.Max(max, minOverlap);
     }
 
     /// <summary>

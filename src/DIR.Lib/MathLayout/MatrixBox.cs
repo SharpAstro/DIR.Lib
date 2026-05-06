@@ -61,8 +61,16 @@ public sealed class MatrixBox : Box
             totalH += _rowHeights[r] + _rowDepths[r];
             if (r < rows - 1) totalH += _vSpacing;
         }
-        // Centre on baseline: half the total visual height above, half below.
-        _height = totalH / 2f;
+        // Centre the matrix's vertical midpoint on the MATH AXIS (above the
+        // line baseline by AxisHeight), not on the line baseline. Matches
+        // MathJax/TeX behaviour for inline \pmatrix: a matrix sits beside
+        // an '=' or '+' with its centre at the same level as the operator
+        // glyph centres, so a 2-row matrix straddles the math axis. With
+        // the previous baseline-centred placement, the whole matrix sat
+        // visibly low — its midpoint fell on the baseline while operator
+        // glyphs sat AxisHeight (~0.25 em) above it.
+        var axis = style.AxisHeight;
+        _height = totalH / 2f + axis;
         _depth  = totalH - _height;
     }
 

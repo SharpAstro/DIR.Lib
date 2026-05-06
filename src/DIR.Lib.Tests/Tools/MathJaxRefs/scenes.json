@@ -1,0 +1,20 @@
+{
+  "_comment": "Scene name -> LaTeX. Names match the cases in MathLayoutBaselineTests.cs so the resulting PNG can sit next to our render in Baselines/MathLayout/MathJax/<scene>.png. LaTeX uses TeX-style $$ ... $$ display mode (mathjax-full's tex2svg input) so the output matches what Wikipedia / Stack Exchange / a paper would render.",
+  "scenes": {
+    "glyph-hello":             "\\text{Hello}",
+    "hbox-a-plus-b":           "a + b",
+    "frac-half":               "\\frac{1}{2}",
+    "frac-nested":             "\\frac{a}{\\frac{b}{c}}",
+    "sqrt-x2-plus-y2":         "\\sqrt{x^2 + y^2}",
+    "sqrt-fourth-root":        "\\sqrt[4]{x}",
+    "supsub-e-i-pi":           "e^{ip}",
+    "bracket-paren":           "(x)",
+    "bracket-square":          "[a, b]",
+    "matrix-2x2":              "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}",
+    "limits-int-0-inf":        "\\int_0^{\\infty}",
+    "limits-sum-i-n":          "\\sum_{i=0}^{n}",
+    "hbox-int-eq-half":        "\\int_0^{\\infty} = \\frac{1}{2}",
+    "integral-formula-full":   "\\int_0^{\\infty} e^{-x^2}\\, dx = \\frac{\\sqrt{\\pi}}{2}",
+    "fine-structure-constant": "\\alpha = \\frac{1}{4\\pi\\varepsilon_0}\\frac{e^2}{\\hbar c} \\approx \\frac{1}{137}"
+  }
+}

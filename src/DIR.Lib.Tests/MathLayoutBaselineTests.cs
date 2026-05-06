@@ -8,37 +8,62 @@ namespace DIR.Lib.Tests;
 /// <summary>
 /// Golden-image tests for the <see cref="MathLayout"/> box engine. Each test
 /// renders a small box tree to RGBA, encodes it as PNG, and compares pixel-
-/// for-pixel against a baseline PNG checked into <c>Baselines/MathLayout/</c>.
-/// On mismatch the actual render is dumped to <c>obj/test-output/</c> for
+/// for-pixel against a baseline PNG checked into
+/// <c>Baselines/MathLayout/&lt;FontName&gt;/</c>. The font subfolder lets us run
+/// every scene against multiple fonts — currently <c>DejaVuSans</c> (no MATH
+/// table; exercises the SqrtBox/BracketBox parametric/scaled-glyph fallbacks)
+/// and <c>STIX2Math</c> (full OpenType MATH coverage; exercises the
+/// stretchy-delimiter / radical-glyph / MATH-driven-metrics paths). Same scene
+/// + different font = different file = independent baseline.
+///
+/// <para>On mismatch the actual render is dumped to <c>obj/test-output/</c> for
 /// inspection. Set <c>BLESS=1</c> to overwrite the committed baseline with
 /// the current render — used during iterative tuning of the renderer; the
-/// baselines get "set in stone" once the visual quality is good.
+/// baselines get "set in stone" once the visual quality is good.</para>
 /// </summary>
 public sealed class MathLayoutBaselineTests
 {
-    /// <summary>Bundled DejaVu Sans for cross-machine determinism.</summary>
-    private static string FontPath => Path.Combine(AppContext.BaseDirectory, "Fonts", "DejaVuSans.ttf");
-
-    /// <summary>Folder of committed baseline PNGs (next to the test binary at runtime).</summary>
-    private static string BaselineDir => Path.Combine(AppContext.BaseDirectory, "Baselines", "MathLayout");
+    /// <summary>Font-name → file path. Names appear verbatim as the
+    /// per-font subfolder under <c>Baselines/MathLayout/</c>; keep them
+    /// filesystem-safe (no spaces or punctuation).</summary>
+    private static readonly Dictionary<string, string> Fonts = new()
+    {
+        // No MATH table — drives SqrtBox path 2/3 and parametric brackets.
+        ["DejaVuSans"] = Path.Combine(AppContext.BaseDirectory, "Fonts", "DejaVuSans.ttf"),
+        // Full OpenType MATH table — drives the StretchyVerticalBox /
+        // MATH-constants paths through SqrtBox path 1, BracketBox stretchy
+        // glyphs, font-driven AxisHeight / FractionRuleThickness etc.
+        // Bundled under SIL Open Font License (see Fonts/STIX2-OFL.txt).
+        ["STIX2Math"]  = Path.Combine(AppContext.BaseDirectory, "Fonts", "STIX2Math.otf"),
+    };
 
     /// <summary>
-    /// Source-tree baseline directory — used when BLESS=1 so the new
+    /// Render at a large em size (96 px) so the committed baselines are
+    /// readable at native zoom in image viewers — the math layout's
+    /// proportions are scale-invariant, so the quality signal is the same as
+    /// at the 24 px display size used in the live console; just easier to
+    /// see what's wrong without zooming to 800%. Grid spacing scales with
+    /// font size to keep the same visual density.
+    /// </summary>
+    private const float BaselineFontSize = 96f;
+
+    /// <summary>Per-font folder of committed baseline PNGs (next to the test binary at runtime).</summary>
+    private static string BaselineDir(string font) => Path.Combine(AppContext.BaseDirectory, "Baselines", "MathLayout", font);
+
+    /// <summary>
+    /// Per-font source-tree baseline directory — used when BLESS=1 so the new
     /// render lands directly in the repo, not just in bin/.
     /// </summary>
-    private static string SourceBaselineDir
+    private static string SourceBaselineDir(string font)
     {
-        get
-        {
-            // AppContext.BaseDirectory is bin/<config>/<tfm>/. Walk up to the
-            // project directory and back into Baselines/. Compute it from the
-            // assembly location to stay correct under MTP / xUnit v3.
-            var asm = Assembly.GetExecutingAssembly().Location;
-            var dir = Path.GetDirectoryName(asm)!;
-            // bin/<config>/<tfm> → projectDir
-            for (int i = 0; i < 3; i++) dir = Path.GetDirectoryName(dir)!;
-            return Path.Combine(dir, "Baselines", "MathLayout");
-        }
+        // AppContext.BaseDirectory is bin/<config>/<tfm>/. Walk up to the
+        // project directory and back into Baselines/. Compute it from the
+        // assembly location to stay correct under MTP / xUnit v3.
+        var asm = Assembly.GetExecutingAssembly().Location;
+        var dir = Path.GetDirectoryName(asm)!;
+        // bin/<config>/<tfm> → projectDir
+        for (int i = 0; i < 3; i++) dir = Path.GetDirectoryName(dir)!;
+        return Path.Combine(dir, "Baselines", "MathLayout", font);
     }
 
     /// <summary>Where actual renders are dumped for inspection on failure.</summary>
@@ -46,29 +71,57 @@ public sealed class MathLayoutBaselineTests
 
     private static bool BlessMode => Environment.GetEnvironmentVariable("BLESS") == "1";
 
-    [Theory]
-    [InlineData("glyph-hello")]
-    [InlineData("hbox-a-plus-b")]
-    [InlineData("frac-half")]
-    [InlineData("frac-nested")]
-    [InlineData("sqrt-x2-plus-y2")]
-    [InlineData("supsub-e-i-pi")]
-    [InlineData("bracket-paren")]
-    [InlineData("bracket-square")]
-    [InlineData("matrix-2x2")]
-    [InlineData("limits-int-0-inf")]
-    [InlineData("limits-sum-i-n")]
-    [InlineData("hbox-int-eq-half")]
-    [InlineData("integral-formula-full")]
-    public void Baseline(string name)
+    /// <summary>Scene names exercised against every font in <see cref="Fonts"/>.
+    /// Picking a small set that covers each box type at least once, plus a few
+    /// composite formulas that stress alignment / metric integration.</summary>
+    private static readonly string[] SceneNames =
+    [
+        "glyph-hello",
+        "hbox-a-plus-b",
+        "frac-half",
+        "frac-nested",
+        "sqrt-x2-plus-y2",
+        "sqrt-fourth-root",
+        "supsub-e-i-pi",
+        "bracket-paren",
+        "bracket-square",
+        "matrix-2x2",
+        "limits-int-0-inf",
+        "limits-sum-i-n",
+        "hbox-int-eq-half",
+        "integral-formula-full",
+        "fine-structure-constant",
+    ];
+
+    /// <summary>Cross product of (font, scene) — every scene runs once per
+    /// font, with its own committed baseline file.</summary>
+    public static IEnumerable<TheoryDataRow<string, string>> BaselineCases()
     {
-        var (box, style) = BuildScene(name);
+        foreach (var font in Fonts.Keys)
+            foreach (var scene in SceneNames)
+                yield return new TheoryDataRow<string, string>(font, scene);
+    }
+
+    [Theory]
+    [MemberData(nameof(BaselineCases))]
+    public void Baseline(string font, string scene)
+    {
+        var (box, style) = BuildScene(scene, Fonts[font]);
         var (rgba, w, h) = BoxRasterizer.RenderToRgba(box, style);
 
         Assert.True(w > 0 && h > 0, "box rasterized to empty buffer");
 
-        var baselinePath = Path.Combine(BaselineDir, name + ".png");
-        var sourceBaselinePath = Path.Combine(SourceBaselineDir, name + ".png");
+        // Composite the (transparent-background) render onto a grid-paper
+        // backdrop so the committed baselines stay readable in any image
+        // viewer regardless of the surrounding window background. Production
+        // callers (Console.Lib's terminal compositors) still consume the
+        // transparent buffer from BoxRasterizer directly — this grid is a
+        // golden-image-only concern. Grid spacing scales with the baseline
+        // font size so squares stay at ~1/3 em (visually consistent).
+        rgba = ComposeOnGridPaper(rgba, w, h, gridSpacing: (int)(BaselineFontSize / 3f));
+
+        var baselinePath = Path.Combine(BaselineDir(font), scene + ".png");
+        var sourceBaselinePath = Path.Combine(SourceBaselineDir(font), scene + ".png");
 
         if (BlessMode || !File.Exists(baselinePath))
         {
@@ -93,20 +146,20 @@ public sealed class MathLayoutBaselineTests
         if (baselineImg.Width != w || baselineImg.Height != h
             || !rgba.AsSpan().SequenceEqual(baselineImg.Data))
         {
-            DumpFailed(name, rgba, w, h);
+            DumpFailed(font, scene, rgba, w, h);
             Assert.Fail(
-                $"baseline mismatch for '{name}'. " +
+                $"baseline mismatch for '{font}/{scene}'. " +
                 $"baseline {baselineImg.Width}×{baselineImg.Height}, actual {w}×{h}. " +
-                $"Inspect obj/test-output/{name}.actual.png; if intentional, run BLESS=1 dotnet test.");
+                $"Inspect obj/test-output/{font}/{scene}.actual.png; if intentional, run BLESS=1 dotnet test.");
         }
     }
 
-    private static (Box, BoxStyle) BuildScene(string name)
+    private static (Box, BoxStyle) BuildScene(string name, string fontPath)
     {
         // Black foreground on transparent canvas — production code uses
         // white-on-terminal-black, but for golden-image inspection black
         // strokes are legible against any image-viewer background.
-        var style = new BoxStyle(FontPath, 24f, new RGBAColor32(0, 0, 0, 255));
+        var style = new BoxStyle(fontPath, BaselineFontSize, new RGBAColor32(0, 0, 0, 255));
 
         Box box = name switch
         {
@@ -135,6 +188,15 @@ public sealed class MathLayoutBaselineTests
                     new GlyphBox("+", style),
                     new KernBox(style.FontSize * 0.2f),
                     new SupSubBox(new GlyphBox("y", style), new GlyphBox("2", style.Smaller()), null, style)),
+                style),
+            // Fourth root — exercises SqrtBox's optional index parameter.
+            // The "4" is rendered at scriptscript size (Smaller().Smaller())
+            // and tucked into the radical's hook per the font's MATH
+            // RadicalKern* / RadicalDegreeBottomRaisePercent (STIX) or the
+            // TeX-style fallback (DejaVu).
+            "sqrt-fourth-root" => new SqrtBox(
+                new GlyphBox("x", style),
+                new GlyphBox("4", style.Smaller().Smaller()),
                 style),
             "supsub-e-i-pi" => new SupSubBox(
                 new GlyphBox("e", style),
@@ -216,6 +278,46 @@ public sealed class MathLayoutBaselineTests
                     new SqrtBox(new GlyphBox("π", style), style),
                     new GlyphBox("2", style),
                     style)),
+            // Fine-structure constant: α = (1/(4πε₀)) · (e²/(ℏc)) ≈ 1/137.
+            // Pulls together a lot of the layout vocabulary in one scene —
+            // Greek letters (α, π, ε), the Planck-constant ℏ (U+210F), two
+            // stacked fractions side-by-side, a subscripted ε₀, an
+            // exponentiated e², and an ≈ relation. Stresses font coverage
+            // (DejaVu draws plain glyphs; STIX draws designed math forms).
+            "fine-structure-constant" => new HBox(
+                new GlyphBox("α", style),
+                new KernBox(style.FontSize * 0.3f),
+                new GlyphBox("=", style),
+                new KernBox(style.FontSize * 0.3f),
+                new FracBox(
+                    new GlyphBox("1", style),
+                    new HBox(
+                        new GlyphBox("4", style),
+                        new GlyphBox("π", style),
+                        new SupSubBox(
+                            new GlyphBox("ε", style),
+                            null,
+                            new GlyphBox("0", style.Smaller()),
+                            style)),
+                    style),
+                new KernBox(style.FontSize * 0.15f),
+                new FracBox(
+                    new SupSubBox(
+                        new GlyphBox("e", style),
+                        new GlyphBox("2", style.Smaller()),
+                        null,
+                        style),
+                    new HBox(
+                        new GlyphBox("ℏ", style),
+                        new GlyphBox("c", style)),
+                    style),
+                new KernBox(style.FontSize * 0.3f),
+                new GlyphBox("≈", style),
+                new KernBox(style.FontSize * 0.3f),
+                new FracBox(
+                    new GlyphBox("1", style),
+                    new GlyphBox("137", style),
+                    style)),
             _ => throw new ArgumentException($"unknown scene '{name}'"),
         };
         return (box, style);
@@ -231,10 +333,57 @@ public sealed class MathLayoutBaselineTests
         return new BracketBox(new MatrixBox(cells, style), BracketKind.Paren, style);
     }
 
-    private static void DumpFailed(string name, byte[] rgba, int w, int h)
+    private static void DumpFailed(string font, string scene, byte[] rgba, int w, int h)
     {
-        Directory.CreateDirectory(FailedDir);
+        var dir = Path.Combine(FailedDir, font);
+        Directory.CreateDirectory(dir);
         var png = PngWriter.Encode(rgba, w, h);
-        File.WriteAllBytes(Path.Combine(FailedDir, name + ".actual.png"), png);
+        File.WriteAllBytes(Path.Combine(dir, scene + ".actual.png"), png);
+    }
+
+    /// <summary>
+    /// Composite an RGBA box render onto a "grid paper" backdrop: light
+    /// background, faint grid lines every <paramref name="gridSpacing"/> px,
+    /// brighter centre crosshairs. The box's foreground (black in BuildScene)
+    /// alpha-blends on top so the math content stays crisp while the grid
+    /// gives a readable, neutral background in any image viewer. Returns a
+    /// fresh RGBA byte[] sized w*h*4.
+    /// </summary>
+    private static byte[] ComposeOnGridPaper(byte[] fg, int w, int h, int gridSpacing)
+    {
+        var bg = new RGBAColor32(245, 245, 245, 255);
+        var grid = new RGBAColor32(215, 215, 220, 255);
+        var centre = new RGBAColor32(180, 190, 210, 255);
+
+        var img = new RgbaImage(w, h);
+        img.Clear(bg);
+        for (var x = 0; x < w; x += gridSpacing) img.DrawVLine(x, 0, h, grid);
+        for (var y = 0; y < h; y += gridSpacing) img.DrawHLine(0, w, y, grid);
+        var cx = w / 2;
+        var cy = h / 2;
+        img.DrawHLine(0, w, cy, centre);
+        img.DrawVLine(cx, 0, h, centre);
+
+        // Alpha-blend the box pixels (RGBA byte[]) over the grid backdrop.
+        // RgbaImage.Pixels is already in RGBA byte order, same layout as fg.
+        var dst = img.Pixels;
+        for (var i = 0; i < fg.Length; i += 4)
+        {
+            byte sa = fg[i + 3];
+            if (sa == 0) continue;
+            byte sr = fg[i], sg = fg[i + 1], sb = fg[i + 2];
+            if (sa == 255)
+            {
+                dst[i] = sr; dst[i + 1] = sg; dst[i + 2] = sb; dst[i + 3] = 255;
+                continue;
+            }
+            // Standard "source over" with premultiplied math.
+            int inv = 255 - sa;
+            dst[i]     = (byte)((sr * sa + dst[i]     * inv) / 255);
+            dst[i + 1] = (byte)((sg * sa + dst[i + 1] * inv) / 255);
+            dst[i + 2] = (byte)((sb * sa + dst[i + 2] * inv) / 255);
+            dst[i + 3] = 255;
+        }
+        return dst;
     }
 }

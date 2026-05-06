@@ -25,14 +25,15 @@ public sealed class FracBox : Box
     {
         _num = numerator;
         _den = denominator;
-        _ruleThickness = style.RuleThickness;
+        _ruleThickness = style.FractionRuleThickness;
         _gap = style.FontSize * 0.18f;
-        // The fraction rule sits on the math axis, ~0.25·em above the line
-        // baseline — same horizontal level as '=' / '+' / '−' glyph centres
-        // and a centred LimitsBox(∫). Without this lift the rule sits flush
-        // on the baseline, which leaves it visually below adjacent inline-
-        // math glyphs.
-        _mathAxis = style.FontSize * 0.25f;
+        // The fraction rule sits on the math axis — same horizontal level as
+        // '=' / '+' / '−' glyph centres and a centred LimitsBox(∫). Without
+        // this lift the rule sits flush on the baseline, which leaves it
+        // visually below adjacent inline-math glyphs. BoxStyle.AxisHeight is
+        // currently the historical 0.25·em magic number; see its docstring
+        // for why we don't read MATH.AxisHeight directly yet.
+        _mathAxis = style.AxisHeight;
 
         // Add a half-em margin on each side so the rule visibly extends past
         // the numerator/denominator like in proper math typography.

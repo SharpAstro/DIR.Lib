@@ -27,32 +27,29 @@ public sealed class GlyphBox : Box
         _text = text;
         _fontSize = fontSize;
 
-        // We need a temporary renderer to measure — MeasureText is an
-        // instance method on RgbaImageRenderer, but it doesn't depend on the
-        // surface dimensions, only on the cached glyph metrics. Construct a
-        // 1×1 throwaway just to get the rasterizer; the cache is per-instance
-        // so this allocates a tiny new font cache. For the demo's small
-        // formula corpus that's fine; if it ever matters, we'd thread a
-        // shared rasterizer through BoxStyle instead.
-        using var measurer = new RgbaImageRenderer(1, 1);
-        var (w, h) = measurer.MeasureText(text, style.FontPath, fontSize);
-        _width = w;
-
-        // Tight TeX-style metrics: report the glyph's actual ascent/descent
-        // as Height/Depth instead of inflating to DrawText's per-line
-        // padding (lineHeight = fontSize * 1.3). MeasureText returns
-        // combined visual height (ascent + descent); split 0.8/0.2 — close
-        // enough for typical Latin/Greek/digits. (Letters with true
-        // descenders like g/y/p get the ~20% descent they need; capitals
-        // and digits over-claim a tiny amount of depth, but never collide
-        // because nothing renders below the baseline for them.)
-        //
-        // The Draw() method below compensates for DrawText's internal
-        // lineHeight padding by shifting rect.UpperLeft.Y, so the actual
-        // glyph baseline still lands at the caller's baselineY even though
-        // our reported Height is smaller than the rect we pass.
-        _height = h * 0.8f;
-        _depth  = h * 0.2f;
+        // Per-rune metrics from the shared rasterizer: take maxAscent
+        // (= max BearingY across the runes) and maxDescent (= max
+        // (Height − BearingY), clamped at zero — "+", "=", "−" sit
+        // entirely above baseline so their nominal "descent" is negative
+        // and shouldn't push the box's reported Depth into the negative).
+        // This matches *exactly* the loop DrawText uses to position the
+        // baseline; same numbers in / same baseline out, so a string of
+        // any glyphs renders at the requested baselineY without clipping
+        // and without the per-string fudge that an 0.8/0.2 split causes.
+        var rasterizer = BoxStyle.SharedRasterizer;
+        int maxAscent = 0, maxDescent = 0;
+        float advance = 0;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            var g = rasterizer.RasterizeGlyph(style.FontPath, fontSize, rune);
+            advance += g.AdvanceX;
+            if (g.BearingY > maxAscent) maxAscent = g.BearingY;
+            var descent = g.Height - g.BearingY;
+            if (descent > maxDescent) maxDescent = descent;
+        }
+        _width = advance;
+        _height = maxAscent;
+        _depth = maxDescent;
     }
 
     public override float Width => _width;
@@ -66,14 +63,21 @@ public sealed class GlyphBox : Box
 
     public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style)
     {
-        // DrawText computes baseline = rectTop + (lineHeight + ascent -
-        // descent) / 2 with lineHeight = fontSize * 1.3 (a per-line
-        // padding constant baked into the renderer). For our actual glyph
-        // baseline to land at the caller's baselineY despite reporting
-        // tight Height/Depth, we shift the rect-top up by half the slack
-        // (lineHeight - actualHeight) / 2. The rect bounds otherwise don't
-        // affect positioning under Near/Near alignment — DrawText doesn't
-        // clip painted glyphs to the rect.
+        // DrawText computes baseline = rectTop + (lineHeight + maxAscent
+        // − maxDescent) / 2 where maxAscent/maxDescent are the per-rune
+        // values DrawText itself derives from the rasterizer (lineHeight
+        // = fontSize * 1.3 is the renderer's per-line padding). Our ctor
+        // computes _height = maxAscent and _depth = maxDescent from the
+        // SAME rasterizer + fontSize, so they match DrawText's internal
+        // values 1:1. Solving for rectTop such that DrawText's baseline
+        // equals the caller's baselineY:
+        //     baselineY = rectTop + (lineHeight + _height − _depth) / 2
+        //   ⇒ rectTop  = baselineY − (lineHeight + _height − _depth) / 2
+        // This makes "y" (descender pulls _depth up) and "+" (no descender
+        // → _depth ≈ 0) land at the SAME baselineY in an HBox — a
+        // descender-having glyph no longer renders _depth pixels above
+        // where the caller asked, which was the bug producing the
+        // visible misalignment in x²+y², e^ip, matrix cells, etc.
         const float DrawTextLineHeightFactor = 1.3f;
         var lineHeight = _fontSize * DrawTextLineHeightFactor;
         var rectTop = baselineY - (lineHeight + _height - _depth) / 2f;
