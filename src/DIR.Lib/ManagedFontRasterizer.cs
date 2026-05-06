@@ -127,6 +127,30 @@ public sealed class ManagedFontRasterizer : IDisposable
     }
 
     /// <summary>
+    /// Math corner kern (pixels at the requested font size) for the
+    /// given codepoint at correction <paramref name="heightPx"/> —
+    /// the sub/super's bottom-y above the math axis (for top corners)
+    /// or its top-y above the math axis (for bottom corners). The
+    /// kern's step function is keyed on this height; positive results
+    /// shift the script right, negative shift left. Returns null when
+    /// the font has no MATH table, no <c>MathGlyphInfo</c>, no kern
+    /// coverage for this glyph, or no data for the requested corner —
+    /// caller falls back to italic correction or zero as appropriate.
+    /// Internally converts the pixel height to FU before lookup, then
+    /// converts the kern back to pixels at the same scale.
+    /// </summary>
+    public float? GetMathCornerKernPx(string fontPath, float fontSize,
+        Rune codepoint, Tables.OpenTypeMath.MathKernCorner corner, float heightPx)
+    {
+        var font = GetOrLoad(fontPath);
+        var kern = font.GetMathCornerKern((uint)codepoint.Value, corner);
+        if (kern is null) return null;
+        var heightFU = (short)MathF.Round(heightPx * font.UnitsPerEm / fontSize);
+        var kernFU = kern.Lookup(heightFU);
+        return kernFU * fontSize / font.UnitsPerEm;
+    }
+
+    /// <summary>
     /// Italic correction (pixels at the requested font size) for the
     /// given codepoint — the extra horizontal space a slanted glyph's
     /// top extends past its advance width. OpenType MATH supplies this

@@ -173,6 +173,18 @@ public sealed record BoxStyle(string FontPath, float FontSize, RGBAColor32 Foreg
     }
 
     /// <summary>
+    /// Minimum height (pixels) a display-style big operator should
+    /// reach — the target passed to <see cref="StretchyVerticalBox"/>
+    /// when picking a pre-drawn variant from the font's
+    /// <c>MathVariants</c> table. Same source as
+    /// <see cref="DisplayOperatorFontSize"/>; the difference is
+    /// "give me the font size to scale to" vs. "give me the target
+    /// pixel height". The latter is what the variant-picking path
+    /// wants. 1.5·em floor applies to both.
+    /// </summary>
+    public float DisplayOperatorMinHeightPx => DisplayOperatorFontSize;
+
+    /// <summary>
     /// Reference height (pixels above the baseline) at which a top accent
     /// anchors. Read from <c>MathConstants.AccentBaseHeight</c> when the
     /// font ships a MATH table; falls back to <see cref="ExHeight"/>

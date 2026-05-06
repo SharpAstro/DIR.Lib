@@ -187,12 +187,18 @@ public sealed class MathLayoutBaselineTests
                 new GlyphBox("1", style),
                 new GlyphBox("2", style),
                 style),
+            // Nested fraction. The inner b/c renders at script-style
+            // (smaller) by TeX / MathJax convention — at displaystyle
+            // the outer fraction is "main", so anything that's already
+            // a sub-component drops a script-size level. Without the
+            // shrink, b and c look the same size as a, which both
+            // looks heavy and reads ambiguously.
             "frac-nested" => new FracBox(
                 it("a", style),
                 new FracBox(
-                    it("b", style),
-                    it("c", style),
-                    style),
+                    it("b", style.Smaller()),
+                    it("c", style.Smaller()),
+                    style.Smaller()),
                 style),
             "sqrt-x2-plus-y2" => new SqrtBox(
                 new HBox(
@@ -233,12 +239,12 @@ public sealed class MathLayoutBaselineTests
             // top pushes the super further right than the sub. \sum / \prod
             // / \lim use limit-style placement instead — see limits-sum-i-n.
             "int-0-inf" => new SupSubBox(
-                new GlyphBox("∫", style, style.DisplayOperatorFontSize),
+                new BigOperatorBox(0x222B, style),
                 new GlyphBox("∞", style.Smaller()),
                 new GlyphBox("0", style.Smaller()),
                 style),
             "limits-sum-i-n" => new LimitsBox(
-                new GlyphBox("∑", style, style.DisplayOperatorFontSize),
+                new BigOperatorBox(0x2211, style),
                 new HBox(
                     it("i", style.Smaller()),
                     new GlyphBox("=", style.Smaller()),
@@ -254,7 +260,7 @@ public sealed class MathLayoutBaselineTests
             // separately as a primitive test of LimitsBox.)
             "hbox-int-eq-half" => new HBox(
                 new SupSubBox(
-                    new GlyphBox("∫", style, style.DisplayOperatorFontSize),
+                    new BigOperatorBox(0x222B, style),
                     new GlyphBox("∞", style.Smaller()),
                     new GlyphBox("0", style.Smaller()),
                     style),
@@ -280,7 +286,7 @@ public sealed class MathLayoutBaselineTests
             // toggle.
             "integral-formula-full" => new HBox(
                 new SupSubBox(
-                    new GlyphBox("∫", style, style.DisplayOperatorFontSize),
+                    new BigOperatorBox(0x222B, style),
                     new GlyphBox("∞", style.Smaller()),
                     new GlyphBox("0", style.Smaller()),
                     style),

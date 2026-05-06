@@ -1,4 +1,4 @@
-
+using SharpAstro.Fonts.Tables.OpenTypeMath;
 
 namespace DIR.Lib.MathLayout;
 
@@ -17,7 +17,8 @@ public sealed class SupSubBox : Box
     private readonly float _supShift;
     private readonly float _subShift;
     private readonly float _scriptKern;
-    private readonly float _italicCorrection;
+    private readonly float _supXShift;  // horizontal shift on super (corner kern OR italic correction)
+    private readonly float _subXShift;  // horizontal shift on sub (corner kern OR -italic correction)
 
     public SupSubBox(Box @base, Box? sup, Box? sub, BoxStyle style)
     {
@@ -41,15 +42,23 @@ public sealed class SupSubBox : Box
         _subShift = MathF.Max(subShiftDown, _base.Depth + subDropMin);
         _scriptKern = style.FontSize * 0.04f;
 
-        // Italic correction (pixels): the horizontal shift to apply to
-        // a superscript anchored on a slanted base. The integral sign
-        // ∫ has a large value (~0.2 em); italic letters like 𝑓 have
-        // smaller values; upright glyphs have zero. The subscript
-        // doesn't get the correction — only the super shifts right
-        // because the slope's top is to the right of its bottom. Looked
-        // up only when the base is a single-rune GlyphBox; otherwise
-        // we leave it at zero (no correction).
-        _italicCorrection = TryGetItalicsCorrection(@base, style);
+        // Per-corner horizontal shifts. The OpenType MATH table can
+        // supply per-glyph corner kerns (TopRight for sup, BottomRight
+        // for sub) that are evaluated at the script's contact height —
+        // a strictly more precise placement than italic correction,
+        // which is a single global value for the whole glyph. We
+        // prefer corner kerns when present, fall back to ±italic
+        // correction otherwise. The TeX-style sign convention applies
+        // either way: super shifts right, sub shifts left, on a slanted
+        // base (italic letters, big integrals).
+        var italic = TryGetItalicsCorrection(@base, style);
+        // Lookup heights for the corner kern step functions — the
+        // sub/super's contact y above the main baseline. We pass these
+        // in pixels; the rasterizer converts to FU for the lookup.
+        var supContactY = _supShift - (_sup?.Depth ?? 0);
+        var subContactY = -_subShift + (_sub?.Height ?? 0);
+        _supXShift = TryGetCornerKern(@base, style, MathKernCorner.TopRight, supContactY) ?? italic;
+        _subXShift = TryGetCornerKern(@base, style, MathKernCorner.BottomRight, subContactY) ?? -italic;
     }
 
     /// <summary>
@@ -74,6 +83,26 @@ public sealed class SupSubBox : Box
     }
 
     /// <summary>
+    /// Resolve the corner kern (pixels at the base's render size) for
+    /// a slanted base when it's a single-rune <see cref="GlyphBox"/>
+    /// and the font supplies <c>MathKernInfo</c> for that glyph. The
+    /// height parameter is the script's contact y above the main
+    /// baseline (positive). Returns null when the font has no kern
+    /// data — caller falls back to italic correction.
+    /// </summary>
+    private static float? TryGetCornerKern(Box @base, BoxStyle style, MathKernCorner corner, float heightPx)
+    {
+        if (@base is not GlyphBox gb) return null;
+        var text = gb.Text;
+        if (text.Length == 0) return null;
+        var enumerator = text.EnumerateRunes();
+        if (!enumerator.MoveNext()) return null;
+        var rune = enumerator.Current;
+        if (enumerator.MoveNext()) return null;
+        return BoxStyle.SharedRasterizer.GetMathCornerKernPx(style.FontPath, gb.FontSize, rune, corner, heightPx);
+    }
+
+    /// <summary>
     /// Resolve the italic correction (pixels at the box's render size)
     /// for the base when it's a single-rune <see cref="GlyphBox"/> and
     /// the font supplies the metric; otherwise zero.
@@ -94,20 +123,17 @@ public sealed class SupSubBox : Box
     {
         get
         {
-            // The reported box width omits the italic-correction shift on
-            // both scripts: the super and sub are drawn shifted right /
-            // left by italic correction (TeX Rule 18a), but the box's
-            // advance only counts the script size + kern. The result is
-            // that a super on a strongly slanted base (∫, big radicals)
-            // is allowed to *overhang* the box's right edge into the
-            // following sibling's space — same convention as MathJax /
-            // TeX's "italic correction is added to scripts but not to
-            // the layout extent". Without this, "∫_0^∞ e" leaves a wide
-            // empty gap between the integral and the e because the box
-            // had to be wide enough to contain the right-shifted ∞.
-            float supRight = _sup is null ? 0 : _scriptKern + _sup.Width;
-            float subRight = _sub is null ? 0 : _scriptKern + _sub.Width;
-            return _base.Width + MathF.Max(supRight, subRight);
+            // Box width includes the per-corner horizontal shift on
+            // each script — the super at +shift may extend past the
+            // unshifted right edge; we need canvas room for it so a
+            // standalone SupSubBox doesn't clip and an HBox sibling
+            // doesn't overlap. Sub at -shift may pull left of the
+            // unshifted edge but doesn't reduce width below base.Width
+            // (script.Width overhangs cleanly into the base's advance).
+            float supRight = _sup is null ? 0 : _supXShift + _scriptKern + _sup.Width;
+            float subRight = _sub is null ? 0 : _subXShift + _scriptKern + _sub.Width;
+            float scriptExtent = MathF.Max(supRight, subRight);
+            return _base.Width + MathF.Max(0, scriptExtent);
         }
     }
 
@@ -134,14 +160,16 @@ public sealed class SupSubBox : Box
     public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style)
     {
         _base.Draw(renderer, penX, baselineY, style);
-        // Super shifts +italic_correction; sub shifts -italic_correction
-        // (TeX Rule 18a). For upright bases both correction = 0 and the
-        // two scripts share an x. For ∫ the correction is large so the
-        // scripts spread visibly: super lands above the integral's top-
-        // right hook, sub tucks under its bottom-left curl.
+        // Per-corner shifts: TopRight kern (or +italic correction
+        // fallback) for super, BottomRight kern (or −italic correction)
+        // for sub. For upright bases both shifts = 0; for ∫ the corner
+        // kerns pull the sub under the bottom curl and push the super
+        // past the top hook. For italic letters the smaller italic-
+        // correction fallback applies when the font has no per-glyph
+        // kern data.
         float anchor = penX + _base.Width + _scriptKern;
-        float supX = anchor + _italicCorrection;
-        float subX = anchor - _italicCorrection;
+        float supX = anchor + _supXShift;
+        float subX = anchor + _subXShift;
         if (_sup is not null)
         {
             // Sup baseline sits at (baseline - shift) — sup.Height is its
