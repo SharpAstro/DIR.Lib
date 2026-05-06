@@ -107,7 +107,7 @@ public sealed class SupSubBox : Box
                 return (rune, gb.FontSize);
             }
             case BigOperatorBox big:
-                return (new Rune(big.Codepoint), big.RenderFontSize);
+                return (new Rune(big.Codepoint), big.MetricFontSize);
             default:
                 return null;
         }

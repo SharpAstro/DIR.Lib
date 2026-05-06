@@ -37,17 +37,24 @@ public sealed class BigOperatorBox : Box
     /// their underlying glyph.</summary>
     public int Codepoint { get; }
 
-    /// <summary>Font size (pixels) the underlying glyph was rendered
-    /// at — needed by <see cref="SupSubBox"/> to query font metrics
-    /// at the right scale. For the variant path this is the display-
-    /// operator min height; for the fallback path the same value is
-    /// used as the GlyphBox font size.</summary>
-    public float RenderFontSize { get; }
+    /// <summary>Font size (pixels) at which <see cref="SupSubBox"/>
+    /// should look up italic-correction and corner-kern values for
+    /// scripts attached to this operator. Held at the <i>surrounding</i>
+    /// font size, NOT the displaystyle render size: the stretchy
+    /// variant glyph used to draw the operator has its own
+    /// MathItalicsCorrection in the font, generally smaller in
+    /// proportion than scaling the base glyph's correction would
+    /// suggest. We don't have the variant's glyph id plumbed back
+    /// out of StretchyVerticalBox yet, so we approximate by reading
+    /// the BASE codepoint's correction at the surrounding size —
+    /// gives a reasonable post-script offset without ballooning at
+    /// big render sizes.</summary>
+    public float MetricFontSize { get; }
 
     public BigOperatorBox(int codepoint, BoxStyle style)
     {
         Codepoint = codepoint;
-        RenderFontSize = style.DisplayOperatorFontSize;
+        MetricFontSize = style.FontSize;
         var stretchy = new StretchyVerticalBox(codepoint, style.DisplayOperatorMinHeightPx, style);
         if (stretchy.IsAvailable)
         {
@@ -58,7 +65,7 @@ public sealed class BigOperatorBox : Box
         // result isn't a "designed" big-operator glyph but the scene
         // gets a recognizable big ∫ / ∑ even on body fonts without
         // MATH variant coverage.
-        _inner = new GlyphBox(new Rune(codepoint).ToString(), style, RenderFontSize);
+        _inner = new GlyphBox(new Rune(codepoint).ToString(), style, style.DisplayOperatorFontSize);
     }
 
     public override float Width => _inner.Width;
