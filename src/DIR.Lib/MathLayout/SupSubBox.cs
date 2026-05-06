@@ -96,19 +96,29 @@ public sealed class SupSubBox : Box
         switch (@base)
         {
             case GlyphBox gb:
-            {
-                var text = gb.Text;
-                if (text.Length == 0) return null;
-                var e = text.EnumerateRunes();
-                if (!e.MoveNext()) return null;
-                var rune = e.Current;
-                if (e.MoveNext()) return null;
-                return (rune, gb.FontSize);
-            }
+                return TryFromText(gb.Text, gb.FontSize);
+            // MathGlyphBox wraps a GlyphBox after remapping its runes to
+            // a math-alphanumeric codepoint (italic / bold / script / …).
+            // Look the metrics up against the *remapped* rune so the
+            // italic correction comes from the styled glyph, not the
+            // upright fallback — italic 𝑥 (U+1D465) carries an italics
+            // correction in STIX while plain 'x' does not.
+            case MathGlyphBox mgb:
+                return TryFromText(mgb.Text, mgb.FontSize);
             case BigOperatorBox big:
                 return (new Rune(big.Codepoint), big.RenderFontSize);
             default:
                 return null;
+        }
+
+        static (Rune rune, float fontSize)? TryFromText(string text, float fontSize)
+        {
+            if (text.Length == 0) return null;
+            var e = text.EnumerateRunes();
+            if (!e.MoveNext()) return null;
+            var rune = e.Current;
+            if (e.MoveNext()) return null;
+            return (rune, fontSize);
         }
     }
 
@@ -127,35 +137,74 @@ public sealed class SupSubBox : Box
     }
 
     /// <summary>
-    /// Resolve the italic correction (pixels at the box's render size)
-    /// for the underlying glyph.
+    /// Resolve the italic correction (pixels) for the underlying glyph,
+    /// to be applied as ±shift on the script x positions per TeX Rule 18a.
     ///
     /// <para>For ordinary slanted bases — italic letters in math context —
-    /// italic correction is the right placement metric: the slope's
-    /// top-right is at advance + correction, and the script needs to
-    /// follow. Returns the codepoint's value via cmap.</para>
+    /// italic correction places the script at the slope's top-right
+    /// corner: super at advance + correction, sub at advance − correction.
+    /// Returns the codepoint's value via cmap, scaled at the base's own
+    /// render size.</para>
     ///
-    /// <para>For <see cref="BigOperatorBox"/>, italic correction is
-    /// the wrong metric, even though the font sets one. The displaystyle
-    /// integral's correction in STIX is 540 FU; applied linearly at
-    /// the displaystyle render size that's a ~120 px shift on each
-    /// side — far too aggressive. MathJax handles big-operator scripts
-    /// via math corner kerns (or no shift at all when none are set),
-    /// not italic correction. We follow that convention: when the
-    /// base is a <see cref="BigOperatorBox"/> and corner kerns aren't
-    /// present (TryGetCornerKern already covers that path), return 0
-    /// here so scripts land at the unshifted advance + scriptKern.
-    /// The font-supplied corner kerns, when present, fully position
-    /// the scripts; italic correction is reserved for letter bases.</para>
+    /// <para>For <see cref="BigOperatorBox"/> the variant glyph (∫ at
+    /// displaystyle) carries its own italic correction (540 FU on the
+    /// STIX variant) — but the spec value applied at the variant's
+    /// displaystyle size produces a shift large enough to detach the
+    /// super from the operator and pull the sub on top of its ink. We
+    /// look up the value (by glyph id when the variant is in coverage,
+    /// by codepoint otherwise) but evaluate it at the surrounding
+    /// <see cref="BoxStyle.FontSize"/> rather than the displaystyle
+    /// render size. The result is a script shift that scales with the
+    /// formula's body size — empirically the placement MathJax produces
+    /// — instead of growing with the operator glyph itself.</para>
     /// </summary>
     private static float TryGetItalicsCorrection(Box @base, BoxStyle style)
     {
-        if (@base is BigOperatorBox) return 0f;
+        if (@base is BigOperatorBox big)
+        {
+            // Look up the FU value via the variant gid (preferred — the
+            // variant is the actual rendered glyph, isn't in the cmap)
+            // or the base codepoint as fallback. Scale by style.FontSize,
+            // not big.RenderFontSize, so the shift magnitude tracks the
+            // surrounding script-size context, not the inflated
+            // displaystyle operator size.
+            if (big.VariantGlyphId != 0)
+            {
+                return BoxStyle.SharedRasterizer.GetItalicsCorrectionByGidPx(
+                    style.FontPath, style.FontSize, big.VariantGlyphId) ?? 0f;
+            }
+            return BoxStyle.SharedRasterizer.GetItalicsCorrectionPx(
+                style.FontPath, style.FontSize, new Rune(big.Codepoint)) ?? 0f;
+        }
         var glyph = TryGetSingleGlyph(@base);
         if (glyph is null) return 0f;
         return BoxStyle.SharedRasterizer.GetItalicsCorrectionPx(
             style.FontPath, glyph.Value.fontSize, glyph.Value.rune) ?? 0f;
     }
+
+    /// <summary>Horizontal shift applied to the super relative to
+    /// (base.advance + scriptKern). Positive = right, negative = left.
+    /// Driven by the per-corner kern (TopRight) when the font supplies
+    /// one, otherwise +italic correction. Exposed for layout tests so
+    /// the script-positioning math can be asserted numerically rather
+    /// than only via baseline image diffs.</summary>
+    internal float SupXShift => _supXShift;
+
+    /// <summary>Horizontal shift applied to the sub relative to
+    /// (base.advance + scriptKern). Per-corner BottomRight kern when
+    /// the font supplies one, otherwise −italic correction.</summary>
+    internal float SubXShift => _subXShift;
+
+    /// <summary>Vertical baseline shift up for the super (pixels).</summary>
+    internal float SupShift => _supShift;
+
+    /// <summary>Vertical baseline shift down for the sub (pixels).</summary>
+    internal float SubShift => _subShift;
+
+    /// <summary>Horizontal gap between base.advance and the unshifted
+    /// script anchor (before <see cref="SupXShift"/> / <see cref="SubXShift"/>
+    /// apply).</summary>
+    internal float ScriptKern => _scriptKern;
 
     public override float Width
     {
