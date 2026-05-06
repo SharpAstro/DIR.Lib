@@ -412,12 +412,11 @@ public sealed class MathLayoutBaselineTests
             k,
             new GlyphBox("i", style),
             thin,
-            // ψ̄ D̸ ψ — bar via AccentBox; D̸ still uses the combining
-            // solidus rune (an overlay, not a top accent — needs its
-            // own primitive in a follow-up).
+            // ψ̄ D̸ ψ — bar via AccentBox, slash via OverlayBox (a
+            // forward-slash glyph drawn through D's centre).
             psiBar(style),
             thin,
-            new GlyphBox("D̸", style),
+            new OverlayBox(new GlyphBox("D", style), new GlyphBox("/", style)),
             thin,
             new GlyphBox("ψ", style),
             k,
