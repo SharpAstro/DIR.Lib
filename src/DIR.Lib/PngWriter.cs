@@ -15,7 +15,7 @@ namespace DIR.Lib;
 /// tests live as PNGs and are decoded back via <c>StbImageSharp</c> for
 /// pixel-equality comparison).
 ///
-/// The filter encoders below are the dual of <c>IO.Lib.PngPredictor</c>
+/// The filter encoders below are the dual of <see cref="PngPredictor"/>
 /// (PDF/TIFF code path's PNG row unfilter): same Sub / Up / Average / Paeth
 /// formulas with the signs flipped.
 /// </summary>
@@ -205,7 +205,7 @@ public static class PngWriter
                     int left = i >= bpp ? raw[i - bpp] : 0;
                     int above = prev[i];
                     int upperLeft = i >= bpp ? prev[i - bpp] : 0;
-                    dst[i] = (byte)(raw[i] - PaethPredictor(left, above, upperLeft));
+                    dst[i] = (byte)(raw[i] - PngPredictor.PaethPredictor(left, above, upperLeft));
                 }
                 break;
         }
@@ -225,16 +225,6 @@ public static class PngWriter
             sum += s < 0 ? -s : s;
         }
         return sum;
-    }
-
-    private static int PaethPredictor(int a, int b, int c)
-    {
-        int p = a + b - c;
-        int pa = p >= a ? p - a : a - p;
-        int pb = p >= b ? p - b : b - p;
-        int pc = p >= c ? p - c : c - p;
-        if (pa <= pb && pa <= pc) return a;
-        return pb <= pc ? b : c;
     }
 
     /// <summary>
