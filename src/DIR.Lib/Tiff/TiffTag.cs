@@ -27,5 +27,7 @@ internal static class TiffTag
     public const ushort SampleFormat      = 339;
     public const ushort SMinSampleValue   = 340;
     public const ushort SMaxSampleValue   = 341;
+    public const ushort ExifIfd           = 34665;
     public const ushort IccProfile        = 34675;
+    public const ushort GpsInfoIfd        = 34853;
 }

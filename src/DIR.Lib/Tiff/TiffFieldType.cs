@@ -1,6 +1,12 @@
 namespace DIR.Lib.Tiff;
 
-internal enum TiffFieldType : ushort
+/// <summary>
+/// TIFF 6.0 field type codes (used in IFD entries to describe the
+/// payload type). Public because EXIF reuses the exact same taxonomy
+/// — EXIF metadata is just a TIFF IFD chain accessed through an
+/// alternate root.
+/// </summary>
+public enum TiffFieldType : ushort
 {
     Byte      = 1,
     Ascii     = 2,

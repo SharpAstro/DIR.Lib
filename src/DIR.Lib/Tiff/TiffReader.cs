@@ -94,6 +94,8 @@ public static class TiffReader
         float? sMin = null;
         float? sMax = null;
         byte[]? icc = null;
+        int? exifIfdOffset = null;
+        int? gpsIfdOffset = null;
 
         for (var i = 0; i < entryCount; i++)
         {
@@ -146,6 +148,14 @@ public static class TiffReader
                     break;
                 case TiffTag.IccProfile:
                     icc = ReadByteArray(tiff, type, count, valueSpan, fileIsLE);
+                    break;
+                case TiffTag.ExifIfd:
+                    // Sub-IFD pointer — capture the offset so a caller can pass
+                    // it to DIR.Lib.Exif.ExifReader.FromIfd without re-walking.
+                    exifIfdOffset = (int)ReadScalar(type, valueSpan, fileIsLE);
+                    break;
+                case TiffTag.GpsInfoIfd:
+                    gpsIfdOffset = (int)ReadScalar(type, valueSpan, fileIsLE);
                     break;
                 default:
                     // Unrecognised tag — TIFF spec says skip unknown tags.
@@ -217,7 +227,10 @@ public static class TiffReader
             Pixels: pixels,
             SMinSampleValue: sMin,
             SMaxSampleValue: sMax,
-            IccProfile: icc);
+            IccProfile: icc,
+            ExifIfdOffset: exifIfdOffset,
+            GpsInfoIfdOffset: gpsIfdOffset,
+            FileIsLittleEndian: fileIsLE);
         return (page, nextIfdOffset);
     }
 
@@ -374,4 +387,7 @@ public sealed record TiffPage(
     byte[] Pixels,
     float? SMinSampleValue,
     float? SMaxSampleValue,
-    byte[]? IccProfile);
+    byte[]? IccProfile,
+    int? ExifIfdOffset,
+    int? GpsInfoIfdOffset,
+    bool FileIsLittleEndian);
