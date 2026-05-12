@@ -1,4 +1,5 @@
 using System.Text;
+using SharpAstro.Png;
 using Shouldly;
 using StbImageSharp;
 

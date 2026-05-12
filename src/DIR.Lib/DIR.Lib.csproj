@@ -8,8 +8,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsAotCompatible>true</IsAotCompatible>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <VersionPrefix>2.15.0</VersionPrefix>
-    <AssemblyVersion>2.15.0.0</AssemblyVersion>
+    <VersionPrefix>3.0.0</VersionPrefix>
+    <AssemblyVersion>3.0.0.0</AssemblyVersion>
     <PackageID>DIR.Lib</PackageID>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -26,15 +26,6 @@
   <ItemGroup>
     <None Include="../../LICENSE" Pack="true" PackagePath="/" />
     <None Include="../../README.md" Pack="true" PackagePath="/" />
-  </ItemGroup>
-
-  <!--
-    Bundled sRGB v4 ICC profile (588 bytes, LittleCMS-generated, public-domain).
-    Embedded so callers of TiffWriter / PngWriter can tag their output as sRGB
-    without supplying their own bytes. See Color/IccProfiles.cs.
-  -->
-  <ItemGroup>
-    <EmbeddedResource Include="Color\sRGB-v4.icc" LogicalName="DIR.Lib.Color.sRGB-v4.icc" />
   </ItemGroup>
 
   <ItemGroup>
@@ -55,6 +46,29 @@
   </ItemGroup>
   <ItemGroup Condition="'$(UseLocalFontsLib)' != 'true'">
     <PackageReference Include="SharpAstro.Fonts" />
+  </ItemGroup>
+
+  <!--
+    Codec / metadata packages were extracted to the StbImage sibling repo
+    (SharpAstro.Tiff, SharpAstro.Exif, SharpAstro.Png, SharpAstro.Color.Icc)
+    so DIR.Lib focuses on its actual purpose — device-independent image
+    processing and math. Sibling working copies preferred for inner-loop
+    iteration; CI / external consumers fall through to PackageReference.
+  -->
+  <PropertyGroup>
+    <UseLocalSharpAstroCodecs Condition="'$(UseLocalSharpAstroCodecs)' == '' AND Exists('..\..\..\StbImageSharp\src\SharpAstro.Tiff\SharpAstro.Tiff.csproj')">true</UseLocalSharpAstroCodecs>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(UseLocalSharpAstroCodecs)' == 'true'">
+    <ProjectReference Include="..\..\..\StbImageSharp\src\SharpAstro.Tiff\SharpAstro.Tiff.csproj" />
+    <ProjectReference Include="..\..\..\StbImageSharp\src\SharpAstro.Exif\SharpAstro.Exif.csproj" />
+    <ProjectReference Include="..\..\..\StbImageSharp\src\SharpAstro.Png\SharpAstro.Png.csproj" />
+    <ProjectReference Include="..\..\..\StbImageSharp\src\SharpAstro.Color.Icc\SharpAstro.Color.Icc.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalSharpAstroCodecs)' != 'true'">
+    <PackageReference Include="SharpAstro.Tiff" />
+    <PackageReference Include="SharpAstro.Exif" />
+    <PackageReference Include="SharpAstro.Png" />
+    <PackageReference Include="SharpAstro.Color.Icc" />
   </ItemGroup>
 
   <ItemGroup>

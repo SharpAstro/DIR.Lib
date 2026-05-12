@@ -1,3 +1,5 @@
+using SharpAstro.Png;
+
 namespace DIR.Lib.MathLayout;
 
 /// <summary>

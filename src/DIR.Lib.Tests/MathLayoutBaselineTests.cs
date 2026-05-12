@@ -1,6 +1,7 @@
 using System.Reflection;
 using DIR.Lib.MathLayout;
 using SharpAstro.Fonts;
+using SharpAstro.Png;
 using StbImageSharp;
 using Xunit;
 

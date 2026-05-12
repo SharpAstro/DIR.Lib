@@ -1,6 +1,7 @@
 using System.Text;
 using SharpAstro.Fonts;
 using SharpAstro.Fonts.Tables.OpenTypeMath;
+using SharpAstro.Png;
 using Shouldly;
 using Xunit;
 

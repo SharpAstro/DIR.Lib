@@ -2,6 +2,9 @@
 
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- Allow floating versions (e.g. "2.30.*") for sibling-tracked codec packages
+         so DIR.Lib stays current with whatever StbImage repo publishes. -->
+    <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
   </PropertyGroup>
 
   <ItemGroup>
@@ -10,6 +13,12 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
     <PackageVersion Include="SharpAstro.Fonts" Version="1.2.181" />
     <PackageVersion Include="SharpAstro.FreeTypeBindings" Version="3.2.14" />
+    <!-- Codec packages extracted from DIR.Lib in 3.0.0 — versions track the
+         StbImage repo cadence (2.30.x), bumped by its CI on each push. -->
+    <PackageVersion Include="SharpAstro.Tiff" Version="2.30.*" />
+    <PackageVersion Include="SharpAstro.Exif" Version="2.30.*" />
+    <PackageVersion Include="SharpAstro.Png" Version="2.30.*" />
+    <PackageVersion Include="SharpAstro.Color.Icc" Version="2.30.*" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
