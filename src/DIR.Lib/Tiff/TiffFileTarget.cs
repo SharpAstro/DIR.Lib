@@ -1,4 +1,4 @@
-using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 
 namespace DIR.Lib.Tiff;
 
@@ -36,16 +36,20 @@ internal sealed class TiffFileTarget : IAsyncDisposable
 
     public ValueTask WriteUInt16Async(ushort value, CancellationToken ct = default)
     {
-        Span<byte> buf = stackalloc byte[2];
-        BinaryPrimitives.WriteUInt16LittleEndian(buf, value);
-        return WriteAsync(buf.ToArray(), ct);
+        // Host byte order on purpose: TiffWriter declares the file's byte
+        // order (II/MM) to match the host, so verbatim memory writes match
+        // the on-disk format with no swap step. MemoryMarshal.Write writes
+        // the raw memory of the value in native order.
+        var buf = new byte[2];
+        MemoryMarshal.Write(buf.AsSpan(), in value);
+        return WriteAsync(buf, ct);
     }
 
     public ValueTask WriteUInt32Async(uint value, CancellationToken ct = default)
     {
-        Span<byte> buf = stackalloc byte[4];
-        BinaryPrimitives.WriteUInt32LittleEndian(buf, value);
-        return WriteAsync(buf.ToArray(), ct);
+        var buf = new byte[4];
+        MemoryMarshal.Write(buf.AsSpan(), in value);
+        return WriteAsync(buf, ct);
     }
 
     /// <summary>
@@ -54,10 +58,10 @@ internal sealed class TiffFileTarget : IAsyncDisposable
     public async Task PatchUInt32Async(long patchOffset, uint value, CancellationToken ct = default)
     {
         var saved = _position;
-        Span<byte> buf = stackalloc byte[4];
-        BinaryPrimitives.WriteUInt32LittleEndian(buf, value);
+        var buf = new byte[4];
+        MemoryMarshal.Write(buf.AsSpan(), in value);
         _stream.Seek(patchOffset, SeekOrigin.Begin);
-        await _stream.WriteAsync(buf.ToArray(), ct).ConfigureAwait(false);
+        await _stream.WriteAsync(buf, ct).ConfigureAwait(false);
         _position = saved;
     }
 

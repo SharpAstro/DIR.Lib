@@ -1,14 +1,17 @@
+using System.Buffers.Binary;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 
 namespace DIR.Lib;
 
 /// <summary>
-/// Pure-managed PNG writer for 8-bit RGBA images. Emits a fully-conformant
-/// PNG with adaptive per-row filter selection (libpng's "minimum sum of
-/// absolute values" heuristic over filters 0/Sub/Up/Average/Paeth) and
-/// <see cref="CompressionLevel.Optimal"/> deflate. No interlacing, no
-/// palette, no ancillary chunks — just the smallest 8-bit-RGBA PNG that
-/// every standard decoder will accept.
+/// Pure-managed PNG writer. Emits a fully-conformant PNG with adaptive
+/// per-row filter selection (libpng's "minimum sum of absolute values"
+/// heuristic over filters 0/Sub/Up/Average/Paeth) and
+/// <see cref="CompressionLevel.Optimal"/> deflate. Supports four pixel
+/// formats — 8-bit grayscale, 16-bit grayscale, 8-bit RGBA, 16-bit RGBA —
+/// and optionally embeds an ICC profile via an <c>iCCP</c> chunk. No
+/// interlacing, no palette, no extra ancillary chunks.
 ///
 /// Used by both production code ("save my <see cref="RgbaImage"/> render to
 /// disk") and the test suite (committed baselines for golden-image regression
@@ -26,36 +29,149 @@ public static class PngWriter
     /// <summary>
     /// Encode an 8-bit RGBA pixel buffer (row-major, no padding) as a PNG.
     /// </summary>
-    public static byte[] Encode(ReadOnlySpan<byte> rgba, int width, int height)
-    {
-        if (width <= 0 || height <= 0) throw new ArgumentException("width and height must be positive");
-        if (rgba.Length != width * height * 4) throw new ArgumentException("rgba length must equal width*height*4");
+    public static byte[] Encode(ReadOnlySpan<byte> rgba, int width, int height) =>
+        Encode(rgba, width, height, iccProfile: default);
 
+    /// <summary>
+    /// Encode an 8-bit RGBA pixel buffer (row-major, no padding) as a PNG and
+    /// optionally embed an ICC profile via an <c>iCCP</c> chunk. Pass an empty
+    /// span for <paramref name="iccProfile"/> to omit the chunk (identical
+    /// output to the simpler <see cref="Encode(ReadOnlySpan{byte}, int, int)"/>
+    /// overload). <see cref="DIR.Lib.Color.IccProfiles.SRgbV4"/> is the
+    /// pre-bundled sRGB v4 profile bytes for callers that want colour-managed
+    /// output without supplying their own profile.
+    /// </summary>
+    public static byte[] Encode(ReadOnlySpan<byte> rgba, int width, int height, ReadOnlySpan<byte> iccProfile)
+    {
+        ValidateSize(rgba.Length, width, height, bytesPerPixel: 4);
+        return EncodeCore(rgba, width, height, bitDepth: 8, colorType: 6, bytesPerPixel: 4, iccProfile);
+    }
+
+    /// <summary>
+    /// Encode an 8-bit grayscale buffer (row-major, one byte per pixel).
+    /// Useful for low-bit-depth mask / heat-map output where the alpha channel
+    /// of <see cref="Encode(ReadOnlySpan{byte},int,int)"/> would just be a
+    /// constant 0xFF.
+    /// </summary>
+    public static byte[] EncodeGray8(ReadOnlySpan<byte> gray, int width, int height, ReadOnlySpan<byte> iccProfile = default)
+    {
+        ValidateSize(gray.Length, width, height, bytesPerPixel: 1);
+        return EncodeCore(gray, width, height, bitDepth: 8, colorType: 0, bytesPerPixel: 1, iccProfile);
+    }
+
+    /// <summary>
+    /// Encode a 16-bit grayscale buffer (row-major, one <see cref="ushort"/>
+    /// per pixel, system-endian on input). The PNG spec mandates big-endian
+    /// sample order on disk, so the bytes are swapped internally before
+    /// filtering — callers pass their <c>ushort[]</c> as-is. Used by the
+    /// FITS-grayscale preview path so 16-bit stretches don't lose precision
+    /// the way an 8-bit downsample would.
+    /// </summary>
+    public static byte[] EncodeGray16(ReadOnlySpan<ushort> gray, int width, int height, ReadOnlySpan<byte> iccProfile = default)
+    {
+        if (gray.Length != width * height)
+            throw new ArgumentException("gray length must equal width*height");
+        var beBytes = ToBigEndianBytes(gray);
+        return EncodeCore(beBytes, width, height, bitDepth: 16, colorType: 0, bytesPerPixel: 2, iccProfile);
+    }
+
+    /// <summary>
+    /// Encode a 16-bit RGBA buffer (row-major, four <see cref="ushort"/>s per
+    /// pixel: R, G, B, A; system-endian on input). The PNG spec mandates
+    /// big-endian sample order on disk so the bytes are swapped internally
+    /// before filtering. Useful when the source is a 16-bit stretched float
+    /// channel and an 8-bit quantise would crush gradients.
+    /// </summary>
+    public static byte[] EncodeRgba16(ReadOnlySpan<ushort> rgba, int width, int height, ReadOnlySpan<byte> iccProfile = default)
+    {
+        if (rgba.Length != width * height * 4)
+            throw new ArgumentException("rgba length must equal width*height*4");
+        var beBytes = ToBigEndianBytes(rgba);
+        return EncodeCore(beBytes, width, height, bitDepth: 16, colorType: 6, bytesPerPixel: 8, iccProfile);
+    }
+
+    /// <summary>
+    /// Encode <paramref name="rgba"/> as a PNG and write it to
+    /// <paramref name="path"/>.
+    /// </summary>
+    public static void Save(string path, ReadOnlySpan<byte> rgba, int width, int height)
+    {
+        var png = Encode(rgba, width, height);
+        File.WriteAllBytes(path, png);
+    }
+
+    /// <summary>
+    /// Encode <paramref name="rgba"/> with an embedded ICC profile and write
+    /// it to <paramref name="path"/>.
+    /// </summary>
+    public static void Save(string path, ReadOnlySpan<byte> rgba, int width, int height, ReadOnlySpan<byte> iccProfile)
+    {
+        var png = Encode(rgba, width, height, iccProfile);
+        File.WriteAllBytes(path, png);
+    }
+
+    private static void ValidateSize(int actualBytes, int width, int height, int bytesPerPixel)
+    {
+        if (width <= 0 || height <= 0)
+            throw new ArgumentException("width and height must be positive");
+        var expected = width * height * bytesPerPixel;
+        if (actualBytes != expected)
+            throw new ArgumentException($"pixel buffer length must equal width*height*{bytesPerPixel}");
+    }
+
+    /// <summary>
+    /// PNG bytes for arbitrary (bitDepth, colorType, bytesPerPixel). The
+    /// caller is responsible for arranging <paramref name="samples"/> in
+    /// big-endian sample order — for 16-bit formats this means the high byte
+    /// of each <c>ushort</c> precedes the low byte (the public 16-bit
+    /// entry points do this swap automatically).
+    /// </summary>
+    private static byte[] EncodeCore(ReadOnlySpan<byte> samples, int width, int height,
+        byte bitDepth, byte colorType, int bytesPerPixel, ReadOnlySpan<byte> iccProfile)
+    {
         using var ms = new MemoryStream();
         ms.Write(Signature);
 
-        // IHDR: width, height, bit depth (8), color type (6 = RGBA),
-        // compression (0 = deflate), filter (0 = adaptive), interlace (0).
+        // IHDR: width, height, bit depth, color type, compression (0=deflate),
+        // filter (0=adaptive), interlace (0).
         Span<byte> ihdr = stackalloc byte[13];
         WriteBE(ihdr.Slice(0, 4), (uint)width);
         WriteBE(ihdr.Slice(4, 4), (uint)height);
-        ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+        ihdr[8] = bitDepth;
+        ihdr[9] = colorType;
+        ihdr[10] = 0;
+        ihdr[11] = 0;
+        ihdr[12] = 0;
         WriteChunk(ms, "IHDR"u8, ihdr);
 
-        // IDAT: filter each scanline (libpng's "minsum" heuristic over filters
-        // 0/Sub/Up/Average/Paeth) and stream the result directly into the
-        // outer MemoryStream, ZLibStream-wrapped, so we never materialize
-        // either the H×(W*4+1) filtered buffer or a separate compressed
-        // buffer. We back-patch the length field once we know the IDAT size,
-        // and compute the chunk's CRC over the just-written slice of ms's
-        // backing array.
-        const int Bpp = 4; // RGBA, 8-bit channels
-        var stride = width * Bpp;
-        var prevRow = new byte[stride];        // row -1 is all zeros
+        // iCCP must come after IHDR and before the first IDAT (PNG spec
+        // §11.3.3.3). Format: keyword (Latin-1, 1..79 bytes) + NUL +
+        // compression method (always 0 = zlib) + zlib-deflated profile.
+        // We emit the keyword "ICC profile" — what libpng, Adobe, and every
+        // major encoder use; the PNG spec lets it be anything, but matching
+        // the wild norm avoids surprises in pedantic readers.
+        if (!iccProfile.IsEmpty)
+            WriteIccpChunk(ms, "ICC profile"u8, iccProfile);
+
+        WriteIdatChunk(ms, samples, width, height, bytesPerPixel);
+        WriteChunk(ms, "IEND"u8, ReadOnlySpan<byte>.Empty);
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Filter every scanline with libpng's "minsum" heuristic and stream the
+    /// result through ZLibStream directly into <paramref name="ms"/>. We
+    /// back-patch the IDAT length field once we know the IDAT size, and
+    /// compute the chunk's CRC over [type + data] straight from the
+    /// MemoryStream backing buffer.
+    /// </summary>
+    private static void WriteIdatChunk(MemoryStream ms, ReadOnlySpan<byte> samples, int width, int height, int bytesPerPixel)
+    {
+        var stride = width * bytesPerPixel;
+        var prevRow = new byte[stride];          // row -1 is all zeros per spec
         var candidateBuf = new byte[5 * stride]; // 5 candidate filters per row
         var sums = new long[5];
 
-        // Reserve the IDAT length field (patched at the end) and write the type.
         long lengthFieldPos = ms.Position;
         Span<byte> placeholder = stackalloc byte[4];
         ms.Write(placeholder);
@@ -68,18 +184,18 @@ public static class PngWriter
         {
             for (int y = 0; y < height; y++)
             {
-                var current = rgba.Slice(y * stride, stride);
+                var current = samples.Slice(y * stride, stride);
 
                 // Compute all 5 filter candidates into separate slices of
                 // candidateBuf, score each, write out the smallest. Keeping
                 // 5 buffers (instead of redoing the chosen filter) avoids
                 // ~20% extra filtering work per row at the cost of 4×stride
                 // bytes of scratch per call, which is negligible.
-                FilterRow(current, prevRow, candidateBuf.AsSpan(0 * stride, stride), 0, Bpp);
-                FilterRow(current, prevRow, candidateBuf.AsSpan(1 * stride, stride), 1, Bpp);
-                FilterRow(current, prevRow, candidateBuf.AsSpan(2 * stride, stride), 2, Bpp);
-                FilterRow(current, prevRow, candidateBuf.AsSpan(3 * stride, stride), 3, Bpp);
-                FilterRow(current, prevRow, candidateBuf.AsSpan(4 * stride, stride), 4, Bpp);
+                FilterRow(current, prevRow, candidateBuf.AsSpan(0 * stride, stride), 0, bytesPerPixel);
+                FilterRow(current, prevRow, candidateBuf.AsSpan(1 * stride, stride), 1, bytesPerPixel);
+                FilterRow(current, prevRow, candidateBuf.AsSpan(2 * stride, stride), 2, bytesPerPixel);
+                FilterRow(current, prevRow, candidateBuf.AsSpan(3 * stride, stride), 3, bytesPerPixel);
+                FilterRow(current, prevRow, candidateBuf.AsSpan(4 * stride, stride), 4, bytesPerPixel);
                 sums[0] = SumAbsSigned(candidateBuf.AsSpan(0 * stride, stride));
                 sums[1] = SumAbsSigned(candidateBuf.AsSpan(1 * stride, stride));
                 sums[2] = SumAbsSigned(candidateBuf.AsSpan(2 * stride, stride));
@@ -103,7 +219,6 @@ public static class PngWriter
             }
         }
 
-        // Patch the IDAT length field now that the deflate stream is closed.
         long idatEnd = ms.Position;
         long idatDataLength = idatEnd - typeAndDataStart - 4; // -4 for "IDAT" type
         Span<byte> lenBuf = stackalloc byte[4];
@@ -112,26 +227,69 @@ public static class PngWriter
         ms.Write(lenBuf);
         ms.Position = idatEnd;
 
-        // CRC over [type + data] — read directly from ms's backing buffer; no
-        // intermediate copy.
         var crcSpan = ms.GetBuffer().AsSpan((int)typeAndDataStart, (int)(idatEnd - typeAndDataStart));
         Span<byte> crcBuf = stackalloc byte[4];
         WriteBE(crcBuf, Crc32(crcSpan, ReadOnlySpan<byte>.Empty));
         ms.Write(crcBuf);
-
-        // IEND: empty data.
-        WriteChunk(ms, "IEND"u8, ReadOnlySpan<byte>.Empty);
-        return ms.ToArray();
     }
 
     /// <summary>
-    /// Encode <paramref name="rgba"/> as a PNG and write it to
-    /// <paramref name="path"/>.
+    /// Emit an iCCP chunk for the given keyword + raw ICC profile bytes. The
+    /// profile is zlib-deflated inline (the PNG spec mandates compression
+    /// method 0 = zlib) and a single CRC32 is computed over [type + payload]
+    /// straight from the MemoryStream backing buffer to avoid an extra copy.
     /// </summary>
-    public static void Save(string path, ReadOnlySpan<byte> rgba, int width, int height)
+    private static void WriteIccpChunk(MemoryStream ms, ReadOnlySpan<byte> keyword, ReadOnlySpan<byte> rawProfile)
     {
-        var png = Encode(rgba, width, height);
-        File.WriteAllBytes(path, png);
+        // Reserve length, stream the payload, patch the length once we know it.
+        long lengthFieldPos = ms.Position;
+        Span<byte> placeholder = stackalloc byte[4];
+        ms.Write(placeholder);
+        long typeAndDataStart = ms.Position;
+        ms.Write("iCCP"u8);
+
+        ms.Write(keyword);
+        ms.WriteByte(0); // null separator between keyword and method
+        ms.WriteByte(0); // compression method = 0 (zlib/deflate)
+
+        using (var z = new ZLibStream(ms, CompressionLevel.Optimal, leaveOpen: true))
+            z.Write(rawProfile);
+
+        long end = ms.Position;
+        long dataLength = end - typeAndDataStart - 4; // -4 for "iCCP" type bytes
+        Span<byte> lenBuf = stackalloc byte[4];
+        WriteBE(lenBuf, (uint)dataLength);
+        ms.Position = lengthFieldPos;
+        ms.Write(lenBuf);
+        ms.Position = end;
+
+        // CRC over [type + payload] read directly from the underlying buffer.
+        var crcSpan = ms.GetBuffer().AsSpan((int)typeAndDataStart, (int)(end - typeAndDataStart));
+        Span<byte> crcBuf = stackalloc byte[4];
+        WriteBE(crcBuf, Crc32(crcSpan, ReadOnlySpan<byte>.Empty));
+        ms.Write(crcBuf);
+    }
+
+    /// <summary>
+    /// Reorder <paramref name="samples"/> from system-endian to PNG's required
+    /// big-endian byte order, returning a freshly-allocated buffer. On a
+    /// little-endian host this is a per-sample byte swap; on a (hypothetical)
+    /// big-endian host the bytes are already in network order and we just
+    /// reinterpret-cast the ushort span to bytes.
+    /// </summary>
+    private static byte[] ToBigEndianBytes(ReadOnlySpan<ushort> samples)
+    {
+        var bytes = new byte[samples.Length * 2];
+        if (BitConverter.IsLittleEndian)
+        {
+            for (var i = 0; i < samples.Length; i++)
+                BinaryPrimitives.WriteUInt16BigEndian(bytes.AsSpan(i * 2, 2), samples[i]);
+        }
+        else
+        {
+            MemoryMarshal.AsBytes(samples).CopyTo(bytes);
+        }
+        return bytes;
     }
 
     private static void WriteChunk(Stream output, ReadOnlySpan<byte> type, ReadOnlySpan<byte> data)
@@ -155,20 +313,6 @@ public static class PngWriter
         dst[1] = (byte)(value >> 16);
         dst[2] = (byte)(value >> 8);
         dst[3] = (byte)value;
-    }
-
-    private static byte[] DeflateZlib(ReadOnlySpan<byte> raw)
-    {
-        // ZLibStream wraps deflate with a 2-byte header + 4-byte Adler32
-        // trailer, which is exactly what the PNG IDAT spec asks for. Use
-        // Optimal — the encoding cost is dwarfed by the file-size win on
-        // anything bigger than a postage stamp.
-        using var ms = new MemoryStream();
-        using (var z = new ZLibStream(ms, CompressionLevel.Optimal, leaveOpen: true))
-        {
-            z.Write(raw);
-        }
-        return ms.ToArray();
     }
 
     /// <summary>

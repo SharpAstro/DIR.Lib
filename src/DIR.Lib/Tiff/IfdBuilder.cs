@@ -1,4 +1,4 @@
-using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace DIR.Lib.Tiff;
@@ -13,23 +13,27 @@ internal sealed class IfdBuilder
 
     public void SetShort(ushort tag, ushort value)
     {
+        // Host byte order: TiffWriter emits an "II" header on LE hosts and
+        // "MM" on BE hosts so multi-byte tag values can be written verbatim
+        // without a swap. MemoryMarshal.Write stores the raw memory bytes
+        // in native order.
         var bytes = new byte[2];
-        BinaryPrimitives.WriteUInt16LittleEndian(bytes, value);
+        MemoryMarshal.Write(bytes.AsSpan(), in value);
         _entries[tag] = (TiffFieldType.Short, 1, bytes);
     }
 
     public void SetLong(ushort tag, uint value)
     {
         var bytes = new byte[4];
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes, value);
+        MemoryMarshal.Write(bytes.AsSpan(), in value);
         _entries[tag] = (TiffFieldType.Long, 1, bytes);
     }
 
     public void SetRational(ushort tag, uint numerator, uint denominator)
     {
         var bytes = new byte[8];
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0), numerator);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), denominator);
+        MemoryMarshal.Write(bytes.AsSpan(0, 4), in numerator);
+        MemoryMarshal.Write(bytes.AsSpan(4, 4), in denominator);
         _entries[tag] = (TiffFieldType.Rational, 1, bytes);
     }
 
@@ -43,18 +47,28 @@ internal sealed class IfdBuilder
 
     public void SetShortArray(ushort tag, ushort[] values)
     {
-        var bytes = new byte[values.Length * 2];
-        for (var i = 0; i < values.Length; i++)
-            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(i * 2), values[i]);
+        // Cast the typed array straight to bytes — its in-memory layout is
+        // already the host byte order, which is what the file expects.
+        var src = MemoryMarshal.AsBytes(values.AsSpan());
+        var bytes = new byte[src.Length];
+        src.CopyTo(bytes);
         _entries[tag] = (TiffFieldType.Short, (uint)values.Length, bytes);
     }
 
     public void SetLongArray(ushort tag, uint[] values)
     {
-        var bytes = new byte[values.Length * 4];
-        for (var i = 0; i < values.Length; i++)
-            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(i * 4), values[i]);
+        var src = MemoryMarshal.AsBytes(values.AsSpan());
+        var bytes = new byte[src.Length];
+        src.CopyTo(bytes);
         _entries[tag] = (TiffFieldType.Long, (uint)values.Length, bytes);
+    }
+
+    public void SetFloatArray(ushort tag, float[] values)
+    {
+        var src = MemoryMarshal.AsBytes(values.AsSpan());
+        var bytes = new byte[src.Length];
+        src.CopyTo(bytes);
+        _entries[tag] = (TiffFieldType.Float, (uint)values.Length, bytes);
     }
 
     public void SetUndefined(ushort tag, byte[] data)
@@ -85,9 +99,10 @@ internal sealed class IfdBuilder
 
         foreach (var (tag, (type, count, valueBytes)) in _entries)
         {
-            BinaryPrimitives.WriteUInt16LittleEndian(entryBytes.AsSpan(0), tag);
-            BinaryPrimitives.WriteUInt16LittleEndian(entryBytes.AsSpan(2), (ushort)type);
-            BinaryPrimitives.WriteUInt32LittleEndian(entryBytes.AsSpan(4), count);
+            var typeShort = (ushort)type;
+            MemoryMarshal.Write(entryBytes.AsSpan(0, 2), in tag);
+            MemoryMarshal.Write(entryBytes.AsSpan(2, 2), in typeShort);
+            MemoryMarshal.Write(entryBytes.AsSpan(4, 4), in count);
 
             if (valueBytes.Length <= 4)
             {
@@ -98,7 +113,7 @@ internal sealed class IfdBuilder
             else
             {
                 // Overflow: write offset to data area
-                BinaryPrimitives.WriteUInt32LittleEndian(entryBytes.AsSpan(8), overflowOffset);
+                MemoryMarshal.Write(entryBytes.AsSpan(8, 4), in overflowOffset);
                 overflowOffset += (uint)valueBytes.Length;
                 overflowData.Add(valueBytes);
             }

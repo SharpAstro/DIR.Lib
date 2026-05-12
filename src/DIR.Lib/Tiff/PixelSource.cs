@@ -1,10 +1,10 @@
-using System.IO.Compression;
-
 namespace DIR.Lib.Tiff;
 
 /// <summary>
 /// Image source from raw pixel data. Supports both strip and tiled layouts.
-/// Compresses segments on-demand using Deflate or passes them uncompressed.
+/// Returns raw (uncompressed) segment bytes; <see cref="TiffWriter"/> is responsible for
+/// any compression based on <see cref="TiffPageOptions.Compression"/> — having
+/// <see cref="PixelSource"/> also compress here would double-compress the data.
 /// </summary>
 public sealed class PixelSource : IImageSource
 {
@@ -58,40 +58,19 @@ public sealed class PixelSource : IImageSource
         if ((uint)index >= (uint)SegmentCount)
             throw new ArgumentOutOfRangeException(nameof(index));
 
-        ReadOnlySpan<byte> segmentBytes;
-
         if (_layout == TiffLayout.Tiled)
         {
             var tilesX = (Width + _segmentWidth - 1) / _segmentWidth;
             var tileX = index % tilesX;
             var tileY = index / tilesX;
-            segmentBytes = ExtractTile(tileX, tileY);
-        }
-        else
-        {
-            var startRow = index * _rowsPerSegment;
-            var rows = Math.Min(_rowsPerSegment, Height - startRow);
-            var offset = startRow * _bytesPerRow;
-            var length = rows * _bytesPerRow;
-            segmentBytes = _pixels.Span.Slice(offset, length);
+            return ValueTask.FromResult<ReadOnlyMemory<byte>>(ExtractTile(tileX, tileY));
         }
 
-        byte[] result = Compression switch
-        {
-            TiffCompression.Deflate or TiffCompression.ZlibPkzip =>
-                DeflateZlib(segmentBytes),
-            _ => segmentBytes.ToArray(),
-        };
-
-        return ValueTask.FromResult<ReadOnlyMemory<byte>>(result);
-    }
-
-    private static byte[] DeflateZlib(ReadOnlySpan<byte> data)
-    {
-        using var ms = new MemoryStream();
-        using (var z = new ZLibStream(ms, CompressionLevel.Optimal, leaveOpen: true))
-            z.Write(data);
-        return ms.ToArray();
+        var startRow = index * _rowsPerSegment;
+        var rows = Math.Min(_rowsPerSegment, Height - startRow);
+        var offset = startRow * _bytesPerRow;
+        var length = rows * _bytesPerRow;
+        return ValueTask.FromResult<ReadOnlyMemory<byte>>(_pixels.Slice(offset, length));
     }
 
     private byte[] ExtractTile(int tileX, int tileY)

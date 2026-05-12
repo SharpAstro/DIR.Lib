@@ -100,6 +100,12 @@ public sealed class TiffWriter : IAsyncDisposable
         Array.Fill(bps, (ushort)options.BitsPerSample);
         ifd.SetShortArray(TiffTag.BitsPerSample, bps);
 
+        // SampleFormat (tag 339): one value per sample. Always emitted so float32 pixels
+        // aren't misread as uint by readers that honour the tag (Magick.NET, libtiff, PIL).
+        var sampleFormats = new ushort[options.SamplesPerPixel];
+        Array.Fill(sampleFormats, (ushort)options.SampleFormat);
+        ifd.SetShortArray(TiffTag.SampleFormat, sampleFormats);
+
         ifd.SetRational(TiffTag.XResolution, (uint)Math.Round(options.DpiX), 1);
         ifd.SetRational(TiffTag.YResolution, (uint)Math.Round(options.DpiY), 1);
         ifd.SetShort(TiffTag.ResolutionUnit, (ushort)TiffResolutionUnit.Inch);
@@ -117,6 +123,19 @@ public sealed class TiffWriter : IAsyncDisposable
             ifd.SetLong(TiffTag.RowsPerStrip, (uint)rowsPerStrip);
             ifd.SetLongArray(TiffTag.StripOffsets, offsets);
             ifd.SetLongArray(TiffTag.StripByteCounts, byteCounts);
+        }
+
+        if (options.SMinSampleValue is { } smin)
+        {
+            var values = new float[options.SamplesPerPixel];
+            Array.Fill(values, smin);
+            ifd.SetFloatArray(TiffTag.SMinSampleValue, values);
+        }
+        if (options.SMaxSampleValue is { } smax)
+        {
+            var values = new float[options.SamplesPerPixel];
+            Array.Fill(values, smax);
+            ifd.SetFloatArray(TiffTag.SMaxSampleValue, values);
         }
 
         if (options.ExtraSamples.HasValue)
@@ -204,8 +223,14 @@ public sealed class TiffWriter : IAsyncDisposable
         if (_headerWritten) return;
         _headerWritten = true;
 
-        // TIFF header: byte order (II = little-endian) + magic 42 + offset to first IFD (patched later)
-        byte[] header = [0x49, 0x49, 0x2A, 0x00, 0x00, 0x00, 0x00, 0x00];
+        // TIFF header: byte order tag (II=LE / MM=BE) + magic 42 + offset to
+        // first IFD (patched later). We always declare the file's byte order
+        // to match the host so multi-byte tag values can be written verbatim
+        // from native memory — no swap step on the write path, just a verbatim
+        // copy. TiffReader will honour whichever order it sees in the header.
+        var orderByte = (byte)(BitConverter.IsLittleEndian ? 'I' : 'M');
+        var magicBytes = BitConverter.GetBytes((ushort)42); // host byte order
+        byte[] header = [orderByte, orderByte, magicBytes[0], magicBytes[1], 0x00, 0x00, 0x00, 0x00];
         await _target.WriteAsync(header, ct).ConfigureAwait(false);
     }
 

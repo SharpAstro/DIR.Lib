@@ -28,6 +28,15 @@
     <None Include="../../README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 
+  <!--
+    Bundled sRGB v4 ICC profile (588 bytes, LittleCMS-generated, public-domain).
+    Embedded so callers of TiffWriter / PngWriter can tag their output as sRGB
+    without supplying their own bytes. See Color/IccProfiles.cs.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Color\sRGB-v4.icc" LogicalName="DIR.Lib.Color.sRGB-v4.icc" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>

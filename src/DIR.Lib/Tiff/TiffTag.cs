@@ -24,5 +24,8 @@ internal static class TiffTag
     public const ushort TileOffsets       = 324;
     public const ushort TileByteCounts    = 325;
     public const ushort ExtraSamples      = 338;
+    public const ushort SampleFormat      = 339;
+    public const ushort SMinSampleValue   = 340;
+    public const ushort SMaxSampleValue   = 341;
     public const ushort IccProfile        = 34675;
 }
