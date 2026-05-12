@@ -117,6 +117,38 @@ public class DrawingPrimitiveBenchmarks
         }
     }
 
+    // --- DrawPolyline: same 200-segment curve via wrapper ---
+    // Should be ~equal to DrawSolidCurve_200Segments (default impl loops DrawLine).
+    // Difference measures the polyline wrapper overhead (a pair-iteration loop).
+
+    [Benchmark(Description = "DrawPolyline 200 segments")]
+    public void DrawPolyline_200Segments()
+        => _renderer.DrawPolyline(_splinePoints, White);
+
+    [Benchmark(Description = "DrawPolyline 200 segments thick=2")]
+    public void DrawPolyline_200Segments_Thick()
+        => _renderer.DrawPolyline(_splinePoints, White, thickness: 2);
+
+    // --- DrawLineDashed: dash overhead ---
+
+    [Benchmark(Description = "DrawLineDashed horizontal 1000px dash=10,gap=10")]
+    public void DrawLineDashed_Horizontal_1000()
+        => _renderer.DrawLineDashed(100, 500, 1100, 500, White, dashLength: 10f, gapLength: 10f);
+
+    [Benchmark(Description = "DrawLineDashed horizontal 1000px dash=3,gap=3")]
+    public void DrawLineDashed_Horizontal_1000_Tight()
+        => _renderer.DrawLineDashed(100, 500, 1100, 500, White, dashLength: 3f, gapLength: 3f);
+
+    [Benchmark(Description = "DrawLineDashed diagonal 1000px dash=10,gap=10")]
+    public void DrawLineDashed_Diagonal_1000()
+        => _renderer.DrawLineDashed(100, 100, 807, 807, White, dashLength: 10f, gapLength: 10f);
+
+    // --- DrawPolylineDashed: the MetricSampleMap / planner chart case ---
+
+    [Benchmark(Description = "DrawPolylineDashed 200 segments dash=6,gap=3")]
+    public void DrawPolylineDashed_200Segments()
+        => _renderer.DrawPolylineDashed(_splinePoints, White, dashLength: 6f, gapLength: 3f);
+
     // --- Alpha blend ---
 
     private static readonly RGBAColor32 SemiWhite = new(0xFF, 0xFF, 0xFF, 0x80);

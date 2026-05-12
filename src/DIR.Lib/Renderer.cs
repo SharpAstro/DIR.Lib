@@ -300,6 +300,77 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
             }
         }
     }
+    /// <summary>
+    /// Draws a dashed line between two points. <paramref name="dashLength"/>
+    /// is the on-stroke run, <paramref name="gapLength"/> the off-stroke gap,
+    /// both measured along the segment in pixels. Equivalent to SVG
+    /// <c>stroke-dasharray="dashLength gapLength"</c> with the pattern reset
+    /// at the start of each call (no phase continuity across segments).
+    /// Either length being &lt;= 0 degrades to a solid <see cref="DrawLine"/>.
+    /// GPU renderers should override with a fragment-shader implementation;
+    /// this default emits one <see cref="DrawLine"/> per visible dash.
+    /// </summary>
+    public virtual void DrawLineDashed(float x0, float y0, float x1, float y1,
+        RGBAColor32 color, float dashLength, float gapLength, int thickness = 1)
+    {
+        if (dashLength <= 0f || gapLength <= 0f)
+        {
+            DrawLine(x0, y0, x1, y1, color, thickness);
+            return;
+        }
+
+        var dx = x1 - x0;
+        var dy = y1 - y0;
+        var len = MathF.Sqrt(dx * dx + dy * dy);
+        if (len <= 0f) return;
+
+        var ux = dx / len;
+        var uy = dy / len;
+        var period = dashLength + gapLength;
+        var t = 0f;
+        while (t < len)
+        {
+            var dashEnd = MathF.Min(t + dashLength, len);
+            DrawLine(x0 + ux * t, y0 + uy * t, x0 + ux * dashEnd, y0 + uy * dashEnd, color, thickness);
+            t += period;
+        }
+    }
+
+    /// <summary>
+    /// Draws a connected sequence of line segments through <paramref name="points"/>.
+    /// Equivalent to calling <see cref="DrawLine"/> for each consecutive pair.
+    /// No special join handling — for thick strokes corners can show small gaps;
+    /// callers needing rounded joins can stamp a small <see cref="FillEllipse"/>
+    /// at each interior vertex. GPU renderers should override with a batched
+    /// rotated-quad implementation.
+    /// </summary>
+    public virtual void DrawPolyline(ReadOnlySpan<(float X, float Y)> points,
+        RGBAColor32 color, int thickness = 1)
+    {
+        if (points.Length < 2) return;
+        for (var i = 1; i < points.Length; i++)
+        {
+            DrawLine(points[i - 1].X, points[i - 1].Y, points[i].X, points[i].Y, color, thickness);
+        }
+    }
+
+    /// <summary>
+    /// Dashed variant of <see cref="DrawPolyline"/>. Each segment is dashed
+    /// independently (no phase continuity across vertices) — sufficient for
+    /// charts/axes/grid lines that match ImageMagick's <c>StrokeDashArray</c>
+    /// behaviour. See <see cref="DrawLineDashed"/> for the dash/gap semantics.
+    /// </summary>
+    public virtual void DrawPolylineDashed(ReadOnlySpan<(float X, float Y)> points,
+        RGBAColor32 color, float dashLength, float gapLength, int thickness = 1)
+    {
+        if (points.Length < 2) return;
+        for (var i = 1; i < points.Length; i++)
+        {
+            DrawLineDashed(points[i - 1].X, points[i - 1].Y, points[i].X, points[i].Y,
+                color, dashLength, gapLength, thickness);
+        }
+    }
+
     public abstract void DrawText(ReadOnlySpan<char> text, string fontFamily, float fontSize, RGBAColor32 fontColor, in RectInt layout,
         TextAlign horizAlignment = TextAlign.Center, TextAlign vertAlignment = TextAlign.Near);
 
