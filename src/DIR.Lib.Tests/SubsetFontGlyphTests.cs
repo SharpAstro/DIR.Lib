@@ -13,7 +13,9 @@ public class SubsetFontGlyphTests
     // Subset font from Revit PDF: XXTIIT+Arial
     // CharCode 1='w', 2='.', 3='a', 4='u', 5='t', 6='o', 7='d', 8='e'
     // (from ToUnicode CMap — the PDF's content stream uses these charCodes)
-    private static readonly string FontPath = Path.Combine("Fonts", "XXTIIT_Arial_subset.ttf");
+    // Resolved vs AppContext.BaseDirectory so the test isn't fragile to whatever
+    // current-working-directory the test runner happens to use.
+    private static readonly string FontPath = Path.Combine(AppContext.BaseDirectory, "Fonts", "XXTIIT_Arial_subset.ttf");
 
     private static readonly (uint charCode, char expected)[] KnownGlyphs =
     [
