@@ -13,12 +13,10 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
     <PackageVersion Include="SharpAstro.Fonts" Version="1.2.181" />
     <PackageVersion Include="SharpAstro.FreeTypeBindings" Version="3.2.14" />
-    <!-- Codec packages extracted from DIR.Lib in 3.0.0 — versions track the
-         StbImage repo cadence (2.30.x), bumped by its CI on each push. -->
-    <PackageVersion Include="SharpAstro.Tiff" Version="2.30.*" />
-    <PackageVersion Include="SharpAstro.Exif" Version="2.30.*" />
-    <PackageVersion Include="SharpAstro.Png" Version="2.30.*" />
-    <PackageVersion Include="SharpAstro.Color.Icc" Version="2.30.*" />
+    <!-- DIR.Lib 4.0 dropped its codec dependencies; the test project still
+         renders artifacts as PNG for visual baselines, so SharpAstro.Png
+         stays here for the test-only reference. -->
+    <PackageVersion Include="SharpAstro.Png" Version="3.0.*" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />

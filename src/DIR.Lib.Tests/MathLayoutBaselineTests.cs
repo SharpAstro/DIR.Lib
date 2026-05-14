@@ -110,7 +110,9 @@ public sealed class MathLayoutBaselineTests
     public void Baseline(string font, string scene)
     {
         var (box, style) = BuildScene(scene, Fonts[font]);
-        var (rgba, w, h) = BoxRasterizer.RenderToRgba(box, style);
+        var image = BoxRasterizer.RenderToRgba(box, style);
+        var w = image.Width;
+        var h = image.Height;
 
         Assert.True(w > 0 && h > 0, "box rasterized to empty buffer");
 
@@ -121,7 +123,7 @@ public sealed class MathLayoutBaselineTests
         // transparent buffer from BoxRasterizer directly — this grid is a
         // golden-image-only concern. Grid spacing scales with the baseline
         // font size so squares stay at ~1/3 em (visually consistent).
-        rgba = ComposeOnGridPaper(rgba, w, h, gridSpacing: (int)(BaselineFontSize / 3f));
+        var rgba = ComposeOnGridPaper(image.Pixels, w, h, gridSpacing: (int)(BaselineFontSize / 3f));
 
         var baselinePath = Path.Combine(BaselineDir(font), scene + ".png");
         var sourceBaselinePath = Path.Combine(SourceBaselineDir(font), scene + ".png");

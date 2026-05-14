@@ -15,6 +15,10 @@
     <PackageReference Include="xunit.v3" />
     <!-- Test-only: used by hinting comparison probes against FT2 ground truth. -->
     <PackageReference Include="SharpAstro.FreeTypeBindings" />
+    <!-- DIR.Lib 4.0 no longer pulls SharpAstro.Png transitively (codec divorce);
+         the baseline / stretchy / render-acceptance tests still emit PNGs for
+         visual artifacts and decoded baseline comparison, so declare it directly. -->
+    <PackageReference Include="SharpAstro.Png" />
   </ItemGroup>
 
   <ItemGroup>

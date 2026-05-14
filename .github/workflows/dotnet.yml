@@ -7,8 +7,11 @@ on:
     branches: [ main ]
 
 env:
-  # Major-version bump 3.0 - codec layer extracted to SharpAstro.* sibling packages.
-  VERSION_PREFIX: 3.0.${{ github.run_number }}
+  # Major-version bump 4.0 - codec divorce: DIR.Lib no longer pulls SharpAstro.Tiff /
+  # .Exif / .Png / .Color.Icc transitively. BoxRasterizer.RenderToRgba returns an
+  # RgbaImage; the (byte[], int, int) tuple form + RenderToPng helper are gone.
+  # Consumers that need PNG/TIFF/JPEG encode the RgbaImage themselves.
+  VERSION_PREFIX: 4.0.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

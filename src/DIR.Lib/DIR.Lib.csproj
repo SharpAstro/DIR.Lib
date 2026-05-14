@@ -8,8 +8,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsAotCompatible>true</IsAotCompatible>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <VersionPrefix>3.0.0</VersionPrefix>
-    <AssemblyVersion>3.0.0.0</AssemblyVersion>
+    <VersionPrefix>4.0.0</VersionPrefix>
+    <AssemblyVersion>4.0.0.0</AssemblyVersion>
     <PackageID>DIR.Lib</PackageID>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -49,27 +49,14 @@
   </ItemGroup>
 
   <!--
-    Codec / metadata packages were extracted to the StbImage sibling repo
-    (SharpAstro.Tiff, SharpAstro.Exif, SharpAstro.Png, SharpAstro.Color.Icc)
-    so DIR.Lib focuses on its actual purpose — device-independent image
-    processing and math. Sibling working copies preferred for inner-loop
-    iteration; CI / external consumers fall through to PackageReference.
+    DIR.Lib is codec-agnostic. The 4.0 release dropped its phantom dependencies
+    on SharpAstro.Tiff / .Exif / .Color.Icc — those were leftover declarations
+    from the Phase 1 codec extraction (commit 7190245 in the StbImageSharp repo)
+    that never had matching `using` directives in DIR.Lib source. RenderToRgba
+    returns an RgbaImage and callers (Console.Lib, tianwen, etc.) own the
+    choice of encoder. Consumers that need TIFF / Png / JPEG / ICC declare
+    those packages directly themselves.
   -->
-  <PropertyGroup>
-    <UseLocalSharpAstroCodecs Condition="'$(UseLocalSharpAstroCodecs)' == '' AND Exists('..\..\..\StbImageSharp\src\SharpAstro.Tiff\SharpAstro.Tiff.csproj')">true</UseLocalSharpAstroCodecs>
-  </PropertyGroup>
-  <ItemGroup Condition="'$(UseLocalSharpAstroCodecs)' == 'true'">
-    <ProjectReference Include="..\..\..\StbImageSharp\src\SharpAstro.Tiff\SharpAstro.Tiff.csproj" />
-    <ProjectReference Include="..\..\..\StbImageSharp\src\SharpAstro.Exif\SharpAstro.Exif.csproj" />
-    <ProjectReference Include="..\..\..\StbImageSharp\src\SharpAstro.Png\SharpAstro.Png.csproj" />
-    <ProjectReference Include="..\..\..\StbImageSharp\src\SharpAstro.Color.Icc\SharpAstro.Color.Icc.csproj" />
-  </ItemGroup>
-  <ItemGroup Condition="'$(UseLocalSharpAstroCodecs)' != 'true'">
-    <PackageReference Include="SharpAstro.Tiff" />
-    <PackageReference Include="SharpAstro.Exif" />
-    <PackageReference Include="SharpAstro.Png" />
-    <PackageReference Include="SharpAstro.Color.Icc" />
-  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.SourceLink.GitHub">
