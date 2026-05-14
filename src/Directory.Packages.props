@@ -13,7 +13,6 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
     <!-- Tracks Fonts.Lib repo CI cadence (1.3.x line carries SharpAstro.StbImage 3.0.*). -->
     <PackageVersion Include="SharpAstro.Fonts" Version="1.3.*" />
-    <PackageVersion Include="SharpAstro.FreeTypeBindings" Version="3.2.14" />
     <!-- DIR.Lib 4.0 dropped its codec dependencies; the test project still
          renders artifacts as PNG for visual baselines, so SharpAstro.Png
          stays here for the test-only reference. -->
