@@ -11,8 +11,10 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.3.0" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.201" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
-    <!-- Tracks Fonts.Lib repo CI cadence (1.3.x line carries SharpAstro.StbImage 3.0.*). -->
-    <PackageVersion Include="SharpAstro.Fonts" Version="1.3.*" />
+    <!-- Tracks Fonts.Lib repo CI cadence. 1.4.x adds optional 'cmap' table support,
+         which lets ManagedFontRasterizer load PDF Identity-H subset fonts whose
+         cmap is stripped (CID==GID; Unicode via the PDF's /ToUnicode CMap). -->
+    <PackageVersion Include="SharpAstro.Fonts" Version="1.4.*" />
     <!-- DIR.Lib 4.0 dropped its codec dependencies; the test project still
          renders artifacts as PNG for visual baselines, so SharpAstro.Png
          stays here for the test-only reference. -->
