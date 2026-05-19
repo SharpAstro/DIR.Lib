@@ -27,6 +27,9 @@
          public facade (MarkdownAst.Parse / MarkdownAst.RenderMathUnicode)
          is a follow-up. -->
     <InternalsVisibleTo Include="Console.Lib" />
+    <!-- LatexConsole example demonstrates pixel-rendered math in isolation
+         and reaches BoxBuildingVisitor directly (now in DIR.Lib.Markdown). -->
+    <InternalsVisibleTo Include="Examples.LatexConsole" />
   </ItemGroup>
 
   <ItemGroup>
