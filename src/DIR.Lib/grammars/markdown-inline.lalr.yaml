@@ -1,0 +1,239 @@
+# Markdown inline grammar — Phase A + B + B-extension.
+#
+# Recognises text and the full inline-construct surface:
+#
+#   $math$            inline dollar math
+#   $$math$$          display dollar math (in inline position)
+#   \(math\)          inline LaTeX-paren math
+#   \[math\]          display LaTeX-bracket math (inline position)
+#   \boxed{math}      math-benchmark final-answer wrapper, balanced braces
+#   `code`            inline code (single-backtick fence — multi-tick is
+#                     deferred to a follow-up; the variable-length close
+#                     needs visitor-side pairing similar to emphasis)
+#   \X                CommonMark escape — backslash + non-letter; visitor
+#                     strips the backslash so `\*` renders as literal `*`
+#   *italic*          emphasis (italic / bold; the visitor's pairing pass
+#   **bold**            collapses adjacent markers and rewrites unmatched
+#                       ones back to literal text)
+#   [text](url)       link
+#   [text]{color}     color inline (Console.Lib extension)
+#   `space-space\n`   hard line break (two-plus trailing spaces then \n)
+#   `\\\n`            hard line break (CommonMark trailing-backslash form)
+#   `\n`              soft line break (newline within a paragraph;
+#                       renderer treats as a space)
+#
+# Each math + code form lives in its own pushed lexer state so body
+# bytes can carry backslashes and other special chars without the
+# root tokeniser intercepting them. Bracket forms use compound
+# `](` and `]{` tokens so `[..]` in plain text (no link/color tail)
+# stays literal rather than always demanding a tail.
+#
+# Sub-parser pattern: the visitor's math actions invoke
+# Latex.BuildParser(...).ParseInput(BytesLexer.FromString(body, MathLexerTable))
+# on the captured body string and store the resulting builder /
+# Unicode-rendered string on MdMathInline. The two grammars stay as
+# disjoint Parser instances; symbol-ID spaces don't collide because
+# the LaTeX parser uses its own grammar table.
+
+symbols:
+  - S                   # 0  start
+  - Spans               # 1  list of inline spans
+  - Span                # 2  one span
+  - LatexBody           # 3  body of \(..\) or \[..\] — list of latex_frag tokens
+  - BoxedBody           # 4  body of \boxed{..} — frags interleaved with nested {..}
+  - BoxedItem           # 5  one item in BoxedBody (frag or nested brace group)
+  - text                # 6  terminal: run of non-special bytes
+  - dollar              # 7  terminal: `$`
+  - mathbody            # 8  terminal: body of `$..$`
+  - dollar2             # 9  terminal: `$$`
+  - mathbody2           # 10 terminal: body of `$$..$$`
+  - latex_lparen        # 11 terminal: `\(` (math opener — distinct from
+                        #             text `(`)
+  - latex_rparen        # 12 terminal: `\)` (math closer)
+  - latex_lbracket      # 13 terminal: `\[` (math opener — distinct from
+                        #             text `[`)
+  - latex_rbracket      # 14 terminal: `\]` (math closer)
+  - lboxed              # 15 terminal: `\boxed{`
+  - boxed_lbrace        # 16 terminal: `{` inside math_boxed
+  - boxed_rbrace        # 17 terminal: `}` inside math_boxed
+  - latex_frag          # 18 terminal: body bytes for \(..\) / \[..\]
+  - backtick            # 19 terminal: `` ` ``
+  - codebody            # 20 terminal: body of `` `..` `` inline code span
+  - escape              # 21 terminal: `\X` where X is non-letter
+  - star                # 22 terminal: `*`
+  - star2               # 23 terminal: `**`
+  - star3               # 37 terminal: `***` — visitor produces an
+                        #             Emphasis(level=3) marker that
+                        #             renders as both bold and italic
+  - lbracket            # 24 terminal: `[` (link / color opener)
+  - rbracket            # 25 terminal: `]` (plain bracket close, NOT
+                        #             followed by `(` or `{`)
+  - link_tail_open      # 26 terminal: `](` (link tail compound — emitted
+                        #             instead of rbracket when followed
+                        #             by `(`, signalling a link)
+  - color_tail_open     # 27 terminal: `]{` (color tail compound)
+  - rparen              # 28 terminal: `)` (closes a link's url body)
+  - rbrace              # 29 terminal: `}` (closes a color inline)
+  - urlbody             # 30 terminal: bytes inside `(url)`
+  - colorbody           # 31 terminal: bytes inside `{color}`
+  - hard_break          # 32 terminal: two-plus trailing spaces + `\n`
+                        #             OR `\\\n` (CommonMark hard break)
+  - soft_break          # 33 terminal: lone `\n` between content runs
+  - backtick2           # 34 terminal: `` `` `` (2 backticks — fence for
+                        #             code spans whose body contains a
+                        #             single `)
+  - codebody2           # 35 terminal: body fragment of a 2-backtick span
+                        #             (multiple fragments because a single
+                        #             ` inside the body needs its own token)
+  - CodeBody2           # 36 list of codebody2 fragments — visitor concats
+
+productions:
+  - derivation: none
+    rules:
+      - { lhs: S, rhs: [Spans] }
+
+  - derivation: leftmost
+    rules:
+      - { lhs: Spans, rhs: [],            action: spansEmpty }
+      - { lhs: Spans, rhs: [Span, Spans], action: spansCons }
+
+  - derivation: none
+    rules:
+      - { lhs: Span, rhs: [text],                                            action: literalSpan }
+      - { lhs: Span, rhs: [dollar,  mathbody,  dollar],                      action: mathSpan }
+      - { lhs: Span, rhs: [dollar2, mathbody2, dollar2],                     action: mathDisplaySpan }
+      - { lhs: Span, rhs: [latex_lparen,   LatexBody, latex_rparen],         action: mathParenSpan }
+      - { lhs: Span, rhs: [latex_lbracket, LatexBody, latex_rbracket],       action: mathBracketSpan }
+      - { lhs: Span, rhs: [lboxed,         BoxedBody, boxed_rbrace],         action: mathBoxedSpan }
+      - { lhs: Span, rhs: [backtick,       codebody,  backtick],             action: codeSpan }
+      - { lhs: Span, rhs: [backtick2,      CodeBody2, backtick2],            action: codeSpan2 }
+      - { lhs: Span, rhs: [escape],                                          action: escapeSpan }
+      - { lhs: Span, rhs: [star],                                            action: starMarkerSpan }
+      - { lhs: Span, rhs: [star2],                                           action: star2MarkerSpan }
+      - { lhs: Span, rhs: [star3],                                           action: star3MarkerSpan }
+      - { lhs: Span, rhs: [hard_break],                                      action: hardBreakSpan }
+      - { lhs: Span, rhs: [soft_break],                                      action: softBreakSpan }
+      - { lhs: Span, rhs: [lbracket, Spans, rbracket],                                  action: plainBracketSpan }
+      - { lhs: Span, rhs: [lbracket, Spans, link_tail_open,  urlbody,   rparen],        action: linkSpan }
+      - { lhs: Span, rhs: [lbracket, Spans, color_tail_open, colorbody, rbrace],        action: colorSpan }
+
+  - derivation: leftmost
+    rules:
+      - { lhs: LatexBody, rhs: [],                       action: latexBodyEmpty }
+      - { lhs: LatexBody, rhs: [latex_frag, LatexBody],  action: latexBodyCons }
+
+  - derivation: leftmost
+    rules:
+      - { lhs: CodeBody2, rhs: [],                       action: codeBody2Empty }
+      - { lhs: CodeBody2, rhs: [codebody2, CodeBody2],   action: codeBody2Cons }
+
+  - derivation: leftmost
+    rules:
+      - { lhs: BoxedBody, rhs: [],                          action: boxedBodyEmpty }
+      - { lhs: BoxedBody, rhs: [BoxedItem, BoxedBody],      action: boxedBodyCons }
+
+  - derivation: none
+    rules:
+      - { lhs: BoxedItem, rhs: [latex_frag],                            action: boxedItemFrag }
+      - { lhs: BoxedItem, rhs: [boxed_lbrace, BoxedBody, boxed_rbrace], action: boxedItemGroup }
+
+lexer:
+  # `root` state — outside any math or code span. The order matters for
+  # tie-broken longest matches: `\boxed{` (7 bytes) beats `\(` / `\[`
+  # (2 bytes each) beats `\X` (2 bytes). Among the 2-byte rules,
+  # first-listed wins.
+  #
+  # Link/color tail compounds: `](` and `]{` are emitted as single
+  # tokens (2 bytes each) so the grammar can decide on the LR(1)
+  # lookahead whether the bracket span has a link, color, or no tail.
+  # A bare `]` (followed by anything other than `(` / `{`) tokenises
+  # as the lone `rbracket` rule.
+  root:
+    - { symbol: lboxed,           match: '\\boxed\{',  push: math_boxed }
+    - { symbol: dollar2,          match: '\$\$',       push: math_dollar2 }
+    - { symbol: dollar,           match: '\$',         push: math_dollar }
+    - { symbol: latex_lparen,     match: '\\\(',       push: math_paren }
+    - { symbol: latex_lbracket,   match: '\\\[',       push: math_bracket }
+    - { symbol: backtick2,        match: '``',         push: code_inline_2 }
+    - { symbol: backtick,         match: '`',          push: code_inline }
+    - { symbol: link_tail_open,   match: '\]\(',       push: url_body }
+    - { symbol: color_tail_open,  match: '\]\{',       push: color_body }
+    - { symbol: lbracket,         match: '\[' }
+    - { symbol: rbracket,         match: '\]' }
+    - { symbol: star3,            match: '\*\*\*' }
+    - { symbol: star2,            match: '\*\*' }
+    - { symbol: star,             match: '\*' }
+    # Hard line break: two-plus trailing spaces then newline, or `\\` at
+    # end of line. Soft break: any newline that isn't part of a hard
+    # break. The hard-break rule (longer) wins on a tie via first-listed.
+    - { symbol: hard_break,       match: '  +\r?\n' }
+    - { symbol: hard_break,       match: '\\\r?\n' }
+    - { symbol: soft_break,       match: '\r?\n' }
+    # Text + escape fallthrough. Text excludes the special opener bytes
+    # so the dedicated rules above always have first shot at their
+    # leading character; otherwise it matches everything else.
+    - { symbol: text,             match: '[^\\$`*\[\] \n\r]+' }
+    - { symbol: text,             match: ' +' }
+    - { symbol: escape,           match: '\\[^a-zA-Z]' }
+    - { symbol: text,             match: '\\[a-zA-Z]+' }
+
+  math_dollar:
+    - { symbol: dollar,   match: '\$',         pop: true }
+    - { symbol: mathbody, match: '[^$]+' }
+
+  math_dollar2:
+    - { symbol: dollar2,    match: '\$\$',     pop: true }
+    - { symbol: mathbody2,  match: '[^$]+' }
+
+  math_paren:
+    - { symbol: latex_rparen, match: '\\\)',   pop: true }
+    - { symbol: latex_frag,   match: '[^\\]+' }
+    - { symbol: latex_frag,   match: '\\[^a-zA-Z)]' }
+    - { symbol: latex_frag,   match: '\\[a-zA-Z]+' }
+
+  math_bracket:
+    - { symbol: latex_rbracket, match: '\\\]', pop: true }
+    - { symbol: latex_frag,     match: '[^\\]+' }
+    - { symbol: latex_frag,     match: '\\[^a-zA-Z\]]' }
+    - { symbol: latex_frag,     match: '\\[a-zA-Z]+' }
+
+  # math_boxed tracks brace nesting via the lexer's push/pop stack:
+  # every `{` re-pushes math_boxed, every `}` pops. The outermost
+  # `}` pops back to root; inner `}`s pop back to math_boxed and
+  # keep tokenising.
+  math_boxed:
+    - { symbol: boxed_lbrace, match: '\{',     push: math_boxed }
+    - { symbol: boxed_rbrace, match: '\}',     pop: true }
+    - { symbol: latex_frag,   match: '[^\\{}]+' }
+    - { symbol: latex_frag,   match: '\\[^a-zA-Z{}]' }
+    - { symbol: latex_frag,   match: '\\[a-zA-Z]+' }
+
+  code_inline:
+    - { symbol: backtick, match: '`',          pop: true }
+    - { symbol: codebody, match: '[^`]+' }
+
+  # code_inline_2 — body of a 2-backtick fence. Pops on `` `` `` only, so
+  # single backticks inside the body tokenise as part of the body. Two
+  # body patterns cover the alphabet: runs of non-backtick bytes, and
+  # a single backtick followed by one non-backtick byte (so a lone `
+  # in the body doesn't compete with the close rule on a tie).
+  code_inline_2:
+    - { symbol: backtick2, match: '``',        pop: true }
+    - { symbol: codebody2, match: '[^`]+' }
+    - { symbol: codebody2, match: '`[^`]' }
+
+  # url_body — captures `(url)` content after a link_tail_open `](`.
+  # The closing `)` pops back to root. URLs don't typically contain
+  # parens; if they do, those bytes terminate the link prematurely
+  # (matches Markdig's loose behaviour for this corner case).
+  url_body:
+    - { symbol: rparen,  match: '\)',          pop: true }
+    - { symbol: urlbody, match: '[^)]+' }
+
+  # color_body — captures `{color}` content after a color_tail_open
+  # `]{`. The closing `}` pops back to root. The colour value
+  # itself (named SGR, hex, etc.) is validated in the visitor via
+  # MarkdownTheme.TryParseColor.
+  color_body:
+    - { symbol: rbrace,    match: '\}',        pop: true }
+    - { symbol: colorbody, match: '[^}]+' }

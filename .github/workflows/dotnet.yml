@@ -11,7 +11,9 @@ env:
   # .Exif / .Png / .Color.Icc transitively. BoxRasterizer.RenderToRgba returns an
   # RgbaImage; the (byte[], int, int) tuple form + RenderToPng helper are gone.
   # Consumers that need PNG/TIFF/JPEG encode the RgbaImage themselves.
-  VERSION_PREFIX: 4.0.${{ github.run_number }}
+  # Minor bump 4.1 - markdown subsystem (grammars + AST + visitors + mhchem)
+  # moved here from Console.Lib so the parser layer is reusable beyond TUIs.
+  VERSION_PREFIX: 4.1.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

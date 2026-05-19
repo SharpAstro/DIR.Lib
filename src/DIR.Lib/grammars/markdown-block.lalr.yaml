@@ -1,0 +1,56 @@
+# Markdown block grammar — Phase C.
+#
+# Tokenises the input into a flat sequence of `Item`s where each Item
+# is either a line of content (`line_content newline`) or a blank
+# separator (lone `newline`). The visitor groups consecutive content
+# lines into blocks and emits the right MdBlock subtype based on the
+# first line's prefix. This split — grammar-as-tokeniser, visitor-as-
+# classifier — avoids the LR(1) reduce-reduce conflict that pure-
+# grammar block parsing produces (the parser can't disambiguate
+# "continue the current block's Lines" from "start a new block's
+# Lines" without a separator-vs-newline distinction at the lexer).
+#
+# Block-type detection in the visitor (per group of lines):
+#
+#   line starts with `#+ `      → MdHeading
+#   line equals `---+` / `***+` → MdThematicBreak
+#   line is `$$`                → MdMathBlock (opener; body collected
+#                                  from subsequent lines until matching
+#                                  `$$` on its own line)
+#   line is `\[`                → MdMathBlock (opener; body until `\]`)
+#   line starts with ``` ``` ``` → MdCodeFence (body until matching
+#                                  closer fence)
+#   line starts with `- ` /     → MdList (unordered) / MdList (ordered)
+#     `* ` / `+ ` / `N. `
+#   line contains `|`           → MdTable (basic pipe-table)
+#   otherwise                   → MdParagraph (the LALR.CC inline parser
+#                                  runs on the joined line content)
+
+symbols:
+  - S            # 0  start
+  - Document     # 1
+  - Items        # 2  list of items
+  - Item         # 3  one item (a line or a blank separator)
+  - line_content # 4  terminal: bytes of one line excluding the newline
+  - newline      # 5  terminal: `\n` or `\r\n`
+
+productions:
+  - derivation: none
+    rules:
+      - { lhs: S, rhs: [Document] }
+      - { lhs: Document, rhs: [Items] }
+
+  - derivation: leftmost
+    rules:
+      - { lhs: Items, rhs: [],            action: itemsEmpty }
+      - { lhs: Items, rhs: [Item, Items], action: itemsCons }
+
+  - derivation: none
+    rules:
+      - { lhs: Item, rhs: [line_content, newline],    action: lineItem }
+      - { lhs: Item, rhs: [newline],                  action: blankItem }
+
+lexer:
+  root:
+    - { symbol: line_content, match: '[^\n\r]+' }
+    - { symbol: newline,      match: '\r?\n' }
