@@ -136,6 +136,10 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
         // (rare: e.g. `{\approx}` standalone), where bare glyph is correct.
         ["pm"] = "±", ["mp"] = "∓",
         ["to"] = "→", ["leftarrow"] = "←", ["rightarrow"] = "→",
+        // Chemistry arrows. \rightleftharpoons (⇌) is the canonical
+        // equilibrium symbol; \leftrightarrow (↔) covers both resonance
+        // notation in chemistry and bidirectional implication elsewhere.
+        ["rightleftharpoons"] = "⇌", ["leftrightarrow"] = "↔",
         ["leq"] = "≤", ["geq"] = "≥", ["neq"] = "≠",
         ["approx"] = "≈", ["equiv"] = "≡",
         ["in"] = "∈", ["notin"] = "∉", ["subset"] = "⊂",
@@ -143,6 +147,21 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
         // math (\cdot and \times are also lexer-aliased to '*' but the model
         // may end up here too).
         ["div"] = "÷", ["cdot"] = "·",
+        // Sign atoms used by mhchem-emitted LaTeX. The math grammar treats
+        // bare + / - as binary operators, so they can't appear standalone
+        // inside a script group (e.g. `Cl^{-}` would fail to parse the `-`).
+        // Mhchem.ToLatex rewrites the signs in superscript/subscript content
+        // to \plus / \minus commands; these entries provide the rendered
+        // glyphs. ASCII + and HYPHEN-MINUS so the Unicode Superscripts table
+        // lookup that maps `+` → ⁺ / `-` → ⁻ continues to work.
+        ["plus"] = "+", ["minus"] = "-",
+        // Zero-width "null" atom — the chem-prefix counterpart on the
+        // Unicode path. \ce{^{238}U} expands to `\null^{238}U` so the
+        // sup attaches to a zero-width base in the math grammar; the
+        // visitor's Sup rule emits `{base}{sup}` which is `` + `²³⁸` +
+        // (juxt) `U` = `²³⁸U` — the same single-row layout Phase-1
+        // produced.
+        ["null"] = "",
         // Spacing macros — render as plain spaces so juxtaposed atoms don't
         // run together when the model used them as visual separators.
         ["quad"] = "  ", ["qquad"] = "    ",

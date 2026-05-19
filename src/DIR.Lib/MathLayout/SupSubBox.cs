@@ -15,6 +15,18 @@ public sealed class SupSubBox : Box
     private readonly Box _base;
     private readonly Box? _sup;
     private readonly Box? _sub;
+
+    /// <summary>Exposed so visitors can detect a half-filled SupSubBox
+    /// (sup-only or sub-only) and merge an outer script into the same
+    /// stack instead of cascading right. Without this, the LR(1)
+    /// leftmost reduction <c>P_a^b → SupSubBox(SupSubBox(P, sub=a), sup=b)</c>
+    /// renders <c>a</c> and <c>b</c> on a diagonal; the merge collapses
+    /// them onto the same baseline pair (TeX-style stacked scripts) which
+    /// is what chemistry isotopes (<c>^{14}_{6}C</c>) and stoichiometry
+    /// ions (<c>SO_{4}^{2-}</c>) actually want.</summary>
+    public Box Base => _base;
+    public Box? Sup  => _sup;
+    public Box? Sub  => _sub;
     private readonly float _supShift;
     private readonly float _subShift;
     private readonly float _scriptKern;

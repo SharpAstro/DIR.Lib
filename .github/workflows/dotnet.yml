@@ -13,7 +13,15 @@ env:
   # Consumers that need PNG/TIFF/JPEG encode the RgbaImage themselves.
   # Minor bump 4.1 - markdown subsystem (grammars + AST + visitors + mhchem)
   # moved here from Console.Lib so the parser layer is reusable beyond TUIs.
-  VERSION_PREFIX: 4.1.${{ github.run_number }}
+  # Minor bump 4.2 - mhchem Phase-2: \ce{...} bodies now emit LaTeX math source
+  # (Mhchem.Render → Mhchem.ToLatex) so chem flows through the same parser +
+  # visitor pipeline as ordinary math. Display chem picks up real sub/super
+  # box layout under BoxBuildingVisitor (Sixel / sextant / half-block) — the
+  # box renderer earns proper layout for free. Latex grammar gains
+  # \rightleftharpoons / \leftrightarrow as rel tokens; both visitors gain
+  # \plus / \minus sign atoms (mhchem rewrites postfix +/- in script bodies
+  # to these because the grammar treats bare +/- as binary operators).
+  VERSION_PREFIX: 4.2.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

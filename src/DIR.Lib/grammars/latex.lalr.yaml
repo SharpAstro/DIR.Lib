@@ -166,6 +166,12 @@ lexer:
     - { symbol: rel,     match: '\\notin' }
     - { symbol: rel,     match: '\\subset' }
     - { symbol: rel,     match: '\\to' }
+    # \leftrightarrow and \rightleftharpoons before \leftarrow / \rightarrow
+    # so longest-match wins (the shorter names are prefixes of the longer
+    # ones only at the lexer-name level; on input strings they're distinct,
+    # but listing the long forms first keeps the file scannable).
+    - { symbol: rel,     match: '\\leftrightarrow' }
+    - { symbol: rel,     match: '\\rightleftharpoons' }
     - { symbol: rel,     match: '\\leftarrow' }
     - { symbol: rel,     match: '\\rightarrow' }
     - { symbol: rel,     match: '\\pm' }

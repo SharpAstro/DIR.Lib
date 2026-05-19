@@ -4,50 +4,72 @@ using System.Text;
 namespace DIR.Lib.Markdown;
 
 /// <summary>
-/// Renders an mhchem <c>\ce{...}</c> body to single-line Unicode text. Covers
-/// the Phase-1 subset of mhchem syntax used by ordinary chemistry markup —
-/// element symbols, auto-subscript digits, isotope-prefix scripts, ion
-/// charges, reaction arrows, plus-separators, parenthesised state markers.
-/// Bonds, labelled arrows, electron arrows, charge stacking, the
-/// <c>$..$</c> escape hatch, and full math integration are deferred (see
-/// docs/MHCHEM.md for the full limitations list).
+/// Translates an mhchem <c>\ce{...}</c> body to LaTeX math-mode source so it
+/// flows through the same parser + visitor pipeline as ordinary math. That
+/// gives `\ce{H2O}` proper sub-baseline subscripts under
+/// <see cref="BoxBuildingVisitor"/> (Sixel / sextant / half-block rasters),
+/// while the Unicode path (<see cref="LatexUnicodeVisitor"/>) still produces
+/// the familiar `H₂O / Fe³⁺ / →` single-row output via the math grammar's
+/// script-to-Unicode mapping.
 ///
-/// Entry point: <see cref="Render"/>. Wired into the markdown pipeline by
-/// <see cref="MarkdownRenderer.ExpandLatexMacros"/>, so both inline
-/// (<c>\(\ce{H2O}\)</c>) and block (<c>$$\ce{H2O}$$</c>) math spans expand
-/// it before the LaTeX grammar runs.
+/// <para>Replaces the Phase-1 state machine that pre-baked the body to
+/// Unicode and stuffed it into a placeholder atom. All chem syntax now
+/// emits LaTeX math source so the entire body flows through the grammar +
+/// visitor pipeline and earns box layout under
+/// <see cref="BoxBuildingVisitor"/>. Prefix isotope scripts use the
+/// <c>\null</c> zero-width atom trick (<c>^{238}U</c> →
+/// <c>\null^{238}U</c>) to satisfy the grammar's left-operand requirement
+/// on <c>^</c>/<c>_</c>; the visitor's sub+sup merge collapses combined
+/// scripts (<c>\null^{14}_{6}C</c>) into a single stacked
+/// <see cref="DIR.Lib.MathLayout.SupSubBox"/> so they share a baseline pair
+/// like a proper chemistry isotope.</para>
+///
+/// <para>Limitations carried over:
+/// <list type="bullet">
+///   <item>Element symbols render math-italic in box mode (the grammar maps
+///   single letters to <c>id</c>; there's no <c>\mathrm</c> support in the
+///   visitor yet). Box-mode chem looks "math-style" — readable but not
+///   strictly chemistry-convention upright.</item>
+/// </list></para>
+///
+/// <para>Wired into the markdown pipeline by
+/// <see cref="MarkdownMacros.ExpandLatexMacros"/> and by Console.Lib's
+/// <c>TryRenderMathBox</c>; both inline (<c>\(\ce{H2O}\)</c>) and block
+/// (<c>$$\ce{H2O}$$</c>) math spans pick up the expansion.</para>
 /// </summary>
 public static class Mhchem
 {
     /// <summary>
-    /// Renders the body of a <c>\ce{...}</c> macro to a Unicode string.
-    /// Unknown / unsupported tokens pass through verbatim — the goal is
-    /// graceful degradation, not a hard error.
+    /// Translates a <c>\ce{...}</c> body to LaTeX math source. Unknown /
+    /// unsupported tokens fall through as plain text — the goal is graceful
+    /// degradation, not a hard error.
     /// </summary>
-    public static string Render(string body)
+    public static string ToLatex(string body)
     {
         if (string.IsNullOrEmpty(body)) return string.Empty;
 
-        var sb = new StringBuilder(body.Length);
+        var sb = new StringBuilder(body.Length * 2);
         int i = 0;
         // True at the very start, and after any token that begins a new
-        // "term": +, whitespace, an arrow, a paren. While true, a digit
-        // run is a plain coefficient (3H2 → 3H₂); while false, a digit
-        // run is treated as a trailing subscript on whatever just emitted
-        // (mostly element symbols, but also closing parens of state
-        // markers — handled by clearing the flag on '(' and ')').
+        // "term": +, whitespace, an arrow, a paren. While true, a digit run
+        // is a plain coefficient (3H2 → 3H_{2}); while false, a digit run
+        // is a trailing subscript on whatever just emitted (element symbols,
+        // or the closing paren of a state marker). Also gates `^`/`_`
+        // emission between prefix-script (Unicode best-effort, since the
+        // grammar can't do prefix scripts) and postfix-script (LaTeX, gets
+        // proper box layout downstream).
         bool atTermStart = true;
-        // True immediately after emitting an element symbol. Resets on
-        // anything that breaks the symbol→subscript adjacency (whitespace,
-        // operators, other symbols). Distinct from atTermStart because a
-        // symbol can be mid-term (e.g. the H in "2H2O" after the leading
-        // coefficient 2).
+        // True immediately after emitting an element symbol or closing
+        // paren. Resets on whitespace, operators, opening paren, etc.
+        // Distinct from atTermStart because a symbol can be mid-term (the
+        // `H` in `2H2O` after the leading coefficient `2`).
         bool justSawSymbol = false;
 
         while (i < body.Length)
         {
-            // Multi-char tokens first — longest match wins.
-            if (TryArrow(body, ref i, sb))
+            // Multi-char arrows first — longest match wins. `<=>` and `<->`
+            // are 3-char; `->` and `<-` are 2-char.
+            if (TryArrowLatex(body, ref i, sb))
             {
                 atTermStart = true;
                 justSawSymbol = false;
@@ -67,6 +89,9 @@ public static class Mhchem
 
             if (ch == '+')
             {
+                // Plus separator between reactants / products. The math
+                // grammar's `E -> E + T` rule handles the surrounding
+                // relation kerning for free.
                 sb.Append('+');
                 i++;
                 atTermStart = true;
@@ -78,11 +103,11 @@ public static class Mhchem
             {
                 sb.Append(ch);
                 i++;
-                // Inside an opening paren a new term begins (a leading
-                // digit there should be a coefficient, not a subscript on
-                // the paren itself). After a closing paren the
-                // parenthesised group acts like a single chemical unit —
-                // a following digit run subscripts it ((OH)₂, (NH₄)₂SO₄).
+                // Inside an opening paren a new term begins (a leading digit
+                // there is a coefficient, not a subscript on the paren).
+                // After a closing paren the parenthesised group acts like a
+                // single chemical unit — a following digit run subscripts it
+                // ((OH)_{2}, (NH_{4})_{2}SO_{4}).
                 atTermStart = (ch == '(');
                 justSawSymbol = (ch == ')');
                 continue;
@@ -90,12 +115,13 @@ public static class Mhchem
 
             if (IsAsciiDigit(ch))
             {
-                bool asSubscript = justSawSymbol;
-                while (i < body.Length && IsAsciiDigit(body[i]))
-                {
-                    sb.Append(asSubscript ? Subscripts.ToSubscript(body[i]) : body[i]);
-                    i++;
-                }
+                int start = i;
+                while (i < body.Length && IsAsciiDigit(body[i])) i++;
+                var digits = body.AsSpan(start, i - start);
+                if (justSawSymbol)
+                    sb.Append("_{").Append(digits).Append('}');
+                else
+                    sb.Append(digits);
                 atTermStart = false;
                 justSawSymbol = false;
                 continue;
@@ -105,7 +131,19 @@ public static class Mhchem
             {
                 i++;
                 var content = ReadScriptContent(body, ref i);
-                AppendScript(sb, content, super: true);
+                if (atTermStart)
+                {
+                    // Isotope-prefix superscript. The math grammar requires
+                    // a left operand for `^` (P → P op A), so prepend the
+                    // \null zero-width atom — Commands map renders it as
+                    // the empty string, GlyphBox("") has Width=Height=0,
+                    // and the visitor's sub+sup merge collapses any
+                    // following `_{M}` postfix into the same SupSubBox so
+                    // ^{14}_{6}C lands as stacked scripts to the LEFT of
+                    // the element symbol (chemistry convention).
+                    sb.Append(@"\null");
+                }
+                AppendLatexScript(sb, content, super: true);
                 atTermStart = false;
                 justSawSymbol = false;
                 continue;
@@ -115,7 +153,12 @@ public static class Mhchem
             {
                 i++;
                 var content = ReadScriptContent(body, ref i);
-                AppendScript(sb, content, super: false);
+                // Same \null trick for a prefix subscript on its own. In
+                // practice prefix _{M} alone is rare (isotopes pair it
+                // with a leading ^{N}, which sets atTermStart=false), but
+                // emitting \null_{M} keeps the source grammar-valid.
+                if (atTermStart) sb.Append(@"\null");
+                AppendLatexScript(sb, content, super: false);
                 atTermStart = false;
                 justSawSymbol = false;
                 continue;
@@ -128,12 +171,18 @@ public static class Mhchem
                 // the 1-letter form (still gated on element-set membership
                 // so stray uppercase letters in arbitrary prose don't get
                 // mistakenly tagged).
+                //
+                // 2-letter elements wrap in `{...}` so a trailing script
+                // attaches to the whole symbol via the grammar's group
+                // rule (A → '{' E '}'), not just to the second letter via
+                // its P → P op A reduction. `Fe_{2}` should subscript Fe,
+                // not just `e`; `{Fe}_{2}` parses that way.
                 if (i + 1 < body.Length && IsAsciiLetterLower(body[i + 1]))
                 {
                     var two = body.Substring(i, 2);
                     if (s_elements.Contains(two))
                     {
-                        sb.Append(two);
+                        sb.Append('{').Append(two).Append('}');
                         i += 2;
                         atTermStart = false;
                         justSawSymbol = true;
@@ -213,60 +262,51 @@ public static class Mhchem
     }
 
     /// <summary>
-    /// Maps each char in <paramref name="content"/> through the appropriate
-    /// Subscripts table. If every char maps cleanly, emits the Unicode
-    /// run; otherwise falls back to the literal LaTeX form so the original
-    /// source survives unmangled.
+    /// Emits a postfix LaTeX script (<c>^{...}</c> or <c>_{...}</c>) with
+    /// bare <c>+</c> / <c>-</c> rewritten to <c>\plus</c> / <c>\minus</c>
+    /// commands. The math grammar treats <c>+</c> / <c>-</c> as binary
+    /// operators, so a script body like <c>{3+}</c> won't parse (the trailing
+    /// <c>+</c> has no right operand). Rewriting to <c>\plus</c> /
+    /// <c>\minus</c> turns them into cmd atoms; the visitors translate the
+    /// commands to the appropriate glyph (and the Unicode Superscripts table
+    /// still maps the rendered glyph to U+207A / U+207B downstream).
     /// </summary>
-    private static void AppendScript(StringBuilder sb, string content, bool super)
+    private static void AppendLatexScript(StringBuilder sb, string content, bool super)
     {
         if (string.IsNullOrEmpty(content)) return;
-
-        // Optimistic single-pass: try to map every char; if anything
-        // doesn't map, abandon the buffer and emit verbatim instead.
-        var buf = new StringBuilder(content.Length);
-        foreach (var ch in content)
+        sb.Append(super ? "^{" : "_{");
+        foreach (var c in content)
         {
-            var mapped = super ? Subscripts.ToSuperscript(ch) : Subscripts.ToSubscript(ch);
-            if (mapped == ch && !IsScriptPassThrough(ch))
-            {
-                // Unmappable. Preserve the original macro shape so the
-                // caller can still see what the author wrote.
-                sb.Append(super ? "^{" : "_{").Append(content).Append('}');
-                return;
-            }
-            buf.Append(mapped);
+            if (c == '+') sb.Append(@"\plus");
+            else if (c == '-') sb.Append(@"\minus");
+            else sb.Append(c);
         }
-        sb.Append(buf);
+        sb.Append('}');
     }
-
-    /// <summary>
-    /// Chars that intentionally have no super/sub form but should still be
-    /// allowed inside a script run without aborting the Unicode emit —
-    /// currently empty (any non-mapped char triggers fallback). Kept as a
-    /// helper so the policy is easy to widen later (e.g. allow letters in
-    /// charge labels like <c>^{2+ aq}</c>).
-    /// </summary>
-    private static bool IsScriptPassThrough(char _) => false;
 
     /// <summary>
     /// Recognises the four reaction-arrow forms (<c>-&gt;</c>, <c>&lt;-</c>,
     /// <c>&lt;=&gt;</c>, <c>&lt;-&gt;</c>) at <paramref name="i"/>. Longest
-    /// match wins. On hit, emits the Unicode arrow, advances
-    /// <paramref name="i"/> past the match, and returns true.
+    /// match wins. Emits the LaTeX command name with a trailing space so
+    /// the lexer can break it cleanly from a following identifier
+    /// (<c>\to B</c> tokenises as rel + id; <c>\toB</c> would tokenise as
+    /// the cmd <c>\toB</c> via the <c>\\[a-zA-Z]+</c> longest-match rule).
+    /// No leading space — the previous emit's lexer-skipped whitespace
+    /// (source space, or the natural break between <c>\</c> and a letter)
+    /// suffices.
     /// </summary>
-    private static bool TryArrow(string s, ref int i, StringBuilder sb)
+    private static bool TryArrowLatex(string s, ref int i, StringBuilder sb)
     {
         int rem = s.Length - i;
         if (rem >= 3)
         {
-            if (s[i] == '<' && s[i + 1] == '=' && s[i + 2] == '>') { sb.Append('⇌'); i += 3; return true; } // ⇌
-            if (s[i] == '<' && s[i + 1] == '-' && s[i + 2] == '>') { sb.Append('↔'); i += 3; return true; } // ↔
+            if (s[i] == '<' && s[i + 1] == '=' && s[i + 2] == '>') { sb.Append(@"\rightleftharpoons "); i += 3; return true; } // ⇌
+            if (s[i] == '<' && s[i + 1] == '-' && s[i + 2] == '>') { sb.Append(@"\leftrightarrow "); i += 3; return true; } // ↔
         }
         if (rem >= 2)
         {
-            if (s[i] == '-' && s[i + 1] == '>') { sb.Append('→'); i += 2; return true; } // →
-            if (s[i] == '<' && s[i + 1] == '-') { sb.Append('←'); i += 2; return true; } // ←
+            if (s[i] == '-' && s[i + 1] == '>') { sb.Append(@"\to "); i += 2; return true; } // →
+            if (s[i] == '<' && s[i + 1] == '-') { sb.Append(@"\leftarrow "); i += 2; return true; } // ←
         }
         return false;
     }

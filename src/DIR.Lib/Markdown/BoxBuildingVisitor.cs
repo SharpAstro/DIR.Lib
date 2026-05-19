@@ -133,6 +133,14 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
             var smaller = style.Smaller();
             if (baseBox is BigOpScaffold scaffold && !scaffold.HasUpper)
                 return scaffold.WithUpper(supBuilder(smaller));
+            // Merge with a sub-only SupSubBox so combined sub+sup on the
+            // same base stack vertically rather than cascading to the
+            // right. The LR(1) grammar's leftmost reduction always emits
+            // X_a^b as `Sup(Subscript(X, a), b)` — a nested chain — so
+            // any TeX-style stacked-script formula (\ce{SO4^{2-}},
+            // chemistry isotopes via the \null trick) lands here.
+            if (baseBox is SupSubBox supSub && supSub.Sub is not null && supSub.Sup is null)
+                return new SupSubBox(supSub.Base, sup: supBuilder(smaller), sub: supSub.Sub, style);
             return new SupSubBox(baseBox, sup: supBuilder(smaller), sub: null, style);
         };
     }
@@ -148,6 +156,11 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
             var smaller = style.Smaller();
             if (baseBox is BigOpScaffold scaffold && !scaffold.HasLower)
                 return scaffold.WithLower(subBuilder(smaller));
+            // Symmetric merge for `X^a_b` ordering — collapse a sup-only
+            // SupSubBox + outer sub into a single stacked SupSubBox so
+            // the scripts share a baseline pair.
+            if (baseBox is SupSubBox supSub && supSub.Sup is not null && supSub.Sub is null)
+                return new SupSubBox(supSub.Base, sup: supSub.Sup, sub: subBuilder(smaller), style);
             return new SupSubBox(baseBox, sup: null, sub: subBuilder(smaller), style);
         };
     }
@@ -235,12 +248,32 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
         ["infty"] = "∞", ["partial"] = "∂", ["nabla"] = "∇",
         ["pm"] = "±", ["mp"] = "∓",
         ["to"] = "→", ["leftarrow"] = "←", ["rightarrow"] = "→",
+        // Chemistry arrows. \rightleftharpoons (⇌) is the canonical
+        // equilibrium symbol; \leftrightarrow (↔) covers both resonance
+        // notation in chemistry and bidirectional implication elsewhere.
+        ["rightleftharpoons"] = "⇌", ["leftrightarrow"] = "↔",
         ["leq"] = "≤", ["geq"] = "≥", ["neq"] = "≠",
         ["approx"] = "≈", ["equiv"] = "≡",
         ["in"] = "∈", ["notin"] = "∉", ["subset"] = "⊂",
         ["cup"] = "∪", ["cap"] = "∩",
         // Arithmetic operators (\cdot / \times are also lexer-mapped to *).
         ["div"] = "÷", ["cdot"] = "·",
+        // Sign atoms used by mhchem-emitted LaTeX. The math grammar treats
+        // bare + / - as binary operators, so they can't appear standalone
+        // inside a script group (e.g. `Cl^{-}` would fail to parse the `-`).
+        // Mhchem.ToLatex rewrites the signs in superscript/subscript content
+        // to \plus / \minus commands; these entries provide the rendered
+        // glyphs. U+2212 minus sign for typographic correctness.
+        ["plus"] = "+", ["minus"] = "−",
+        // Zero-width "null" atom used by mhchem-emitted LaTeX for prefix
+        // isotope notation: \ce{^{238}U} → \null^{238}U so the script
+        // attaches to a zero-width base (the grammar's P → P op A
+        // requires a left operand). The empty glyph + the sub+sup merge
+        // in Visit(Sup) / Visit(Subscript) collapse \null^{14}_{6}C into
+        // a stacked-script box, then juxtaposition glues C on the right
+        // — laying out ¹⁴₆C with both scripts pre-attached to C, the
+        // chemistry convention.
+        ["null"] = "",
         // LaTeX spacing macros. Inside a box-rendered formula these become
         // invisible kerns rather than literal spaces — the layout system
         // already spaces atoms appropriately; just keep the glyph empty.

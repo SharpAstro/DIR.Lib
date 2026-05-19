@@ -166,6 +166,18 @@ public static class MarkdownMacros
             return key;
         });
 
+        // \ce{X} → inline LaTeX math source via Mhchem.ToLatex. Phase-2
+        // routes chem through the same parser + visitor pipeline as ordinary
+        // math, so display-mode chem picks up real sub/super box layout
+        // under BoxBuildingVisitor (Sixel / sextant / half-block rasters)
+        // and inline chem still reaches the same Unicode glyphs via the
+        // grammar's script-to-Unicode mapping in LatexUnicodeVisitor.
+        //
+        // Runs BEFORE \text{} so any \text{...} the chem emitter chooses to
+        // produce in the future (e.g. for upright state markers) gets caught
+        // by the \text pass that follows.
+        source = ExpandBalancedMacro(source, "ce", inner => Mhchem.ToLatex(inner));
+
         // \text{X} → placeholder; replacement is X with backslash-non-letter
         // macros already resolved (so e.g. "Yes,\ 131" renders as "Yes, 131"
         // rather than carrying the LaTeX explicit-space "\ " through to the
@@ -176,21 +188,6 @@ public static class MarkdownMacros
         {
             var key = NewPlaceholder();
             replacements.Add(new KeyValuePair<string, string>(key, ResolveBackslashEscapes(inner)));
-            return key;
-        });
-
-        // \ce{X} → placeholder; replacement is the mhchem Phase-1 Unicode
-        // render of X (H₂O / ²³⁸U / Fe³⁺ / → / ⇌ / …). Solves the same class
-        // of problems \text{} does — the body must NOT flow back through
-        // the math grammar (digits would re-superscript, element-letter
-        // pairs would be treated as juxtaposed variables, etc.). The
-        // pre-baked Unicode lexes as `cmd`-atom placeholder bytes and the
-        // visitor emits it verbatim. See docs/MHCHEM.md for the supported
-        // subset.
-        source = ExpandBalancedMacro(source, "ce", inner =>
-        {
-            var key = NewPlaceholder();
-            replacements.Add(new KeyValuePair<string, string>(key, Mhchem.Render(inner)));
             return key;
         });
 
