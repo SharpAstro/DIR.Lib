@@ -21,15 +21,6 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="DIR.Lib.Tests" />
-    <!-- DIR.Lib.Markdown's visitors + macro preprocessors are internal so
-         they don't widen DIR.Lib's public surface, but Console.Lib's
-         MarkdownRenderer needs to call them during the transition. A
-         public facade (MarkdownAst.Parse / MarkdownAst.RenderMathUnicode)
-         is a follow-up. -->
-    <InternalsVisibleTo Include="Console.Lib" />
-    <!-- LatexConsole example demonstrates pixel-rendered math in isolation
-         and reaches BoxBuildingVisitor directly (now in DIR.Lib.Markdown). -->
-    <InternalsVisibleTo Include="Examples.LatexConsole" />
   </ItemGroup>
 
   <ItemGroup>

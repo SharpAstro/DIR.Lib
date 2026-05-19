@@ -31,7 +31,7 @@ namespace DIR.Lib.Markdown;
 /// C# is the same trade-off the inline grammar makes for emphasis
 /// (delimiter-stack post-pass) and bracket disambiguation.</para>
 /// </summary>
-internal sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
+public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
 {
     private readonly MarkdownInlineVisitor _inline = new();
 

@@ -17,7 +17,7 @@ namespace DIR.Lib.Markdown;
 /// inline-Unicode output. Used by the visitors in this namespace and by
 /// <c>Console.Lib.MarkdownRenderer</c> via <c>InternalsVisibleTo</c>.
 /// </summary>
-internal static class MarkdownMacros
+public static class MarkdownMacros
 {
     /// <summary>
     /// Cached math parser + lexer table. The LALR.CC source generator
@@ -29,7 +29,7 @@ internal static class MarkdownMacros
 
     private static readonly LALR.CC.Parser MathParser = Latex.BuildParser(MathVisitor);
 
-    internal static readonly System.Collections.Generic.Dictionary<string, LexRule[]> MathLexerTable = Latex.BuildLexer();
+    public static readonly System.Collections.Generic.Dictionary<string, LexRule[]> MathLexerTable = Latex.BuildLexer();
 
     /// <summary>
     /// Lazily resolved math-rendering font. <see cref="ResolveMathFont"/>
@@ -54,7 +54,7 @@ internal static class MarkdownMacros
     /// whitespace (since the grammar tokenises letters as math-italic variables
     /// and discards whitespace).
     /// </summary>
-    internal static string RenderMathUnicode(string source)
+    public static string RenderMathUnicode(string source)
     {
         if (string.IsNullOrWhiteSpace(source)) return string.Empty;
 
@@ -292,7 +292,7 @@ internal static class MarkdownMacros
     /// where the command name has trailing letters (so <c>\textit</c> doesn't
     /// match a <c>\text</c> rule) or where the trailing brace can't be located.
     /// </summary>
-    internal static string ExpandBalancedMacro(string source, string commandName, Func<string, string> onMatch)
+    public static string ExpandBalancedMacro(string source, string commandName, Func<string, string> onMatch)
     {
         var sb = new StringBuilder(source.Length);
         var marker = "\\" + commandName;
@@ -341,7 +341,7 @@ internal static class MarkdownMacros
     /// natively understand, into forms it does. Conservative whitelist — only
     /// substitutions where the rendered text is identical to the canonical form.
     /// </summary>
-    internal static string NormalizeLatexAliases(string source)
+    public static string NormalizeLatexAliases(string source)
     {
         // Order matters: longer prefixes first so e.g. \Biggl isn't eaten by
         // an earlier \bigl pass (they don't share a 5-char prefix today but
@@ -426,7 +426,7 @@ internal static class MarkdownMacros
     /// the lexer — it's stashed in the replacement map and spliced back in
     /// after the rest of the formula has rendered.
     /// </summary>
-    internal static string ResolveBackslashEscapes(string body)
+    public static string ResolveBackslashEscapes(string body)
     {
         if (body.IndexOf('\\') < 0) return body;
         var sb = new StringBuilder(body.Length);
@@ -512,7 +512,7 @@ internal static class MarkdownMacros
     /// token, i.e. the literal name preceded by a backslash and not followed by
     /// another ASCII letter (so <c>\text</c> matches but <c>\textbf</c> doesn't).
     /// </summary>
-    internal static bool ContainsMacro(string source, string commandName)
+    public static bool ContainsMacro(string source, string commandName)
     {
         var marker = "\\" + commandName;
         int idx = 0;
@@ -563,7 +563,7 @@ internal static class MarkdownMacros
     /// Result is cached per process; the lookup runs once on first math
     /// block.
     /// </summary>
-    internal static string? ResolveMathFont()
+    public static string? ResolveMathFont()
     {
         if (s_mathFontResolved) return s_mathFontPath;
 

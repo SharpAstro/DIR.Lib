@@ -17,7 +17,7 @@ namespace DIR.Lib.Markdown;
 /// (<c>\(\ce{H2O}\)</c>) and block (<c>$$\ce{H2O}$$</c>) math spans expand
 /// it before the LaTeX grammar runs.
 /// </summary>
-internal static class Mhchem
+public static class Mhchem
 {
     /// <summary>
     /// Renders the body of a <c>\ce{...}</c> macro to a Unicode string.

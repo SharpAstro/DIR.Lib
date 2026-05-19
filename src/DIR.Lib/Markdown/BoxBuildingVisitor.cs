@@ -41,7 +41,7 @@ namespace DIR.Lib.Markdown;
 /// rendered markdown document. The example app now lives in this repo under
 /// examples/LatexConsole/ and just demonstrates the renderer in isolation.</para>
 /// </summary>
-internal sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
+public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
 {
     /// <summary>Default style — applied when an external caller materialises
     /// the top-level builder. Scripts re-enter their builders at

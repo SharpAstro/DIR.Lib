@@ -22,7 +22,7 @@ namespace DIR.Lib.Markdown;
 ///
 /// Lifted from the LALR.CC Examples.Latex renderer.
 /// </summary>
-internal sealed class LatexUnicodeVisitor : IVisitor<string>
+public sealed class LatexUnicodeVisitor : IVisitor<string>
 {
     public string Visit(Add node)      => $"{node.Arg0.Content} + {node.Arg2.Content}";
     public string Visit(Subtract node) => $"{node.Arg0.Content} − {node.Arg2.Content}";

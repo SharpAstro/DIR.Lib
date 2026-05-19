@@ -23,7 +23,7 @@ namespace DIR.Lib.Markdown;
 /// via the recursive <c>BoxedBody</c> rule). Phase B-extension will add
 /// inline code, emphasis, links, line breaks, and color inlines.</para>
 /// </summary>
-internal sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
+public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
 {
     /// <summary>Parses an inline-only markdown string and returns the
     /// produced span list with transient nodes (MdGroup, MdStarMarker)
