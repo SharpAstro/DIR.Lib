@@ -14,6 +14,19 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
     public abstract void FillEllipse(in RectInt rect, RGBAColor32 fillColor);
 
     /// <summary>
+    /// Restrict subsequent drawing to <paramref name="rect"/> (pixels) until the matching
+    /// <see cref="PopClip"/>. Widgets use this to keep content inside their bounds (e.g. a tab
+    /// strip's overflowing labels). The base implementation is a no-op: clipping is an
+    /// optimization, not a correctness requirement, so a backend without scissor support (e.g. a
+    /// pure-software renderer) may ignore it; backends that support it (Vulkan scissor) override
+    /// this pair. Single-level by contract — callers must not nest Push/Pop.
+    /// </summary>
+    public virtual void PushClip(in RectInt rect) { }
+
+    /// <summary>Removes the clip set by the matching <see cref="PushClip"/> (restores the full surface).</summary>
+    public virtual void PopClip() { }
+
+    /// <summary>
     /// Draws an ellipse outline bounded by the given rectangle with the specified stroke width.
     /// Default implementation uses the midpoint ellipse algorithm (integer-only, no trig/sqrt)
     /// with 4-way symmetry, outputting horizontal FillRectangle spans per row.
