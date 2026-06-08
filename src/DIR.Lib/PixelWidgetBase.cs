@@ -91,6 +91,12 @@ namespace DIR.Lib
         /// <inheritdoc/>
         public List<TextInputState> GetRegisteredTextInputs() => _tracker.GetRegisteredTextInputs();
 
+        /// <summary>
+        /// Returns a snapshot of this widget's clickable regions from the last render pass.
+        /// Surfaces the per-frame region set for the debug inspector (region bounds + role/label).
+        /// </summary>
+        public ClickableRegion[] GetRegisteredRegions() => _tracker.GetRegisteredRegions();
+
         /// <inheritdoc/>
         public HitResult? HitTest(float x, float y) => _tracker.HitTest(x, y);
 

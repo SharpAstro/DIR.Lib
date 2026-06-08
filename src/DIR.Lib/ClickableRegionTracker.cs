@@ -55,6 +55,14 @@ namespace DIR.Lib
         }
 
         /// <summary>
+        /// Returns a snapshot of all clickable regions registered during the last render pass,
+        /// in registration (paint) order. Safe copy — the caller can enumerate it without racing
+        /// the next <see cref="BeginFrame"/>. Used by the debug inspector to serialize the live
+        /// "accessibility tree" (region bounds + <see cref="HitResult"/> role/label).
+        /// </summary>
+        public ClickableRegion[] GetRegisteredRegions() => _regions.ToArray();
+
+        /// <summary>
         /// Returns all <see cref="TextInputState"/> instances registered during the last render pass,
         /// in registration order. Used for Tab/Shift+Tab cycling.
         /// </summary>
