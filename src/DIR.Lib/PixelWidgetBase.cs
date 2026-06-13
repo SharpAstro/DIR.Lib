@@ -88,6 +88,45 @@ namespace DIR.Lib
             return Renderer.MeasureText(label.AsSpan(), fontPath, fontSize).Width + padding * 2f;
         }
 
+        /// <summary>
+        /// Measures the width of a shared value column sized to fit the widest of <paramref name="values"/>
+        /// (plus <paramref name="horizontalPadding"/> on each side), clamped to
+        /// [<paramref name="minWidth"/>, <paramref name="maxWidth"/>]. Intended for "[-] value [+]" stepper
+        /// rows so every row aligns in one column and long values neither clip nor collide with the buttons.
+        /// <paramref name="maxWidth"/> is floored to <paramref name="minWidth"/>, so a cramped panel collapses
+        /// to the minimum rather than going negative. When no font is available (e.g. headless tests) the text
+        /// cannot be measured, so <paramref name="minWidth"/> is returned unchanged.
+        /// </summary>
+        protected float MeasureValueColumnWidth(
+            IReadOnlyList<string> values, string fontPath, float fontSize,
+            float minWidth, float maxWidth, float horizontalPadding)
+        {
+            var clampMax = Math.Max(minWidth, maxWidth);
+
+            if (string.IsNullOrEmpty(fontPath))
+            {
+                return Math.Min(minWidth, clampMax);
+            }
+
+            var width = minWidth;
+            for (var i = 0; i < values.Count; i++)
+            {
+                var value = values[i];
+                if (string.IsNullOrEmpty(value))
+                {
+                    continue;
+                }
+
+                var measured = Renderer.MeasureText(value.AsSpan(), fontPath, fontSize).Width + horizontalPadding * 2f;
+                if (measured > width)
+                {
+                    width = measured;
+                }
+            }
+
+            return Math.Min(width, clampMax);
+        }
+
         /// <inheritdoc/>
         public List<TextInputState> GetRegisteredTextInputs() => _tracker.GetRegisteredTextInputs();
 
