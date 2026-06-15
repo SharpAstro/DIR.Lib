@@ -11,6 +11,20 @@ public enum MouseButton
 }
 
 /// <summary>
+/// Input device behind a <see cref="InputEvent.Pinch"/>. The host loop classifies this from the
+/// platform touch-device type so consumers can anchor zoom sensibly: a touchscreen pinch carries a
+/// real on-screen finger midpoint, while a touchpad pinch's raw touch coordinates are touchpad-relative
+/// (meaningless on screen), so the host reports the mouse cursor instead and tags it <see cref="Touchpad"/>.
+/// </summary>
+public enum PinchSource
+{
+    /// <summary>Indirect touch device (laptop trackpad). X/Y carry the mouse cursor position.</summary>
+    Touchpad = 0,
+    /// <summary>Direct touch device (touchscreen). X/Y carry the real finger midpoint on screen.</summary>
+    Touchscreen = 1,
+}
+
+/// <summary>
 /// Platform-agnostic input event. Produced by host input loops (SDL, Console),
 /// consumed by widgets via <see cref="IWidget.HandleInput"/>.
 /// All mouse events carry pixel coordinates; modifiers are available on all
@@ -38,8 +52,14 @@ public abstract record InputEvent
     public sealed record Scroll(float Delta, float X, float Y, InputModifier Modifiers = default) : InputEvent;
 
     /// <summary>Touch pinch gesture. Scale is absolute from pinch start (1.0 = start, &gt;1 = spread, &lt;1 = squeeze).
-    /// X/Y are the midpoint between fingers in pixel coordinates.</summary>
-    public sealed record Pinch(float Scale, float X, float Y) : InputEvent;
+    /// X/Y are the anchor point in pixel coordinates: the finger midpoint for a touchscreen, or the mouse
+    /// cursor for a touchpad (see <see cref="Source"/>). Kept as an init-only property rather than a
+    /// positional parameter so existing <c>(Scale, X, Y)</c> deconstructions keep compiling.</summary>
+    public sealed record Pinch(float Scale, float X, float Y) : InputEvent
+    {
+        /// <summary>Which kind of touch device produced the pinch. Defaults to <see cref="PinchSource.Touchpad"/>.</summary>
+        public PinchSource Source { get; init; } = PinchSource.Touchpad;
+    }
 
     /// <summary>Touch pinch gesture ended (fingers lifted).</summary>
     public sealed record PinchEnd() : InputEvent;

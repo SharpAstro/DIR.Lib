@@ -21,7 +21,7 @@ env:
   # \rightleftharpoons / \leftrightarrow as rel tokens; both visitors gain
   # \plus / \minus sign atoms (mhchem rewrites postfix +/- in script bodies
   # to these because the grammar treats bare +/- as binary operators).
-  VERSION_PREFIX: 4.5.${{ github.run_number }}
+  VERSION_PREFIX: 4.6.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
