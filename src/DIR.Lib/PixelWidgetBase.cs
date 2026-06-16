@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using DIR.Lib;
 
 namespace DIR.Lib
@@ -245,6 +246,74 @@ namespace DIR.Lib
                         dropdown.Close();
                     });
             }
+        }
+
+        // --- Declarative layout (LayoutNode tree -> arrange -> paint + auto-bind clicks) ---
+
+        /// <summary>
+        /// Arranges a declarative <see cref="LayoutNode"/> tree into <paramref name="bounds"/> using this
+        /// widget's renderer as the text-width oracle. Returns the flat pre-order arranged tree (also handy
+        /// for inspection / custom hit-testing).
+        /// </summary>
+        protected ImmutableArray<ArrangedNode<float>> ArrangeLayout(LayoutNode root, RectF32 bounds, string fontPath, float dpiScale = 1f)
+        {
+            var ctx = new PixelMeasureContext<TSurface>(Renderer, fontPath, dpiScale);
+            return LayoutEngine.Arrange(root, new Rect<float>(bounds.X, bounds.Y, bounds.Width, bounds.Height), ctx);
+        }
+
+        /// <summary>
+        /// Paints an already-arranged tree: each node's <see cref="LayoutNode.Background"/> fills first
+        /// (parent-before-children emission = correct z-order), then leaf content draws, and any
+        /// <see cref="LayoutContent.Hit"/> is bound to the node's arranged rect via
+        /// <see cref="RegisterClickable"/> -- so draw-position and hit-region cannot drift.
+        /// <paramref name="drawFill"/> handles <see cref="LayoutContent.Fill"/> escape-hatch leaves
+        /// (charts, sky map, custom widgets).
+        /// </summary>
+        protected void PaintLayout(ImmutableArray<ArrangedNode<float>> arranged, string fontPath, float dpiScale = 1f,
+            Action<LayoutContent.Fill, RectF32>? drawFill = null)
+        {
+            foreach (var (node, bounds) in arranged)
+            {
+                if (node.Background is { } bg)
+                {
+                    FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, bg);
+                }
+
+                if (node is not LayoutNode.Leaf leaf)
+                {
+                    continue;
+                }
+
+                var content = leaf.Content;
+                switch (content)
+                {
+                    case LayoutContent.Text text:
+                        DrawText(text.Value.AsSpan(), fontPath, bounds.X, bounds.Y, bounds.Width, bounds.Height,
+                            text.FontSize * dpiScale, text.Color, text.HAlign, text.VAlign);
+                        break;
+                    case LayoutContent.Box box when box.Color.Alpha > 0:
+                        FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, box.Color);
+                        break;
+                    case LayoutContent.Fill fill:
+                        drawFill?.Invoke(fill, new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height));
+                        break;
+                }
+
+                // Auto-bind the click region to the arranged rect (transparent leaves can still be hit targets).
+                if (content.Hit is { } hit)
+                {
+                    RegisterClickable(bounds.X, bounds.Y, bounds.Width, bounds.Height, hit, content.OnClick);
+                }
+            }
+        }
+
+        /// <summary>Convenience: <see cref="ArrangeLayout"/> + <see cref="PaintLayout"/> in one call.</summary>
+        protected ImmutableArray<ArrangedNode<float>> RenderLayout(LayoutNode root, RectF32 bounds, string fontPath,
+            float dpiScale = 1f, Action<LayoutContent.Fill, RectF32>? drawFill = null)
+        {
+            var arranged = ArrangeLayout(root, bounds, fontPath, dpiScale);
+            PaintLayout(arranged, fontPath, dpiScale, drawFill);
+            return arranged;
         }
 
         // --- Drawing helpers ---
