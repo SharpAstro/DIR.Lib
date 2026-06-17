@@ -79,11 +79,13 @@ public abstract record LayoutContent
     }
 
     /// <summary>
-    /// An app-drawn escape hatch (chart, sky map, custom widget). Carries only a minimum intrinsic size in
-    /// design units; pair with <c>Star</c> sizing to fill available space. The painter draws it via an
-    /// app callback keyed off <see cref="LayoutContent.Hit"/> or a tag.
+    /// An app-drawn escape hatch (chart, sky map, custom widget, text input). Carries only a minimum intrinsic
+    /// size in design units; pair with <c>Star</c> sizing to fill available space. The painter draws it via an
+    /// app <c>drawFill</c> callback, which receives this instance back -- so when one tree contains several
+    /// <see cref="Fill"/> leaves (e.g. a panel with multiple inputs), set <see cref="Key"/> to route each to its
+    /// own draw closure (e.g. <c>map[fill.Key]?.Invoke(rect)</c>) without a central switch.
     /// </summary>
-    public sealed record Fill(float MinWidth = 0f, float MinHeight = 0f) : LayoutContent;
+    public sealed record Fill(float MinWidth = 0f, float MinHeight = 0f, string? Key = null) : LayoutContent;
 }
 
 /// <summary>One pinned strip inside a <see cref="LayoutNode.Dock"/>.</summary>
