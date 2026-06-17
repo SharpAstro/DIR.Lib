@@ -405,5 +405,12 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
         }
     }
 
+    /// <summary>
+    /// Fills <paramref name="bounds"/> with a translucent scrim color to dim the content beneath a modal overlay.
+    /// Delegates to <see cref="FillRectangle"/>; override when the backend provides a more efficient alpha-blend path.
+    /// </summary>
+    public virtual void DrawScrim(in RectInt bounds, RGBAColor32 scrimColor)
+        => FillRectangle(bounds, scrimColor);
+
     public abstract void Dispose();
 }
