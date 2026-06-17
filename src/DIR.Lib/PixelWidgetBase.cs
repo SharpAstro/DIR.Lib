@@ -386,5 +386,40 @@ namespace DIR.Lib
                 new RectInt(new PointInt((int)(x + w), (int)(y + h)), new PointInt((int)x, (int)y)),
                 horizAlign, vertAlign);
         }
+
+        /// <summary>
+        /// Fills a horizontal text bar with <paramref name="bgColor"/> and draws a single line of
+        /// <paramref name="text"/> inside it.  The text rect is inset by <paramref name="horizontalPadding"/>
+        /// on each side; vertical alignment defaults to <see cref="TextAlign.Center"/> so the text is
+        /// centred within the bar height without a manual y-nudge.
+        /// </summary>
+        /// <param name="text">The text to render.</param>
+        /// <param name="fontPath">Path to the font file; no-op when null or empty.</param>
+        /// <param name="x">Left edge of the bar, in pixels.</param>
+        /// <param name="y">Top edge of the bar, in pixels.</param>
+        /// <param name="w">Width of the bar, in pixels.</param>
+        /// <param name="h">Height of the bar, in pixels.</param>
+        /// <param name="fontSize">Font size in points/pixels.</param>
+        /// <param name="bgColor">Background fill color.</param>
+        /// <param name="textColor">Text color.</param>
+        /// <param name="horizontalPadding">Pixels inset from left and right edges before drawing text (default 8).</param>
+        /// <param name="alignX">Horizontal text alignment within the inset rect (default <see cref="TextAlign.Near"/>).</param>
+        /// <param name="alignY">Vertical text alignment within the bar height (default <see cref="TextAlign.Center"/>).</param>
+        protected void RenderTextBar(
+            ReadOnlySpan<char> text,
+            string fontPath,
+            float x, float y, float w, float h,
+            float fontSize,
+            RGBAColor32 bgColor,
+            RGBAColor32 textColor,
+            float horizontalPadding = 8f,
+            TextAlign alignX = TextAlign.Near,
+            TextAlign alignY = TextAlign.Center)
+        {
+            FillRect(x, y, w, h, bgColor);
+            DrawText(text, fontPath,
+                x + horizontalPadding, y, w - horizontalPadding * 2f, h,
+                fontSize, textColor, alignX, alignY);
+        }
     }
 }
