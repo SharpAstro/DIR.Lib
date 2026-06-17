@@ -25,8 +25,10 @@ public class LayoutPainterTests
     }
 
     private static LayoutNode.Leaf HitRow(string action, float height, Action<InputModifier>? onClick = null) =>
-        new(new LayoutContent.Box(0, 0) { Hit = new HitResult.ButtonHit(action), OnClick = onClick })
+        new(new LayoutContent.Box(0, 0))
         {
+            Hit = new HitResult.ButtonHit(action),
+            OnClick = onClick,
             Height = Sizing.Fixed(height),
             Width = Sizing.Star(),
         };

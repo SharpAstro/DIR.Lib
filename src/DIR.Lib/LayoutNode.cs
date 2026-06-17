@@ -58,12 +58,6 @@ public readonly record struct Size<T>(T Width, T Height) where T : INumber<T>
 /// </summary>
 public abstract record LayoutContent
 {
-    /// <summary>Optional click region — the painter binds it to this leaf's arranged rect (draw == hit by construction).</summary>
-    public HitResult? Hit { get; init; }
-
-    /// <summary>Optional direct click handler, registered alongside <see cref="Hit"/> when present.</summary>
-    public Action<InputModifier>? OnClick { get; init; }
-
     /// <summary>A text run. Intrinsic size = the measure context's glyph metrics (px) / char count (cells).</summary>
     public sealed record Text(string Value, float FontSize = 14f) : LayoutContent
     {
@@ -116,6 +110,15 @@ public abstract record LayoutNode
     /// <summary>Optional fill painted across this node's whole rect before its children. Since arrange emits
     /// parent-before-children, a container's background lands under its content (panels, rows, headers).</summary>
     public RGBAColor32? Background { get; init; }
+
+    /// <summary>Optional click region bound to this node's arranged rect (draw == hit by construction).
+    /// Lives on the node, not the content, so a whole container (a slot row, a panel) is clickable -- not
+    /// just leaves. Inner nodes registered later win the hit (top-most), so a button inside a clickable row
+    /// still beats the row.</summary>
+    public HitResult? Hit { get; init; }
+
+    /// <summary>Optional direct click handler, registered alongside <see cref="Hit"/> when present.</summary>
+    public Action<InputModifier>? OnClick { get; init; }
 
     /// <summary>Children laid out sequentially along <paramref name="Axis"/>, separated by <paramref name="Gap"/> design units.</summary>
     public sealed record Stack(ImmutableArray<LayoutNode> Children, LayoutAxis Axis = LayoutAxis.Vertical, float Gap = 0f) : LayoutNode;

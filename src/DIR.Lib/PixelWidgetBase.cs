@@ -279,30 +279,28 @@ namespace DIR.Lib
                     FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, bg);
                 }
 
-                if (node is not LayoutNode.Leaf leaf)
+                // Auto-bind the click region to the arranged rect. Any node can be a hit target -- a whole
+                // slot row or panel, not just a leaf -- and inner nodes register later so they win the hit.
+                if (node.Hit is { } hit)
                 {
-                    continue;
+                    RegisterClickable(bounds.X, bounds.Y, bounds.Width, bounds.Height, hit, node.OnClick);
                 }
 
-                var content = leaf.Content;
-                switch (content)
+                if (node is LayoutNode.Leaf leaf)
                 {
-                    case LayoutContent.Text text:
-                        DrawText(text.Value.AsSpan(), fontPath, bounds.X, bounds.Y, bounds.Width, bounds.Height,
-                            text.FontSize * dpiScale, text.Color, text.HAlign, text.VAlign);
-                        break;
-                    case LayoutContent.Box box when box.Color.Alpha > 0:
-                        FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, box.Color);
-                        break;
-                    case LayoutContent.Fill fill:
-                        drawFill?.Invoke(fill, new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height));
-                        break;
-                }
-
-                // Auto-bind the click region to the arranged rect (transparent leaves can still be hit targets).
-                if (content.Hit is { } hit)
-                {
-                    RegisterClickable(bounds.X, bounds.Y, bounds.Width, bounds.Height, hit, content.OnClick);
+                    switch (leaf.Content)
+                    {
+                        case LayoutContent.Text text:
+                            DrawText(text.Value.AsSpan(), fontPath, bounds.X, bounds.Y, bounds.Width, bounds.Height,
+                                text.FontSize * dpiScale, text.Color, text.HAlign, text.VAlign);
+                            break;
+                        case LayoutContent.Box box when box.Color.Alpha > 0:
+                            FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, box.Color);
+                            break;
+                        case LayoutContent.Fill fill:
+                            drawFill?.Invoke(fill, new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height));
+                            break;
+                    }
                 }
             }
         }
