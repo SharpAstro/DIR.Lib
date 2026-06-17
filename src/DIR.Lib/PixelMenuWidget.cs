@@ -1,0 +1,56 @@
+using System.Collections.Immutable;
+
+namespace DIR.Lib;
+
+/// <summary>
+/// GPU pixel-coordinate widget for the vertical "wizard" menu. Wraps <see cref="MenuModel"/>
+/// (state/input) and <see cref="MenuLayout.BuildTree"/> (rendering) via
+/// <see cref="PixelWidgetBase{TSurface}"/>. Replaces VkMenuWidget in SdlVulkan.Renderer (Phase B).
+/// </summary>
+/// <typeparam name="TSurface">The renderer surface type (e.g., VkImage, RgbaImage).</typeparam>
+public class PixelMenuWidget<TSurface>(Renderer<TSurface> renderer, string fontPath)
+    : PixelWidgetBase<TSurface>(renderer)
+{
+    private readonly MenuModel _model = new();
+
+    /// <summary>Color palette. Override individual fields via object initializer or property init.</summary>
+    public MenuColors Colors { get; init; } = new();
+
+    /// <summary>Zero-based index of the currently highlighted item.</summary>
+    public int SelectedIndex => _model.SelectedIndex;
+
+    /// <summary>True after the user has confirmed a selection.</summary>
+    public bool IsConfirmed => _model.IsConfirmed;
+
+    /// <summary>
+    /// Resets the menu with new content and clears the confirmed state.
+    /// <paramref name="selected"/> is clamped to the valid item range.
+    /// </summary>
+    public void Reset(string title, string prompt, ImmutableArray<string> items, int selected = 0)
+        => _model.Reset(title, prompt, items, selected);
+
+
+    /// <summary>
+    /// Renders the menu across the full surface using the layout tree from
+    /// <see cref="MenuLayout.BuildTree"/>. Must be called between the renderer's BeginFrame
+    /// and EndFrame. Font size scales with surface height (1/25th, minimum 16px).
+    /// </summary>
+    public void Render()
+    {
+        BeginFrame();
+        var fontSize = MathF.Max(16f, Renderer.Height / 25f);
+        var bounds = new RectF32(0, 0, Renderer.Width, Renderer.Height);
+        RenderLayout(MenuLayout.BuildTree(_model, Colors, fontSize), bounds, fontPath);
+    }
+
+    /// <inheritdoc/>
+    public override bool HandleInput(InputEvent evt)
+    {
+        return evt switch
+        {
+            InputEvent.KeyDown(var key, _) => _model.HandleKey(key),
+            InputEvent.MouseDown(var x, var y, _, _, _) => HitTestAndDispatch(x, y) is not null,
+            _ => false,
+        };
+    }
+}
