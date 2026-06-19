@@ -332,6 +332,69 @@ public sealed class MarkdownInlineSpikeTests
         spans[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("a [TODO] item");
     }
 
+    // ── Images ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void Image_BasicAltAndUrl()
+    {
+        var spans = _visitor.Parse("![a cat](cat.png)");
+        var img = spans[0].ShouldBeOfType<MdImage>();
+        img.Url.ShouldBe("cat.png");
+        img.Alt.Count.ShouldBe(1);
+        img.Alt[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("a cat");
+    }
+
+    [Fact]
+    public void Image_EmptyAlt()
+    {
+        // `![](url)` — empty alt; Spans is nullable (shared with links),
+        // so the image production accepts zero inner spans.
+        var spans = _visitor.Parse("![](logo.png)");
+        var img = spans[0].ShouldBeOfType<MdImage>();
+        img.Url.ShouldBe("logo.png");
+        img.Alt.Count.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Image_MidText_SpaceBefore()
+    {
+        var spans = _visitor.Parse("see ![logo](a.png) now");
+        spans.Count.ShouldBe(3);
+        spans[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("see ");
+        spans[1].ShouldBeOfType<MdImage>().Url.ShouldBe("a.png");
+        spans[2].ShouldBeOfType<MdLiteral>().Text.ShouldBe(" now");
+    }
+
+    [Fact]
+    public void Image_AfterWord_NoSpace()
+    {
+        // `word![x](y)` — `!` is excluded from the main text run so the
+        // preceding word doesn't swallow it, letting `![` win longest-match.
+        var spans = _visitor.Parse("word![x](y)");
+        spans.Count.ShouldBe(2);
+        spans[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("word");
+        spans[1].ShouldBeOfType<MdImage>().Url.ShouldBe("y");
+    }
+
+    [Fact]
+    public void Image_AltCanContainEmphasis()
+    {
+        var spans = _visitor.Parse("![**bold**](u)");
+        var img = spans[0].ShouldBeOfType<MdImage>();
+        img.Url.ShouldBe("u");
+        img.Alt[0].ShouldBeOfType<MdEmphasis>().Level.ShouldBe(2);
+    }
+
+    [Fact]
+    public void Bang_NotImage_StaysLiteral()
+    {
+        // A `!` not followed by `[` is plain text and re-merges with its
+        // neighbours, so `![`-less bangs round-trip unchanged.
+        var spans = _visitor.Parse("a != b! ok");
+        spans.Count.ShouldBe(1);
+        spans[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("a != b! ok");
+    }
+
     // ── Color inlines ────────────────────────────────────────────────
 
     [Fact]

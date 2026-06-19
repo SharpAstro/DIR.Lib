@@ -360,6 +360,16 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
         return new MdLink(text, url);
     }
 
+    // Same arg shape as LinkSpan (Arg0=image_open, Arg1=Spans alt-text,
+    // Arg2=link_tail_open `](`, Arg3=urlbody, Arg4=rparen) — the image
+    // production reuses the link tail tokens, differing only in the opener.
+    public object Visit(MarkdownInline.ImageSpan node)
+    {
+        var alt = Process((IReadOnlyList<MdInline>)node.Arg1.Content);
+        var url = (string)node.Arg3.Content;
+        return new MdImage(alt, url);
+    }
+
     public object Visit(MarkdownInline.ColorSpan node)
     {
         var text = Process((IReadOnlyList<MdInline>)node.Arg1.Content);

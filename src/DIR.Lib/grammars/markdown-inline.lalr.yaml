@@ -65,6 +65,9 @@ symbols:
   - star3               # 37 terminal: `***` — visitor produces an
                         #             Emphasis(level=3) marker that
                         #             renders as both bold and italic
+  - image_open          # 38 terminal: `![` (image opener — like lbracket
+                        #             but the span becomes an MdImage; reuses
+                        #             the link tail tokens `](` url `)`)
   - lbracket            # 24 terminal: `[` (link / color opener)
   - rbracket            # 25 terminal: `]` (plain bracket close, NOT
                         #             followed by `(` or `{`)
@@ -116,6 +119,7 @@ productions:
       - { lhs: Span, rhs: [lbracket, Spans, rbracket],                                  action: plainBracketSpan }
       - { lhs: Span, rhs: [lbracket, Spans, link_tail_open,  urlbody,   rparen],        action: linkSpan }
       - { lhs: Span, rhs: [lbracket, Spans, color_tail_open, colorbody, rbrace],        action: colorSpan }
+      - { lhs: Span, rhs: [image_open, Spans, link_tail_open, urlbody,  rparen],        action: imageSpan }
 
   - derivation: leftmost
     rules:
@@ -158,6 +162,10 @@ lexer:
     - { symbol: backtick,         match: '`',          push: code_inline }
     - { symbol: link_tail_open,   match: '\]\(',       push: url_body }
     - { symbol: color_tail_open,  match: '\]\{',       push: color_body }
+    # `![` (image opener, 2 bytes) must beat a lone `!` text token via
+    # longest-match; `!` is excluded from the main text run below so the
+    # `!` in `word![x](y)` starts a fresh match where `![` can win.
+    - { symbol: image_open,       match: '!\[' }
     - { symbol: lbracket,         match: '\[' }
     - { symbol: rbracket,         match: '\]' }
     - { symbol: star3,            match: '\*\*\*' }
@@ -172,8 +180,12 @@ lexer:
     # Text + escape fallthrough. Text excludes the special opener bytes
     # so the dedicated rules above always have first shot at their
     # leading character; otherwise it matches everything else.
-    - { symbol: text,             match: '[^\\$`*\[\] \n\r]+' }
+    - { symbol: text,             match: '[^\\$`*\[\]! \n\r]+' }
     - { symbol: text,             match: ' +' }
+    # Lone `!` (not part of an `![` image opener) — its own token so the
+    # main text run can exclude `!` and let `![` win longest-match. The
+    # visitor merges adjacent literals, so this re-joins surrounding text.
+    - { symbol: text,             match: '!' }
     - { symbol: escape,           match: '\\[^a-zA-Z]' }
     - { symbol: text,             match: '\\[a-zA-Z]+' }
 

@@ -128,6 +128,14 @@ internal sealed record MdGroup(System.Collections.Generic.IReadOnlyList<MdInline
 /// is the raw URL string from the parens body.</summary>
 public sealed record MdLink(System.Collections.Generic.IReadOnlyList<MdInline> Text, string Url) : MdInline;
 
+/// <summary>Image inline — <c>![alt](url)</c>. <see cref="Alt"/> is the
+/// alt-text content (parsed as inline spans by the same grammar, so it
+/// can carry emphasis etc.); <see cref="Url"/> is the raw source string
+/// from the parens body (a file path or URL — resolution is the
+/// renderer's job). Mirrors <see cref="MdLink"/> but signals an image
+/// rather than a hyperlink.</summary>
+public sealed record MdImage(System.Collections.Generic.IReadOnlyList<MdInline> Alt, string Url) : MdInline;
+
 /// <summary>Color inline — Console.Lib extension syntax
 /// <c>[text]{color}</c>. <see cref="Color"/> is the literal colour
 /// string from the brace body (validated by the renderer against
