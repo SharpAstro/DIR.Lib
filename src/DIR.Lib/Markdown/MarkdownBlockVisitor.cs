@@ -104,7 +104,7 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
         {
             if (current.Count > 0)
             {
-                blocks.Add(ClassifyBlock(current));
+                blocks.Add(ClassifyBlockSafe(current));
                 current = new List<string>();
             }
             fence = null;
@@ -152,7 +152,7 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
         string? fence = null;
         void Flush()
         {
-            if (current.Count > 0) { blocks.Add(ClassifyBlock(current)); current = new List<string>(); }
+            if (current.Count > 0) { blocks.Add(ClassifyBlockSafe(current)); current = new List<string>(); }
             fence = null;
         }
         foreach (var line in lines)
@@ -182,6 +182,22 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
     private static readonly Regex FenceOpenRx = new(@"^(```|~~~)\s*([^\s]*)\s*$", RegexOptions.Compiled);
     private static readonly Regex UnorderedItemRx = new(@"^([-*+])\s+(.*)$", RegexOptions.Compiled);
     private static readonly Regex OrderedItemRx = new(@"^(\d+)\.\s+(.*)$", RegexOptions.Compiled);
+
+    /// <summary>Classifies a block, degrading to a raw-text paragraph on any
+    /// parser/lexer error instead of throwing. Blank lines are the grouping
+    /// sync points (Vim-style resync), so one malformed block can't abort the
+    /// whole document — the next block is classified from a clean state. This
+    /// matches the renderer's best-effort contract: show the source rather
+    /// than crash. A genuine classification regression still surfaces in tests
+    /// (the AST won't match the expected node type).</summary>
+    private MdBlock ClassifyBlockSafe(IReadOnlyList<string> lines)
+    {
+        try { return ClassifyBlock(lines); }
+        catch
+        {
+            return new MdParagraph(new MdInline[] { new MdLiteral(string.Join("\n", lines)) });
+        }
+    }
 
     private MdBlock ClassifyBlock(IReadOnlyList<string> lines)
     {
