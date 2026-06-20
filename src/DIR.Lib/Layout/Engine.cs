@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Numerics;
 
-namespace DIR.Lib;
+namespace DIR.Lib.Layout;
 
 /// <summary>
 /// The single surface-specific input to layout: turn a piece of text or a design-unit scalar into a
@@ -16,42 +16,42 @@ public interface IMeasureContext<T> where T : INumber<T>
     /// <summary>Intrinsic size of a text run (glyph metrics for pixels, char count x 1 for cells).</summary>
     Size<T> MeasureText(ReadOnlySpan<char> text, float fontSize);
 
-    /// <summary>Map a design-unit scalar (the pixel-base values on <see cref="Sizing"/>/<see cref="LayoutNode.Padding"/>)
+    /// <summary>Map a design-unit scalar (the pixel-base values on <see cref="Sizing"/>/<see cref="Node.Padding"/>)
     /// into surface units: pixels x DPI, or rounded character cells.</summary>
     T ToSurface(float designUnits);
 }
 
 /// <summary>
-/// Two-pass measure/arrange engine over a declarative <see cref="LayoutNode"/> tree. Generic over the
+/// Two-pass measure/arrange engine over a declarative <see cref="Node"/> tree. Generic over the
 /// coordinate numeric <typeparamref name="T"/> (<c>float</c> pixels / <c>int</c> cells) reusing
 /// <see cref="Rect{T}"/> + <see cref="DockLayout{T}"/>. <see cref="Arrange{T}"/> returns a flat pre-order
 /// list of <see cref="ArrangedNode{T}"/> that a per-surface painter walks to draw + auto-bind clicks.
 /// </summary>
-public static class LayoutEngine
+public static class Engine
 {
     /// <summary>
     /// Measures a node's intrinsic (content-driven) size against <paramref name="available"/>. Exposed for
     /// tests and Auto-sizing callers; <see cref="Arrange{T}"/> uses it internally for <c>Auto</c> children.
     /// </summary>
-    public static Size<T> Measure<T>(LayoutNode node, Size<T> available, IMeasureContext<T> ctx)
+    public static Size<T> Measure<T>(Node node, Size<T> available, IMeasureContext<T> ctx)
         where T : INumber<T>
     {
         var intrinsic = node switch
         {
-            LayoutNode.Leaf leaf => MeasureContent(leaf.Content, ctx),
-            LayoutNode.Stack stack => MeasureStack(stack, available, ctx),
-            LayoutNode.Grid grid => MeasureGrid(grid, available, ctx),
-            LayoutNode.Overlay overlay => Union(
+            Node.Leaf leaf => MeasureContent(leaf.Content, ctx),
+            Node.Stack stack => MeasureStack(stack, available, ctx),
+            Node.Grid grid => MeasureGrid(grid, available, ctx),
+            Node.Overlay overlay => Union(
                 Measure(overlay.Base, available, ctx),
                 Measure(overlay.Top, available, ctx)),
             // A Dock or Split fills its bounds; both expect explicit bounds rather than shrink-to-content.
-            LayoutNode.Dock => available,
-            LayoutNode.Split => available,
+            Node.Dock => available,
+            Node.Split => available,
             _ => Size<T>.Zero,
         };
 
         // Inner padding grows the intrinsic box (except a Dock / Split, which are already "fill").
-        if (node is not LayoutNode.Dock and not LayoutNode.Split && node.Padding != 0f)
+        if (node is not Node.Dock and not Node.Split && node.Padding != 0f)
         {
             var pad2 = ctx.ToSurface(node.Padding) + ctx.ToSurface(node.Padding);
             intrinsic = new Size<T>(intrinsic.Width + pad2, intrinsic.Height + pad2);
@@ -68,7 +68,7 @@ public static class LayoutEngine
     /// absolute rect, in pre-order (parent before children; Overlay base-subtree before top-subtree) so a
     /// painter drawing in list order gets correct z-stacking.
     /// </summary>
-    public static ImmutableArray<ArrangedNode<T>> Arrange<T>(LayoutNode root, Rect<T> bounds, IMeasureContext<T> ctx)
+    public static ImmutableArray<ArrangedNode<T>> Arrange<T>(Node root, Rect<T> bounds, IMeasureContext<T> ctx)
         where T : INumber<T>
     {
         var builder = ImmutableArray.CreateBuilder<ArrangedNode<T>>();
@@ -76,7 +76,7 @@ public static class LayoutEngine
         return builder.ToImmutable();
     }
 
-    private static void ArrangeNode<T>(LayoutNode node, Rect<T> rect, IMeasureContext<T> ctx,
+    private static void ArrangeNode<T>(Node node, Rect<T> rect, IMeasureContext<T> ctx,
         ImmutableArray<ArrangedNode<T>>.Builder output) where T : INumber<T>
     {
         output.Add(new ArrangedNode<T>(node, rect));
@@ -84,31 +84,31 @@ public static class LayoutEngine
         var inner = Inset(rect, ctx.ToSurface(node.Padding));
         switch (node)
         {
-            case LayoutNode.Leaf:
+            case Node.Leaf:
                 break;
-            case LayoutNode.Stack stack:
+            case Node.Stack stack:
                 ArrangeStack(stack, inner, ctx, output);
                 break;
-            case LayoutNode.Dock dock:
+            case Node.Dock dock:
                 ArrangeDock(dock, inner, ctx, output);
                 break;
-            case LayoutNode.Grid grid:
+            case Node.Grid grid:
                 ArrangeGrid(grid, inner, ctx, output);
                 break;
-            case LayoutNode.Overlay overlay:
+            case Node.Overlay overlay:
                 ArrangeNode(overlay.Base, inner, ctx, output); // base first
                 ArrangeNode(overlay.Top, inner, ctx, output);  // top on top
                 break;
-            case LayoutNode.Split split:
+            case Node.Split split:
                 ArrangeSplit(split, inner, ctx, output);
                 break;
         }
     }
 
-    private static void ArrangeSplit<T>(LayoutNode.Split split, Rect<T> inner, IMeasureContext<T> ctx,
+    private static void ArrangeSplit<T>(Node.Split split, Rect<T> inner, IMeasureContext<T> ctx,
         ImmutableArray<ArrangedNode<T>>.Builder output) where T : INumber<T>
     {
-        var horizontal = split.Axis == LayoutAxis.Horizontal;
+        var horizontal = split.Axis == Axis.Horizontal;
         var mainAvail = horizontal ? inner.Width : inner.Height;
         var divider = ctx.ToSurface(split.DividerThickness);
 
@@ -138,7 +138,7 @@ public static class LayoutEngine
         // Emitted only when there is something to draw or hit (otherwise the divider is a pure gap).
         if (split.DividerColor is not null || split.DividerHit is not null)
         {
-            var dividerNode = new LayoutNode.Leaf(new LayoutContent.Box(0f, 0f))
+            var dividerNode = new Node.Leaf(new Content.Box(0f, 0f))
             {
                 Background = split.DividerColor,
                 Hit = split.DividerHit,
@@ -149,7 +149,7 @@ public static class LayoutEngine
         ArrangeNode(split.Second, secondRect, ctx, output);
     }
 
-    private static void ArrangeStack<T>(LayoutNode.Stack stack, Rect<T> inner, IMeasureContext<T> ctx,
+    private static void ArrangeStack<T>(Node.Stack stack, Rect<T> inner, IMeasureContext<T> ctx,
         ImmutableArray<ArrangedNode<T>>.Builder output) where T : INumber<T>
     {
         var children = stack.Children;
@@ -200,7 +200,7 @@ public static class LayoutEngine
         }
 
         // Pass 3: resolve cross-axis size + position each child sequentially along the main axis.
-        var cursor = axis == LayoutAxis.Vertical ? inner.Y : inner.X;
+        var cursor = axis == Axis.Vertical ? inner.Y : inner.X;
         for (var i = 0; i < n; i++)
         {
             var crossSizing = CrossSizing(axis, children[i]);
@@ -211,7 +211,7 @@ public static class LayoutEngine
                 _ => Min(crossAvail, CrossOf(axis, Measure(children[i], availSize, ctx))),
             };
 
-            var childRect = axis == LayoutAxis.Vertical
+            var childRect = axis == Axis.Vertical
                 ? new Rect<T>(inner.X, cursor, cross, mains[i])
                 : new Rect<T>(cursor, inner.Y, mains[i], cross);
             ArrangeNode(children[i], childRect, ctx, output);
@@ -220,7 +220,7 @@ public static class LayoutEngine
         }
     }
 
-    private static void ArrangeDock<T>(LayoutNode.Dock dock, Rect<T> inner, IMeasureContext<T> ctx,
+    private static void ArrangeDock<T>(Node.Dock dock, Rect<T> inner, IMeasureContext<T> ctx,
         ImmutableArray<ArrangedNode<T>>.Builder output) where T : INumber<T>
     {
         var layout = new DockLayout<T>(inner);
@@ -248,7 +248,7 @@ public static class LayoutEngine
         ArrangeNode(dock.Fill, layout.Fill(), ctx, output);
     }
 
-    private static void ArrangeGrid<T>(LayoutNode.Grid grid, Rect<T> inner, IMeasureContext<T> ctx,
+    private static void ArrangeGrid<T>(Node.Grid grid, Rect<T> inner, IMeasureContext<T> ctx,
         ImmutableArray<ArrangedNode<T>>.Builder output) where T : INumber<T>
     {
         var columns = grid.Columns;
@@ -291,16 +291,16 @@ public static class LayoutEngine
 
     // --- Measure helpers ---
 
-    private static Size<T> MeasureContent<T>(LayoutContent content, IMeasureContext<T> ctx) where T : INumber<T>
+    private static Size<T> MeasureContent<T>(Content content, IMeasureContext<T> ctx) where T : INumber<T>
         => content switch
         {
-            LayoutContent.Text text => ctx.MeasureText(text.Value.AsSpan(), text.FontSize),
-            LayoutContent.Box box => new Size<T>(ctx.ToSurface(box.Width), ctx.ToSurface(box.Height)),
-            LayoutContent.Fill fill => new Size<T>(ctx.ToSurface(fill.MinWidth), ctx.ToSurface(fill.MinHeight)),
+            Content.Text text => ctx.MeasureText(text.Value.AsSpan(), text.FontSize),
+            Content.Box box => new Size<T>(ctx.ToSurface(box.Width), ctx.ToSurface(box.Height)),
+            Content.Fill fill => new Size<T>(ctx.ToSurface(fill.MinWidth), ctx.ToSurface(fill.MinHeight)),
             _ => Size<T>.Zero,
         };
 
-    private static Size<T> MeasureStack<T>(LayoutNode.Stack stack, Size<T> available, IMeasureContext<T> ctx)
+    private static Size<T> MeasureStack<T>(Node.Stack stack, Size<T> available, IMeasureContext<T> ctx)
         where T : INumber<T>
     {
         var axis = stack.Axis;
@@ -324,7 +324,7 @@ public static class LayoutEngine
         return Compose(axis, main, cross);
     }
 
-    private static Size<T> MeasureGrid<T>(LayoutNode.Grid grid, Size<T> available, IMeasureContext<T> ctx)
+    private static Size<T> MeasureGrid<T>(Node.Grid grid, Size<T> available, IMeasureContext<T> ctx)
         where T : INumber<T>
     {
         var columns = grid.Columns;
@@ -408,20 +408,20 @@ public static class LayoutEngine
 
     // --- Axis + geometry helpers ---
 
-    private static Sizing MainSizing(LayoutAxis axis, LayoutNode node)
-        => axis == LayoutAxis.Vertical ? node.Height : node.Width;
+    private static Sizing MainSizing(Axis axis, Node node)
+        => axis == Axis.Vertical ? node.Height : node.Width;
 
-    private static Sizing CrossSizing(LayoutAxis axis, LayoutNode node)
-        => axis == LayoutAxis.Vertical ? node.Width : node.Height;
+    private static Sizing CrossSizing(Axis axis, Node node)
+        => axis == Axis.Vertical ? node.Width : node.Height;
 
-    private static T MainOf<T>(LayoutAxis axis, Size<T> size) where T : INumber<T>
-        => axis == LayoutAxis.Vertical ? size.Height : size.Width;
+    private static T MainOf<T>(Axis axis, Size<T> size) where T : INumber<T>
+        => axis == Axis.Vertical ? size.Height : size.Width;
 
-    private static T CrossOf<T>(LayoutAxis axis, Size<T> size) where T : INumber<T>
-        => axis == LayoutAxis.Vertical ? size.Width : size.Height;
+    private static T CrossOf<T>(Axis axis, Size<T> size) where T : INumber<T>
+        => axis == Axis.Vertical ? size.Width : size.Height;
 
-    private static Size<T> Compose<T>(LayoutAxis axis, T main, T cross) where T : INumber<T>
-        => axis == LayoutAxis.Vertical ? new Size<T>(cross, main) : new Size<T>(main, cross);
+    private static Size<T> Compose<T>(Axis axis, T main, T cross) where T : INumber<T>
+        => axis == Axis.Vertical ? new Size<T>(cross, main) : new Size<T>(main, cross);
 
     private static Size<T> Union<T>(Size<T> a, Size<T> b) where T : INumber<T>
         => new(Max(a.Width, b.Width), Max(a.Height, b.Height));

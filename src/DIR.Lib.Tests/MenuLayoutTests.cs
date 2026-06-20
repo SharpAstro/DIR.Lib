@@ -22,20 +22,20 @@ public class MenuLayoutTests
         return m;
     }
 
-    /// <summary>Collects all <see cref="LayoutNode.Leaf"/> nodes from a tree, depth-first.</summary>
-    private static ImmutableArray<LayoutNode.Leaf> CollectLeaves(LayoutNode node)
+    /// <summary>Collects all <see cref="Layout.Node.Leaf"/> nodes from a tree, depth-first.</summary>
+    private static ImmutableArray<Layout.Node.Leaf> CollectLeaves(Layout.Node node)
     {
-        var builder = ImmutableArray.CreateBuilder<LayoutNode.Leaf>();
+        var builder = ImmutableArray.CreateBuilder<Layout.Node.Leaf>();
         Collect(node, builder);
         return builder.ToImmutable();
 
-        static void Collect(LayoutNode n, ImmutableArray<LayoutNode.Leaf>.Builder b)
+        static void Collect(Layout.Node n, ImmutableArray<Layout.Node.Leaf>.Builder b)
         {
-            if (n is LayoutNode.Leaf leaf)
+            if (n is Layout.Node.Leaf leaf)
             {
                 b.Add(leaf);
             }
-            else if (n is LayoutNode.Stack stack)
+            else if (n is Layout.Node.Stack stack)
             {
                 foreach (var child in stack.Children)
                 {
@@ -46,7 +46,7 @@ public class MenuLayoutTests
     }
 
     /// <summary>Returns only the item leaves (those carrying a "MenuItem" ListItemHit).</summary>
-    private static ImmutableArray<LayoutNode.Leaf> ItemLeaves(LayoutNode root)
+    private static ImmutableArray<Layout.Node.Leaf> ItemLeaves(Layout.Node root)
         => CollectLeaves(root).Where(l => l.Hit is HitResult.ListItemHit { ListId: "MenuItem" }).ToImmutableArray();
 
     // --- Item count ---
@@ -94,7 +94,7 @@ public class MenuLayoutTests
         var root = MenuLayout.BuildTree(model, DefaultColors, 16f);
 
         var items = ItemLeaves(root);
-        var text = (items[0].Content as LayoutContent.Text).ShouldNotBeNull();
+        var text = (items[0].Content as Layout.Content.Text).ShouldNotBeNull();
         text.Value.ShouldStartWith("▶");
     }
 
@@ -105,7 +105,7 @@ public class MenuLayoutTests
         var root = MenuLayout.BuildTree(model, DefaultColors, 16f);
 
         var items = ItemLeaves(root);
-        var text = (items[1].Content as LayoutContent.Text).ShouldNotBeNull();
+        var text = (items[1].Content as Layout.Content.Text).ShouldNotBeNull();
         text.Value.ShouldStartWith("   ");
     }
 
@@ -176,7 +176,7 @@ public class MenuLayoutTests
         var model = BuildModel(3);
         var root = MenuLayout.BuildTree(model, DefaultColors, 16f);
 
-        var stack = root.ShouldBeOfType<LayoutNode.Stack>();
+        var stack = root.ShouldBeOfType<Layout.Node.Stack>();
         var first = stack.Children[0];
         var last = stack.Children[^1];
 

@@ -7,7 +7,7 @@ namespace DIR.Lib.MathLayout;
 /// A leaf box wrapping a string of text rasterized at a fixed font size. The
 /// box's <see cref="Box.Width"/> is the advance width of the text;
 /// <see cref="Box.Height"/> is the ascent; <see cref="Box.Depth"/> is the
-/// descent. Sizing uses <see cref="RgbaImageRenderer.MeasureText"/> against
+/// descent. Layout.Sizing uses <see cref="RgbaImageRenderer.MeasureText"/> against
 /// the same renderer that will eventually paint, so cache hits are reused.
 /// </summary>
 public sealed class GlyphBox : Box
