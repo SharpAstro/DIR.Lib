@@ -26,7 +26,7 @@ env:
   # (Alt, Url) AST node + MarkdownInlineVisitor.Visit(ImageSpan). `![alt](url)`
   # now parses to MdImage instead of a literal `!` + link; renderers (Console.Lib)
   # rasterize or fall back to alt text.
-  VERSION_PREFIX: 5.1.${{ github.run_number }}
+  VERSION_PREFIX: 5.2.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
