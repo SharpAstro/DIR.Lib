@@ -37,6 +37,34 @@ Platform bridges (in downstream packages):
 - **`HitResult`** — open discriminated union: `TextInputHit`, `ButtonHit`, `ListItemHit`, `SlotHit<T>`, `SliderHit`
 - **`DropdownMenuState`** — dropdown / popup menu state machine
 
+## Declarative Layout (`DIR.Lib.Layout`)
+
+A surface-agnostic declarative layout engine. Describe a tree of immutable records; the engine measures + arranges it into rects; a per-surface painter (`PixelWidgetBase.PaintLayout`) draws each node and binds its click region **from the same arranged rect** — draw == hit by construction, with no separate hit-rect arithmetic that can drift.
+
+- **`Layout.Node`** — the tree. Variants: `Stack` (vertical/horizontal), `Dock` (edge strips + a fill remainder), `Grid`, `Overlay` (base/top, for modals/popups), `Split` (two resizable panes + a draggable divider), `Leaf` (a `Content`). Chrome lives on the base node: `Width`/`Height` (`Sizing`), `Padding`, `Background`, `Hit`, `OnClick`.
+- **`Layout.Content`** — leaf payload: `Text` (value + colour + alignment), `Box` (fixed icon/swatch/spacer), `Fill` (an app-drawn escape hatch — chart, image, text input; routed by `Key`).
+- **`Layout.Sizing`** — `Fixed(designUnits)` | `Auto` (shrink-to-content) | `Star(weight)` (proportional split of leftover). Values are *design units* mapped to surface units (px × DPI, or character cells) by `Layout.IMeasureContext`.
+- **`Layout.Engine.Arrange(root, rect, ctx)`** — two-pass measure/arrange; returns a pre-order `ImmutableArray<Layout.ArrangedNode>` the painter walks in order for correct z-stacking. Generic over the coordinate type (`float` pixels / `int` cells), so it is headless-testable with a stub `IMeasureContext`.
+
+### `Layout.Builder` DSL
+
+Author trees with the fluent DSL rather than `new Layout.Node.X { }` initializers — it emits the same records:
+
+```csharp
+using Layout = DIR.Lib.Layout;   // alias once per project; keep `using DIR.Lib;`
+
+Layout.Builder.HStack(
+        Layout.Builder.Text(label, 14f, dim).WStar(0.35f).HStar(),
+        Layout.Builder.Fill(key: "input").Stretch())
+    .RowH(28f)
+    .Bg(active ? activeBg : normalBg)
+    .Clickable(new HitResult.ButtonHit("go"), onClick);
+```
+
+- **Factories** — `VStack` / `HStack` / `Text` / `Box` / `Fill` / `Spacer` / `Grid` / `Overlay` / `Split` / `Dock` (+ `Left`/`Right`/`Top`/`Bottom` dock-strip helpers).
+- **Fluent modifiers** (instance methods on `Layout.Node`, each a pure `this with { … }` transform) — `.W`/`.H`/`.WFixed`/`.WStar`/`.WAuto` (+ `H*`), `.RowH(u)` (full-width row), `.ColW(u)` (fixed-width column), `.Stretch()` (fill both axes), `.Bg`, `.Pad`, `.Clickable(hit, onClick?)`, `.WithGap`/`.WithGaps`.
+- **Consumer convention** — alias `using Layout = DIR.Lib.Layout;` (a `global using`, or a csproj `<Using Include="DIR.Lib.Layout" Alias="Layout" />`) and write the qualified `Layout.Node` / `Layout.Builder`. Do **not** `using DIR.Lib.Layout;` directly — it drops the collision-prone barewords (`Node`, `Content`, `Size<T>`) into scope. (A plain `using DIR.Lib;` does not surface the nested `Layout` namespace; a using-directive imports types, not nested namespaces.) A consumer that already owns a `Layout` type must rename it.
+
 ## Text Input
 
 - **`TextInputState`** — single-line text input state machine with cursor, selection, undo
