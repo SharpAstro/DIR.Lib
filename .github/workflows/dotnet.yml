@@ -26,7 +26,15 @@ env:
   # (Alt, Url) AST node + MarkdownInlineVisitor.Visit(ImageSpan). `![alt](url)`
   # now parses to MdImage instead of a literal `!` + link; renderers (Console.Lib)
   # rasterize or fall back to alt text.
-  VERSION_PREFIX: 5.2.${{ github.run_number }}
+  # MAJOR bump 6.0 - layout namespace + DSL. The layout engine moved into a new
+  # DIR.Lib.Layout namespace and dropped the redundant `Layout` prefix: LayoutNode
+  # -> Layout.Node, LayoutEngine -> Layout.Engine, LayoutContent -> Layout.Content,
+  # LayoutAxis -> Layout.Axis (Sizing/SizeKind/Size<T>/DockChild/DockSide/ArrangedNode/
+  # IMeasureContext also move into the namespace). A new Layout.Builder DSL + fluent
+  # Node modifiers (.RowH()/.WStar()/.Bg()/.Clickable()/...) build the same records.
+  # Source-breaking: consumers alias `using Layout = DIR.Lib.Layout;` (or import it)
+  # and write Layout.Node / Layout.Builder / Layout.Sizing etc.
+  VERSION_PREFIX: 6.0.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

@@ -6,7 +6,7 @@ using Shouldly;
 namespace DIR.Lib.Tests;
 
 /// <summary>
-/// Tests the pixel painter on <see cref="PixelWidgetBase{TSurface}"/>: it arranges a <see cref="LayoutNode"/>
+/// Tests the pixel painter on <see cref="PixelWidgetBase{TSurface}"/>: it arranges a <see cref="Layout.Node"/>
 /// tree and binds each leaf's click region to its arranged rect, so draw-position and hit-region cannot drift.
 /// Uses the CPU <see cref="RgbaImageRenderer"/> (no GPU, no font needed for region binding).
 /// </summary>
@@ -14,7 +14,7 @@ public class LayoutPainterTests
 {
     private sealed class TestWidget(Renderer<RgbaImage> renderer) : PixelWidgetBase<RgbaImage>(renderer)
     {
-        public ClickableRegion[] Render(LayoutNode root, RectF32 bounds)
+        public ClickableRegion[] Render(Layout.Node root, RectF32 bounds)
         {
             BeginFrame();
             RenderLayout(root, bounds, fontPath: string.Empty, dpiScale: 1f);
@@ -24,13 +24,13 @@ public class LayoutPainterTests
         public HitResult? DispatchAt(float x, float y) => HitTestAndDispatch(x, y);
     }
 
-    private static LayoutNode.Leaf HitRow(string action, float height, Action<InputModifier>? onClick = null) =>
-        new(new LayoutContent.Box(0, 0))
+    private static Layout.Node.Leaf HitRow(string action, float height, Action<InputModifier>? onClick = null) =>
+        new(new Layout.Content.Box(0, 0))
         {
             Hit = new HitResult.ButtonHit(action),
             OnClick = onClick,
-            Height = Sizing.Fixed(height),
-            Width = Sizing.Star(),
+            Height = Layout.Sizing.Fixed(height),
+            Width = Layout.Sizing.Star(),
         };
 
     [Fact]
@@ -41,7 +41,7 @@ public class LayoutPainterTests
 
         var a = HitRow("A", 10);
         var b = HitRow("B", 10);
-        var stack = new LayoutNode.Stack([a, b]);
+        var stack = new Layout.Node.Stack([a, b]);
 
         var regions = widget.Render(stack, new RectF32(0, 0, 100, 100));
 
@@ -66,7 +66,7 @@ public class LayoutPainterTests
 
         var clicks = 0;
         var leaf = HitRow("X", 20, _ => clicks++);
-        var stack = new LayoutNode.Stack([leaf]);
+        var stack = new Layout.Node.Stack([leaf]);
 
         widget.Render(stack, new RectF32(0, 0, 100, 100));
 
@@ -85,7 +85,7 @@ public class LayoutPainterTests
         var widget = new TestWidget(renderer);
 
         // A panel background + a plain box, neither carrying a Hit.
-        var stack = new LayoutNode.Stack([new LayoutNode.Leaf(new LayoutContent.Box(0, 0)) { Height = Sizing.Fixed(10), Width = Sizing.Star() }])
+        var stack = new Layout.Node.Stack([new Layout.Node.Leaf(new Layout.Content.Box(0, 0)) { Height = Layout.Sizing.Fixed(10), Width = Layout.Sizing.Star() }])
         {
             Background = new RGBAColor32(0x10, 0x10, 0x18, 0xff),
         };
