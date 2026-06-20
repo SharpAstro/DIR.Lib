@@ -134,6 +134,26 @@ public abstract record LayoutNode
     /// <summary><paramref name="Base"/> drawn first, <paramref name="Top"/> on top (modal / dropdown / popup). Both fill the same rect.</summary>
     public sealed record Overlay(LayoutNode Base, LayoutNode Top) : LayoutNode;
 
+    /// <summary>
+    /// Two resizable panes laid out along <paramref name="Axis"/> with a draggable divider of
+    /// <paramref name="DividerThickness"/> design units between them. <paramref name="FirstExtent"/>
+    /// (design units) is the first pane's size along the axis and is <b>consumer-owned state</b>: the engine
+    /// only arranges given it, so the host updates it from the divider's drag delta and the engine re-arranges
+    /// next frame. The divider is emitted as its own node carrying <paramref name="DividerHit"/> (a host hit,
+    /// e.g. a resize-handle marker its MouseDown logic recognises) filled with <paramref name="DividerColor"/>,
+    /// so the grab region <i>is</i> the drawn bar -- no separate widened-rect arithmetic that can drift.
+    /// The leftover space (after the first pane + divider) goes to <paramref name="Second"/>; like
+    /// <see cref="Dock"/> a Split expects explicit bounds (pair it with <c>Star</c> sizing to fill).
+    /// </summary>
+    public sealed record Split(
+        LayoutNode First,
+        LayoutNode Second,
+        LayoutAxis Axis = LayoutAxis.Horizontal,
+        float FirstExtent = 0f,
+        float DividerThickness = 6f,
+        HitResult? DividerHit = null,
+        RGBAColor32? DividerColor = null) : LayoutNode;
+
     /// <summary>A terminal paintable piece.</summary>
     public sealed record Leaf(LayoutContent Content) : LayoutNode;
 }

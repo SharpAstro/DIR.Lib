@@ -305,4 +305,105 @@ public class LayoutEngineTests
         (w0 + w1 + w2).ShouldBe(10); // exact tile of a 10-wide strip across 3 columns
         RectOf(arranged, cells[2]).Right.ShouldBe(10);
     }
+
+    // --- Split ---
+
+    private sealed record SplitHit(string Id) : HitResult;
+
+    private static LayoutNode.Leaf Pane() => new(new LayoutContent.Box(0, 0));
+
+    private static ArrangedNode<float>? DividerOf(ImmutableArray<ArrangedNode<float>> arranged, HitResult hit)
+    {
+        foreach (var a in arranged)
+        {
+            if (ReferenceEquals(a.Node.Hit, hit))
+            {
+                return a;
+            }
+        }
+
+        return null;
+    }
+
+    [Fact]
+    public void HorizontalSplit_PlacesPanesAroundDivider()
+    {
+        var first = Pane();
+        var second = Pane();
+        var hit = new SplitHit("FileList");
+        var split = new LayoutNode.Split(first, second, LayoutAxis.Horizontal,
+            FirstExtent: 30f, DividerThickness: 6f, DividerHit: hit);
+
+        var arranged = LayoutEngine.Arrange(split, new Rect<float>(0, 0, 100, 40), new PixelCtx());
+
+        RectOf(arranged, first).ShouldBe(new Rect<float>(0, 0, 30, 40));
+        DividerOf(arranged, hit)!.Value.Bounds.ShouldBe(new Rect<float>(30, 0, 6, 40));
+        RectOf(arranged, second).ShouldBe(new Rect<float>(36, 0, 64, 40)); // 100 - 30 - 6
+    }
+
+    [Fact]
+    public void VerticalSplit_PlacesPanesAroundDivider()
+    {
+        var first = Pane();
+        var second = Pane();
+        var hit = new SplitHit("Top");
+        var split = new LayoutNode.Split(first, second, LayoutAxis.Vertical,
+            FirstExtent: 20f, DividerThickness: 4f, DividerHit: hit);
+
+        var arranged = LayoutEngine.Arrange(split, new Rect<float>(0, 0, 50, 100), new PixelCtx());
+
+        RectOf(arranged, first).ShouldBe(new Rect<float>(0, 0, 50, 20));
+        DividerOf(arranged, hit)!.Value.Bounds.ShouldBe(new Rect<float>(0, 20, 50, 4));
+        RectOf(arranged, second).ShouldBe(new Rect<float>(0, 24, 50, 76)); // 100 - 20 - 4
+    }
+
+    [Fact]
+    public void Split_Divider_IsDrawEqualsHit_CarriesColorAndHit()
+    {
+        var hit = new SplitHit("FileList");
+        var color = new RGBAColor32(0x40, 0x40, 0x48, 0xff);
+        var split = new LayoutNode.Split(Pane(), Pane(), LayoutAxis.Horizontal,
+            FirstExtent: 30f, DividerThickness: 6f, DividerHit: hit, DividerColor: color);
+
+        var arranged = LayoutEngine.Arrange(split, new Rect<float>(0, 0, 100, 40), new PixelCtx());
+
+        var divider = DividerOf(arranged, hit);
+        divider.ShouldNotBeNull();
+        // The drawn bar (Background) and the grab region (Hit) are the SAME arranged rect.
+        divider.Value.Node.Background.ShouldBe(color);
+        divider.Value.Bounds.ShouldBe(new Rect<float>(30, 0, 6, 40));
+    }
+
+    [Fact]
+    public void Split_ClampsFirstExtentToBounds()
+    {
+        var first = Pane();
+        var second = Pane();
+        var hit = new SplitHit("FileList");
+        // FirstExtent (200) exceeds the 100-wide bounds: clamp so the divider + second pane still fit.
+        var split = new LayoutNode.Split(first, second, LayoutAxis.Horizontal,
+            FirstExtent: 200f, DividerThickness: 6f, DividerHit: hit);
+
+        var arranged = LayoutEngine.Arrange(split, new Rect<float>(0, 0, 100, 40), new PixelCtx());
+
+        RectOf(arranged, first).Width.ShouldBe(94f);              // 100 - 6 divider
+        RectOf(arranged, second).Width.ShouldBe(0f);              // nothing left
+        DividerOf(arranged, hit)!.Value.Bounds.X.ShouldBe(94f);
+    }
+
+    [Fact]
+    public void Split_NoDividerStyling_ReservesGapButEmitsNoDividerNode()
+    {
+        var first = Pane();
+        var second = Pane();
+        var split = new LayoutNode.Split(first, second, LayoutAxis.Horizontal,
+            FirstExtent: 30f, DividerThickness: 6f); // no DividerHit, no DividerColor
+
+        var arranged = LayoutEngine.Arrange(split, new Rect<float>(0, 0, 100, 40), new PixelCtx());
+
+        // The 6-unit divider gap is still reserved (second starts at 36)...
+        RectOf(arranged, second).ShouldBe(new Rect<float>(36, 0, 64, 40));
+        // ...but with nothing to draw or hit, no divider node is emitted (just the 2 panes + the Split root).
+        arranged.Length.ShouldBe(3);
+    }
 }

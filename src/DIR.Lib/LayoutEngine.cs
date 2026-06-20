@@ -44,13 +44,14 @@ public static class LayoutEngine
             LayoutNode.Overlay overlay => Union(
                 Measure(overlay.Base, available, ctx),
                 Measure(overlay.Top, available, ctx)),
-            // A Dock fills its bounds; it expects explicit top-level bounds rather than shrink-to-content.
+            // A Dock or Split fills its bounds; both expect explicit bounds rather than shrink-to-content.
             LayoutNode.Dock => available,
+            LayoutNode.Split => available,
             _ => Size<T>.Zero,
         };
 
-        // Inner padding grows the intrinsic box (except a Dock, which is already "fill").
-        if (node is not LayoutNode.Dock && node.Padding != 0f)
+        // Inner padding grows the intrinsic box (except a Dock / Split, which are already "fill").
+        if (node is not LayoutNode.Dock and not LayoutNode.Split && node.Padding != 0f)
         {
             var pad2 = ctx.ToSurface(node.Padding) + ctx.ToSurface(node.Padding);
             intrinsic = new Size<T>(intrinsic.Width + pad2, intrinsic.Height + pad2);
@@ -98,7 +99,54 @@ public static class LayoutEngine
                 ArrangeNode(overlay.Base, inner, ctx, output); // base first
                 ArrangeNode(overlay.Top, inner, ctx, output);  // top on top
                 break;
+            case LayoutNode.Split split:
+                ArrangeSplit(split, inner, ctx, output);
+                break;
         }
+    }
+
+    private static void ArrangeSplit<T>(LayoutNode.Split split, Rect<T> inner, IMeasureContext<T> ctx,
+        ImmutableArray<ArrangedNode<T>>.Builder output) where T : INumber<T>
+    {
+        var horizontal = split.Axis == LayoutAxis.Horizontal;
+        var mainAvail = horizontal ? inner.Width : inner.Height;
+        var divider = ctx.ToSurface(split.DividerThickness);
+
+        // FirstExtent is consumer-owned; clamp so the divider + both panes always fit the bounds.
+        var maxFirst = Max(T.Zero, mainAvail - divider);
+        var first = Min(Max(ctx.ToSurface(split.FirstExtent), T.Zero), maxFirst);
+        var second = Max(T.Zero, mainAvail - divider - first);
+
+        Rect<T> firstRect, dividerRect, secondRect;
+        if (horizontal)
+        {
+            firstRect = new Rect<T>(inner.X, inner.Y, first, inner.Height);
+            dividerRect = new Rect<T>(inner.X + first, inner.Y, divider, inner.Height);
+            secondRect = new Rect<T>(inner.X + first + divider, inner.Y, second, inner.Height);
+        }
+        else
+        {
+            firstRect = new Rect<T>(inner.X, inner.Y, inner.Width, first);
+            dividerRect = new Rect<T>(inner.X, inner.Y + first, inner.Width, divider);
+            secondRect = new Rect<T>(inner.X, inner.Y + first + divider, inner.Width, second);
+        }
+
+        ArrangeNode(split.First, firstRect, ctx, output);
+
+        // Synthesize the divider as its own draw==hit node: the painter fills DividerColor and binds
+        // DividerHit to the SAME arranged rect, so the grab region cannot drift from the drawn bar.
+        // Emitted only when there is something to draw or hit (otherwise the divider is a pure gap).
+        if (split.DividerColor is not null || split.DividerHit is not null)
+        {
+            var dividerNode = new LayoutNode.Leaf(new LayoutContent.Box(0f, 0f))
+            {
+                Background = split.DividerColor,
+                Hit = split.DividerHit,
+            };
+            output.Add(new ArrangedNode<T>(dividerNode, dividerRect));
+        }
+
+        ArrangeNode(split.Second, secondRect, ctx, output);
     }
 
     private static void ArrangeStack<T>(LayoutNode.Stack stack, Rect<T> inner, IMeasureContext<T> ctx,
