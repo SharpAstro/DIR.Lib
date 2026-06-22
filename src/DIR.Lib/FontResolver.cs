@@ -1,6 +1,21 @@
 namespace DIR.Lib;
 
 /// <summary>
+/// Font weight / slant, expressed as the four conventional faces of a family.
+/// The integer values double as the index into a family's ordered
+/// <c>[regular, bold, italic, bold-italic]</c> face list, so
+/// <c>(int)FontStyle.BoldItalic == 3</c>.
+/// </summary>
+[Flags]
+public enum FontStyle
+{
+    Regular = 0,
+    Bold = 1,
+    Italic = 2,
+    BoldItalic = Bold | Italic,
+}
+
+/// <summary>
 /// Resolves system / user-installed font paths for use with
 /// <see cref="ManagedFontRasterizer"/> / <see cref="RgbaImageRenderer.DrawText"/>.
 /// Used by both pixel renderers (GPU/SDL) and TUI Sixel renderers — anywhere
@@ -154,5 +169,145 @@ public static class FontResolver
         foreach (var supported in FontExtensions)
             if (ext.Equals(supported, StringComparison.OrdinalIgnoreCase)) return true;
         return false;
+    }
+
+    // ---- By-name resolution (family + style → installed face file) ----------
+    //
+    // Producers spell the standard fonts many ways — "Arial", "ArialMT",
+    // "Arial,Bold", "Arial-BoldMT", "TimesNewRomanPS-BoldItalicMT" — so we parse
+    // the family + weight/slant (TryParseFamilyStyle) and probe the conventional
+    // file names below in the installed-font index built from
+    // EnumerateInstalledFonts(). Each face list is indexed by
+    // (int)FontStyle = (bold?1:0)+(italic?2:0): [regular, bold, italic, bold-italic];
+    // the second name in each pair is the Linux metric-compatible Liberation
+    // equivalent. Helvetica maps onto Arial. Symbol/ZapfDingbats have a single
+    // face (no styled variants).
+
+    private static readonly string[][] ArialFaces =
+    [
+        ["arial.ttf",   "liberationsans-regular.ttf"],
+        ["arialbd.ttf", "liberationsans-bold.ttf"],
+        ["ariali.ttf",  "liberationsans-italic.ttf"],
+        ["arialbi.ttf", "liberationsans-bolditalic.ttf"],
+    ];
+
+    private static readonly string[][] TimesFaces =
+    [
+        ["times.ttf",   "liberationserif-regular.ttf"],
+        ["timesbd.ttf", "liberationserif-bold.ttf"],
+        ["timesi.ttf",  "liberationserif-italic.ttf"],
+        ["timesbi.ttf", "liberationserif-bolditalic.ttf"],
+    ];
+
+    private static readonly string[][] CourierFaces =
+    [
+        ["cour.ttf",   "liberationmono-regular.ttf"],
+        ["courbd.ttf", "liberationmono-bold.ttf"],
+        ["couri.ttf",  "liberationmono-italic.ttf"],
+        ["courbi.ttf", "liberationmono-bolditalic.ttf"],
+    ];
+
+    private static readonly string[][] SymbolFaces = [["symbol.ttf"]];
+    private static readonly string[][] DingbatsFaces = [["wingding.ttf"]];
+
+    // Normalised family key → styled face list. Declared after the face arrays so
+    // the static initialisers (which run in textual order) see non-null values.
+    private static readonly Dictionary<string, string[][]> SystemFontFamilies = new(StringComparer.Ordinal)
+    {
+        ["arial"] = ArialFaces,
+        ["helvetica"] = ArialFaces,
+        ["timesnewroman"] = TimesFaces,
+        ["times"] = TimesFaces,
+        ["couriernew"] = CourierFaces,
+        ["courier"] = CourierFaces,
+        ["symbol"] = SymbolFaces,
+        ["zapfdingbats"] = DingbatsFaces,
+    };
+
+    // Machine-global index of installed fonts: file name → absolute path,
+    // discovered once via EnumerateInstalledFonts() (system + per-user font
+    // directories, cross-platform). First occurrence wins, matching the
+    // system-before-user ordering of FontDirectories. Lazy<T> is thread-safe by default.
+    private static readonly Lazy<IReadOnlyDictionary<string, string>> InstalledFontsByName = new(() =>
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in EnumerateInstalledFonts())
+            map.TryAdd(Path.GetFileName(path), path);
+        return map;
+    });
+
+    // First of the candidate file names that the OS actually has installed, or null.
+    private static string? FindInstalledFile(string[] fileNames)
+    {
+        foreach (var name in fileNames)
+            if (InstalledFontsByName.Value.TryGetValue(name, out var path))
+                return path;
+        return null;
+    }
+
+    /// <summary>
+    /// Parses a font name into a normalised family key and a <see cref="FontStyle"/>,
+    /// tolerating the conventions producers actually emit: "Arial", "ArialMT",
+    /// "Arial,Bold", "Arial-BoldMT", "TimesNewRomanPS-BoldItalicMT", and the
+    /// "ABCDEF+" subset prefix embedders prepend. Weight/slant come from the
+    /// presence of the bold / italic / oblique words; the family key is what
+    /// remains after stripping those, the PostScript "MT"/"PS" tags, and
+    /// separators. Returns false if nothing meaningful remains (so the caller can
+    /// leave resolution to its own fallbacks).
+    /// </summary>
+    public static bool TryParseFamilyStyle(string name, out string family, out FontStyle style)
+    {
+        // Drop the subset prefix producers prepend to embedded fonts ("ABCDEF+Arial" → "Arial").
+        var plus = name.IndexOf('+');
+        if (plus >= 0 && plus < name.Length - 1)
+            name = name[(plus + 1)..];
+
+        var lower = name.ToLowerInvariant();
+        var bold = lower.Contains("bold");
+        var italic = lower.Contains("italic") || lower.Contains("oblique");
+        style = (bold ? FontStyle.Bold : FontStyle.Regular) | (italic ? FontStyle.Italic : FontStyle.Regular);
+
+        // Strip style words, the PostScript "ps"/"mt" tags, and separators to isolate the family.
+        ReadOnlySpan<string> noise = ["bold", "italic", "oblique", "regular", "ps", "mt"];
+        var key = lower;
+        foreach (var token in noise)
+            key = key.Replace(token, "");
+        // "+" is in the separator set so a degenerate name with no family after the
+        // subset tag ("+", "ABCDEF+") collapses to empty rather than a junk family.
+        family = key.Replace(",", "").Replace("-", "").Replace("_", "").Replace(" ", "").Replace("+", "");
+        return family.Length > 0;
+    }
+
+    /// <summary>
+    /// Resolves a known font family + <see cref="FontStyle"/> to an installed face
+    /// file. The family is matched against the standard aliases (Arial/Helvetica,
+    /// Times[ New Roman], Courier[ New], Symbol, ZapfDingbats) and probed in the
+    /// installed-font index — the requested styled face first, then the family's
+    /// regular weight if that exact face isn't installed (better a same-family
+    /// substitute than an unrelated fallback). Returns null if the family is
+    /// unknown or none of its faces are installed.
+    /// </summary>
+    public static string? ResolveInstalledFace(string family, FontStyle style)
+    {
+        var key = family.ToLowerInvariant()
+            .Replace(",", "").Replace("-", "").Replace("_", "").Replace(" ", "");
+        if (!SystemFontFamilies.TryGetValue(key, out var faces))
+            return null;
+        var idx = (int)style < faces.Length ? (int)style : 0; // Symbol/Dingbats have one face only
+        return FindInstalledFile(faces[idx]) ?? FindInstalledFile(faces[0]);
+    }
+
+    /// <summary>
+    /// Resolves a font name (in any of the forms <see cref="TryParseFamilyStyle"/>
+    /// accepts) to an installed font file. Tries the standard-family table first,
+    /// then a direct "&lt;family&gt;.ttf" probe against the installed-font index so it
+    /// also covers fonts beyond the standard families (Tahoma → tahoma.ttf,
+    /// ISOCPEUR → isocpeur.ttf). Returns null when nothing installed matches.
+    /// </summary>
+    public static string? ResolveInstalledFont(string name)
+    {
+        if (!TryParseFamilyStyle(name, out var family, out var style))
+            return null;
+        return ResolveInstalledFace(family, style) ?? FindInstalledFile([family + ".ttf"]);
     }
 }
