@@ -3,6 +3,8 @@ using System.Text;
 using SharpAstro.Fonts;
 using FontsHint = SharpAstro.Fonts.Tables.Cmap.GlyphMapHint;
 using Tables = SharpAstro.Fonts.Tables;
+using T1 = SharpAstro.Fonts.Type1;
+using Rast = SharpAstro.Fonts.Rasterizer;
 
 namespace DIR.Lib;
 
@@ -19,12 +21,25 @@ public sealed class ManagedFontRasterizer : IDisposable
 {
     private readonly ConcurrentDictionary<string, OpenTypeFont> _fonts = new();
 
+    // Embedded Adobe Type1 (/FontFile, PFB) fonts, keyed by the same id as _fonts. Type1 is a
+    // different container than SFNT (PostScript dict + eexec-encrypted charstrings) so it can't go
+    // through OpenTypeFont; it's looked up by char code → glyph name via the font's own Encoding.
+    private readonly ConcurrentDictionary<string, T1.Type1Font> _type1Fonts = new();
+
+    // Per-font char code → glyph name overrides from the PDF /Encoding /Differences (same id as
+    // _type1Fonts). Authoritative over the font's built-in encoding; this is how a PDF reaches a
+    // glyph (e.g. the fi/fl ligatures) it places at a code the built-in encoding doesn't cover.
+    private readonly ConcurrentDictionary<string, IReadOnlyDictionary<int, string>> _type1Encoding = new();
+
     /// <summary>
     /// Rasterize a glyph with PDF char-code + cmap lookup hint.
     /// </summary>
     public GlyphBitmap RasterizeGlyphWithCharCode(string fontPath, float fontSize,
         Rune codepoint, uint charCode, GlyphMapHint hint = GlyphMapHint.Auto)
     {
+        // Embedded Type1: the char code resolves to a glyph name (PDF /Differences override first).
+        if (_type1Fonts.TryGetValue(fontPath, out var t1))
+            return RenderType1(t1, ResolveType1Name(fontPath, t1, charCode), fontSize);
         var font = GetOrLoad(fontPath);
         // DIR.Lib.GlyphMapHint and SharpAstro.Fonts' enum share value layout
         // (Auto=0, EmbeddedSubset=1, CharCodeIsGID=2, Unicode=3) so the cast
@@ -39,6 +54,10 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// </summary>
     public GlyphBitmap RasterizeGlyph(string fontPath, float fontSize, Rune codepoint)
     {
+        // Type1 has no Unicode cmap; for the ASCII range the code point equals the char code, which
+        // is enough for the resolver's "render 'A'" probe and any Unicode-keyed draw of basic Latin.
+        if (_type1Fonts.TryGetValue(fontPath, out var t1))
+            return RenderType1(t1, ResolveType1Name(fontPath, t1, (uint)codepoint.Value), fontSize);
         var font = GetOrLoad(fontPath);
         var gid = font.GetGlyphId((uint)codepoint.Value);
         if (gid == 0) return default;
@@ -470,9 +489,19 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// </summary>
     public bool RegisterFontFromMemory(string fontId, byte[] fontData)
     {
-        if (_fonts.ContainsKey(fontId)) return true;
+        if (_fonts.ContainsKey(fontId) || _type1Fonts.ContainsKey(fontId)) return true;
         try
         {
+            // Adobe Type1 (/FontFile, PFB) is not SFNT — OpenTypeFont.Load can't read it. Route the
+            // PFB bytes through the Type1 charstring engine instead. Without this, every LaTeX /
+            // Computer-Modern PDF falls back to a system font and loses the fi/ff/fl ligatures (they
+            // live at OT1 codes 11–15, which a Latin fallback maps to blank control chars).
+            if (T1.Type1Font.IsType1(fontData))
+            {
+                _type1Fonts.TryAdd(fontId, T1.Type1Font.LoadType1(fontData));
+                return true;
+            }
+
             var font = OpenTypeFont.Load(fontData);
             _fonts.TryAdd(fontId, font);
             return true;
@@ -484,11 +513,24 @@ public sealed class ManagedFontRasterizer : IDisposable
     }
 
     /// <summary>
+    /// Install the PDF <c>/Encoding /Differences</c> char code → glyph name overrides for the Type1
+    /// font registered under <paramref name="fontId"/>. These win over the font's built-in encoding,
+    /// so a code the embedded font maps to <c>.notdef</c> (e.g. a remapped <c>fi</c> ligature) still
+    /// resolves to its named glyph. No-op for non-Type1 fonts (the override is only consulted there).
+    /// </summary>
+    public void RegisterType1Encoding(string fontId, IReadOnlyDictionary<int, string> differences)
+    {
+        if (differences.Count > 0) _type1Encoding[fontId] = differences;
+    }
+
+    /// <summary>
     /// Rasterize a glyph as a signed distance field by Unicode codepoint.
     /// Returns a single-channel SDF bitmap suitable for GPU SDF text rendering.
     /// </summary>
     public SdfGlyphBitmap RasterizeGlyphSdf(string fontPath, float fontSize, Rune codepoint, float spread = 4f)
     {
+        if (_type1Fonts.TryGetValue(fontPath, out var t1))
+            return RenderType1Sdf(t1, ResolveType1Name(fontPath, t1, (uint)codepoint.Value), fontSize, spread);
         var font = GetOrLoad(fontPath);
         var gid = font.GetGlyphId((uint)codepoint.Value);
         if (gid == 0) return default;
@@ -503,6 +545,8 @@ public sealed class ManagedFontRasterizer : IDisposable
     public SdfGlyphBitmap RasterizeGlyphSdfWithCharCode(string fontPath, float fontSize,
         Rune codepoint, uint charCode, GlyphMapHint hint = GlyphMapHint.Auto, float spread = 4f)
     {
+        if (_type1Fonts.TryGetValue(fontPath, out var t1))
+            return RenderType1Sdf(t1, ResolveType1Name(fontPath, t1, charCode), fontSize, spread);
         var font = GetOrLoad(fontPath);
         var gid = font.GetGlyphId((uint)codepoint.Value, charCode, (FontsHint)hint);
         if (gid == 0) return default;
@@ -576,5 +620,66 @@ public sealed class ManagedFontRasterizer : IDisposable
             : 0f;
         return new SdfGlyphBitmap(sdf.Alpha, sdf.Width, sdf.Height,
             sdf.Left, sdf.Top, advanceX, spread);
+    }
+
+    // ---- Type1 (PFB) glyph rendering -------------------------------------
+
+    /// <summary>
+    /// Resolve a Type1 char code to a glyph name via the font's built-in Encoding. Returns null for
+    /// out-of-range codes or the .notdef slot, so callers render nothing rather than a notdef box.
+    /// </summary>
+    // Resolve a Type1 char code to a glyph name: the PDF /Encoding /Differences override wins (when
+    // it names a glyph the font actually has), otherwise the font's built-in encoding.
+    private string? ResolveType1Name(string fontPath, T1.Type1Font font, uint charCode)
+    {
+        if (_type1Encoding.TryGetValue(fontPath, out var diffs)
+            && diffs.TryGetValue((int)charCode, out var name)
+            && font.HasGlyph(name))
+            return name;
+        return Type1GlyphName(font, charCode);
+    }
+
+    private static string? Type1GlyphName(T1.Type1Font font, uint charCode)
+    {
+        var enc = font.Encoding;
+        if (charCode >= (uint)enc.Count) return null;
+        var name = enc[(int)charCode];
+        return string.IsNullOrEmpty(name) || name == ".notdef" ? null : name;
+    }
+
+    /// <summary>
+    /// Rasterize a Type1 glyph (by name) to DIR.Lib's white-RGBA <see cref="GlyphBitmap"/>, mirroring
+    /// the grayscale branch of <see cref="Render"/>. Advance comes from the PDF /Widths array upstream,
+    /// so AdvanceX is left 0 here (same as the assembly path).
+    /// </summary>
+    private static GlyphBitmap RenderType1(T1.Type1Font font, string? glyphName, float pixelsPerEm)
+    {
+        if (glyphName is null || !font.HasGlyph(glyphName)) return default;
+        var gray = font.RenderGlyph(glyphName, pixelsPerEm);
+        if (gray.Width == 0 || gray.Height == 0 || gray.Alpha.Length == 0) return default;
+
+        var rgba = new byte[gray.Width * gray.Height * 4];
+        for (var i = 0; i < gray.Alpha.Length; i++)
+        {
+            var di = i * 4;
+            rgba[di] = 255;
+            rgba[di + 1] = 255;
+            rgba[di + 2] = 255;
+            rgba[di + 3] = gray.Alpha[i];
+        }
+        return new GlyphBitmap(rgba, gray.Width, gray.Height, gray.Left, gray.Top, AdvanceX: 0f, IsColored: false);
+    }
+
+    /// <summary>
+    /// Rasterize a Type1 glyph (by name) to a signed-distance field, driving the sink-based SDF
+    /// rasterizer directly from the charstring interpreter — the Type1 analogue of <see cref="RenderSdf"/>.
+    /// </summary>
+    private static SdfGlyphBitmap RenderType1Sdf(T1.Type1Font font, string? glyphName, float pixelsPerEm, float spread)
+    {
+        if (glyphName is null || !font.HasGlyph(glyphName)) return default;
+        var sdf = Rast.SdfRasterizer.RasterizeAuto(sink => font.DrawGlyph(glyphName, sink),
+            pixelsPerEm, font.UnitsPerEm, spread);
+        if (sdf.Width == 0 || sdf.Height == 0) return default;
+        return new SdfGlyphBitmap(sdf.Alpha, sdf.Width, sdf.Height, sdf.Left, sdf.Top, AdvanceX: 0f, spread);
     }
 }
