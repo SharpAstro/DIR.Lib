@@ -43,6 +43,19 @@ public class LayoutEngineTests
         throw new InvalidOperationException("Node was not arranged.");
     }
 
+    private static int DepthOf<T>(ImmutableArray<Layout.ArrangedNode<T>> arranged, Layout.Node node) where T : INumber<T>
+    {
+        foreach (var a in arranged)
+        {
+            if (ReferenceEquals(a.Node, node))
+            {
+                return a.Depth;
+            }
+        }
+
+        throw new InvalidOperationException("Node was not arranged.");
+    }
+
     private static Layout.Node.Leaf Row(float fixedHeight) =>
         new(new Layout.Content.Box(0, 0)) { Height = Layout.Sizing.Fixed(fixedHeight), Width = Layout.Sizing.Star() };
 
@@ -191,6 +204,27 @@ public class LayoutEngineTests
         rowRect.ShouldBe(new Rect<float>(0, 30, 100, 70));
         RectOf(arranged, c1).ShouldBe(new Rect<float>(0, 30, 50, 70));
         RectOf(arranged, c2).ShouldBe(new Rect<float>(50, 30, 50, 70));
+    }
+
+    [Fact]
+    public void Arrange_AssignsTreeDepth()
+    {
+        // outer(0) -> { top(1), row(1) -> { c1(2), c2(2) } } -- pre-order, parent shallower than child.
+        var top = Row(30);
+        var c1 = new Layout.Node.Leaf(new Layout.Content.Box(0, 0)) { Width = Layout.Sizing.Star(), Height = Layout.Sizing.Star() };
+        var c2 = new Layout.Node.Leaf(new Layout.Content.Box(0, 0)) { Width = Layout.Sizing.Star(), Height = Layout.Sizing.Star() };
+        var row = new Layout.Node.Stack([c1, c2], Layout.Axis.Horizontal) { Width = Layout.Sizing.Star(), Height = Layout.Sizing.Star() };
+        var outer = new Layout.Node.Stack([top, row]);
+
+        var arranged = Layout.Engine.Arrange(outer, new Rect<float>(0, 0, 100, 100), new PixelCtx());
+
+        DepthOf(arranged, outer).ShouldBe(0);
+        DepthOf(arranged, top).ShouldBe(1);
+        DepthOf(arranged, row).ShouldBe(1);
+        DepthOf(arranged, c1).ShouldBe(2);
+        DepthOf(arranged, c2).ShouldBe(2);
+        // The flat list is pre-order: every node appears after its parent.
+        arranged[0].Node.ShouldBe(outer);
     }
 
     // --- dock ---

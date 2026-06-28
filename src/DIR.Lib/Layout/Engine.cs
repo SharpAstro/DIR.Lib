@@ -72,41 +72,42 @@ public static class Engine
         where T : INumber<T>
     {
         var builder = ImmutableArray.CreateBuilder<ArrangedNode<T>>();
-        ArrangeNode(root, bounds, ctx, builder);
+        ArrangeNode(root, bounds, ctx, builder, 0);
         return builder.ToImmutable();
     }
 
     private static void ArrangeNode<T>(Node node, Rect<T> rect, IMeasureContext<T> ctx,
-        ImmutableArray<ArrangedNode<T>>.Builder output) where T : INumber<T>
+        ImmutableArray<ArrangedNode<T>>.Builder output, int depth) where T : INumber<T>
     {
-        output.Add(new ArrangedNode<T>(node, rect));
+        output.Add(new ArrangedNode<T>(node, rect) { Depth = depth });
 
         var inner = Inset(rect, ctx.ToSurface(node.Padding));
+        var childDepth = depth + 1;
         switch (node)
         {
             case Node.Leaf:
                 break;
             case Node.Stack stack:
-                ArrangeStack(stack, inner, ctx, output);
+                ArrangeStack(stack, inner, ctx, output, childDepth);
                 break;
             case Node.Dock dock:
-                ArrangeDock(dock, inner, ctx, output);
+                ArrangeDock(dock, inner, ctx, output, childDepth);
                 break;
             case Node.Grid grid:
-                ArrangeGrid(grid, inner, ctx, output);
+                ArrangeGrid(grid, inner, ctx, output, childDepth);
                 break;
             case Node.Overlay overlay:
-                ArrangeNode(overlay.Base, inner, ctx, output); // base first
-                ArrangeNode(overlay.Top, inner, ctx, output);  // top on top
+                ArrangeNode(overlay.Base, inner, ctx, output, childDepth); // base first
+                ArrangeNode(overlay.Top, inner, ctx, output, childDepth);  // top on top
                 break;
             case Node.Split split:
-                ArrangeSplit(split, inner, ctx, output);
+                ArrangeSplit(split, inner, ctx, output, childDepth);
                 break;
         }
     }
 
     private static void ArrangeSplit<T>(Node.Split split, Rect<T> inner, IMeasureContext<T> ctx,
-        ImmutableArray<ArrangedNode<T>>.Builder output) where T : INumber<T>
+        ImmutableArray<ArrangedNode<T>>.Builder output, int depth) where T : INumber<T>
     {
         var horizontal = split.Axis == Axis.Horizontal;
         var mainAvail = horizontal ? inner.Width : inner.Height;
@@ -131,7 +132,7 @@ public static class Engine
             secondRect = new Rect<T>(inner.X, inner.Y + first + divider, inner.Width, second);
         }
 
-        ArrangeNode(split.First, firstRect, ctx, output);
+        ArrangeNode(split.First, firstRect, ctx, output, depth);
 
         // Synthesize the divider as its own draw==hit node: the painter fills DividerColor and binds
         // DividerHit to the SAME arranged rect, so the grab region cannot drift from the drawn bar.
@@ -143,14 +144,14 @@ public static class Engine
                 Background = split.DividerColor,
                 Hit = split.DividerHit,
             };
-            output.Add(new ArrangedNode<T>(dividerNode, dividerRect));
+            output.Add(new ArrangedNode<T>(dividerNode, dividerRect) { Depth = depth });
         }
 
-        ArrangeNode(split.Second, secondRect, ctx, output);
+        ArrangeNode(split.Second, secondRect, ctx, output, depth);
     }
 
     private static void ArrangeStack<T>(Node.Stack stack, Rect<T> inner, IMeasureContext<T> ctx,
-        ImmutableArray<ArrangedNode<T>>.Builder output) where T : INumber<T>
+        ImmutableArray<ArrangedNode<T>>.Builder output, int depth) where T : INumber<T>
     {
         var children = stack.Children;
         var n = children.Length;
@@ -214,14 +215,14 @@ public static class Engine
             var childRect = axis == Axis.Vertical
                 ? new Rect<T>(inner.X, cursor, cross, mains[i])
                 : new Rect<T>(cursor, inner.Y, mains[i], cross);
-            ArrangeNode(children[i], childRect, ctx, output);
+            ArrangeNode(children[i], childRect, ctx, output, depth);
 
             cursor += mains[i] + gap;
         }
     }
 
     private static void ArrangeDock<T>(Node.Dock dock, Rect<T> inner, IMeasureContext<T> ctx,
-        ImmutableArray<ArrangedNode<T>>.Builder output) where T : INumber<T>
+        ImmutableArray<ArrangedNode<T>>.Builder output, int depth) where T : INumber<T>
     {
         var layout = new DockLayout<T>(inner);
         foreach (var dc in dock.Docked)
@@ -242,14 +243,14 @@ public static class Engine
             }
 
             var r = layout.Dock(ToDockStyle(dc.Side), size);
-            ArrangeNode(dc.Child, r, ctx, output);
+            ArrangeNode(dc.Child, r, ctx, output, depth);
         }
 
-        ArrangeNode(dock.Fill, layout.Fill(), ctx, output);
+        ArrangeNode(dock.Fill, layout.Fill(), ctx, output, depth);
     }
 
     private static void ArrangeGrid<T>(Node.Grid grid, Rect<T> inner, IMeasureContext<T> ctx,
-        ImmutableArray<ArrangedNode<T>>.Builder output) where T : INumber<T>
+        ImmutableArray<ArrangedNode<T>>.Builder output, int depth) where T : INumber<T>
     {
         var columns = grid.Columns;
         var cells = grid.Cells;
@@ -285,7 +286,7 @@ public static class Engine
                 y += rowHeights[k] + rowGap;
             }
 
-            ArrangeNode(cells[idx], new Rect<T>(x, y, colWidths[col], rowHeights[row]), ctx, output);
+            ArrangeNode(cells[idx], new Rect<T>(x, y, colWidths[col], rowHeights[row]), ctx, output, depth);
         }
     }
 

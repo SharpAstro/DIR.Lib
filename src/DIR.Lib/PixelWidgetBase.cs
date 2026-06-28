@@ -33,6 +33,12 @@ namespace DIR.Lib
     {
         private readonly ClickableRegionTracker _tracker = new();
 
+        // DEBUG-inspector capture of the arranged layout painted this frame. Null until
+        // LayoutInspection is enabled (zero overhead in production); mirrors _tracker -- cleared in
+        // BeginFrame, appended in PaintLayout, read by the inspector's describe_layout. Render-thread
+        // only, like the region tracker.
+        private List<Layout.ArrangedNode<float>>? _capturedLayout;
+
         protected Renderer<TSurface> Renderer { get; } = renderer;
 
         /// <summary>
@@ -51,9 +57,14 @@ namespace DIR.Lib
         public long FrameCount { get; set; }
 
         /// <summary>
-        /// Clears clickable regions. Call at the start of each Render pass.
+        /// Clears clickable regions (and the inspector layout capture, if enabled). Call at the start
+        /// of each Render pass.
         /// </summary>
-        protected void BeginFrame() => _tracker.BeginFrame();
+        protected void BeginFrame()
+        {
+            _tracker.BeginFrame();
+            _capturedLayout?.Clear();
+        }
 
         /// <summary>
         /// Registers a clickable region with an optional direct click handler.
@@ -137,6 +148,16 @@ namespace DIR.Lib
         /// </summary>
         public ClickableRegion[] GetRegisteredRegions() => _tracker.GetRegisteredRegions();
 
+        /// <summary>
+        /// Returns the arranged <see cref="Layout.ArrangedNode{T}"/> nodes this widget painted via the
+        /// layout DSL since the last <c>BeginFrame</c> (each carries its tree <see cref="Layout.ArrangedNode{T}.Depth"/>),
+        /// or empty when <see cref="LayoutInspection"/> is disabled or the widget draws without the
+        /// layout DSL. Used by the DEBUG inspector's describe_layout to surface the full layout tree
+        /// (not just the clickable subset). Render-thread only, read inside the inspector pump.
+        /// </summary>
+        public IReadOnlyList<Layout.ArrangedNode<float>> GetCapturedLayout()
+            => _capturedLayout is { } captured ? captured : [];
+
         /// <inheritdoc/>
         public HitResult? HitTest(float x, float y) => _tracker.HitTest(x, y);
 
@@ -197,7 +218,13 @@ namespace DIR.Lib
 
             // Items
             var itemY = y;
-            for (var i = 0; i < dropdown.Items.Length && itemY + rowH <= y + dropdownH; i++)
+            // +0.5px epsilon on the fit guard: when the items exactly fill dropdownH (= totalItems * rowH,
+            // the unclamped case), the accumulated `itemY` (y + rowH + rowH + ...) can exceed `y + dropdownH`
+            // (= y + N*rowH, computed by multiplication) by a sub-pixel float-rounding error, which would
+            // silently clip the LAST item -- it bit the 3-entry Live Session mode dropdown ("Planetary" drew
+            // no text). The epsilon is well under a row, so a genuinely overflowing item (maxHeight-clamped)
+            // is still excluded.
+            for (var i = 0; i < dropdown.Items.Length && itemY + rowH <= y + dropdownH + 0.5f; i++)
             {
                 if (i == dropdown.HighlightIndex)
                 {
@@ -302,6 +329,14 @@ namespace DIR.Lib
                             break;
                     }
                 }
+            }
+
+            // Retain the arranged tree for the DEBUG inspector's describe_layout. Opt-in (null unless
+            // LayoutInspection is on) so production paints pay nothing; appended across the frame's
+            // multiple PaintLayout calls, exactly like the region tracker.
+            if (LayoutInspection.Enabled)
+            {
+                (_capturedLayout ??= []).AddRange(arranged);
             }
         }
 

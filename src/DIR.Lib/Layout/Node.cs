@@ -84,4 +84,11 @@ public abstract partial record Node
 /// <summary>One node placed at an absolute rect by <see cref="Engine.Arrange{T}"/>. Emitted in
 /// pre-order (parent before children, <see cref="Node.Overlay"/> base-subtree before top-subtree)
 /// so a painter that draws in list order gets correct z-stacking.</summary>
-public readonly record struct ArrangedNode<T>(Node Node, Rect<T> Bounds) where T : INumber<T>;
+public readonly record struct ArrangedNode<T>(Node Node, Rect<T> Bounds) where T : INumber<T>
+{
+    /// <summary>Nesting depth in the arranged pre-order list (root = 0, each child one deeper). The
+    /// list is flat, so this lets a consumer reconstruct the tree -- used by the DEBUG inspector's
+    /// describe_layout to print the structure. Painters ignore it; it does not affect arrangement,
+    /// and the 2-arg ctor / Deconstruct are unchanged (it is an extra init-only property).</summary>
+    public int Depth { get; init; }
+}
