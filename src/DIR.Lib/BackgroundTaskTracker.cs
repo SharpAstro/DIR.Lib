@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
@@ -19,6 +20,62 @@ namespace DIR.Lib
         public void Run(Func<Task> work, string description)
         {
             _pending.Add((Task.Run(work), description));
+        }
+
+        /// <summary>
+        /// Submits <paramref name="work"/> with standard error routing and tracks it (so it is
+        /// awaited by <see cref="DrainAsync"/> and counted by <see cref="HasPending"/>): a
+        /// <see cref="OperationCanceledException"/> is logged at Information and forwarded to
+        /// <paramref name="onCancel"/>; any other exception is logged at Warning and forwarded to
+        /// <paramref name="onError"/>; and <paramref name="onFinally"/> always runs. Because the work
+        /// is guarded here it completes non-faulted, so <see cref="ProcessCompletions"/> will not also
+        /// log it. <paramref name="operation"/> is used both as the tracker description and the log
+        /// message subject.
+        /// </summary>
+        public void RunGuarded(
+            Func<CancellationToken, Task> work,
+            CancellationToken ct,
+            ILogger logger,
+            string operation,
+            Action<Exception> onError,
+            Action? onCancel = null,
+            Action? onFinally = null)
+            => Run(() => RunGuardedAsync(work, ct, logger, operation, onError, onCancel, onFinally), operation);
+
+        /// <summary>
+        /// The error-routing scaffold behind <see cref="RunGuarded"/>, exposed static so it can be
+        /// composed or unit-tested without a tracker instance. Runs <paramref name="work"/> and routes
+        /// the outcome (see <see cref="RunGuarded"/>); it never rethrows. An
+        /// <see cref="OperationCanceledException"/> is logged (Information) rather than swallowed
+        /// silently, so a cancellation always leaves a trace.
+        /// </summary>
+        public static async Task RunGuardedAsync(
+            Func<CancellationToken, Task> work,
+            CancellationToken ct,
+            ILogger logger,
+            string operation,
+            Action<Exception> onError,
+            Action? onCancel = null,
+            Action? onFinally = null)
+        {
+            try
+            {
+                await work(ct);
+            }
+            catch (OperationCanceledException ex)
+            {
+                logger.LogInformation(ex, "{Operation} cancelled", operation);
+                onCancel?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "{Operation} failed", operation);
+                onError(ex);
+            }
+            finally
+            {
+                onFinally?.Invoke();
+            }
         }
 
         /// <summary>
