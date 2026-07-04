@@ -34,7 +34,7 @@ env:
   # Node modifiers (.RowH()/.WStar()/.Bg()/.Clickable()/...) build the same records.
   # Source-breaking: consumers alias `using Layout = DIR.Lib.Layout;` (or import it)
   # and write Layout.Node / Layout.Builder / Layout.Sizing etc.
-  VERSION_PREFIX: 6.3.${{ github.run_number }}
+  VERSION_PREFIX: 6.4.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
