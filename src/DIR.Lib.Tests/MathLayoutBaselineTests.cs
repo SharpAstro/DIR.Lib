@@ -2,7 +2,6 @@ using System.Reflection;
 using DIR.Lib.MathLayout;
 using SharpAstro.Fonts;
 using SharpAstro.Png;
-using StbImageSharp;
 using Xunit;
 
 namespace DIR.Lib.Tests;
@@ -141,15 +140,15 @@ public sealed class MathLayoutBaselineTests
             return; // pass — baseline written
         }
 
-        // Decode the committed baseline via StbImageSharp (transitively
-        // available through SharpAstro.Fonts) and compare RGBA byte-for-
-        // byte. PNG byte equality is unreliable since deflate can emit
-        // different valid encodings of the same pixels.
+        // Decode the committed baseline via SharpAstro.Png and compare RGBA
+        // byte-for-byte. PNG byte equality is unreliable since deflate can emit
+        // different valid encodings of the same pixels. Baselines are written by
+        // PngWriter.Encode(rgba) so PngReader.Decode returns 8-bit RGBA Pixels.
         var baselineBytes = File.ReadAllBytes(baselinePath);
-        var baselineImg = ImageResult.FromMemory(baselineBytes, ColorComponents.RedGreenBlueAlpha);
+        var baselineImg = PngReader.Decode(baselineBytes);
 
         if (baselineImg.Width != w || baselineImg.Height != h
-            || !rgba.AsSpan().SequenceEqual(baselineImg.Data))
+            || !rgba.AsSpan().SequenceEqual(baselineImg.Pixels))
         {
             DumpFailed(font, scene, rgba, w, h);
             Assert.Fail(

@@ -1,7 +1,6 @@
 using System.Text;
 using SharpAstro.Png;
 using Shouldly;
-using StbImageSharp;
 
 namespace DIR.Lib.Tests;
 
@@ -505,16 +504,16 @@ public class RenderAcceptanceTests : IDisposable
             return;
         }
 
-        // PNG decode via StbImageSharp (transitively available through SharpAstro.Fonts).
+        // PNG decode via SharpAstro.Png (baselines are RGBA8 from PngWriter.Encode).
         // Same approach as MathLayoutBaselineTests — direct byte equality on the
         // decoded RGBA buffer is reliable; PNG byte equality isn't, since deflate
         // can emit different valid encodings of the same pixels.
-        var baselineImg = ImageResult.FromMemory(File.ReadAllBytes(baselinePath), ColorComponents.RedGreenBlueAlpha);
+        var baselineImg = PngReader.Decode(File.ReadAllBytes(baselinePath));
         baselineImg.Width.ShouldBe(img.Width, $"Width mismatch for '{name}'");
         baselineImg.Height.ShouldBe(img.Height, $"Height mismatch for '{name}'");
 
         // Allow small per-pixel differences (anti-aliasing may vary slightly).
-        var baseline = baselineImg.Data;
+        var baseline = baselineImg.Pixels;
         var maxDiff = 0;
         var diffCount = 0;
         for (var i = 0; i < baseline.Length; i++)

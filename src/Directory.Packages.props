@@ -11,10 +11,10 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.3.0" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.201" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
-    <!-- Tracks Fonts.Lib repo CI cadence. 1.4.x adds optional 'cmap' table support,
-         which lets ManagedFontRasterizer load PDF Identity-H subset fonts whose
-         cmap is stripped (CID==GID; Unicode via the PDF's /ToUnicode CMap). -->
-    <PackageVersion Include="SharpAstro.Fonts" Version="1.4.*" />
+    <!-- Tracks Fonts.Lib repo CI cadence. 1.5.x decodes CBDT colour-bitmap glyph
+         PNGs via SharpAstro.Png instead of the stb_image port, so pulling it drops
+         the transitive SharpAstro.StbImage dependency from downstream consumers. -->
+    <PackageVersion Include="SharpAstro.Fonts" Version="1.5.*" />
     <!-- LALR.CC drives the markdown + LaTeX grammars baked into the
          DIR.Lib.Markdown subsystem. Source generator runs build-time;
          the runtime LALR.CC assembly is referenced for the Parser /
@@ -27,7 +27,7 @@
     <!-- DIR.Lib 4.0 dropped its codec dependencies; the test project still
          renders artifacts as PNG for visual baselines, so SharpAstro.Png
          stays here for the test-only reference. -->
-    <PackageVersion Include="SharpAstro.Png" Version="3.0.*" />
+    <PackageVersion Include="SharpAstro.Png" Version="3.4.*" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
