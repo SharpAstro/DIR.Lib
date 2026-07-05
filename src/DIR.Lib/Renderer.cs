@@ -384,6 +384,21 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
         }
     }
 
+    private ITextShaper _textShaper = AdvanceShaper.Default;
+
+    /// <summary>
+    /// The shaper <see cref="DrawText"/>/<see cref="MeasureText"/> run text through before placing
+    /// glyphs. Defaults to <see cref="AdvanceShaper.Default"/> (no shaping, no kerning — output is
+    /// byte-identical to the pre-seam per-rune path). Assign an <see cref="AdvanceShaper"/> with
+    /// kerning on for static display text, or a HarfBuzz-backed <see cref="ITextShaper"/> (A3) for
+    /// ligatures/complex scripts. Never null — setting null restores the default.
+    /// </summary>
+    public ITextShaper TextShaper
+    {
+        get => _textShaper;
+        set => _textShaper = value ?? AdvanceShaper.Default;
+    }
+
     public abstract void DrawText(ReadOnlySpan<char> text, string fontFamily, float fontSize, RGBAColor32 fontColor, in RectInt layout,
         TextAlign horizAlignment = TextAlign.Center, TextAlign vertAlignment = TextAlign.Near);
 
