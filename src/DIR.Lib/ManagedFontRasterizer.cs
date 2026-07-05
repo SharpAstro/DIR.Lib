@@ -637,6 +637,24 @@ public sealed class ManagedFontRasterizer : IDisposable
     }
 
     /// <summary>
+    /// Kerning between two glyph ids, in pixels at <paramref name="fontSize"/>. Wraps
+    /// <see cref="OpenTypeFont.GetKerning"/> (GPOS pair adjustment, else legacy <c>kern</c>) and
+    /// scales its FUnit result by <c>fontSize / UnitsPerEm</c>. Used by <see cref="AdvanceShaper"/>'s
+    /// opt-in kerning path — the only place a shaper contributes an advance adjustment on top of the
+    /// renderer's cache advance. Returns 0 for Type1/PFB fonts (no numeric glyph ids, no gid-keyed
+    /// kerning), an unregistered <c>mem:</c> font, or any pair the font has no kerning for.
+    /// </summary>
+    public float GetKerningPx(string fontPath, float fontSize, uint leftGid, uint rightGid)
+    {
+        if (_type1Fonts.ContainsKey(fontPath)) return 0f;
+        OpenTypeFont font;
+        try { font = GetOrLoad(fontPath); }
+        catch (InvalidOperationException) { return 0f; }
+        var fu = font.GetKerning(leftGid, rightGid);
+        return fu == 0 ? 0f : fu * fontSize / font.UnitsPerEm;
+    }
+
+    /// <summary>
     /// MTSDF variant that rasterizes a Type1/PFB glyph directly by PostScript glyph name — the
     /// Type1 counterpart of <see cref="RasterizeGlyphMtsdfByGid"/> (Type1 fonts have no numeric
     /// glyph ids). Returns an empty bitmap for a null/unknown name or a non-Type1 font.

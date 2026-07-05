@@ -17,6 +17,10 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
     // Glyph cache: (fontPath, fontSize, rune) → GlyphBitmap
     private readonly Dictionary<(string Font, float Size, Rune Rune), GlyphBitmap> _glyphCache = new();
 
+    // Reused per-line shaping buffer (cleared + refilled by ITextShaper.Shape each call) so
+    // DrawText/MeasureText allocate nothing per call after warmup.
+    private readonly List<ShapedGlyph> _shaped = new();
+
     public RgbaImageRenderer(uint width, uint height)
         : base(new RgbaImage((int)width, (int)height)) { }
 
@@ -292,6 +296,12 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
             var line = lines[lineIdx];
             if (string.IsNullOrEmpty(line)) continue;
 
+            // Shape once per line. AdvanceShaper yields one glyph per rune in input order (so both
+            // passes below are byte-identical to the old EnumerateRunes loops); a real shaper can
+            // substitute/kern. Base advance and bearings still come from the glyph cache; the shaper
+            // only contributes XAdvanceAdjust (kerning/GPOS) and XOffset/YOffset (all zero by default).
+            TextShaper.Shape(line.AsSpan(), fontFamily, fontSize, _rasterizer, _shaped);
+
             // Compute visual text metrics
             var advanceSum = 0f;
             var firstBearingX = 0;
@@ -299,15 +309,15 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
             var maxAscent = 0;
             var maxDescent = 0;
             var first = true;
-            foreach (var mc in line.EnumerateRunes())
+            foreach (var sg in _shaped)
             {
-                var g = GetGlyph(fontFamily, fontSize, mc);
+                var g = GetGlyph(fontFamily, fontSize, sg.Source);
                 if (first && g.Width > 0) { firstBearingX = g.BearingX; first = false; }
-                if (g.Width > 0) { lastRightEdge = advanceSum + g.BearingX + g.Width; }
+                if (g.Width > 0) { lastRightEdge = advanceSum + sg.XOffset + g.BearingX + g.Width; }
                 if (g.BearingY > maxAscent) maxAscent = g.BearingY;
                 var descent = g.Height - g.BearingY;
                 if (descent > maxDescent) maxDescent = descent;
-                advanceSum += g.AdvanceX;
+                advanceSum += g.AdvanceX + sg.XAdvanceAdjust;
             }
             var visualWidth = first ? advanceSum : lastRightEdge - firstBearingX;
 
@@ -322,17 +332,17 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
             // Place baseline so visual bounds are centered in line
             var baseline = penY + (lineHeight + maxAscent - maxDescent) / 2f;
 
-            foreach (var ch in line.EnumerateRunes())
+            foreach (var sg in _shaped)
             {
-                var glyph = GetGlyph(fontFamily, fontSize, ch);
+                var glyph = GetGlyph(fontFamily, fontSize, sg.Source);
                 if (glyph.Width == 0)
                 {
-                    penX += glyph.AdvanceX;
+                    penX += glyph.AdvanceX + sg.XAdvanceAdjust;
                     continue;
                 }
 
-                var gx = (int)(penX + glyph.BearingX);
-                var gy = (int)(baseline - glyph.BearingY);
+                var gx = (int)(penX + glyph.BearingX + sg.XOffset);
+                var gy = (int)(baseline - glyph.BearingY + sg.YOffset);
 
                 if (glyph.IsColored)
                 {
@@ -343,7 +353,7 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
                     BlitGlyphTinted(gx, gy, glyph, fontColor);
                 }
 
-                penX += glyph.AdvanceX;
+                penX += glyph.AdvanceX + sg.XAdvanceAdjust;
             }
         }
     }
@@ -437,13 +447,16 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
 
     public override (float Width, float Height) MeasureText(ReadOnlySpan<char> text, string fontFamily, float fontSize)
     {
+        // Same shaper as DrawText, so measured width matches drawn advance exactly (including any
+        // opt-in kerning). Under AdvanceShaper this is the old per-rune advance sum verbatim.
+        TextShaper.Shape(text, fontFamily, fontSize, _rasterizer, _shaped);
         var width = 0f;
         var maxAscent = 0;
         var maxDescent = 0;
-        foreach (var ch in text.EnumerateRunes())
+        foreach (var sg in _shaped)
         {
-            var glyph = GetGlyph(fontFamily, fontSize, ch);
-            width += glyph.AdvanceX;
+            var glyph = GetGlyph(fontFamily, fontSize, sg.Source);
+            width += glyph.AdvanceX + sg.XAdvanceAdjust;
             if (glyph.BearingY > maxAscent) maxAscent = glyph.BearingY;
             var descent = glyph.Height - glyph.BearingY;
             if (descent > maxDescent) maxDescent = descent;
