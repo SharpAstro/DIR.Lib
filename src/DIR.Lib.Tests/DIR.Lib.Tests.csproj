@@ -13,10 +13,13 @@
     <PackageReference Include="Shouldly" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="xunit.v3" />
-    <!-- DIR.Lib 4.0 no longer pulls SharpAstro.Png transitively (codec divorce);
-         the baseline / stretchy / render-acceptance tests still emit PNGs for
-         visual artifacts and decoded baseline comparison, so declare it directly. -->
-    <PackageReference Include="SharpAstro.Png" />
+    <!-- The baseline / stretchy / render-acceptance tests use SharpAstro.Png directly
+         (PNG artifacts + decoded baseline comparison), but deliberately do NOT declare
+         it: it arrives transitively via DIR.Lib -> SharpAstro.Fonts (which needs it for
+         CBDT emoji decoding), and that keeps in-tree and CI restores consistent. A
+         direct pin here would fight the transitive version and NU1605 whenever the
+         local Codecs sibling (or a future published Fonts.Lib) is ahead of the pin.
+         If SharpAstro.Fonts ever drops its Png dependency, re-add a reference here. -->
   </ItemGroup>
 
   <ItemGroup>
