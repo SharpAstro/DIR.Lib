@@ -553,6 +553,48 @@ public sealed class ManagedFontRasterizer : IDisposable
         return RenderSdf(font, gid, fontSize, spread);
     }
 
+    /// <summary>
+    /// Rasterize a glyph as a multi-channel signed distance field (MTSDF) by
+    /// Unicode codepoint. Corners stay sharp at any scale; the A channel is the
+    /// same true-distance field <see cref="RasterizeGlyphSdf"/> produces.
+    /// </summary>
+    public MtsdfGlyphBitmap RasterizeGlyphMtsdf(string fontPath, float fontSize, Rune codepoint, float spread = 4f)
+    {
+        if (_type1Fonts.TryGetValue(fontPath, out var t1))
+            return RenderType1Mtsdf(t1, ResolveType1Name(fontPath, t1, (uint)codepoint.Value), fontSize, spread);
+        var font = GetOrLoad(fontPath);
+        var gid = font.GetGlyphId((uint)codepoint.Value);
+        if (gid == 0) return default;
+        return RenderMtsdf(font, gid, fontSize, spread);
+    }
+
+    /// <summary>
+    /// MTSDF variant of <see cref="RasterizeGlyphSdfWithCharCode"/> — PDF char-code
+    /// + cmap lookup hint for CID and embedded-subset fonts.
+    /// </summary>
+    public MtsdfGlyphBitmap RasterizeGlyphMtsdfWithCharCode(string fontPath, float fontSize,
+        Rune codepoint, uint charCode, GlyphMapHint hint = GlyphMapHint.Auto, float spread = 4f)
+    {
+        if (_type1Fonts.TryGetValue(fontPath, out var t1))
+            return RenderType1Mtsdf(t1, ResolveType1Name(fontPath, t1, charCode), fontSize, spread);
+        var font = GetOrLoad(fontPath);
+        var gid = font.GetGlyphId((uint)codepoint.Value, charCode, (FontsHint)hint);
+        if (gid == 0) return default;
+        return RenderMtsdf(font, gid, fontSize, spread);
+    }
+
+    /// <summary>
+    /// MTSDF variant of <see cref="RasterizeGlyphByGid"/> — rasterize directly by
+    /// glyph id, bypassing cmap lookup. (Not available for Type1 fonts, which are
+    /// addressed by glyph name, not id.)
+    /// </summary>
+    public MtsdfGlyphBitmap RasterizeGlyphMtsdfByGid(string fontPath, float fontSize, uint gid, float spread = 4f)
+    {
+        if (gid == 0) return default;
+        var font = GetOrLoad(fontPath);
+        return RenderMtsdf(font, gid, fontSize, spread);
+    }
+
     public void Dispose()
     {
         // Managed fonts don't own native resources — clearing the cache is
@@ -622,6 +664,18 @@ public sealed class ManagedFontRasterizer : IDisposable
             sdf.Left, sdf.Top, advanceX, spread);
     }
 
+    private static MtsdfGlyphBitmap RenderMtsdf(OpenTypeFont font, uint gid, float pixelsPerEm, float spread)
+    {
+        var mtsdf = font.RenderMtsdf(gid, pixelsPerEm, spread);
+        if (mtsdf.IsEmpty) return default;
+
+        var advanceX = font.Hmtx is not null
+            ? font.Hmtx.GetAdvanceWidth(gid) * pixelsPerEm / font.UnitsPerEm
+            : 0f;
+        return new MtsdfGlyphBitmap(mtsdf.Rgba, mtsdf.Width, mtsdf.Height,
+            mtsdf.Left, mtsdf.Top, advanceX, spread);
+    }
+
     // ---- Type1 (PFB) glyph rendering -------------------------------------
 
     /// <summary>
@@ -681,5 +735,19 @@ public sealed class ManagedFontRasterizer : IDisposable
             pixelsPerEm, font.UnitsPerEm, spread);
         if (sdf.Width == 0 || sdf.Height == 0) return default;
         return new SdfGlyphBitmap(sdf.Alpha, sdf.Width, sdf.Height, sdf.Left, sdf.Top, AdvanceX: 0f, spread);
+    }
+
+    /// <summary>
+    /// Rasterize a Type1 glyph (by name) to an MTSDF, driving the sink-based
+    /// generator directly from the charstring interpreter — the Type1 analogue of
+    /// <see cref="RenderMtsdf"/>.
+    /// </summary>
+    private static MtsdfGlyphBitmap RenderType1Mtsdf(T1.Type1Font font, string? glyphName, float pixelsPerEm, float spread)
+    {
+        if (glyphName is null || !font.HasGlyph(glyphName)) return default;
+        var mtsdf = Rast.MsdfRasterizer.RasterizeAuto(sink => font.DrawGlyph(glyphName, sink),
+            pixelsPerEm, font.UnitsPerEm, spread);
+        if (mtsdf.Width == 0 || mtsdf.Height == 0) return default;
+        return new MtsdfGlyphBitmap(mtsdf.Rgba, mtsdf.Width, mtsdf.Height, mtsdf.Left, mtsdf.Top, AdvanceX: 0f, spread);
     }
 }
