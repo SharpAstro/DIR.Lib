@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using SharpAstro.Fonts;
 using FontsHint = SharpAstro.Fonts.Tables.Cmap.GlyphMapHint;
@@ -684,6 +685,24 @@ public sealed class ManagedFontRasterizer : IDisposable
     }
 
     // ---- Internals ---------------------------------------------------------
+
+    /// <summary>
+    /// The parsed OpenType face for <paramref name="fontPath"/>, loading and caching it if needed.
+    /// This is the seam a text shaper uses to read the font's GSUB/GPOS/GDEF tables — the same face
+    /// the rasterize methods draw from, so a shaper's substituted glyph ids stay consistent with
+    /// what gets rendered. Returns <c>false</c> (and <paramref name="font"/> <c>null</c>) for
+    /// Type1/PFB fonts, which are not SFNT and cannot be shaped, and for memory fonts not yet
+    /// registered — callers fall back to unshaped per-rune layout in those cases.
+    /// </summary>
+    public bool TryGetOpenTypeFont(string fontPath, [NotNullWhen(true)] out OpenTypeFont? font)
+    {
+        font = null;
+        if (_type1Fonts.ContainsKey(fontPath)) return false;      // Type1 has no OpenType face
+        if (_fonts.TryGetValue(fontPath, out font)) return true;  // already loaded
+        if (fontPath.StartsWith("mem:", StringComparison.Ordinal)) return false; // not registered yet
+        font = _fonts.GetOrAdd(fontPath, OpenTypeFont.LoadFromFile(fontPath));
+        return true;
+    }
 
     private OpenTypeFont GetOrLoad(string fontPath)
     {

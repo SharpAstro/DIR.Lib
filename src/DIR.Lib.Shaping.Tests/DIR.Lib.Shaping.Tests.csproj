@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DIR.Lib.Shaping\DIR.Lib.Shaping.csproj" />
+  </ItemGroup>
+
+  <!-- Reuse the DIR.Lib.Tests DejaVuSans fixture (GPOS kern + fi/fl ligatures + arab joining)
+       without duplicating the binary. -->
+  <ItemGroup>
+    <Content Include="..\DIR.Lib.Tests\Fonts\DejaVuSans.ttf" Link="Fonts\DejaVuSans.ttf" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
