@@ -91,4 +91,31 @@ public class ShapingTextShaperTests
 
         output.ShouldBeEmpty("Shape clears and refills the output list");
     }
+
+    [Fact]
+    public void Bidi_AutoRtlParagraph_ReordersRunsVisually()
+    {
+        // Hebrew alef, Latin 'A', Hebrew bet. Auto resolves an RTL paragraph (first strong is
+        // Hebrew), so the bidi algorithm orders the runs visually: bet (cluster 2), 'A' (1),
+        // alef (0). The pre-bidi itemizer would have emitted them in logical order [0,1,2].
+        var (rasterizer, shaper, output) = Setup();
+        shaper.Shape("אAב", FontPath, 16f, rasterizer, output);
+
+        output.Count.ShouldBe(3);
+        output.Select(g => g.Cluster).ShouldBe([2, 1, 0]);
+    }
+
+    [Fact]
+    public void Bidi_ForcedLtrParagraph_KeepsLogicalOrder()
+    {
+        // Same text, but a forced LTR paragraph: the two Hebrew letters are isolated level-1 runs
+        // separated by the Latin 'A', so no run pair reverses and the order stays logical [0,1,2].
+        var rasterizer = new ManagedFontRasterizer();
+        var shaper = new ShapingTextShaper(ShapingTextShaper.ParagraphDirection.LeftToRight);
+        var output = new List<ShapedGlyph>();
+        shaper.Shape("אAב", FontPath, 16f, rasterizer, output);
+
+        output.Count.ShouldBe(3);
+        output.Select(g => g.Cluster).ShouldBe([0, 1, 2]);
+    }
 }

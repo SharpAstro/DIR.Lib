@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <IsAotCompatible>true</IsAotCompatible>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <VersionPrefix>6.6.0</VersionPrefix>
+    <VersionPrefix>6.7.0</VersionPrefix>
     <AssemblyVersion>6.4.0.0</AssemblyVersion>
     <PackageID>DIR.Lib.Shaping</PackageID>
     <Description>Pure-managed OpenType text-shaping adapter for DIR.Lib: an ITextShaper backed by SharpAstro.Fonts.Shaping (script itemization, GSUB/GPOS, Arabic joining, RTL). Optional satellite — DIR.Lib core stays shaping-free.</Description>
