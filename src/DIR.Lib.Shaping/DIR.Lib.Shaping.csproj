@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <VersionPrefix>6.6.0</VersionPrefix>
+    <AssemblyVersion>6.4.0.0</AssemblyVersion>
+    <PackageID>DIR.Lib.Shaping</PackageID>
+    <Description>Pure-managed OpenType text-shaping adapter for DIR.Lib: an ITextShaper backed by SharpAstro.Fonts.Shaping (script itemization, GSUB/GPOS, Arabic joining, RTL). Optional satellite — DIR.Lib core stays shaping-free.</Description>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/SharpAstro/DIR.Lib.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DIR.Lib.Shaping.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../DIR.Lib/DIR.Lib.csproj" />
+  </ItemGroup>
+
+  <!--
+    SharpAstro.Fonts.Shaping (the shaping engine) is referenced via ProjectReference when a
+    sibling Fonts.Lib working copy exists, so the adapter can iterate against unpublished engine
+    API in-tree; CI / package builds without the sibling fall through to PackageReference. Mirrors
+    DIR.Lib's own SharpAstro.Fonts reference, but keyed on its own property so the two don't clash.
+  -->
+  <PropertyGroup>
+    <UseLocalShapingLib Condition="'$(UseLocalShapingLib)' == '' AND Exists('..\..\..\Fonts.Lib\src\SharpAstro.Fonts.Shaping\SharpAstro.Fonts.Shaping.csproj')">true</UseLocalShapingLib>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(UseLocalShapingLib)' == 'true'">
+    <ProjectReference Include="..\..\..\Fonts.Lib\src\SharpAstro.Fonts.Shaping\SharpAstro.Fonts.Shaping.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalShapingLib)' != 'true'">
+    <PackageReference Include="SharpAstro.Fonts.Shaping" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>
