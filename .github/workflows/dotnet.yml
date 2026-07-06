@@ -34,7 +34,11 @@ env:
   # Node modifiers (.RowH()/.WStar()/.Bg()/.Clickable()/...) build the same records.
   # Source-breaking: consumers alias `using Layout = DIR.Lib.Layout;` (or import it)
   # and write Layout.Node / Layout.Builder / Layout.Sizing etc.
-  VERSION_PREFIX: 6.6.${{ github.run_number }}
+  # 6.7 - DIR.Lib.Shaping bidi: ShapingTextShaper now runs the full UAX #9 bidirectional
+  #       algorithm (via SharpAstro.Fonts.Shaping's BidiScriptItemizer) so mixed LTR/RTL
+  #       text orders correctly, with a ParagraphDirection option
+  #       (Auto/LeftToRight/RightToLeft). DIR.Lib core is unchanged.
+  VERSION_PREFIX: 6.7.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

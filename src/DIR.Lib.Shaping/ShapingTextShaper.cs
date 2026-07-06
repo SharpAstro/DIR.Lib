@@ -25,9 +25,34 @@ namespace DIR.Lib.Shaping;
 /// </summary>
 public sealed class ShapingTextShaper : ITextShaper
 {
-    /// <summary>Shared instance — safe to assign to every renderer (no per-call mutable state
-    /// beyond thread-locals).</summary>
+    /// <summary>Shared instance (paragraph direction = <see cref="ParagraphDirection.Auto"/>) — safe
+    /// to assign to every renderer (no per-call mutable state beyond thread-locals).</summary>
     public static readonly ShapingTextShaper Instance = new();
+
+    /// <summary>Base paragraph direction for the UAX #9 bidirectional algorithm.</summary>
+    public enum ParagraphDirection
+    {
+        /// <summary>Resolve each line's base direction from its first strong character (P2/P3).</summary>
+        Auto,
+        /// <summary>Force a left-to-right base direction.</summary>
+        LeftToRight,
+        /// <summary>Force a right-to-left base direction.</summary>
+        RightToLeft,
+    }
+
+    private readonly int _paragraphLevel;
+
+    /// <summary>Create a shaper with a fixed paragraph <paramref name="direction"/>. The default
+    /// (<see cref="ParagraphDirection.Auto"/>) resolves each line's base direction from its first
+    /// strong character; pass a fixed direction for a known LTR- or RTL-context UI. Immutable, so an
+    /// instance is safe to share across threads.</summary>
+    public ShapingTextShaper(ParagraphDirection direction = ParagraphDirection.Auto)
+        => _paragraphLevel = direction switch
+        {
+            ParagraphDirection.LeftToRight => 0,
+            ParagraphDirection.RightToLeft => 1,
+            _ => BidiAlgorithm.AutoLevel,
+        };
 
     // Engine face per font id. A cached null memoizes "not shapeable" for Type1/PFB (permanent);
     // memory fonts that merely aren't registered yet are NOT memoized, so they shape once loaded.
@@ -57,10 +82,11 @@ public sealed class ShapingTextShaper : ITextShaper
 
         var runs = _runs ??= [];
         var buffer = _buffer ??= new ShapeBuffer();
-        ScriptItemizer.Itemize(text, runs);
+        BidiScriptItemizer.Itemize(text, _paragraphLevel, runs);
 
-        // Runs are in logical order; each RTL run's glyphs come back in visual (left-to-right) order,
-        // so appending run after run gives the renderer's pen loop the correct placement order.
+        // Runs come back in VISUAL (left-to-right) order (UAX #9 rule L2), and each RTL run's glyphs
+        // are reversed to visual order by the shaper — so appending run after run gives the renderer's
+        // pen loop the correct placement order, now for mixed LTR/RTL text too (not just single runs).
         foreach (var run in runs)
         {
             buffer.Clear();
