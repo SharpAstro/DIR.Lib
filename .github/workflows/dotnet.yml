@@ -38,7 +38,12 @@ env:
   #       algorithm (via SharpAstro.Fonts.Shaping's BidiScriptItemizer) so mixed LTR/RTL
   #       text orders correctly, with a ParagraphDirection option
   #       (Auto/LeftToRight/RightToLeft). DIR.Lib core is unchanged.
-  VERSION_PREFIX: 6.7.${{ github.run_number }}
+  # 6.8 - rebuild picking up SharpAstro.Fonts.Shaping 1.5.551 (Fonts.Lib F6 zero-alloc bidi
+  #       path + F7 HarfBuzz-style per-lookup coverage-digest skipping): ≈3-4× faster shaping
+  #       (Latin sentence 280 -> 64 ns/char), zero-alloc preserved. Transitive via the
+  #       DIR.Lib.Shaping satellite; no DIR.Lib API change. The floating 1.5.* pin resolves
+  #       the new engine at build time, so the published nuspec floor moves to >= 1.5.551.
+  VERSION_PREFIX: 6.8.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
