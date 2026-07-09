@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Roslyn analyzers / source generators must target netstandard2.0. -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>13</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+
+    <!-- A generator does not ship as a normal library; it is packed into analyzers/ by DIR.Lib.csproj. -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IsPackable>false</IsPackable>
+    <DevelopmentDependency>true</DevelopmentDependency>
+
+    <RootNamespace>DIR.Lib.SourceGenerators</RootNamespace>
+    <AssemblyName>DIR.Lib.SourceGenerators</AssemblyName>
+
+    <!-- RS2008 wants an analyzer-release-tracking file; that discipline is for shipped diagnostic
+         analyzers, not a pure source generator. -->
+    <NoWarn>$(NoWarn);RS2008</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>
