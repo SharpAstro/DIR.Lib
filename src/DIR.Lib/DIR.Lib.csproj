@@ -108,4 +108,25 @@
     </PackageReference>
   </ItemGroup>
 
+  <!--
+    DIR.Lib.SourceGenerators emits a SignalDirectory (name->factory map over the assembly's *Signal
+    types) for a DIR.Lib.SignalBus consumer's live UI inspector, with no runtime reflection. It is
+    packed into analyzers/dotnet/cs so a `<PackageReference Include="DIR.Lib" />` consumer gets it
+    automatically; the generator self-gates on the DEBUG symbol + SignalBus presence, so it is inert
+    for DIR.Lib itself (no *Signal types) and for Release builds. Mirrors how the LALR.CC package ships
+    its own generator. ReferenceOutputAssembly=false: no runtime dependency on the generator assembly.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\DIR.Lib.SourceGenerators\DIR.Lib.SourceGenerators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\DIR.Lib.SourceGenerators\bin\$(Configuration)\netstandard2.0\DIR.Lib.SourceGenerators.dll"
+          Pack="true"
+          PackagePath="analyzers\dotnet\cs"
+          Visible="false" />
+  </ItemGroup>
+
 </Project>
