@@ -7,7 +7,10 @@ public class FontInspectionTests
 {
     private static readonly string FontPath = Path.Combine("Fonts", "XXTIIT_Arial_subset.ttf");
 
-    [Fact]
+    // Opt-in diagnostic (Explicit = not run in the default suite): dumps XXTIIT_Arial_subset glyph
+    // sizes across cmap strategies. It asserts nothing — the subset paths it probes are really
+    // verified in CmapLookupOrderTests and CmapDumpTests.SubsetFont_LowCharCodes_RenderUnderEmbeddedSubsetHint.
+    [Fact(Explicit = true)]
     public void DumpFontCmap_And_Glyphs()
     {
         if (!File.Exists(FontPath)) return;
