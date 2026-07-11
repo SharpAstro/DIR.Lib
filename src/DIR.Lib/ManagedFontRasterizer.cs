@@ -32,6 +32,16 @@ public sealed class ManagedFontRasterizer : IDisposable
     // glyph (e.g. the fi/fl ligatures) it places at a code the built-in encoding doesn't cover.
     private readonly ConcurrentDictionary<string, IReadOnlyDictionary<int, string>> _type1Encoding = new();
 
+    // Session-stable memo for ResolveGlyphIdentity: the same (font, codepoint, charCode, hint)
+    // always resolves to the same identity once the font is registered, but atlas consumers that
+    // key by identity hit the resolve on every draw — per glyph, per frame, even on atlas hits
+    // (the multi-subtable probing in GetGlyphIdHinted is the cost). Misses are deliberately NOT
+    // cached: an unregistered "mem:" font racing its first draw resolves to default and must
+    // re-resolve once the bytes land, not pin a permanent blank. RegisterType1Encoding
+    // invalidates its font's entries — /Differences overrides win over the built-in encoding
+    // and may be registered after a glyph was already resolved.
+    private readonly ConcurrentDictionary<(string Font, int Codepoint, int CharCode, GlyphMapHint Hint), GlyphIdentity> _identityMemo = new();
+
     /// <summary>
     /// Rasterize a glyph with PDF char-code + cmap lookup hint.
     /// </summary>
@@ -521,7 +531,13 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// </summary>
     public void RegisterType1Encoding(string fontId, IReadOnlyDictionary<int, string> differences)
     {
-        if (differences.Count > 0) _type1Encoding[fontId] = differences;
+        if (differences.Count == 0) return;
+        _type1Encoding[fontId] = differences;
+        // The overrides change what a char code resolves to for this font — drop its memoized
+        // identities so earlier built-in-encoding resolutions can't shadow the /Differences names.
+        foreach (var key in _identityMemo.Keys)
+            if (key.Font == fontId)
+                _identityMemo.TryRemove(key, out _);
     }
 
     /// <summary>
@@ -608,8 +624,24 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// <para>Same inputs → same <see cref="GetGlyphId(uint,uint,GlyphMapHint)"/> / Type1-name
     /// lookup → same glyph as the rasterize methods produce: this moves <em>where</em> resolution
     /// happens (to the cache-key boundary), not the resolution itself.</para>
+    ///
+    /// <para>Resolved identities are memoized per (font, codepoint, charCode, hint) — session-
+    /// stable, unlike an atlas cache that evicts. Misses are not memoized (see
+    /// <c>_identityMemo</c>), and <see cref="RegisterType1Encoding"/> invalidates its font's
+    /// entries.</para>
     /// </summary>
     public GlyphIdentity ResolveGlyphIdentity(string fontPath, Rune codepoint, int charCode, GlyphMapHint hint)
+    {
+        var memoKey = (fontPath, codepoint.Value, charCode, hint);
+        if (_identityMemo.TryGetValue(memoKey, out var memoized)) return memoized;
+
+        var id = ResolveGlyphIdentityUncached(fontPath, codepoint, charCode, hint);
+        if (id.Gid != 0 || id.Type1Name is not null)
+            _identityMemo.TryAdd(memoKey, id);
+        return id;
+    }
+
+    private GlyphIdentity ResolveGlyphIdentityUncached(string fontPath, Rune codepoint, int charCode, GlyphMapHint hint)
     {
         // Type1/PFB: identity is a PostScript glyph NAME — the PDF /Differences override wins,
         // else the font's built-in encoding. Mirrors the Type1 branch of the rasterize methods.
@@ -682,6 +714,7 @@ public sealed class ManagedFontRasterizer : IDisposable
         // Managed fonts don't own native resources — clearing the cache is
         // sufficient. Method retained for API parity with FreeType path.
         _fonts.Clear();
+        _identityMemo.Clear();
     }
 
     // ---- Internals ---------------------------------------------------------
