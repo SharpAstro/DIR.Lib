@@ -70,6 +70,33 @@ public sealed class SdfGlyphDiskCacheTests : IDisposable
     }
 
     [Fact]
+    public void ReadOnlyMode_LoadsEntries_AppendsNoOp_NoWriterThread()
+    {
+        var ot = MakeBitmap(10);
+        using (var cache = new SdfGlyphDiskCache(_dir, rasterSize: 64f, spread: 4f))
+        {
+            cache.RegisterMemoryFont(FontId, FontBytes);
+            cache.AppendGlyph(FontId, gid: 42, name: null, in ot);
+        }
+        var fileLength = new FileInfo(Directory.GetFiles(_dir, "*.sdfg").Single()).Length;
+
+        // readOnly: the pre-baked-cache mode for single-threaded hosts (browser WASM) — the
+        // ctor must not Thread.Start, reads must work, appends must silently no-op.
+        using (var reader = new SdfGlyphDiskCache(_dir, rasterSize: 64f, spread: 4f, readOnly: true))
+        {
+            reader.RegisterMemoryFont(FontId, FontBytes);
+            reader.LoadEntriesForFont(FontId).Count.ShouldBe(1);
+            reader.AppendGlyph(FontId, gid: 43, name: null, MakeBitmap(50));
+        }
+
+        // The append was dropped: file untouched, and a fresh reader still sees one entry.
+        new FileInfo(Directory.GetFiles(_dir, "*.sdfg").Single()).Length.ShouldBe(fileLength);
+        using var verify = new SdfGlyphDiskCache(_dir, rasterSize: 64f, spread: 4f);
+        verify.RegisterMemoryFont(FontId, FontBytes);
+        verify.LoadEntriesForFont(FontId).Count.ShouldBe(1);
+    }
+
+    [Fact]
     public void MismatchedRasterParams_SelfHeals_ToEmpty()
     {
         var ot = MakeBitmap(10);

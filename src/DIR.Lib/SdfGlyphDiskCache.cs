@@ -88,7 +88,8 @@ public sealed class SdfGlyphDiskCache : IDisposable
     // next session). The disk cache is best-effort by design.
     private const int WriteQueueCapacity = 1024;
     private readonly BlockingCollection<(string Font, byte[] Bytes)> _writeQueue = new(WriteQueueCapacity);
-    private readonly Thread _writerThread;
+    // Null in read-only mode (pre-baked caches on single-threaded hosts) — no consumer, appends no-op.
+    private readonly Thread? _writerThread;
     // Set if the writer thread dies (any non-IOException) so producers stop enqueuing into a dead queue.
     private volatile bool _writerDead;
     private long _droppedWrites;
@@ -100,12 +101,22 @@ public sealed class SdfGlyphDiskCache : IDisposable
     /// Glyphs still render from the in-memory atlas; they just won't be persisted for next session.</summary>
     public bool PauseWrites { get => _pauseWrites; set => _pauseWrites = value; }
 
-    public SdfGlyphDiskCache(string cacheDir, float rasterSize, float spread)
+    /// <param name="readOnly">Read-only mode for pre-baked caches on single-threaded hosts
+    /// (browser WASM without COOP/COEP cannot <c>Thread.Start</c>): no writer thread is created
+    /// and appends permanently no-op. Entries still load normally via
+    /// <see cref="LoadEntriesForFont"/>; runtime rasterizations simply aren't persisted.</param>
+    public SdfGlyphDiskCache(string cacheDir, float rasterSize, float spread, bool readOnly = false)
     {
         _cacheDir = cacheDir;
         RasterSize = rasterSize;
         Spread = spread;
         Directory.CreateDirectory(cacheDir);
+        if (readOnly)
+        {
+            _pauseWrites = true;
+            _writerThread = null;
+            return;
+        }
         _writerThread = new Thread(WriterLoop) { IsBackground = true, Name = "SdfGlyphDiskWriter" };
         _writerThread.Start();
     }
@@ -191,7 +202,8 @@ public sealed class SdfGlyphDiskCache : IDisposable
     // TryAdd drops the glyph if the bounded queue is full or the writer is gone — caching is best-effort.
     private void Enqueue(string fontPath, byte[] bytes)
     {
-        if (_disposed || _writerDead || _writeQueue.IsAddingCompleted) return;
+        // _writerThread is null in read-only mode: no consumer exists, so never enqueue.
+        if (_disposed || _writerDead || _writerThread is null || _writeQueue.IsAddingCompleted) return;
         try
         {
             if (!_writeQueue.TryAdd((fontPath, bytes)))
@@ -265,7 +277,7 @@ public sealed class SdfGlyphDiskCache : IDisposable
         _disposed = true;
         _writeQueue.CompleteAdding();
         // Let the writer drain the queue and close the files. Bounded so a stuck disk can't hang exit.
-        try { _writerThread.Join(TimeSpan.FromSeconds(5)); }
+        try { _writerThread?.Join(TimeSpan.FromSeconds(5)); }
         catch (Exception ex) { Console.Error.WriteLine($"[SdfDiskCache] writer join failed: {ex.Message}"); }
         _writeQueue.Dispose();
     }
