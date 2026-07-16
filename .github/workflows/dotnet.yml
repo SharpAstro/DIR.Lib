@@ -43,7 +43,7 @@ env:
   #       (Latin sentence 280 -> 64 ns/char), zero-alloc preserved. Transitive via the
   #       DIR.Lib.Shaping satellite; no DIR.Lib API change. The floating 1.5.* pin resolves
   #       the new engine at build time, so the published nuspec floor moves to >= 1.5.551.
-  VERSION_PREFIX: 6.9.${{ github.run_number }}
+  VERSION_PREFIX: 6.10.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
