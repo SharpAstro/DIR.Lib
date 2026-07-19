@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Runtime.InteropServices;
 using DIR.Lib;
 
 namespace DIR.Lib
@@ -33,6 +34,12 @@ namespace DIR.Lib
     {
         private readonly ClickableRegionTracker _tracker = new();
 
+        // Selectable-text regions registered this frame (paint order). Mirrors _tracker's lifecycle --
+        // cleared in BeginFrame, appended by DrawSelectableText, snapshotted by a host that renders the
+        // text as native selectable UI (web DOM span / terminal yank). Kept OUT of the clickable tracker
+        // on purpose: a selectable-text rect must never shadow a button's click hit-test.
+        private readonly List<SelectableTextRegion> _selectableText = [];
+
         // DEBUG-inspector capture of the arranged layout painted this frame. Null until
         // LayoutInspection is enabled (zero overhead in production); mirrors _tracker -- cleared in
         // BeginFrame, appended in PaintLayout, read by the inspector's describe_layout. Render-thread
@@ -63,6 +70,7 @@ namespace DIR.Lib
         protected void BeginFrame()
         {
             _tracker.BeginFrame();
+            _selectableText.Clear();
             _capturedLayout?.Clear();
         }
 
@@ -421,6 +429,55 @@ namespace DIR.Lib
                 new RectInt(new PointInt((int)(x + w), (int)(y + h)), new PointInt((int)x, (int)y)),
                 horizAlign, vertAlign);
         }
+
+        /// <summary>
+        /// Draws a run of text AND registers it as a selectable region for this frame. Unless the host
+        /// has opted into native text rendering
+        /// (<see cref="Renderer{TSurface}.HostRendersSelectableText"/>, default off) this is
+        /// <see cref="DrawText"/> plus a region registration; a host that HAS opted in (web with a DOM
+        /// text layer) gets the region ONLY and paints a real, selectable DOM node over the rect itself.
+        /// <para>
+        /// Takes an immutable <see cref="string"/> (not a <c>ReadOnlySpan&lt;char&gt;</c>) on purpose: the
+        /// region has to outlive the frame for the host to read after paint, so a durable reference is
+        /// stored with ZERO copy -- the raster backend never allocates, and the web host hands the same
+        /// string straight to JS. Selectable text is always string-backed (panel/detail readouts), so this
+        /// costs nothing at the call site.
+        /// </para>
+        /// <para>
+        /// Use for stable, read-only text worth selecting/copying -- info panels, detail readouts. Do NOT
+        /// use for high-churn scene labels (sky-map star/constellation names reflow every pan frame); those
+        /// stay on <see cref="DrawText"/> so they never spill into the host's DOM/selection layer.
+        /// </para>
+        /// </summary>
+        protected void DrawSelectableText(string text, string fontPath, float x, float y, float w, float h,
+            float fontSize, RGBAColor32 color, TextAlign horizAlign = TextAlign.Near, TextAlign vertAlign = TextAlign.Center)
+        {
+            if (string.IsNullOrEmpty(fontPath) || string.IsNullOrEmpty(text)) return;
+            if (!Renderer.HostRendersSelectableText)
+            {
+                DrawText(text.AsSpan(), fontPath, x, y, w, h, fontSize, color, horizAlign, vertAlign);
+            }
+            _selectableText.Add(new SelectableTextRegion(
+                x, y, w, h, text, fontPath, fontSize, color, horizAlign, vertAlign));
+        }
+
+        /// <summary>
+        /// The selectable-text regions registered during the last render pass, in paint order, as a
+        /// ZERO-COPY view over the internal frame list (no allocation, O(1) -- this API can carry
+        /// thousands of runs per frame in a document viewer, so a defensive array copy is off the table).
+        /// <para>
+        /// Lifetime contract: the view stays valid until the widget's NEXT Render pass
+        /// (<see cref="BeginFrame"/> clears the backing list) -- in a render-on-demand host that can be
+        /// arbitrarily long, so a reader that skips a frame loses nothing; this is snapshot state (a
+        /// stale overlay reconciles fully on the next read), not an event stream. The reader must be the
+        /// same thread that runs Render (it is the frame driver itself), which makes a torn read
+        /// structurally impossible; the ref-struct nature of <see cref="ReadOnlySpan{T}"/> additionally
+        /// prevents stashing the view across frames. If a cross-thread consumer ever appears, switch this
+        /// to a published immutable snapshot (CircularBuffer / ImmutableArray-CAS pattern) instead.
+        /// </para>
+        /// </summary>
+        public ReadOnlySpan<SelectableTextRegion> SelectableTextRegions
+            => CollectionsMarshal.AsSpan(_selectableText);
 
         /// <summary>
         /// Fills a horizontal text bar with <paramref name="bgColor"/> and draws a single line of

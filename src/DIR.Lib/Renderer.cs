@@ -409,6 +409,18 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
     public abstract (float Width, float Height) MeasureText(ReadOnlySpan<char> text, string fontFamily, float fontSize);
 
     /// <summary>
+    /// Set by a HOST that renders selectable text natively -- e.g. a web host overlaying real DOM
+    /// <c>&lt;span&gt;</c>s over the canvas. When true,
+    /// <see cref="PixelWidgetBase{TSurface}.DrawSelectableText"/> registers the selectable region but
+    /// skips the glyph raster, so the host's native text is the only copy on screen (no double-draw).
+    /// Deliberately a host choice rather than a backend override: the same web renderer serves consumers
+    /// with and without a DOM text layer, and an un-migrated host must keep getting rastered text.
+    /// Default false: selectable text rasters exactly like <c>DrawText</c> (Vulkan, console, and any
+    /// consumer that has not mounted a native text layer).
+    /// </summary>
+    public bool HostRendersSelectableText { get; set; }
+
+    /// <summary>
     /// Fills multiple rectangles in a single batched draw call.
     /// Default implementation falls back to individual FillRectangle calls.
     /// </summary>
