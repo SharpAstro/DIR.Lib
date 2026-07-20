@@ -23,8 +23,9 @@ public abstract partial record Node
     /// <summary>Fix the width to <paramref name="designUnits"/>.</summary>
     public Node WFixed(float designUnits) => this with { Width = Sizing.Fixed(designUnits) };
 
-    /// <summary>Make the width proportional (star) with the given <paramref name="weight"/>.</summary>
-    public Node WStar(float weight = 1f) => this with { Width = Sizing.Star(weight) };
+    /// <summary>Make the width proportional (star) with the given <paramref name="weight"/>, optionally
+    /// clamped to [<paramref name="min"/>, <paramref name="max"/>] design units (0 = unclamped bound).</summary>
+    public Node WStar(float weight = 1f, float min = 0f, float max = 0f) => this with { Width = Sizing.Star(weight, min, max) };
 
     /// <summary>Shrink the width to content.</summary>
     public Node WAuto() => this with { Width = Sizing.Auto };
@@ -32,11 +33,20 @@ public abstract partial record Node
     /// <summary>Fix the height to <paramref name="designUnits"/>.</summary>
     public Node HFixed(float designUnits) => this with { Height = Sizing.Fixed(designUnits) };
 
-    /// <summary>Make the height proportional (star) with the given <paramref name="weight"/>.</summary>
-    public Node HStar(float weight = 1f) => this with { Height = Sizing.Star(weight) };
+    /// <summary>Make the height proportional (star) with the given <paramref name="weight"/>, optionally
+    /// clamped to [<paramref name="min"/>, <paramref name="max"/>] design units (0 = unclamped bound).</summary>
+    public Node HStar(float weight = 1f, float min = 0f, float max = 0f) => this with { Height = Sizing.Star(weight, min, max) };
 
     /// <summary>Shrink the height to content.</summary>
     public Node HAuto() => this with { Height = Sizing.Auto };
+
+    /// <summary>Clamp the resolved width to [<paramref name="min"/>, <paramref name="max"/>] design units
+    /// (0 = unclamped bound), preserving the current kind. No-op on a Fixed width (explicit wins).</summary>
+    public Node WClamp(float min, float max = 0f) => this with { Width = Width with { Min = min, Max = max } };
+
+    /// <summary>Clamp the resolved height to [<paramref name="min"/>, <paramref name="max"/>] design units
+    /// (0 = unclamped bound), preserving the current kind. No-op on a Fixed height (explicit wins).</summary>
+    public Node HClamp(float min, float max = 0f) => this with { Height = Height with { Min = min, Max = max } };
 
     // ---- Common combinations ----
 
@@ -60,11 +70,24 @@ public abstract partial record Node
     /// <summary>Bind a click region (and optional handler) to this node's whole rect -- draw == hit by construction.</summary>
     public Node Clickable(HitResult? hit, Action<InputModifier>? onClick = null) => this with { Hit = hit, OnClick = onClick };
 
+    /// <summary>Drop this node from the arrangement entirely when a parent <see cref="Stack"/> would give
+    /// it a main-axis extent below <paramref name="designUnits"/> -- the freed space redistributes to the
+    /// surviving siblings. See <see cref="CollapseThreshold"/>.</summary>
+    public Node CollapseBelow(float designUnits) => this with { CollapseThreshold = designUnits };
+
     // ---- Container-specific (no-op on the wrong kind) ----
 
-    /// <summary>Set the inter-child gap on a <see cref="Stack"/>; no-op on any other node. (Named <c>WithGap</c>
-    /// rather than <c>Gap</c> because <see cref="Stack"/> already exposes a <c>Gap</c> property.)</summary>
-    public Node WithGap(float gap) => this is Stack s ? s with { Gap = gap } : this;
+    /// <summary>Set the inter-child gap on a <see cref="Stack"/> or <see cref="Wrap"/>; no-op on any other
+    /// node. (Named <c>WithGap</c> rather than <c>Gap</c> because both already expose a <c>Gap</c> property.)</summary>
+    public Node WithGap(float gap) => this switch
+    {
+        Stack s => s with { Gap = gap },
+        Wrap w => w with { Gap = gap },
+        _ => this,
+    };
+
+    /// <summary>Set the between-lines gap on a <see cref="Wrap"/>; no-op on any other node.</summary>
+    public Node WithLineGap(float lineGap) => this is Wrap w ? w with { LineGap = lineGap } : this;
 
     /// <summary>Set the row/column gaps on a <see cref="Grid"/>; no-op on any other node.</summary>
     public Node WithGaps(float rowGap, float columnGap) => this is Grid g ? g with { RowGap = rowGap, ColumnGap = columnGap } : this;

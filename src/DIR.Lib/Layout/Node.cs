@@ -45,6 +45,14 @@ public abstract partial record Node
     /// <summary>Optional direct click handler, registered alongside <see cref="Hit"/> when present.</summary>
     public Action<InputModifier>? OnClick { get; init; }
 
+    /// <summary>Collapse threshold in design units, honoured by a parent <see cref="Stack"/>: when this
+    /// node's resolved main-axis extent lands below the threshold, the node drops out of the arrangement
+    /// entirely (not painted, no hit region, no gap) and its space redistributes to the surviving
+    /// siblings. The declarative form of "show the strip only when it is at least N tall" -- a squeezed
+    /// remnant is unreadable noise, so it collapses instead. 0 (default) = never collapse. Set via
+    /// <see cref="CollapseBelow"/>; only a Stack parent honours it (Dock/Grid strips are explicit).</summary>
+    public float CollapseThreshold { get; init; }
+
     /// <summary>Children laid out sequentially along <paramref name="Axis"/>, separated by <paramref name="Gap"/> design units.</summary>
     public sealed record Stack(ImmutableArray<Node> Children, Axis Axis = Axis.Vertical, float Gap = 0f) : Node;
 
@@ -53,6 +61,16 @@ public abstract partial record Node
 
     /// <summary>A uniform N-column grid; cells fill row-major. Column widths split evenly, rows size to the tallest Auto cell.</summary>
     public sealed record Grid(int Columns, ImmutableArray<Node> Cells, float RowGap = 0f, float ColumnGap = 0f) : Node;
+
+    /// <summary>Children flow along <paramref name="Axis"/> and wrap into a new line when the next child
+    /// would overflow the available extent -- the flexbox <c>wrap</c> for toolbars / chip rows on narrow
+    /// surfaces (a canvas has no CSS to reflow for it). Each child takes its Fixed/measured main extent
+    /// (a <c>Star</c> main is meaningless in a flow and measures as Auto); a line's cross extent is its
+    /// tallest child's, and a child with <c>Star</c> cross sizing stretches to that line extent.
+    /// <paramref name="Gap"/> separates children within a line, <paramref name="LineGap"/> separates
+    /// lines. Intrinsic (Auto) size reflows against the available extent, so an Auto-height wrap grows
+    /// taller as its container narrows.</summary>
+    public sealed record Wrap(ImmutableArray<Node> Children, Axis Axis = Axis.Horizontal, float Gap = 0f, float LineGap = 0f) : Node;
 
     /// <summary><paramref name="Base"/> drawn first, <paramref name="Top"/> on top (modal / dropdown / popup). Both fill the same rect.</summary>
     public sealed record Overlay(Node Base, Node Top) : Node;

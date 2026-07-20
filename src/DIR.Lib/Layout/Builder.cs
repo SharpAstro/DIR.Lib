@@ -56,6 +56,15 @@ public static class Builder
     public static Node Grid(int columns, params ReadOnlySpan<Node> cells)
         => new Node.Grid(columns, ImmutableArray.Create(cells));
 
+    /// <summary>Children flow left-to-right and wrap to the next line when out of width (toolbars / chip
+    /// rows on narrow surfaces). Set gaps with <c>.WithGap(g)</c> / <c>.WithLineGap(g)</c>.</summary>
+    public static Node WrapH(params ReadOnlySpan<Node> children)
+        => new Node.Wrap(ImmutableArray.Create(children), Axis.Horizontal);
+
+    /// <summary>Children flow top-to-bottom and wrap to the next column when out of height.</summary>
+    public static Node WrapV(params ReadOnlySpan<Node> children)
+        => new Node.Wrap(ImmutableArray.Create(children), Axis.Vertical);
+
     /// <summary><paramref name="layer"/> drawn first, <paramref name="top"/> on top (modal / dropdown / popup).</summary>
     public static Node Overlay(Node layer, Node top) => new Node.Overlay(layer, top);
 

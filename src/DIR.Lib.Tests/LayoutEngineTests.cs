@@ -440,4 +440,243 @@ public class LayoutEngineTests
         // ...but with nothing to draw or hit, no divider node is emitted (just the 2 panes + the Split root).
         arranged.Length.ShouldBe(3);
     }
+
+    // --- clamped Star (Sizing.Min / Sizing.Max) ---
+
+    private static bool IsArranged<T>(ImmutableArray<Layout.ArrangedNode<T>> arranged, Layout.Node node)
+        where T : INumber<T>
+    {
+        foreach (var a in arranged)
+        {
+            if (ReferenceEquals(a.Node, node))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    [Fact]
+    public void ClampedStar_MinHolds_WhenFixedSiblingsEatTheContainer()
+    {
+        // The negative-width bug class: a Fixed sibling bigger than the container used to leave the
+        // Star with zero -- with a Min it holds its floor and overflows visibly instead.
+        var fixedRow = Row(80);
+        var star = new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
+        { Height = Layout.Sizing.Star(min: 30f), Width = Layout.Sizing.Star() };
+        var stack = new Layout.Node.Stack([fixedRow, star]);
+
+        var arranged = Layout.Engine.Arrange(stack, new Rect<float>(0, 0, 100, 100), new PixelCtx());
+
+        RectOf(arranged, star).Height.ShouldBe(30f, 0.001); // not the 20 leftover
+    }
+
+    [Fact]
+    public void ClampedStar_MaxCaps_SurplusFlowsToStarSibling()
+    {
+        var capped = new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
+        { Height = Layout.Sizing.Star(max: 20f), Width = Layout.Sizing.Star() };
+        var greedy = StarRow();
+        var stack = new Layout.Node.Stack([capped, greedy]);
+
+        var arranged = Layout.Engine.Arrange(stack, new Rect<float>(0, 0, 100, 100), new PixelCtx());
+
+        RectOf(arranged, capped).Height.ShouldBe(20f, 0.001);
+        RectOf(arranged, greedy).Height.ShouldBe(80f, 0.001); // the freed 30 redistributed, not dropped
+    }
+
+    [Fact]
+    public void ClampedStar_MinOnOne_ShrinksTheOther()
+    {
+        var floored = new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
+        { Height = Layout.Sizing.Star(min: 60f), Width = Layout.Sizing.Star() };
+        var other = StarRow();
+        var stack = new Layout.Node.Stack([floored, other]);
+
+        var arranged = Layout.Engine.Arrange(stack, new Rect<float>(0, 0, 100, 100), new PixelCtx());
+
+        RectOf(arranged, floored).Height.ShouldBe(60f, 0.001); // naive 50/50 violated its floor
+        RectOf(arranged, other).Height.ShouldBe(40f, 0.001);   // remainder after the freeze
+    }
+
+    [Fact]
+    public void ClampedStar_CrossAxis_MaxCapsTheStretch()
+    {
+        var child = new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
+        { Width = Layout.Sizing.Star(max: 50f), Height = Layout.Sizing.Fixed(10) };
+        var stack = new Layout.Node.Stack([child]);
+
+        var arranged = Layout.Engine.Arrange(stack, new Rect<float>(0, 0, 100, 100), new PixelCtx());
+
+        RectOf(arranged, child).Width.ShouldBe(50f, 0.001); // stretch-to-cross capped at Max
+    }
+
+    [Fact]
+    public void ClampedStar_CellCoordinates_MinHonoured()
+    {
+        var floored = new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
+        { Height = Layout.Sizing.Star(min: 8f), Width = Layout.Sizing.Star() };
+        var other = new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
+        { Height = Layout.Sizing.Star(), Width = Layout.Sizing.Star() };
+        var stack = new Layout.Node.Stack([floored, other]);
+
+        var arranged = Layout.Engine.Arrange(stack, new Rect<int>(0, 0, 10, 10), new CellCtx());
+
+        RectOf(arranged, floored).Height.ShouldBe(8);
+        RectOf(arranged, other).Height.ShouldBe(2);
+    }
+
+    // --- collapse-below-minimum (Node.CollapseThreshold / .CollapseBelow) ---
+
+    [Fact]
+    public void Collapse_DropsStarBelowThreshold_SiblingTakesAllIncludingGap()
+    {
+        // Two equal stars over (100 - 10 gap) = 45 each; the collapsible one lands under its 60
+        // threshold, drops out (with its gap), and the survivor takes the full 100.
+        var keeper = StarRow();
+        var collapsible = StarRow().CollapseBelow(60f);
+        var stack = new Layout.Node.Stack([keeper, collapsible], Layout.Axis.Vertical, Gap: 10f);
+
+        var arranged = Layout.Engine.Arrange(stack, new Rect<float>(0, 0, 100, 100), new PixelCtx());
+
+        RectOf(arranged, keeper).Height.ShouldBe(100f, 0.001);
+        IsArranged(arranged, collapsible).ShouldBeFalse(); // not painted, no hit, no gap ghost
+    }
+
+    [Fact]
+    public void Collapse_StaysWhenAtOrAboveThreshold()
+    {
+        var fixedRow = Row(50);
+        var strip = StarRow().CollapseBelow(40f);
+        var stack = new Layout.Node.Stack([fixedRow, strip]);
+
+        var arranged = Layout.Engine.Arrange(stack, new Rect<float>(0, 0, 100, 100), new PixelCtx());
+
+        RectOf(arranged, strip).Height.ShouldBe(50f, 0.001); // 50 >= 40: stays
+    }
+
+    [Fact]
+    public void Collapse_FixedChildBelowThreshold_AlwaysCollapses()
+    {
+        var tiny = Row(20).CollapseBelow(30f);
+        var star = StarRow();
+        var stack = new Layout.Node.Stack([tiny, star]);
+
+        var arranged = Layout.Engine.Arrange(stack, new Rect<float>(0, 0, 100, 100), new PixelCtx());
+
+        IsArranged(arranged, tiny).ShouldBeFalse();
+        RectOf(arranged, star).Height.ShouldBe(100f, 0.001);
+    }
+
+    [Fact]
+    public void Collapse_ComposesWithClampedStar_PanelDropsWhenSqueezedBelowItsFloor()
+    {
+        // The portrait details-panel pattern: a capped star panel that collapses rather than render
+        // an unreadable sliver. Plenty of space -> capped at Max; tight space -> collapsed entirely.
+        var content = StarRow();
+        Layout.Node Panel() => StarRow().HClamp(min: 0f, max: 30f).CollapseBelow(25f);
+
+        var roomy = Panel();
+        var arrangedRoomy = Layout.Engine.Arrange(
+            new Layout.Node.Stack([content, roomy]), new Rect<float>(0, 0, 100, 200), new PixelCtx());
+        RectOf(arrangedRoomy, roomy).Height.ShouldBe(30f, 0.001); // 100/100 naive -> capped at 30
+
+        var content2 = StarRow();
+        var tight = Panel();
+        var arrangedTight = Layout.Engine.Arrange(
+            new Layout.Node.Stack([content2, tight]), new Rect<float>(0, 0, 100, 40), new PixelCtx());
+        IsArranged(arrangedTight, tight).ShouldBeFalse();          // 20 < 25 -> collapsed
+        RectOf(arrangedTight, content2).Height.ShouldBe(40f, 0.001);
+    }
+
+    // --- Wrap (flow layout) ---
+
+    private static Layout.Node.Leaf Chip(float w, float h) =>
+        new(new Layout.Content.Box(w, h));
+
+    [Fact]
+    public void WrapH_BreaksIntoLines_WhenOutOfWidth()
+    {
+        var a = Chip(40, 10);
+        var b = Chip(40, 10);
+        var c = Chip(40, 10);
+        var wrap = new Layout.Node.Wrap([a, b, c]);
+
+        var arranged = Layout.Engine.Arrange(wrap, new Rect<float>(0, 0, 100, 100), new PixelCtx());
+
+        RectOf(arranged, a).ShouldBe(new Rect<float>(0, 0, 40, 10));
+        RectOf(arranged, b).ShouldBe(new Rect<float>(40, 0, 40, 10));
+        RectOf(arranged, c).ShouldBe(new Rect<float>(0, 10, 40, 10)); // 3rd would overflow -> next line
+    }
+
+    [Fact]
+    public void WrapH_GapAndLineGap_OffsetWithinAndBetweenLines()
+    {
+        var a = Chip(40, 10);
+        var b = Chip(40, 10);
+        var c = Chip(40, 10);
+        var wrap = new Layout.Node.Wrap([a, b, c], Layout.Axis.Horizontal, Gap: 8f, LineGap: 6f);
+
+        var arranged = Layout.Engine.Arrange(wrap, new Rect<float>(0, 0, 100, 100), new PixelCtx());
+
+        RectOf(arranged, b).X.ShouldBe(48f, 0.001);  // 40 + 8 gap
+        RectOf(arranged, c).ShouldBe(new Rect<float>(0, 16, 40, 10)); // 40+8+40=88 fits, +8+40 doesn't -> line 2 at 10+6
+    }
+
+    [Fact]
+    public void WrapH_StarCross_StretchesToTheLineExtent()
+    {
+        var tall = Chip(30, 30);
+        var stretchy = new Layout.Node.Leaf(new Layout.Content.Box(30, 10)) { Height = Layout.Sizing.Star() };
+        var wrap = new Layout.Node.Wrap([tall, stretchy]);
+
+        var arranged = Layout.Engine.Arrange(wrap, new Rect<float>(0, 0, 100, 100), new PixelCtx());
+
+        RectOf(arranged, stretchy).Height.ShouldBe(30f, 0.001); // stretched to the line's tallest child
+    }
+
+    [Fact]
+    public void WrapH_OversizeChild_GetsItsOwnLine()
+    {
+        var wide = Chip(150, 10); // wider than the 100 bounds
+        var after = Chip(40, 10);
+        var wrap = new Layout.Node.Wrap([wide, after]);
+
+        var arranged = Layout.Engine.Arrange(wrap, new Rect<float>(0, 0, 100, 100), new PixelCtx());
+
+        RectOf(arranged, wide).ShouldBe(new Rect<float>(0, 0, 150, 10)); // own line, visible overflow
+        RectOf(arranged, after).ShouldBe(new Rect<float>(0, 10, 40, 10));
+    }
+
+    [Fact]
+    public void Wrap_AutoHeight_GrowsAsItWrapsInsideAStack()
+    {
+        // The toolbar-reflow case: an Auto-height wrap inside a VStack takes 1 line when wide,
+        // 2 lines when narrow -- the stack's Auto measure sees the flowed height.
+        Layout.Node MakeWrap() => new Layout.Node.Wrap([Chip(40, 10), Chip(40, 10), Chip(40, 10)])
+        { Width = Layout.Sizing.Star() };
+
+        var wide = MakeWrap();
+        var arrangedWide = Layout.Engine.Arrange(
+            new Layout.Node.Stack([wide, StarRow()]), new Rect<float>(0, 0, 200, 100), new PixelCtx());
+        RectOf(arrangedWide, wide).Height.ShouldBe(10f, 0.001);
+
+        var narrow = MakeWrap();
+        var arrangedNarrow = Layout.Engine.Arrange(
+            new Layout.Node.Stack([narrow, StarRow()]), new Rect<float>(0, 0, 100, 100), new PixelCtx());
+        RectOf(arrangedNarrow, narrow).Height.ShouldBe(20f, 0.001); // reflowed to 2 lines
+    }
+
+    [Fact]
+    public void Builder_WrapH_WithGaps_EmitsWrapRecord()
+    {
+        var node = Layout.Builder.WrapH(Chip(10, 10), Chip(10, 10)).WithGap(4f).WithLineGap(2f);
+
+        var wrap = node.ShouldBeOfType<Layout.Node.Wrap>();
+        wrap.Axis.ShouldBe(Layout.Axis.Horizontal);
+        wrap.Gap.ShouldBe(4f);
+        wrap.LineGap.ShouldBe(2f);
+        wrap.Children.Length.ShouldBe(2);
+    }
 }

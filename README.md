@@ -41,9 +41,10 @@ Platform bridges (in downstream packages):
 
 A surface-agnostic declarative layout engine. Describe a tree of immutable records; the engine measures + arranges it into rects; a per-surface painter (`PixelWidgetBase.PaintLayout`) draws each node and binds its click region **from the same arranged rect** — draw == hit by construction, with no separate hit-rect arithmetic that can drift.
 
-- **`Layout.Node`** — the tree. Variants: `Stack` (vertical/horizontal), `Dock` (edge strips + a fill remainder), `Grid`, `Overlay` (base/top, for modals/popups), `Split` (two resizable panes + a draggable divider), `Leaf` (a `Content`). Chrome lives on the base node: `Width`/`Height` (`Sizing`), `Padding`, `Background`, `Hit`, `OnClick`.
+- **`Layout.Node`** — the tree. Variants: `Stack` (vertical/horizontal), `Dock` (edge strips + a fill remainder), `Grid`, `Wrap` (children flow and wrap into new lines when out of extent — the flexbox `wrap` for toolbars/chip rows on narrow surfaces), `Overlay` (base/top, for modals/popups), `Split` (two resizable panes + a draggable divider), `Leaf` (a `Content`). Chrome lives on the base node: `Width`/`Height` (`Sizing`), `Padding`, `Background`, `Hit`, `OnClick`, `CollapseThreshold`.
 - **`Layout.Content`** — leaf payload: `Text` (value + colour + alignment), `Box` (fixed icon/swatch/spacer), `Fill` (an app-drawn escape hatch — chart, image, text input; routed by `Key`).
-- **`Layout.Sizing`** — `Fixed(designUnits)` | `Auto` (shrink-to-content) | `Star(weight)` (proportional split of leftover). Values are *design units* mapped to surface units (px × DPI, or character cells) by `Layout.IMeasureContext`.
+- **`Layout.Sizing`** — `Fixed(designUnits)` | `Auto` (shrink-to-content) | `Star(weight, min, max)` (proportional split of leftover). Values are *design units* mapped to surface units (px × DPI, or character cells) by `Layout.IMeasureContext`. `Min`/`Max` clamp the resolved extent of an Auto/Star axis (0 = unclamped): a min-clamped Star holds its floor and overflows *visibly* instead of starving to zero when Fixed siblings eat the container, and a max-clamped Star's surplus redistributes to its Star siblings.
+- **Collapse-below-minimum** — `.CollapseBelow(designUnits)`: when a parent `Stack` would give the node a main-axis extent under the threshold, it drops out of the arrangement entirely (not painted, no hit, no gap) and its space redistributes to the survivors. The declarative form of "show the strip only when it is at least N tall".
 - **`Layout.Engine.Arrange(root, rect, ctx)`** — two-pass measure/arrange; returns a pre-order `ImmutableArray<Layout.ArrangedNode>` the painter walks in order for correct z-stacking. Generic over the coordinate type (`float` pixels / `int` cells), so it is headless-testable with a stub `IMeasureContext`.
 
 ### `Layout.Builder` DSL
@@ -61,8 +62,8 @@ Layout.Builder.HStack(
     .Clickable(new HitResult.ButtonHit("go"), onClick);
 ```
 
-- **Factories** — `VStack` / `HStack` / `Text` / `Box` / `Fill` / `Spacer` / `Grid` / `Overlay` / `Split` / `Dock` (+ `Left`/`Right`/`Top`/`Bottom` dock-strip helpers).
-- **Fluent modifiers** (instance methods on `Layout.Node`, each a pure `this with { … }` transform) — `.W`/`.H`/`.WFixed`/`.WStar`/`.WAuto` (+ `H*`), `.RowH(u)` (full-width row), `.ColW(u)` (fixed-width column), `.Stretch()` (fill both axes), `.Bg`, `.Pad`, `.Clickable(hit, onClick?)`, `.WithGap`/`.WithGaps`.
+- **Factories** — `VStack` / `HStack` / `Text` / `Box` / `Fill` / `Spacer` / `Grid` / `WrapH` / `WrapV` / `Overlay` / `Split` / `Dock` (+ `Left`/`Right`/`Top`/`Bottom` dock-strip helpers).
+- **Fluent modifiers** (instance methods on `Layout.Node`, each a pure `this with { … }` transform) — `.W`/`.H`/`.WFixed`/`.WStar(weight, min, max)`/`.WAuto` (+ `H*`), `.WClamp`/`.HClamp(min, max)` (clamp the current kind), `.RowH(u)` (full-width row), `.ColW(u)` (fixed-width column), `.Stretch()` (fill both axes), `.Bg`, `.Pad`, `.Clickable(hit, onClick?)`, `.CollapseBelow(u)`, `.WithGap`/`.WithGaps`/`.WithLineGap`.
 - **Consumer convention** — alias `using Layout = DIR.Lib.Layout;` (a `global using`, or a csproj `<Using Include="DIR.Lib.Layout" Alias="Layout" />`) and write the qualified `Layout.Node` / `Layout.Builder`. Do **not** `using DIR.Lib.Layout;` directly — it drops the collision-prone barewords (`Node`, `Content`, `Size<T>`) into scope. (A plain `using DIR.Lib;` does not surface the nested `Layout` namespace; a using-directive imports types, not nested namespaces.) A consumer that already owns a `Layout` type must rename it.
 
 ## Text Input

@@ -41,6 +41,7 @@ public static class Engine
             Node.Leaf leaf => MeasureContent(leaf.Content, ctx),
             Node.Stack stack => MeasureStack(stack, available, ctx),
             Node.Grid grid => MeasureGrid(grid, available, ctx),
+            Node.Wrap wrap => MeasureWrap(wrap, available, ctx),
             Node.Overlay overlay => Union(
                 Measure(overlay.Base, available, ctx),
                 Measure(overlay.Top, available, ctx)),
@@ -57,9 +58,10 @@ public static class Engine
             intrinsic = new Size<T>(intrinsic.Width + pad2, intrinsic.Height + pad2);
         }
 
-        // Explicit Fixed sizing on the node overrides the intrinsic extent on that axis.
-        var w = node.Width.IsFixed ? ctx.ToSurface(node.Width.Value) : intrinsic.Width;
-        var h = node.Height.IsFixed ? ctx.ToSurface(node.Height.Value) : intrinsic.Height;
+        // Explicit Fixed sizing on the node overrides the intrinsic extent on that axis;
+        // Auto/Star intrinsics honour the Sizing's Min/Max clamps.
+        var w = node.Width.IsFixed ? ctx.ToSurface(node.Width.Value) : Clamp(intrinsic.Width, node.Width, ctx);
+        var h = node.Height.IsFixed ? ctx.ToSurface(node.Height.Value) : Clamp(intrinsic.Height, node.Height, ctx);
         return new Size<T>(w, h);
     }
 
@@ -95,6 +97,9 @@ public static class Engine
                 break;
             case Node.Grid grid:
                 ArrangeGrid(grid, inner, ctx, output, childDepth);
+                break;
+            case Node.Wrap wrap:
+                ArrangeWrap(wrap, inner, ctx, output, childDepth);
                 break;
             case Node.Overlay overlay:
                 ArrangeNode(overlay.Base, inner, ctx, output, childDepth); // base first
@@ -166,13 +171,89 @@ public static class Engine
         var mainAvail = MainOf(axis, availSize);
         var crossAvail = CrossOf(axis, availSize);
 
-        // Pass 1: resolve Fixed + Auto main-axis sizes; defer Star to the leftover split.
+        // Collapse loop: resolve every child's main extent, then drop any child whose CollapseThreshold
+        // undercuts its resolved extent and re-resolve so the freed space (extent + gap) redistributes.
+        // Survivor extents only ever grow when a sibling collapses (Fixed/Auto are space-independent,
+        // Star shares grow with the leftover), so no survivor can newly violate; each extra pass removes
+        // at least one child, terminating in <= n passes (one, in practice).
+        var included = new bool[n];
+        Array.Fill(included, true);
+        var includedCount = n;
         var mains = new T[n];
-        var starWeights = new List<float>();
+        while (true)
+        {
+            ResolveStackMains(children, included, includedCount, axis, mainAvail, gap, availSize, ctx, mains);
+
+            var anyCollapsed = false;
+            for (var i = 0; i < n; i++)
+            {
+                if (included[i] && children[i].CollapseThreshold > 0f
+                    && mains[i] < ctx.ToSurface(children[i].CollapseThreshold))
+                {
+                    included[i] = false;
+                    includedCount--;
+                    anyCollapsed = true;
+                }
+            }
+
+            if (!anyCollapsed)
+            {
+                break;
+            }
+
+            if (includedCount == 0)
+            {
+                return; // every child collapsed -- nothing to arrange
+            }
+        }
+
+        // Final pass: resolve cross-axis size + position each surviving child along the main axis.
+        var cursor = axis == Axis.Vertical ? inner.Y : inner.X;
+        for (var i = 0; i < n; i++)
+        {
+            if (!included[i])
+            {
+                continue;
+            }
+
+            var crossSizing = CrossSizing(axis, children[i]);
+            var cross = crossSizing.Kind switch
+            {
+                SizeKind.Fixed => ctx.ToSurface(crossSizing.Value),
+                SizeKind.Star => crossAvail,                                   // stretch to fill cross axis
+                _ => Min(crossAvail, CrossOf(axis, Measure(children[i], availSize, ctx))),
+            };
+            cross = Clamp(cross, crossSizing, ctx);
+
+            var childRect = axis == Axis.Vertical
+                ? new Rect<T>(inner.X, cursor, cross, mains[i])
+                : new Rect<T>(cursor, inner.Y, mains[i], cross);
+            ArrangeNode(children[i], childRect, ctx, output, depth);
+
+            cursor += mains[i] + gap;
+        }
+    }
+
+    /// <summary>
+    /// Passes 1+2 of the stack arrange over the non-collapsed subset: Fixed mains resolve directly and
+    /// Auto mains measure (clamped), then Star children split the leftover by weight with their Min/Max
+    /// clamps honoured (<see cref="DistributeStars"/>).
+    /// </summary>
+    private static void ResolveStackMains<T>(ImmutableArray<Node> children, bool[] included, int includedCount,
+        Axis axis, T mainAvail, T gap, Size<T> availSize, IMeasureContext<T> ctx, T[] mains) where T : INumber<T>
+    {
+        var n = children.Length;
         var starIndices = new List<int>();
+        var starWeights = new List<float>();
         var usedMain = T.Zero;
         for (var i = 0; i < n; i++)
         {
+            if (!included[i])
+            {
+                mains[i] = T.Zero;
+                continue;
+            }
+
             var sizing = MainSizing(axis, children[i]);
             if (sizing.IsStar)
             {
@@ -183,41 +264,101 @@ public static class Engine
 
             var size = sizing.IsFixed
                 ? ctx.ToSurface(sizing.Value)
-                : MainOf(axis, Measure(children[i], availSize, ctx));
+                : Clamp(MainOf(axis, Measure(children[i], availSize, ctx)), sizing, ctx);
             mains[i] = size;
             usedMain += size;
         }
 
-        // Pass 2: split the leftover (after Fixed/Auto mains + gaps) among Star children by weight.
-        if (starIndices.Count > 0)
+        if (starIndices.Count == 0)
         {
-            var gaps = gap * T.CreateChecked(Math.Max(0, n - 1));
-            var leftover = Max(T.Zero, mainAvail - usedMain - gaps);
-            var shares = DistributeByWeight(leftover, starWeights);
-            for (var s = 0; s < starIndices.Count; s++)
+            return;
+        }
+
+        var gaps = gap * T.CreateChecked(Math.Max(0, includedCount - 1));
+        var leftover = Max(T.Zero, mainAvail - usedMain - gaps);
+        DistributeStars(leftover, children, axis, starIndices, starWeights, ctx, mains);
+    }
+
+    /// <summary>
+    /// Splits <paramref name="leftover"/> among the Star children. Unclamped stars go through the exact
+    /// <see cref="DistributeByWeight"/> split; when any star carries a Min/Max clamp, violators freeze at
+    /// their bound and the remaining space redistributes among the rest -- so a capped star's surplus flows
+    /// to its siblings, and a min-clamped star holds its floor even when that overflows the container
+    /// (visible overflow beats invisible zero-extent content).
+    /// </summary>
+    private static void DistributeStars<T>(T leftover, ImmutableArray<Node> children, Axis axis,
+        List<int> starIndices, List<float> starWeights, IMeasureContext<T> ctx, T[] mains) where T : INumber<T>
+    {
+        var count = starIndices.Count;
+        var anyClamp = false;
+        for (var s = 0; s < count; s++)
+        {
+            if (MainSizing(axis, children[starIndices[s]]).HasClamp)
             {
-                mains[starIndices[s]] = shares[s];
+                anyClamp = true;
+                break;
             }
         }
 
-        // Pass 3: resolve cross-axis size + position each child sequentially along the main axis.
-        var cursor = axis == Axis.Vertical ? inner.Y : inner.X;
-        for (var i = 0; i < n; i++)
+        if (!anyClamp)
         {
-            var crossSizing = CrossSizing(axis, children[i]);
-            var cross = crossSizing.Kind switch
+            var shares = DistributeByWeight(leftover, starWeights);
+            for (var s = 0; s < count; s++)
             {
-                SizeKind.Fixed => ctx.ToSurface(crossSizing.Value),
-                SizeKind.Star => crossAvail,                                   // stretch to fill cross axis
-                _ => Min(crossAvail, CrossOf(axis, Measure(children[i], availSize, ctx))),
-            };
+                mains[starIndices[s]] = shares[s];
+            }
 
-            var childRect = axis == Axis.Vertical
-                ? new Rect<T>(inner.X, cursor, cross, mains[i])
-                : new Rect<T>(cursor, inner.Y, mains[i], cross);
-            ArrangeNode(children[i], childRect, ctx, output, depth);
+            return;
+        }
 
-            cursor += mains[i] + gap;
+        // Iterative freeze: distribute over the active subset, pin every clamp violator at its bound,
+        // then redistribute what is left among the rest. Each pass freezes >= 1 star, so <= count passes.
+        var frozen = new bool[count];
+        var remaining = leftover;
+        var activeSlots = new List<int>(count);
+        var activeWeights = new List<float>(count);
+        while (true)
+        {
+            activeSlots.Clear();
+            activeWeights.Clear();
+            for (var s = 0; s < count; s++)
+            {
+                if (!frozen[s])
+                {
+                    activeSlots.Add(s);
+                    activeWeights.Add(starWeights[s]);
+                }
+            }
+
+            if (activeSlots.Count == 0)
+            {
+                return;
+            }
+
+            var shares = DistributeByWeight(remaining, activeWeights);
+            var anyFrozen = false;
+            for (var a = 0; a < activeSlots.Count; a++)
+            {
+                var s = activeSlots[a];
+                var clamped = Clamp(shares[a], MainSizing(axis, children[starIndices[s]]), ctx);
+                if (clamped != shares[a])
+                {
+                    mains[starIndices[s]] = clamped;
+                    frozen[s] = true;
+                    remaining = Max(T.Zero, remaining - clamped);
+                    anyFrozen = true;
+                }
+            }
+
+            if (!anyFrozen)
+            {
+                for (var a = 0; a < activeSlots.Count; a++)
+                {
+                    mains[starIndices[activeSlots[a]]] = shares[a];
+                }
+
+                return;
+            }
         }
     }
 
@@ -237,9 +378,10 @@ public static class Engine
             }
             else
             {
-                // Auto (or Star, which a dock strip treats as Auto): measure along the dock axis.
+                // Auto (or Star, which a dock strip treats as Auto): measure along the dock axis,
+                // honouring the strip Sizing's own Min/Max clamps.
                 var measured = Measure(dc.Child, new Size<T>(remaining.Width, remaining.Height), ctx);
-                size = alongAxis ? measured.Height : measured.Width;
+                size = Clamp(alongAxis ? measured.Height : measured.Width, dc.Size, ctx);
             }
 
             var r = layout.Dock(ToDockStyle(dc.Side), size);
@@ -287,6 +429,70 @@ public static class Engine
             }
 
             ArrangeNode(cells[idx], new Rect<T>(x, y, colWidths[col], rowHeights[row]), ctx, output, depth);
+        }
+    }
+
+    private static void ArrangeWrap<T>(Node.Wrap wrap, Rect<T> inner, IMeasureContext<T> ctx,
+        ImmutableArray<ArrangedNode<T>>.Builder output, int depth) where T : INumber<T>
+    {
+        var children = wrap.Children;
+        var n = children.Length;
+        if (n == 0)
+        {
+            return;
+        }
+
+        var axis = wrap.Axis;
+        var gap = ctx.ToSurface(wrap.Gap);
+        var lineGap = ctx.ToSurface(wrap.LineGap);
+        var availSize = new Size<T>(inner.Width, inner.Height);
+        var mainAvail = MainOf(axis, availSize);
+
+        // Resolve every child's main + natural cross extent up front (see ResolveWrapChild).
+        var childMains = new T[n];
+        var childCrosses = new T[n];
+        for (var i = 0; i < n; i++)
+        {
+            (childMains[i], childCrosses[i]) = ResolveWrapChild(children[i], axis, availSize, ctx);
+        }
+
+        // Flow line by line: a child that would overflow a non-empty line starts the next one (a child
+        // wider than the whole extent gets a line of its own and overflows visibly).
+        var lineStart = 0;
+        var crossCursor = axis == Axis.Horizontal ? inner.Y : inner.X;
+        while (lineStart < n)
+        {
+            var lineEnd = lineStart; // exclusive
+            var used = T.Zero;
+            var lineCross = T.Zero;
+            while (lineEnd < n)
+            {
+                var extra = lineEnd == lineStart ? childMains[lineEnd] : gap + childMains[lineEnd];
+                if (lineEnd > lineStart && used + extra > mainAvail)
+                {
+                    break;
+                }
+
+                used += extra;
+                lineCross = Max(lineCross, childCrosses[lineEnd]);
+                lineEnd++;
+            }
+
+            var mainCursor = axis == Axis.Horizontal ? inner.X : inner.Y;
+            for (var i = lineStart; i < lineEnd; i++)
+            {
+                // A Star cross stretches to the line's extent; everything else keeps its natural cross.
+                var crossSizing = CrossSizing(axis, children[i]);
+                var cross = crossSizing.IsStar ? Clamp(lineCross, crossSizing, ctx) : childCrosses[i];
+                var childRect = axis == Axis.Horizontal
+                    ? new Rect<T>(mainCursor, crossCursor, childMains[i], cross)
+                    : new Rect<T>(crossCursor, mainCursor, cross, childMains[i]);
+                ArrangeNode(children[i], childRect, ctx, output, depth);
+                mainCursor += childMains[i] + gap;
+            }
+
+            crossCursor += lineCross + lineGap;
+            lineStart = lineEnd;
         }
     }
 
@@ -347,6 +553,73 @@ public static class Engine
         var w = maxW * T.CreateChecked(columns) + ctx.ToSurface(grid.ColumnGap) * T.CreateChecked(Math.Max(0, columns - 1));
         var h = maxH * T.CreateChecked(rows) + ctx.ToSurface(grid.RowGap) * T.CreateChecked(Math.Max(0, rows - 1));
         return new Size<T>(w, h);
+    }
+
+    /// <summary>A wrap child's main extent (Fixed explicit; Auto/Star measured -- a Star main is
+    /// meaningless in a flow -- with clamps honoured) and its natural cross extent. Shared by
+    /// <see cref="ArrangeWrap"/> and <see cref="MeasureWrap"/> so the two can never disagree on
+    /// where a line breaks.</summary>
+    private static (T Main, T Cross) ResolveWrapChild<T>(Node child, Axis axis, Size<T> available,
+        IMeasureContext<T> ctx) where T : INumber<T>
+    {
+        var measured = Measure(child, available, ctx);
+        var mainSizing = MainSizing(axis, child);
+        var main = mainSizing.IsFixed
+            ? ctx.ToSurface(mainSizing.Value)
+            : Clamp(MainOf(axis, measured), mainSizing, ctx);
+        var crossSizing = CrossSizing(axis, child);
+        var cross = crossSizing.IsFixed
+            ? ctx.ToSurface(crossSizing.Value)
+            : Clamp(CrossOf(axis, measured), crossSizing, ctx);
+        return (main, cross);
+    }
+
+    private static Size<T> MeasureWrap<T>(Node.Wrap wrap, Size<T> available, IMeasureContext<T> ctx)
+        where T : INumber<T>
+    {
+        var children = wrap.Children;
+        var n = children.Length;
+        if (n == 0)
+        {
+            return Size<T>.Zero;
+        }
+
+        var axis = wrap.Axis;
+        var gap = ctx.ToSurface(wrap.Gap);
+        var lineGap = ctx.ToSurface(wrap.LineGap);
+        var mainAvail = MainOf(axis, available);
+
+        // Same line flow as ArrangeWrap: intrinsic main = the longest line, intrinsic cross = the sum of
+        // line extents -- so an Auto-height wrap grows taller as its container narrows.
+        var maxLineMain = T.Zero;
+        var totalCross = T.Zero;
+        var used = T.Zero;
+        var lineCross = T.Zero;
+        var itemsInLine = 0;
+        var lines = 1;
+        for (var i = 0; i < n; i++)
+        {
+            var (main, cross) = ResolveWrapChild(children[i], axis, available, ctx);
+            var extra = itemsInLine == 0 ? main : gap + main;
+            if (itemsInLine > 0 && used + extra > mainAvail)
+            {
+                maxLineMain = Max(maxLineMain, used);
+                totalCross += lineCross;
+                lines++;
+                used = main;
+                lineCross = cross;
+                itemsInLine = 1;
+                continue;
+            }
+
+            used += extra;
+            lineCross = Max(lineCross, cross);
+            itemsInLine++;
+        }
+
+        maxLineMain = Max(maxLineMain, used);
+        totalCross += lineCross + lineGap * T.CreateChecked(lines - 1);
+        return Compose(axis, maxLineMain, totalCross);
     }
 
     // --- Star / even split, exact for both fractional (float) and integral (int) coordinates ---
@@ -432,6 +705,28 @@ public static class Engine
             ? r
             : new Rect<T>(r.X + padding, r.Y + padding,
                 Max(T.Zero, r.Width - padding - padding), Max(T.Zero, r.Height - padding - padding));
+
+    /// <summary>Applies a <see cref="Sizing"/>'s design-unit Min/Max clamps to a resolved extent.
+    /// No-op for Fixed (explicit wins) and for unset bounds (0 = unclamped sentinel).</summary>
+    private static T Clamp<T>(T extent, Sizing sizing, IMeasureContext<T> ctx) where T : INumber<T>
+    {
+        if (sizing.IsFixed)
+        {
+            return extent;
+        }
+
+        if (sizing.Min > 0f)
+        {
+            extent = Max(extent, ctx.ToSurface(sizing.Min));
+        }
+
+        if (sizing.Max > 0f)
+        {
+            extent = Min(extent, ctx.ToSurface(sizing.Max));
+        }
+
+        return extent;
+    }
 
     private static T Max<T>(T a, T b) where T : INumber<T> => a > b ? a : b;
 

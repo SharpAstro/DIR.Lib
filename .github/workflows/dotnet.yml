@@ -47,7 +47,7 @@ env:
   #        per frame (zero-copy SelectableTextRegions span view, mirrors the clickable
   #        tracker lifecycle); Renderer.HostRendersSelectableText lets a host that renders
   #        native text (web DOM span layer) skip the glyph raster. Additive, default-off.
-  VERSION_PREFIX: 6.13.${{ github.run_number }}
+  VERSION_PREFIX: 6.14.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
