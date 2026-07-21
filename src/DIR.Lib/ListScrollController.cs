@@ -234,6 +234,13 @@ public sealed class ListScrollController
         {
             _offset = MaxOffset;
         }
+        else if (Anchor == ScrollAnchor.Bottom && MaxOffset <= 0f)
+        {
+            // A fitting list has no history position to hold, so the tail pin re-establishes.
+            // Concretely: clearing + refilling the list (a session restart resetting its log)
+            // resumes tail-follow even if the user had scrolled into the old history.
+            _pinnedToEnd = true;
+        }
 
         _offset = Math.Clamp(_offset, 0f, MaxOffset);
     }

@@ -174,6 +174,22 @@ public class ListScrollControllerTests
     }
 
     [Fact]
+    public void BottomAnchor_FittingAgain_ReestablishesTailPin()
+    {
+        var c = Make(anchor: ScrollAnchor.Bottom);
+        c.HandleInput(new InputEvent.Scroll(1f, 50f, 50f)); // scroll up into history → pin released
+        c.Offset.ShouldBe(17f);
+
+        // The list clears + refills (a session restart resetting its log): once the content fits
+        // (MaxOffset 0) there is no history position to hold, so the tail pin re-establishes and
+        // the refilled list tail-follows again.
+        c.SetExtent(new RectF32(0f, 0f, 100f, 100f), 10f, 0, 1f);  // cleared
+        c.Offset.ShouldBe(0f);
+        c.SetExtent(new RectF32(0f, 0f, 100f, 100f), 10f, 25, 1f); // refilled past the viewport
+        c.Offset.ShouldBe(15f); // pinned at the new tail
+    }
+
+    [Fact]
     public void ThumbGeometry_IsRatioBased_AndReachesBothEnds()
     {
         var c = Make(); // track 100px, visible 10, total 30
