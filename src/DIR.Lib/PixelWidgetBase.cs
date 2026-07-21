@@ -90,6 +90,19 @@ namespace DIR.Lib
         }
 
         /// <summary>
+        /// Arranged-rect overload of
+        /// <see cref="RenderTextInput(TextInputState,int,int,int,int,string,float)"/> for layout-driven
+        /// callers that hold a float <see cref="RectF32"/> (a Fill leaf's arranged bounds) rather than
+        /// integer pixel positions. Rounds to whole pixels once here -- the text-input renderer is
+        /// integer-grid (RectInt) internally -- so call sites stop repeating the four-way (int) cast.
+        /// </summary>
+        protected void RenderTextInput(TextInputState state, RectF32 rect, string fontPath, float fontSize) =>
+            RenderTextInput(state,
+                (int)MathF.Round(rect.X), (int)MathF.Round(rect.Y),
+                (int)MathF.Round(rect.Width), (int)MathF.Round(rect.Height),
+                fontPath, fontSize);
+
+        /// <summary>
         /// Renders a button and registers the clickable region with an optional direct handler.
         /// </summary>
         protected void RenderButton(string label, float x, float y, float w, float h, string fontPath, float fontSize,
