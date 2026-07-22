@@ -51,7 +51,12 @@ env:
   #        (optional) + DrawSelectableText(..., string? href) so a DOM host can render a real <a>;
   #        and HitResult.LinkHit(Url) so a raster host can open the URL / drive a hover cursor.
   #        Additive (new optional field, new method overload, new HitResult subtype).
-  VERSION_PREFIX: 6.16.${{ github.run_number }}
+  # 6.17 - DeviceTransform: a constrained content->device affine (Rotation90 in {0,90,180,270} +
+  #        uniform scale + translation) exposed as Renderer.DeviceTransform. GPU backends fold it into
+  #        the projection so the whole frame (text included) rotates/scales as one; the compose stays a
+  #        Matrix3x2 (2D affine) and only widens to mat4 at the GPU boundary. Additive: new type + new
+  #        virtual property defaulting to Identity (rendering byte-identical until a consumer sets it).
+  VERSION_PREFIX: 6.17.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
