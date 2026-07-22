@@ -421,6 +421,19 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
     public bool HostRendersSelectableText { get; set; }
 
     /// <summary>
+    /// The content→device transform (rotation ∈ {0°, 90°, 180°, 270°}, uniform scale, translation) that a
+    /// backend folds into its projection so the whole frame — text included — rotates and scales as one.
+    /// Defaults to <see cref="DeviceTransform.Identity"/> (rendering is byte-identical to before it existed).
+    /// The base implementation only STORES the value; a backend applies it by overriding the setter to
+    /// rebuild its projection. Today only the Vulkan backend does so — the pure-software and WebGL backends
+    /// inherit the base auto-property and therefore ignore it (stored, not applied) until they are wired in
+    /// a later phase. The <see cref="DeviceTransform.Scale"/> component is the eventual single home for DPI —
+    /// introduced here alongside the existing per-widget <c>DpiScale</c>, to be unified incrementally (see
+    /// <c>docs/device-transform.md</c>).
+    /// </summary>
+    public virtual DeviceTransform DeviceTransform { get; set; } = DeviceTransform.Identity;
+
+    /// <summary>
     /// Fills multiple rectangles in a single batched draw call.
     /// Default implementation falls back to individual FillRectangle calls.
     /// </summary>
