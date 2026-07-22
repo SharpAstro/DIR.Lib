@@ -84,6 +84,29 @@ namespace DIR.Lib
         public virtual float DpiScale { get; set; } = 1f;
 
         /// <summary>
+        /// The window's primary text font (an absolute path or a family name the
+        /// <see cref="Renderer{TSurface}"/> resolves), owned per widget instance like <see cref="DpiScale"/> --
+        /// a widget belongs to exactly one window, so the host resolves the font once and sets this at startup
+        /// (and again if the font changes). The layout helpers
+        /// (<see cref="RenderLayout"/> / <see cref="ArrangeLayout"/> / <see cref="PaintLayout"/>) default to it
+        /// when their <c>fontPath</c> argument is omitted; the lower-level draw helpers (<see cref="DrawText"/>,
+        /// <see cref="RenderButton"/>, ...) still take an explicit font so a caller can draw a run in a
+        /// different face (e.g. the emoji font). Empty = unresolved: the text helpers no-op on an empty font,
+        /// so an unconfigured widget (headless test, pre-resolve frame) draws no text rather than throwing.
+        /// Virtual so a composite chrome widget can override the setter to push the font to the child widgets
+        /// it hosts (one set-point at startup instead of per-frame pushes).
+        /// </summary>
+        public virtual string FontPath { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Optional emoji/symbol fallback font for glyphs the primary <see cref="FontPath"/> lacks (colour
+        /// emoji, weather/planet symbols). Null = none (callers fall back to <see cref="FontPath"/>). Owned and
+        /// propagated exactly like <see cref="FontPath"/>. DIR.Lib's own helpers do not consume it -- it rides
+        /// here so a consumer's widgets share one owner for the whole per-window font set.
+        /// </summary>
+        public virtual string? EmojiFontPath { get; set; }
+
+        /// <summary>
         /// Clears clickable regions (and the inspector layout capture, if enabled). Call at the start
         /// of each Render pass.
         /// </summary>
@@ -382,13 +405,14 @@ namespace DIR.Lib
         /// <summary>
         /// Arranges a declarative <see cref="Layout.Node"/> tree into <paramref name="bounds"/> using this
         /// widget's renderer as the text-width oracle. Returns the flat pre-order arranged tree (also handy
-        /// for inspection / custom hit-testing). <paramref name="dpiScale"/> defaults to the widget's
-        /// <see cref="DpiScale"/>; pass an explicit value only to override (e.g. <c>1f</c> for a tree whose
-        /// sizes are already device pixels).
+        /// for inspection / custom hit-testing). <paramref name="fontPath"/> defaults to the widget's
+        /// <see cref="FontPath"/> and <paramref name="dpiScale"/> to its <see cref="DpiScale"/>; pass an
+        /// explicit value only to override (e.g. <c>dpiScale: 1f</c> for a tree whose sizes are already
+        /// device pixels).
         /// </summary>
-        protected ImmutableArray<Layout.ArrangedNode<float>> ArrangeLayout(Layout.Node root, RectF32 bounds, string fontPath, float? dpiScale = null)
+        protected ImmutableArray<Layout.ArrangedNode<float>> ArrangeLayout(Layout.Node root, RectF32 bounds, string? fontPath = null, float? dpiScale = null)
         {
-            var ctx = new PixelMeasureContext<TSurface>(Renderer, fontPath, dpiScale ?? DpiScale);
+            var ctx = new PixelMeasureContext<TSurface>(Renderer, fontPath ?? FontPath, dpiScale ?? DpiScale);
             return Layout.Engine.Arrange(root, new Rect<float>(bounds.X, bounds.Y, bounds.Width, bounds.Height), ctx);
         }
 
@@ -400,9 +424,10 @@ namespace DIR.Lib
         /// <paramref name="drawFill"/> handles <see cref="Layout.Content.Fill"/> escape-hatch leaves
         /// (charts, sky map, custom widgets).
         /// </summary>
-        protected void PaintLayout(ImmutableArray<Layout.ArrangedNode<float>> arranged, string fontPath, float? dpiScale = null,
+        protected void PaintLayout(ImmutableArray<Layout.ArrangedNode<float>> arranged, string? fontPath = null, float? dpiScale = null,
             Action<Layout.Content.Fill, RectF32>? drawFill = null)
         {
+            var fp = fontPath ?? FontPath;
             var scale = dpiScale ?? DpiScale;
             foreach (var (node, bounds) in arranged)
             {
@@ -423,7 +448,7 @@ namespace DIR.Lib
                     switch (leaf.Content)
                     {
                         case Layout.Content.Text text:
-                            DrawText(text.Value.AsSpan(), fontPath, bounds.X, bounds.Y, bounds.Width, bounds.Height,
+                            DrawText(text.Value.AsSpan(), fp, bounds.X, bounds.Y, bounds.Width, bounds.Height,
                                 text.FontSize * scale, text.Color, text.HAlign, text.VAlign);
                             break;
                         case Layout.Content.Box box when box.Color.Alpha > 0:
@@ -447,14 +472,16 @@ namespace DIR.Lib
 
         /// <summary>
         /// Convenience: <see cref="ArrangeLayout"/> + <see cref="PaintLayout"/> in one call.
-        /// <paramref name="dpiScale"/> defaults to the widget's <see cref="DpiScale"/>.
+        /// <paramref name="fontPath"/> defaults to the widget's <see cref="FontPath"/> and
+        /// <paramref name="dpiScale"/> to its <see cref="DpiScale"/>.
         /// </summary>
-        protected ImmutableArray<Layout.ArrangedNode<float>> RenderLayout(Layout.Node root, RectF32 bounds, string fontPath,
+        protected ImmutableArray<Layout.ArrangedNode<float>> RenderLayout(Layout.Node root, RectF32 bounds, string? fontPath = null,
             float? dpiScale = null, Action<Layout.Content.Fill, RectF32>? drawFill = null)
         {
+            var fp = fontPath ?? FontPath;
             var scale = dpiScale ?? DpiScale;
-            var arranged = ArrangeLayout(root, bounds, fontPath, scale);
-            PaintLayout(arranged, fontPath, scale, drawFill);
+            var arranged = ArrangeLayout(root, bounds, fp, scale);
+            PaintLayout(arranged, fp, scale, drawFill);
             return arranged;
         }
 
