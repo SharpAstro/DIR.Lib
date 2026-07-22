@@ -78,8 +78,10 @@ namespace DIR.Lib
         /// default to it when their <c>dpiScale</c> argument is omitted, and input handlers can read it
         /// directly (input events carry no DPI). Pass an explicit value only to override -- e.g.
         /// <c>dpiScale: 1f</c> for a tree whose sizes are already device pixels.
+        /// Virtual so a composite chrome widget can override the setter to propagate the new scale to the
+        /// child widgets it hosts (one set-point at startup/resize instead of per-frame pushes).
         /// </summary>
-        public float DpiScale { get; set; } = 1f;
+        public virtual float DpiScale { get; set; } = 1f;
 
         /// <summary>
         /// Clears clickable regions (and the inspector layout capture, if enabled). Call at the start
