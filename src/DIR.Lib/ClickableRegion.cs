@@ -20,6 +20,13 @@ public record HitResult
     /// <summary>A named action button was clicked.</summary>
     public sealed record ButtonHit(string Action) : HitResult;
 
+    /// <summary>
+    /// A hyperlink was hit. Carries the target <see cref="Url"/> so a host can open it (desktop:
+    /// the OS browser) and drive a pointer/hand cursor on hover. A web host that renders links as real
+    /// DOM elements handles the navigation itself and can leave this inert.
+    /// </summary>
+    public sealed record LinkHit(string Url) : HitResult;
+
     /// <summary>A list item was clicked at the given index.</summary>
     public sealed record ListItemHit(string ListId, int Index) : HitResult;
 

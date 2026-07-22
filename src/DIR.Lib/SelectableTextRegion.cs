@@ -11,6 +11,12 @@ namespace DIR.Lib
     /// pixels -- the same coordinate space as <see cref="ClickableRegion"/> -- so a host converts to CSS
     /// pixels by dividing by the device-pixel-ratio, exactly as it already does for clickable regions.
     /// </para>
+    /// <para>
+    /// <see cref="Href"/>, when non-null, marks the run as a hyperlink: a DOM host renders it as a real
+    /// <c>&lt;a href&gt;</c> instead of a plain span (so the browser handles new-tab/open/copy-link
+    /// natively). A raster host has no navigation model and ignores it -- the run still draws as ordinary
+    /// text -- so a link is a progressive enhancement that only the web host acts on.
+    /// </para>
     /// </summary>
     public readonly record struct SelectableTextRegion(
         float X, float Y, float Width, float Height,
@@ -19,5 +25,6 @@ namespace DIR.Lib
         float FontSize,
         RGBAColor32 Color,
         TextAlign HorizontalAlign,
-        TextAlign VerticalAlign);
+        TextAlign VerticalAlign,
+        string? Href = null);
 }

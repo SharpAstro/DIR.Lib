@@ -47,7 +47,11 @@ env:
   #        per frame (zero-copy SelectableTextRegions span view, mirrors the clickable
   #        tracker lifecycle); Renderer.HostRendersSelectableText lets a host that renders
   #        native text (web DOM span layer) skip the glyph raster. Additive, default-off.
-  VERSION_PREFIX: 6.15.${{ github.run_number }}
+  # 6.16 - hyperlink support on the selectable-text + click channels: SelectableTextRegion.Href
+  #        (optional) + DrawSelectableText(..., string? href) so a DOM host can render a real <a>;
+  #        and HitResult.LinkHit(Url) so a raster host can open the URL / drive a hover cursor.
+  #        Additive (new optional field, new method overload, new HitResult subtype).
+  VERSION_PREFIX: 6.16.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

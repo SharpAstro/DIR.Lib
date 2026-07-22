@@ -576,9 +576,15 @@ namespace DIR.Lib
         /// use for high-churn scene labels (sky-map star/constellation names reflow every pan frame); those
         /// stay on <see cref="DrawText"/> so they never spill into the host's DOM/selection layer.
         /// </para>
+        /// <para>
+        /// Pass <paramref name="href"/> to mark the run as a hyperlink (see
+        /// <see cref="SelectableTextRegion.Href"/>): a DOM host renders a real <c>&lt;a href&gt;</c>; the
+        /// raster path is unchanged (no navigation model), so links are a web-only progressive enhancement.
+        /// </para>
         /// </summary>
         protected void DrawSelectableText(string text, string fontPath, float x, float y, float w, float h,
-            float fontSize, RGBAColor32 color, TextAlign horizAlign = TextAlign.Near, TextAlign vertAlign = TextAlign.Center)
+            float fontSize, RGBAColor32 color, TextAlign horizAlign = TextAlign.Near, TextAlign vertAlign = TextAlign.Center,
+            string? href = null)
         {
             if (string.IsNullOrEmpty(fontPath) || string.IsNullOrEmpty(text)) return;
             if (!Renderer.HostRendersSelectableText)
@@ -586,7 +592,7 @@ namespace DIR.Lib
                 DrawText(text.AsSpan(), fontPath, x, y, w, h, fontSize, color, horizAlign, vertAlign);
             }
             _selectableText.Add(new SelectableTextRegion(
-                x, y, w, h, text, fontPath, fontSize, color, horizAlign, vertAlign));
+                x, y, w, h, text, fontPath, fontSize, color, horizAlign, vertAlign, href));
         }
 
         /// <summary>
