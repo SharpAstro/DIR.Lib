@@ -70,6 +70,18 @@ namespace DIR.Lib
         public long FrameCount { get; set; }
 
         /// <summary>
+        /// The window's DPI scale (device pixels per design unit), owned per widget instance -- a widget
+        /// belongs to exactly one window/renderer, so the host sets this at startup and on resize (SDL
+        /// <c>DisplayScale</c>, web <c>devicePixelRatio</c>; a terminal stays at 1). Layout helpers
+        /// (<see cref="RenderLayout"/> / <see cref="ArrangeLayout"/> / <see cref="PaintLayout"/>) and
+        /// pixel controls (<see cref="DrawTrackSlider(float,float,float,float,float,RGBAColor32,RectF32,HitResult,TrackSliderChrome,float?)"/>)
+        /// default to it when their <c>dpiScale</c> argument is omitted, and input handlers can read it
+        /// directly (input events carry no DPI). Pass an explicit value only to override -- e.g.
+        /// <c>dpiScale: 1f</c> for a tree whose sizes are already device pixels.
+        /// </summary>
+        public float DpiScale { get; set; } = 1f;
+
+        /// <summary>
         /// Clears clickable regions (and the inspector layout capture, if enabled). Call at the start
         /// of each Render pass.
         /// </summary>
@@ -130,10 +142,11 @@ namespace DIR.Lib
         /// </summary>
         protected void DrawTrackSlider(float trackX, float trackW, float barCenterY, float handleY,
             float handleH, float frac, RGBAColor32 fillColor, RectF32 hitBand, HitResult hit,
-            TrackSliderChrome chrome, float dpiScale)
+            TrackSliderChrome chrome, float? dpiScale = null)
         {
-            var barH = MathF.Max(4f, 6f * dpiScale);
-            var handleW = MathF.Max(4f, 6f * dpiScale);
+            var scale = dpiScale ?? DpiScale;
+            var barH = MathF.Max(4f, 6f * scale);
+            var handleW = MathF.Max(4f, 6f * scale);
 
             var barY = barCenterY - barH / 2f;
             FillRect(trackX, barY, trackW, barH, chrome.TrackBackground);
@@ -157,7 +170,7 @@ namespace DIR.Lib
         /// handle spans a shorter content row.
         /// </summary>
         protected void DrawTrackSlider(float trackX, float trackW, float handleY, float handleH, float frac,
-            RGBAColor32 fillColor, RectF32 hitBand, HitResult hit, TrackSliderChrome chrome, float dpiScale) =>
+            RGBAColor32 fillColor, RectF32 hitBand, HitResult hit, TrackSliderChrome chrome, float? dpiScale = null) =>
             DrawTrackSlider(trackX, trackW, handleY + handleH / 2f, handleY, handleH, frac,
                 fillColor, hitBand, hit, chrome, dpiScale);
 
@@ -367,11 +380,13 @@ namespace DIR.Lib
         /// <summary>
         /// Arranges a declarative <see cref="Layout.Node"/> tree into <paramref name="bounds"/> using this
         /// widget's renderer as the text-width oracle. Returns the flat pre-order arranged tree (also handy
-        /// for inspection / custom hit-testing).
+        /// for inspection / custom hit-testing). <paramref name="dpiScale"/> defaults to the widget's
+        /// <see cref="DpiScale"/>; pass an explicit value only to override (e.g. <c>1f</c> for a tree whose
+        /// sizes are already device pixels).
         /// </summary>
-        protected ImmutableArray<Layout.ArrangedNode<float>> ArrangeLayout(Layout.Node root, RectF32 bounds, string fontPath, float dpiScale = 1f)
+        protected ImmutableArray<Layout.ArrangedNode<float>> ArrangeLayout(Layout.Node root, RectF32 bounds, string fontPath, float? dpiScale = null)
         {
-            var ctx = new PixelMeasureContext<TSurface>(Renderer, fontPath, dpiScale);
+            var ctx = new PixelMeasureContext<TSurface>(Renderer, fontPath, dpiScale ?? DpiScale);
             return Layout.Engine.Arrange(root, new Rect<float>(bounds.X, bounds.Y, bounds.Width, bounds.Height), ctx);
         }
 
@@ -383,9 +398,10 @@ namespace DIR.Lib
         /// <paramref name="drawFill"/> handles <see cref="Layout.Content.Fill"/> escape-hatch leaves
         /// (charts, sky map, custom widgets).
         /// </summary>
-        protected void PaintLayout(ImmutableArray<Layout.ArrangedNode<float>> arranged, string fontPath, float dpiScale = 1f,
+        protected void PaintLayout(ImmutableArray<Layout.ArrangedNode<float>> arranged, string fontPath, float? dpiScale = null,
             Action<Layout.Content.Fill, RectF32>? drawFill = null)
         {
+            var scale = dpiScale ?? DpiScale;
             foreach (var (node, bounds) in arranged)
             {
                 if (node.Background is { } bg)
@@ -406,7 +422,7 @@ namespace DIR.Lib
                     {
                         case Layout.Content.Text text:
                             DrawText(text.Value.AsSpan(), fontPath, bounds.X, bounds.Y, bounds.Width, bounds.Height,
-                                text.FontSize * dpiScale, text.Color, text.HAlign, text.VAlign);
+                                text.FontSize * scale, text.Color, text.HAlign, text.VAlign);
                             break;
                         case Layout.Content.Box box when box.Color.Alpha > 0:
                             FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, box.Color);
@@ -427,12 +443,16 @@ namespace DIR.Lib
             }
         }
 
-        /// <summary>Convenience: <see cref="ArrangeLayout"/> + <see cref="PaintLayout"/> in one call.</summary>
+        /// <summary>
+        /// Convenience: <see cref="ArrangeLayout"/> + <see cref="PaintLayout"/> in one call.
+        /// <paramref name="dpiScale"/> defaults to the widget's <see cref="DpiScale"/>.
+        /// </summary>
         protected ImmutableArray<Layout.ArrangedNode<float>> RenderLayout(Layout.Node root, RectF32 bounds, string fontPath,
-            float dpiScale = 1f, Action<Layout.Content.Fill, RectF32>? drawFill = null)
+            float? dpiScale = null, Action<Layout.Content.Fill, RectF32>? drawFill = null)
         {
-            var arranged = ArrangeLayout(root, bounds, fontPath, dpiScale);
-            PaintLayout(arranged, fontPath, dpiScale, drawFill);
+            var scale = dpiScale ?? DpiScale;
+            var arranged = ArrangeLayout(root, bounds, fontPath, scale);
+            PaintLayout(arranged, fontPath, scale, drawFill);
             return arranged;
         }
 

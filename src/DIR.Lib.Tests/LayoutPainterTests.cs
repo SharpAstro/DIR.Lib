@@ -21,6 +21,14 @@ public class LayoutPainterTests
             return GetRegisteredRegions();
         }
 
+        /// <summary>Renders WITHOUT a dpiScale argument, so the widget's <see cref="PixelWidgetBase{T}.DpiScale"/> applies.</summary>
+        public ClickableRegion[] RenderDefaultDpi(Layout.Node root, RectF32 bounds)
+        {
+            BeginFrame();
+            RenderLayout(root, bounds, fontPath: string.Empty);
+            return GetRegisteredRegions();
+        }
+
         public HitResult? DispatchAt(float x, float y) => HitTestAndDispatch(x, y);
     }
 
@@ -76,6 +84,36 @@ public class LayoutPainterTests
 
         widget.DispatchAt(50, 50); // below the row -> no hit
         clicks.ShouldBe(1);
+    }
+
+    [Fact]
+    public void RenderLayout_OmittedDpiScale_UsesWidgetDpiScaleProperty()
+    {
+        using var renderer = new RgbaImageRenderer(200, 200);
+        var widget = new TestWidget(renderer) { DpiScale = 2f };
+
+        // A design-unit Fixed(10) row must arrange to 20 device px when the widget-owned
+        // DpiScale (2) applies -- no dpiScale argument at the call site.
+        var row = HitRow("A", 10);
+        var regions = widget.RenderDefaultDpi(new Layout.Node.Stack([row]), new RectF32(0, 0, 200, 200));
+
+        var ra = regions.First(r => r.Result is HitResult.ButtonHit { Action: "A" });
+        ra.Height.ShouldBe(20f);
+    }
+
+    [Fact]
+    public void RenderLayout_ExplicitDpiScale_OverridesWidgetProperty()
+    {
+        using var renderer = new RgbaImageRenderer(200, 200);
+        var widget = new TestWidget(renderer) { DpiScale = 2f };
+
+        // The device-px escape hatch: an explicit dpiScale: 1f wins over the property, so a tree
+        // holding already-scaled pixel sizes is not scaled twice.
+        var row = HitRow("A", 10);
+        var regions = widget.Render(new Layout.Node.Stack([row]), new RectF32(0, 0, 200, 200));
+
+        var ra = regions.First(r => r.Result is HitResult.ButtonHit { Action: "A" });
+        ra.Height.ShouldBe(10f);
     }
 
     [Fact]
