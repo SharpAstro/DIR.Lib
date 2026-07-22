@@ -26,6 +26,12 @@ namespace DIR.Lib
     }
 
     /// <summary>
+    /// Chrome colours for <see cref="PixelWidgetBase{TSurface}.DrawTrackSlider"/>: the unfilled track
+    /// bar background and the draggable handle marker. The per-slider accent fill is passed separately.
+    /// </summary>
+    public readonly record struct TrackSliderChrome(RGBAColor32 TrackBackground, RGBAColor32 Handle);
+
+    /// <summary>
     /// Base class for pixel-coordinate widgets. Provides the clickable region system
     /// (RegisterClickable / HitTest / HitTestAndDispatch) and common drawing helpers.
     /// Generic over <typeparamref name="TSurface"/> so it works with any <see cref="Renderer{TSurface}"/>.
@@ -101,6 +107,66 @@ namespace DIR.Lib
                 (int)MathF.Round(rect.X), (int)MathF.Round(rect.Y),
                 (int)MathF.Round(rect.Width), (int)MathF.Round(rect.Height),
                 fontPath, fontSize);
+
+        // -------------------------------------------------------------------------------------------------
+        // TrackSlider -- the one horizontal press/drag/release track (WB / wavelet / scrub / ...).
+        //
+        // A horizontal track (unfilled bar + played/value fill + a draggable handle) plus a cursor-X ->
+        // fraction mapping against a captured hit-band rect. Generic: the track + handle colours arrive as a
+        // TrackSliderChrome, the accent fill + fraction + geometry + hit payload per call, and dpiScale scales
+        // the bar/handle thickness (the only DPI-dependent bit). Consumers pass their own chrome so no widget
+        // re-triplicates the bar/fill/handle/clamp math or the drag arithmetic.
+        // -------------------------------------------------------------------------------------------------
+
+        /// <summary>
+        /// Draws one horizontal track slider and registers its drag hit-band. <paramref name="frac"/> is the
+        /// normalised fill/handle position in [0, 1]. <paramref name="barCenterY"/> is the vertical centre of
+        /// the thin track bar; the draggable handle is a <paramref name="handleH"/>-tall marker at
+        /// <paramref name="handleY"/>. <paramref name="hitBand"/> is the full press/drag region (its X/Width
+        /// drive the cursor-X -> value mapping in <see cref="TrackFrac"/>; the caller also stores it in the
+        /// slider's track-rect field for that drag). <paramref name="chrome"/> supplies the unfilled-track +
+        /// handle colours; <paramref name="fillColor"/> is the per-slider accent; <paramref name="dpiScale"/>
+        /// scales the bar/handle thickness.
+        /// </summary>
+        protected void DrawTrackSlider(float trackX, float trackW, float barCenterY, float handleY,
+            float handleH, float frac, RGBAColor32 fillColor, RectF32 hitBand, HitResult hit,
+            TrackSliderChrome chrome, float dpiScale)
+        {
+            var barH = MathF.Max(4f, 6f * dpiScale);
+            var handleW = MathF.Max(4f, 6f * dpiScale);
+
+            var barY = barCenterY - barH / 2f;
+            FillRect(trackX, barY, trackW, barH, chrome.TrackBackground);
+            FillRect(trackX, barY, trackW * frac, barH, fillColor);
+
+            // Handle marker; guard the clamp's upper bound for a sliver-thin track (trackW < handleW would
+            // make Math.Clamp's max < min and throw -- the minimize-to-sliver crash).
+            var handleMax = MathF.Max(trackX, trackX + trackW - handleW);
+            var handleX = Math.Clamp(trackX + trackW * frac - handleW / 2f, trackX, handleMax);
+            FillRect(handleX, handleY, handleW, handleH, chrome.Handle);
+
+            RegisterClickable(hitBand.X, hitBand.Y, hitBand.Width, hitBand.Height, hit);
+        }
+
+        /// <summary>
+        /// Convenience overload: the thin track bar is centred vertically within the handle band
+        /// [<paramref name="handleY"/>, handleY + <paramref name="handleH"/>] -- the common case where the
+        /// bar runs through the middle of the handle (so the caller passes the handle band once, not the
+        /// handle band AND a separate bar centre). Use the <c>barCenterY</c> overload only when the bar and
+        /// handle occupy different vertical bands, e.g. a scrub bar centred on a taller strip while the
+        /// handle spans a shorter content row.
+        /// </summary>
+        protected void DrawTrackSlider(float trackX, float trackW, float handleY, float handleH, float frac,
+            RGBAColor32 fillColor, RectF32 hitBand, HitResult hit, TrackSliderChrome chrome, float dpiScale) =>
+            DrawTrackSlider(trackX, trackW, handleY + handleH / 2f, handleY, handleH, frac,
+                fillColor, hitBand, hit, chrome, dpiScale);
+
+        /// <summary>
+        /// Maps a cursor X onto a fraction in [0, 1] across <paramref name="track"/> (the captured hit-band).
+        /// The single drag-math primitive behind every track slider's Update* handler.
+        /// </summary>
+        protected static float TrackFrac(RectF32 track, float px)
+            => track.Width <= 0f ? 0f : Math.Clamp((px - track.X) / track.Width, 0f, 1f);
 
         /// <summary>
         /// Renders a button and registers the clickable region with an optional direct handler.
