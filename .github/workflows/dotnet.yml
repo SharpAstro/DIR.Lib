@@ -56,7 +56,7 @@ env:
   #        the projection so the whole frame (text included) rotates/scales as one; the compose stays a
   #        Matrix3x2 (2D affine) and only widens to mat4 at the GPU boundary. Additive: new type + new
   #        virtual property defaulting to Identity (rendering byte-identical until a consumer sets it).
-  VERSION_PREFIX: 6.18.${{ github.run_number }}
+  VERSION_PREFIX: 6.19.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

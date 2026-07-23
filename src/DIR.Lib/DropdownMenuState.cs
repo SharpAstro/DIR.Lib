@@ -14,6 +14,22 @@ namespace DIR.Lib
         public ImmutableArray<string> Items { get; set; } = [];
         public int HighlightIndex { get; set; } = -1;
 
+        /// <summary>
+        /// Scroll model for a menu that outgrows its <c>maxHeight</c>. A menu that fits leaves this at
+        /// offset 0 with no scrollbar (<see cref="ListScrollController.MaxOffset"/> is 0), so the common
+        /// case is unchanged; an overflowing menu scrolls its window instead of silently clipping the rows
+        /// past the fold. Geometry is refreshed each frame by
+        /// <see cref="PixelWidgetBase{TSurface}.RenderDropdownMenu"/>; keyboard navigation keeps the
+        /// highlight in view via <see cref="HandleKeyDown"/>, and a host may forward a wheel event through
+        /// <see cref="HandleScrollInput"/>. Row-snapped + decorative (the dropdown owns row clicks, so the
+        /// bar is a pure overflow indicator, not an interactive thumb).
+        /// </summary>
+        public ListScrollController Scroll { get; } = new()
+        {
+            SnapToAtom = true,
+            Mode = ScrollBarMode.Decorative,
+        };
+
         // Anchor geometry — set by the trigger during normal layout
         public float AnchorX { get; set; }
         public float AnchorY { get; set; }
@@ -51,6 +67,8 @@ namespace DIR.Lib
             CustomEntryLabel = customEntryLabel ?? "Custom...";
             OnCustom = onCustom;
             HighlightIndex = -1;
+            // Start each open at the top; the next render's SetExtent re-clamps to the real geometry.
+            Scroll.AtomOffset = 0;
         }
 
         /// <summary>
@@ -61,6 +79,15 @@ namespace DIR.Lib
             IsOpen = false;
             HighlightIndex = -1;
         }
+
+        /// <summary>
+        /// Forwards a wheel event to the scroll model, so a host that routes unclaimed input to an open
+        /// dropdown gets mouse-wheel scrolling on an overflowing menu. Keyboard navigation already scrolls
+        /// via <see cref="HandleKeyDown"/>, so this is the opt-in mouse counterpart; returns <c>true</c>
+        /// when the event was consumed (the caller should redraw). A no-op (returns <c>false</c>) when the
+        /// menu is closed or fits within its viewport (<see cref="ListScrollController.MaxOffset"/> is 0).
+        /// </summary>
+        public bool HandleScrollInput(InputEvent evt) => IsOpen && Scroll.HandleInput(evt);
 
         /// <summary>
         /// Handles arrow keys, Enter, and Escape. Returns true if consumed.
@@ -78,10 +105,12 @@ namespace DIR.Lib
             {
                 case InputKey.Down:
                     HighlightIndex = Math.Min(HighlightIndex + 1, totalItems - 1);
+                    Scroll.EnsureVisible(HighlightIndex);
                     return true;
 
                 case InputKey.Up:
                     HighlightIndex = Math.Max(HighlightIndex - 1, 0);
+                    Scroll.EnsureVisible(HighlightIndex);
                     return true;
 
                 case InputKey.Enter:

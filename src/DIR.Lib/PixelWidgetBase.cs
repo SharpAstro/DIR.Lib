@@ -322,15 +322,19 @@ namespace DIR.Lib
             var rowH = fontSize * 1.8f;
             var padding = fontSize * 0.5f;
             var totalItems = dropdown.Items.Length + (dropdown.HasCustomEntry ? 1 : 0);
-            var dropdownH = totalItems * rowH;
-            if (maxHeight > 0f && dropdownH > maxHeight)
-            {
-                dropdownH = maxHeight;
-            }
 
             var x = dropdown.AnchorX;
             var y = dropdown.AnchorY;
             var w = dropdown.AnchorWidth;
+
+            // Clamp the menu to the space between its anchor and the bottom of the surface (or an explicit
+            // maxHeight, whichever is smaller) so a long list scrolls within view instead of running off the
+            // bottom edge -- the correctness fix that makes the scroll engage with no consumer change. A menu
+            // that already fits is unchanged: dropdownH stays totalItems * rowH, so MaxOffset is 0, no
+            // scrollbar draws, and every row renders exactly as before.
+            var available = MathF.Max(rowH, viewportHeight - y);
+            var clamp = maxHeight > 0f ? MathF.Min(maxHeight, available) : available;
+            var dropdownH = MathF.Min(totalItems * rowH, clamp);
 
             // Full-screen backdrop — closes dropdown on click-outside
             RegisterClickable(0, 0, viewportWidth, viewportHeight, new HitResult.ButtonHit("DropdownBackdrop"),
@@ -341,63 +345,60 @@ namespace DIR.Lib
             // Background
             FillRect(x, y, w, dropdownH, bgColor);
 
-            // Items
-            var itemY = y;
-            // +0.5px epsilon on the fit guard: when the items exactly fill dropdownH (= totalItems * rowH,
-            // the unclamped case), the accumulated `itemY` (y + rowH + rowH + ...) can exceed `y + dropdownH`
-            // (= y + N*rowH, computed by multiplication) by a sub-pixel float-rounding error, which would
-            // silently clip the LAST item -- it bit the 3-entry Live Session mode dropdown ("Planetary" drew
-            // no text). The epsilon is well under a row, so a genuinely overflowing item (maxHeight-clamped)
-            // is still excluded.
-            for (var i = 0; i < dropdown.Items.Length && itemY + rowH <= y + dropdownH + 0.5f; i++)
+            // The menu body is a scroll viewport of `totalItems` atoms, each `rowH` tall. A menu that fits
+            // (maxHeight unset, or few enough rows) resolves to MaxOffset 0 -- no scrollbar, full-width
+            // rows, offset 0 -- so the common case is byte-identical to the pre-scroll behaviour (the old
+            // "+0.5px fit epsilon" that kept an exact-fit last row now lives in ListScrollController's
+            // VisibleAtoms). A menu clamped by maxHeight scrolls its window instead of silently dropping the
+            // rows past the fold: keyboard Up/Down scrolls via DropdownMenuState.HandleKeyDown->EnsureVisible,
+            // a wheel forwarded to HandleScrollInput scrolls too, and the scrollbar draws as the indicator.
+            var scroll = dropdown.Scroll;
+            scroll.SetExtent(new RectF32(x, y, w, dropdownH), rowH, totalItems, DpiScale);
+
+            // Slightly dimmed, blue-shifted text for the "Custom..." entry (the last atom when present).
+            var customColor = new RGBAColor32(
+                (byte)((textColor.Red * 3 + 2) / 4),
+                (byte)((textColor.Green * 3 + 2) / 4),
+                (byte)Math.Min(255, textColor.Blue + 40),
+                textColor.Alpha);
+
+            foreach (var (index, rect) in scroll.VisibleRows())
             {
-                if (i == dropdown.HighlightIndex)
+                var isCustom = dropdown.HasCustomEntry && index == dropdown.Items.Length;
+
+                if (index == dropdown.HighlightIndex)
                 {
-                    FillRect(x, itemY, w, rowH, highlightColor);
+                    FillRect(rect.X, rect.Y, rect.Width, rowH, highlightColor);
                 }
 
-                DrawText(dropdown.Items[i].AsSpan(), fontPath,
-                    x + padding, itemY, w - padding * 2f, rowH,
-                    fontSize, textColor, TextAlign.Near, TextAlign.Center);
+                var label = isCustom ? dropdown.CustomEntryLabel : dropdown.Items[index];
+                DrawText(label.AsSpan(), fontPath,
+                    rect.X + padding, rect.Y, rect.Width - padding * 2f, rowH,
+                    fontSize, isCustom ? customColor : textColor, TextAlign.Near, TextAlign.Center);
 
-                var capturedI = i;
-                var capturedItem = dropdown.Items[i];
-                RegisterClickable(x, itemY, w, rowH, new HitResult.ListItemHit("Dropdown", i),
-                    _ =>
-                    {
-                        dropdown.OnSelect?.Invoke(capturedI, capturedItem);
-                        dropdown.Close();
-                    });
-
-                itemY += rowH;
-            }
-
-            // "Custom..." entry
-            if (dropdown.HasCustomEntry && itemY + rowH <= y + dropdownH)
-            {
-                var customIdx = dropdown.Items.Length;
-                if (customIdx == dropdown.HighlightIndex)
+                var capturedIndex = index;
+                if (isCustom)
                 {
-                    FillRect(x, itemY, w, rowH, highlightColor);
+                    RegisterClickable(rect.X, rect.Y, rect.Width, rowH, new HitResult.ListItemHit("Dropdown", capturedIndex),
+                        _ =>
+                        {
+                            dropdown.OnCustom?.Invoke();
+                            dropdown.Close();
+                        });
                 }
-
-                // Slightly dimmed, blue-shifted text for the "Custom..." entry
-                var customColor = new RGBAColor32(
-                    (byte)((textColor.Red * 3 + 2) / 4),
-                    (byte)((textColor.Green * 3 + 2) / 4),
-                    (byte)Math.Min(255, textColor.Blue + 40),
-                    textColor.Alpha);
-                DrawText(dropdown.CustomEntryLabel.AsSpan(), fontPath,
-                    x + padding, itemY, w - padding * 2f, rowH,
-                    fontSize, customColor, TextAlign.Near, TextAlign.Center);
-
-                RegisterClickable(x, itemY, w, rowH, new HitResult.ListItemHit("Dropdown", customIdx),
-                    _ =>
-                    {
-                        dropdown.OnCustom?.Invoke();
-                        dropdown.Close();
-                    });
+                else
+                {
+                    var capturedItem = dropdown.Items[index];
+                    RegisterClickable(rect.X, rect.Y, rect.Width, rowH, new HitResult.ListItemHit("Dropdown", capturedIndex),
+                        _ =>
+                        {
+                            dropdown.OnSelect?.Invoke(capturedIndex, capturedItem);
+                            dropdown.Close();
+                        });
+                }
             }
+
+            scroll.DrawScrollBar(FillRect);
         }
 
         // --- Declarative layout (Layout.Node tree -> arrange -> paint + auto-bind clicks) ---

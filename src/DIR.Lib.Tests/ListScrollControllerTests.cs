@@ -30,6 +30,23 @@ public class ListScrollControllerTests
     }
 
     [Fact]
+    public void VisibleAtoms_IsFloatRobust_ForExactMultipleViewport()
+    {
+        // A menu sizes its viewport as N * rowH by multiplication, then the controller divides by rowH.
+        // With a rowH whose N*rowH/rowH lands a hair under N in float, a bare floor would report N-1
+        // visible atoms -> MaxOffset 1 -> the last row scrolls off a menu that actually fits. The
+        // AtomFitEpsilon keeps VisibleAtoms == N, so such a menu stays clip-only (MaxOffset 0).
+        for (var n = 1; n <= 64; n++)
+        {
+            var rowH = 25.2f; // a fractional extent that makes N*rowH/rowH prone to the 1-ulp shortfall
+            var c = new ListScrollController();
+            c.SetExtent(new RectF32(0f, 0f, 100f, n * rowH), rowH, n, 1f);
+            c.VisibleAtoms.ShouldBe(n);
+            c.MaxOffset.ShouldBe(0f);
+        }
+    }
+
+    [Fact]
     public void WheelDown_ScrollsTowardEnd()
     {
         var c = Make();

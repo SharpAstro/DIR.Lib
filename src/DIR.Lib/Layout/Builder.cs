@@ -91,4 +91,41 @@ public static class Builder
 
     /// <summary>A bottom-pinned dock strip of <paramref name="height"/> design units.</summary>
     public static DockChild Bottom(Node child, float height) => new(DockSide.Bottom, child, Sizing.Fixed(height));
+
+    // ---- Composed controls (pure Builder sugar over the primitives above) ----
+
+    /// <summary>
+    /// A declarative fractional progress bar: a coloured <paramref name="track"/> with a
+    /// <paramref name="fill"/> spanning [0, 1] of the width, plus an optional centred
+    /// <paramref name="label"/> (e.g. remaining time). Composed purely from Spacer/Overlay/HStack
+    /// primitives -- no <c>Fill</c> escape hatch and no bespoke draw closure -- so it is draw==hit,
+    /// DPI-scaled by the engine, visible in <c>describe_layout</c>, and renders identically on every
+    /// surface (which lets a consumer drop a hand-drawn <c>FillRect</c> gauge). The fractional split is two
+    /// <c>Star</c>-weighted spacers, so the fill stays a true fraction of the bar at any width/DPI with no
+    /// pixel arithmetic. Size it at the call site with <c>.RowH(barHeight)</c> (or any sizing) -- the
+    /// returned node fills whatever rect it is given.
+    /// </summary>
+    public static Node Progress(
+        float fraction, RGBAColor32 track, RGBAColor32 fill,
+        string? label = null, float labelFontSize = 14f, RGBAColor32 labelColor = default)
+    {
+        fraction = Math.Clamp(fraction, 0f, 1f);
+
+        // A full/empty bar is a single coloured box; a partial bar overlays a fractional-width fill (two
+        // Star-weighted spacers) on the track. In the partial branch both weights are > 0, so the weight
+        // split never divides by a zero total.
+        var bar = fraction <= 0f
+            ? Spacer().Stretch().Bg(track)
+            : fraction >= 1f
+                ? Spacer().Stretch().Bg(fill)
+                : Overlay(
+                    Spacer().Stretch().Bg(track),
+                    HStack(
+                        Spacer().WStar(fraction).HStar().Bg(fill),
+                        Spacer().WStar(1f - fraction).HStar()));
+
+        return label is { Length: > 0 }
+            ? Overlay(bar, Text(label, labelFontSize, labelColor, TextAlign.Center, TextAlign.Center))
+            : bar;
+    }
 }

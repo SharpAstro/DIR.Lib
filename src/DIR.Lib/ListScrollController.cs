@@ -141,10 +141,19 @@ public sealed class ListScrollController
     public RectF32 Viewport => _viewport;
 
     /// <summary>
+    /// A hair below one atom, added inside the <see cref="VisibleAtoms"/> floor so a viewport sized to an
+    /// exact integer multiple of the atom extent (a menu whose height is computed as <c>N * rowH</c>) does
+    /// not lose its last row to <c>N * h / h</c> landing at <c>N - 1e-7</c> in float. It is far under a
+    /// row, so a genuine partial atom (3.5 rows) still floors down as intended -- the atom-model successor
+    /// to the per-list "+0.5px fit epsilon" the hand-rolled overflow loops needed.
+    /// </summary>
+    private const float AtomFitEpsilon = 1e-3f;
+
+    /// <summary>
     /// Number of whole atoms that fit in the viewport along the main axis (at least 1, so a single
     /// atom taller than the viewport still scrolls one-at-a-time rather than off the end).
     /// </summary>
-    public int VisibleAtoms => Math.Max(1, (int)MathF.Floor(ViewportExtentPx / _atomExtentPx));
+    public int VisibleAtoms => Math.Max(1, (int)MathF.Floor(ViewportExtentPx / _atomExtentPx + AtomFitEpsilon));
 
     /// <summary>Largest legal <see cref="Offset"/>: <c>max(0, TotalAtoms - VisibleAtoms)</c> — the bound that keeps the last atom fully visible.</summary>
     public float MaxOffset => MathF.Max(0f, _totalAtoms - VisibleAtoms);
