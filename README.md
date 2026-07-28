@@ -9,7 +9,7 @@
 - **`RectF32`** — 2D float rectangle (x, y, width, height) for pixel-based layout
 - **`RGBAColor32`** — 32-bit RGBA color with Lerp, WithAlpha, Luminance
 - **`TextAlign`** — Near/Center/Far alignment enum
-- **`Renderer<TSurface>`** — Abstract renderer: FillRectangle, DrawRectangle, FillEllipse / DrawEllipse, DrawLine, DrawLineDashed, DrawPolyline, DrawPolylineDashed, DrawText, MeasureText
+- **`Renderer<TSurface>`** — Abstract renderer: FillRectangle, FillRoundedRectangle, DrawRectangle, FillEllipse / DrawEllipse, DrawLine, DrawLineDashed, DrawPolyline, DrawPolylineDashed, DrawText, MeasureText
 - **`RgbaImage`** / **`RgbaImageRenderer : Renderer<RgbaImage>`** — pure software renderer for tests and headless scenarios; output is plain RGBA pixels (callers own the choice of PNG / JPEG / TIFF / sixel encoder)
 - **`GlyphBitmap`** / **`SdfGlyphBitmap`** — raw RGBA glyph bitmap with bearing/advance info; SDF variant for scalable text on the GPU side
 - **`ManagedFontRasterizer`** — pure-managed glyph rasterizer backed by `SharpAstro.Fonts.OpenTypeFont`; supports COLRv1 color glyphs, grayscale, and PDF subset fonts. AOT-compatible, no GC pinning, no native bindings.

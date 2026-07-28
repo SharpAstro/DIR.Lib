@@ -56,7 +56,15 @@ env:
   #        the projection so the whole frame (text included) rotates/scales as one; the compose stays a
   #        Matrix3x2 (2D affine) and only widens to mat4 at the GPU boundary. Additive: new type + new
   #        virtual property defaulting to Identity (rendering byte-identical until a consumer sets it).
-  VERSION_PREFIX: 6.19.${{ github.run_number }}
+  # 6.20 - Renderer.FillRoundedRectangle(rect, colour, cornerRadius): a virtual on the base
+  #        renderer, so every backend gains rounded fills at once. The default implementation
+  #        decomposes the shape into NON-OVERLAPPING horizontal spans (one FillRectangle per
+  #        scanline band) rather than the obvious centre-cross-plus-four-corner-ellipses, because
+  #        overlapping primitives double-blend a translucent colour and leave the corners darker
+  #        than the middle. A GPU backend can override with its existing SDF ellipse path.
+  #        Additive: a zero radius is exactly FillRectangle, so nothing renders differently
+  #        until a caller asks for a radius.
+  VERSION_PREFIX: 6.20.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
