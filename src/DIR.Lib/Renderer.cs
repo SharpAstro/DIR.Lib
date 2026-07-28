@@ -434,6 +434,71 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
     public virtual DeviceTransform DeviceTransform { get; set; } = DeviceTransform.Identity;
 
     /// <summary>
+    /// Fills <paramref name="rect"/> with its corners rounded to <paramref name="cornerRadius"/> pixels.
+    /// <para>
+    /// The default implementation emits one horizontal <see cref="FillRectangle"/> span per row, inset by
+    /// the corner arc on the rows that fall inside a corner band. The spans <b>never overlap</b>, which is
+    /// what makes a translucent <paramref name="fillColor"/> come out evenly: the obvious decomposition --
+    /// a cross of rectangles plus four corner ellipses -- double-blends where they meet and darkens all
+    /// four corners, which is exactly what a panel background would show. So this is correct on every
+    /// backend as it stands; a GPU renderer should override it with a single rounded-box SDF quad, which
+    /// is both cheaper (one draw, not one per row) and antialiased.
+    /// </para>
+    /// <para>
+    /// The radius is clamped to half the shorter side, so an over-large value degrades to a stadium or a
+    /// circle instead of inverting the arc. A radius of zero -- or a degenerate rect -- is a plain
+    /// <see cref="FillRectangle"/>, so callers can pass a radius through unconditionally.
+    /// </para>
+    /// </summary>
+    public virtual void FillRoundedRectangle(in RectInt rect, RGBAColor32 fillColor, float cornerRadius)
+    {
+        var left = Math.Min(rect.UpperLeft.X, rect.LowerRight.X);
+        var right = Math.Max(rect.UpperLeft.X, rect.LowerRight.X);
+        var top = Math.Min(rect.UpperLeft.Y, rect.LowerRight.Y);
+        var bottom = Math.Max(rect.UpperLeft.Y, rect.LowerRight.Y);
+
+        var width = right - left;
+        var height = bottom - top;
+        if (width <= 0 || height <= 0) return;
+
+        var radius = MathF.Min(cornerRadius, MathF.Min(width, height) * 0.5f);
+        if (radius <= 0f)
+        {
+            FillRectangle(rect, fillColor);
+            return;
+        }
+
+        var centreY = (top + bottom) * 0.5f;
+        // Rows within this distance of the centre are straight-edged; beyond it the arc takes over.
+        var flatHalfHeight = height * 0.5f - radius;
+
+        for (var y = top; y < bottom; y++)
+        {
+            // Sampled at the pixel centre, matching the scanline convention FillEllipse uses.
+            var dy = MathF.Abs(y + 0.5f - centreY) - flatHalfHeight;
+            if (dy <= 0f)
+            {
+                FillRectangle(new RectInt((right, y + 1), (left, y)), fillColor);
+                continue;
+            }
+
+            var chord = radius * radius - dy * dy;
+            if (chord <= 0f)
+            {
+                continue;
+            }
+
+            var inset = (int)MathF.Round(radius - MathF.Sqrt(chord));
+            var spanLeft = left + inset;
+            var spanRight = right - inset;
+            if (spanRight > spanLeft)
+            {
+                FillRectangle(new RectInt((spanRight, y + 1), (spanLeft, y)), fillColor);
+            }
+        }
+    }
+
+    /// <summary>
     /// Fills multiple rectangles in a single batched draw call.
     /// Default implementation falls back to individual FillRectangle calls.
     /// </summary>
