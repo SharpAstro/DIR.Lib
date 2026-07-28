@@ -120,17 +120,22 @@ public sealed class RgbaImage
                     var result = System.Numerics.Vector.Narrow(blendLo, blendHi);
                     result.CopyTo(rowSpan.Slice(pos, vecCount));
 
-                    // Fix up alpha channel with Porter-Duff "over" compositing.
-                    // The SIMD blend applied the RGB formula to alpha too, which is
-                    // wrong for non-opaque destinations. Skip when destination was
-                    // opaque (dstVec alpha bytes are all 0xFF) - the result is always 255.
-                    if (dstVec[3] != 0xFF)
+                    // Fix up alpha channel with Porter-Duff "over" compositing. The SIMD blend above
+                    // applied the RGB formula to the alpha byte too, so EVERY alpha lane is wrong and
+                    // every one has to be rewritten -- matching BlendPixel, which is the reference.
+                    //
+                    // This used to be guarded by `if (dstVec[3] != 0xFF)`, which was wrong twice: it
+                    // read the alpha of only the FIRST pixel in the vector and applied that verdict to
+                    // all Count/4 of them, and when it did skip it left the RGB-formula value behind
+                    // rather than the 255 it claimed. Blending 50% white onto opaque black left alpha
+                    // at (128*129 + 255*128) >> 8 = 192. It hid because it only shows where a span is
+                    // split between the SIMD body and the scalar tail, and where that falls depends on
+                    // Vector<byte>.Count -- so the same fill is self-consistent on a 16-byte vector and
+                    // visibly seamed on a 32-byte one.
+                    for (var k = pos + 3; k < pos + vecCount; k += 4)
                     {
-                        for (var k = pos + 3; k < pos + vecCount; k += 4)
-                        {
-                            var origDa = dstVec[k - pos];
-                            rowSpan[k] = (byte)Math.Min(255, a + origDa - (origDa * a >> 8));
-                        }
+                        var origDa = dstVec[k - pos];
+                        rowSpan[k] = (byte)Math.Min(255, a + origDa - (origDa * a >> 8));
                     }
 
                     pos += vecCount;

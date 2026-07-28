@@ -181,6 +181,76 @@ public class RgbaImageTests
         img.Pixels.ShouldAllBe(b => b == 0);
     }
 
+    /// <summary>
+    /// A translucent fill must composite alpha identically for every pixel in the span, whatever
+    /// <c>Vector&lt;byte&gt;.Count</c> is on the running machine.
+    /// <para>
+    /// <c>FillRect</c> blends a SIMD body and then a scalar tail, and the two must agree. They did not:
+    /// the SIMD path skipped its Porter-Duff alpha fix-up whenever the FIRST pixel of a vector had an
+    /// opaque destination, leaving the RGB-formula value (192 for 50% over opaque) where the scalar tail
+    /// correctly wrote 255. Every width whose byte count is an exact multiple of the vector width hides
+    /// it completely, which is why it survived: it reproduced on a 32-byte vector and not on a 16-byte one.
+    /// Sweeping the widths guarantees some of them straddle the boundary on any hardware.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(9)]
+    [InlineData(15)]
+    [InlineData(16)]
+    [InlineData(17)]
+    [InlineData(31)]
+    [InlineData(33)]
+    [InlineData(36)]
+    [InlineData(64)]
+    public void FillRect_TranslucentOverOpaque_IsSeamlessAtAnyWidth(int width)
+    {
+        var img = new RgbaImage(width, 1);
+        img.Clear(new RGBAColor32(0, 0, 0, 255));
+
+        img.FillRect(0, 0, width, 1, new RGBAColor32(255, 255, 255, 128));
+
+        // Compositing anything onto an opaque destination yields an opaque result.
+        var expected = GetPixel(img, 0, 0);
+        expected.Alpha.ShouldBe((byte)255, "50% over an opaque backdrop stays opaque");
+
+        for (var x = 1; x < width; x++)
+        {
+            GetPixel(img, x, 0).ShouldBe(expected, $"pixel {x} of {width} differs from the first");
+        }
+    }
+
+    /// <summary>
+    /// The same fix-up read one pixel's destination alpha and applied the verdict to the whole vector.
+    /// A destination whose alpha varies pixel to pixel is what distinguishes per-lane compositing from
+    /// per-vector: here every pixel has a different backdrop alpha, so a per-vector shortcut gets all
+    /// but one of them wrong.
+    /// </summary>
+    [Fact]
+    public void FillRect_CompositesAlphaPerPixel_NotPerVector()
+    {
+        const int width = 64;
+        var img = new RgbaImage(width, 1);
+        for (var x = 0; x < width; x++)
+        {
+            img.Pixels[x * 4 + 3] = (byte)(x * 4);   // destination alpha ramps 0..252
+        }
+
+        const byte srcAlpha = 128;
+        img.FillRect(0, 0, width, 1, new RGBAColor32(255, 255, 255, srcAlpha));
+
+        for (var x = 0; x < width; x++)
+        {
+            var dstAlpha = x * 4;
+            var expected = (byte)Math.Min(255, srcAlpha + dstAlpha - (dstAlpha * srcAlpha >> 8));
+            GetPixel(img, x, 0).Alpha.ShouldBe(expected, $"pixel {x} composited against dst alpha {dstAlpha}");
+        }
+    }
+
     private static RGBAColor32 GetPixel(RgbaImage img, int x, int y)
     {
         var i = (y * img.Width + x) * 4;
