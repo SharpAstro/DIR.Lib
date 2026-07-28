@@ -3,7 +3,7 @@ using System.Numerics;
 namespace DIR.Lib;
 
 /// <summary>
-/// A quarter-turn rotation — the only rotations a <see cref="DeviceTransform"/> allows. Restricting to
+/// A quarter-turn rotation — the only rotations a <see cref="ContentTransform"/> allows. Restricting to
 /// 90° multiples is load-bearing: it keeps an axis-aligned rectangle axis-aligned (width/height simply
 /// swap at 90°/270°), so the whole <see cref="RectInt"/>-based layout, hit-testing and clipping stay
 /// valid under the transform with no polygon rasterization. Values are ordered so the backing int is the
@@ -25,32 +25,48 @@ public enum Rotation90
 }
 
 /// <summary>
-/// A deliberately constrained content→device affine transform: a <see cref="Rotation90"/>, a single
-/// uniform <see cref="Scale"/> (no anisotropy, no shear) and a translation (<see cref="Tx"/>,
-/// <see cref="Ty"/>). It unifies the three things the render stack used to model separately — DPI scaling
-/// (the <see cref="Scale"/> component), device/app rotation (the <see cref="Rotation"/> component) and
-/// safe-area/letterbox offset (the translation) — into one value.
+/// A deliberately constrained affine transform of CONTENT: a <see cref="Rotation90"/>, a single uniform
+/// <see cref="Scale"/> (no anisotropy, no shear) and a translation (<see cref="Tx"/>, <see cref="Ty"/>).
+/// It unifies the three things the render stack used to model separately — scaling (the
+/// <see cref="Scale"/> component, DPI among others), device/app rotation (the <see cref="Rotation"/>
+/// component) and safe-area/letterbox offset (the translation) — into one value.
+///
+/// <para><b>Ordering is the thing to get right: apply this BEFORE design units are mapped to surface
+/// units, or only where that surface unit is square.</b> A quarter turn maps X extents onto Y. Applied
+/// AFTER the map, on a surface whose unit is not square — a terminal cell is roughly 8×16 — the swapped
+/// extent carries the wrong scale: a width resolved through the column scale comes out as a height.
+/// Applied BEFORE the map, while the space is still isotropic design units, rotation is safe on ANY
+/// surface, because the per-axis map is then applied exactly once afterwards.</para>
+///
+/// <para>That is why this type constrains itself to uniform scale, and the constraint is a consequence of
+/// WHERE it is applied rather than of the type: <see cref="Renderer{TSurface}.ContentTransform"/> folds it
+/// into the projection AFTER layout, and uniform scale is exactly the condition that makes a post-map
+/// rotation coherent. Post-layout placement is deliberate — it costs no reflow and no re-measure, which is
+/// what a safe-area change or a hot-seat flip wants. A transform that SHOULD reflow (DPI, zoom) belongs in
+/// the measure context instead, applied to design units before they are mapped; see
+/// <c>Layout.IMeasureContext.ToSurfaceX</c>.</para>
 ///
 /// <para>The constraints are what make it cheap and safe to thread through an existing pixel UI: a
 /// 90°-multiple rotation plus uniform scale maps axis-aligned rects to axis-aligned rects, so layout,
 /// hit-testing and clipping are unchanged; the map is trivially invertible (<see cref="Invert"/>), so a
 /// host remaps pointer input to content coordinates in one place; and uniform scale keeps glyph sampling
-/// clean. See <c>docs/device-transform.md</c> in the chess repo for the full design.</para>
+/// clean. See <c>docs/content-transform.md</c> in the chess repo for the full design.</para>
 ///
 /// <para>Being an affine map, its natural matrix form is 2×3 (<see cref="ToMatrix3x2"/>), not 4×4 — the
 /// six coefficients ARE the transform; there is no perspective and no z. Renderers compose it with their
 /// projection in <see cref="Matrix3x2"/> and only widen the result to the <c>mat4</c> a vertex shader
 /// multiplies at the GPU boundary.</para>
 ///
-/// <para>"Device" names the map's <i>target space</i> (content → device pixels), not its role: it is an
-/// <i>app-driven content</i> transform layered ON TOP of the compositor's surface orientation (Vulkan
-/// <c>preTransform</c>). Physical device/screen rotation stays the compositor's job; this carries only
-/// DPI scale × app rotation (e.g. the hot-seat 180°). It never replaces <c>preTransform</c>.</para>
+/// <para>Named for what it transforms — content — rather than for its target space, which is what the
+/// earlier name <c>ContentTransform</c> got backwards: it is an <i>app-driven content</i> transform layered
+/// ON TOP of the compositor's surface orientation (Vulkan <c>preTransform</c>). Physical device/screen
+/// rotation stays the compositor's job; this carries only app scale × app rotation (e.g. the hot-seat
+/// 180°). It never replaces <c>preTransform</c>.</para>
 /// </summary>
-public readonly record struct DeviceTransform(Rotation90 Rotation, float Scale, float Tx, float Ty)
+public readonly record struct ContentTransform(Rotation90 Rotation, float Scale, float Tx, float Ty)
 {
     /// <summary>The no-op transform: no rotation, unit scale, no translation.</summary>
-    public static readonly DeviceTransform Identity = new(Rotation90.None, 1f, 0f, 0f);
+    public static readonly ContentTransform Identity = new(Rotation90.None, 1f, 0f, 0f);
 
     /// <summary>True when this is the identity, so a renderer can skip the compose entirely.</summary>
     public bool IsIdentity => Rotation == Rotation90.None && Scale == 1f && Tx == 0f && Ty == 0f;
@@ -104,12 +120,12 @@ public readonly record struct DeviceTransform(Rotation90 Rotation, float Scale, 
     /// representation — rotations add (mod 4), scales multiply — rather than round-tripping through a
     /// matrix, so there is no rotation to re-extract.
     /// </summary>
-    public DeviceTransform Compose(DeviceTransform inner)
+    public ContentTransform Compose(ContentTransform inner)
     {
         var (c, s) = CosSin(Rotation); // outer rotation, applied to inner's translation (no scale)
         var rtx = c * inner.Tx - s * inner.Ty;
         var rty = s * inner.Tx + c * inner.Ty;
-        return new DeviceTransform(
+        return new ContentTransform(
             (Rotation90)(((int)Rotation + (int)inner.Rotation) & 3),
             Scale * inner.Scale,
             Scale * rtx + Tx,
@@ -123,7 +139,7 @@ public readonly record struct DeviceTransform(Rotation90 Rotation, float Scale, 
     /// <c>CenteredRotation(Rotation90.Half, w, h)</c>. Depends on the surface size, so recompute it on
     /// resize.
     /// </summary>
-    public static DeviceTransform CenteredRotation(Rotation90 rotation, float width, float height, float scale = 1f)
+    public static ContentTransform CenteredRotation(Rotation90 rotation, float width, float height, float scale = 1f)
     {
         var (c, s) = CosSin(rotation);
         var cx = width * 0.5f;
@@ -131,6 +147,6 @@ public readonly record struct DeviceTransform(Rotation90 Rotation, float Scale, 
         // t = centre − scale·(R·centre), chosen so Apply(centre) == centre.
         var rcx = c * cx - s * cy;
         var rcy = s * cx + c * cy;
-        return new DeviceTransform(rotation, scale, cx - scale * rcx, cy - scale * rcy);
+        return new ContentTransform(rotation, scale, cx - scale * rcx, cy - scale * rcy);
     }
 }

@@ -32,7 +32,7 @@ public interface IMeasureContext<T> where T : INumber<T>
     /// 250 columns wide.
     /// </para>
     /// <para>
-    /// Note this is NOT <c>DeviceTransform</c>'s job. That maps content pixels to device pixels (DPI x app
+    /// Note this is NOT <c>ContentTransform</c>'s job. That maps content pixels to device pixels (DPI x app
     /// rotation x letterbox) and is deliberately uniform-scale, because uniform scale is what keeps
     /// axis-aligned rects axis-aligned and glyph sampling clean. This is the layer above it: design units to
     /// surface units, where the surface unit itself may not be square.

@@ -421,17 +421,23 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
     public bool HostRendersSelectableText { get; set; }
 
     /// <summary>
-    /// The content→device transform (rotation ∈ {0°, 90°, 180°, 270°}, uniform scale, translation) that a
-    /// backend folds into its projection so the whole frame — text included — rotates and scales as one.
-    /// Defaults to <see cref="DeviceTransform.Identity"/> (rendering is byte-identical to before it existed).
-    /// The base implementation only STORES the value; a backend applies it by overriding the setter to
-    /// rebuild its projection. Today only the Vulkan backend does so — the pure-software and WebGL backends
-    /// inherit the base auto-property and therefore ignore it (stored, not applied) until they are wired in
-    /// a later phase. The <see cref="DeviceTransform.Scale"/> component is the eventual single home for DPI —
-    /// introduced here alongside the existing per-widget <c>DpiScale</c>, to be unified incrementally (see
-    /// <c>docs/device-transform.md</c>).
+    /// The <see cref="ContentTransform"/> (rotation ∈ {0°, 90°, 180°, 270°}, uniform scale, translation)
+    /// that a backend folds into its projection so the whole frame — text included — rotates and scales as
+    /// one. Defaults to <see cref="DIR.Lib.ContentTransform.Identity"/> (rendering is byte-identical to
+    /// before it existed). The base implementation only STORES the value; a backend applies it by overriding
+    /// the setter to rebuild its projection. Today only the Vulkan backend does so — the pure-software and
+    /// WebGL backends inherit the base auto-property and therefore ignore it (stored, not applied) until
+    /// they are wired in a later phase.
+    /// <para>
+    /// <b>This is the POST-layout application:</b> layout has already resolved design units to surface
+    /// units, and the finished result is mapped. Nothing reflows and nothing is re-measured, which is what a
+    /// safe-area/letterbox change or a hot-seat flip wants — and it is why the transform is uniform-scale,
+    /// since a post-map rotation is only coherent when the surface unit is square. A transform that should
+    /// reflow (DPI, zoom) does NOT belong here; it belongs in the measure context, applied to design units
+    /// before they are mapped. See <see cref="DIR.Lib.ContentTransform"/> for the ordering rule.
+    /// </para>
     /// </summary>
-    public virtual DeviceTransform DeviceTransform { get; set; } = DeviceTransform.Identity;
+    public virtual ContentTransform ContentTransform { get; set; } = DIR.Lib.ContentTransform.Identity;
 
     /// <summary>
     /// Fills <paramref name="rect"/> with its corners rounded to <paramref name="cornerRadius"/> pixels.
