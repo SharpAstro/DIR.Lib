@@ -58,7 +58,7 @@ public enum Rotation90
 /// multiplies at the GPU boundary.</para>
 ///
 /// <para>Named for what it transforms — content — rather than for its target space, which is what the
-/// earlier name <c>ContentTransform</c> got backwards: it is an <i>app-driven content</i> transform layered
+/// earlier name <c>DeviceTransform</c> got backwards: it is an <i>app-driven content</i> transform layered
 /// ON TOP of the compositor's surface orientation (Vulkan <c>preTransform</c>). Physical device/screen
 /// rotation stays the compositor's job; this carries only app scale × app rotation (e.g. the hot-seat
 /// 180°). It never replaces <c>preTransform</c>.</para>

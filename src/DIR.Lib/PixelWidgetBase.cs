@@ -80,6 +80,17 @@ namespace DIR.Lib
         /// <c>dpiScale: 1f</c> for a tree whose sizes are already device pixels.
         /// Virtual so a composite chrome widget can override the setter to propagate the new scale to the
         /// child widgets it hosts (one set-point at startup/resize instead of per-frame pushes).
+        /// <para>
+        /// <b>This is the PRE-map scale, and it is deliberately not <see cref="Renderer{TSurface}.ContentTransform"/>.</b>
+        /// The two are the two halves of the same ordering rule, not duplicates of each other. This one is
+        /// applied to design units BEFORE they are mapped to surface units (it reaches the engine through
+        /// <see cref="PixelMeasureContext{TSurface}"/>), so it REFLOWS: text is measured and rasterized at
+        /// the size it will occupy, which is what keeps glyphs sharp at 2x. The renderer's transform is
+        /// folded into the projection AFTER layout, which is what makes it free for a safe-area shift or a
+        /// hot-seat flip -- and is exactly why DPI must not move there: layout would resolve at design size
+        /// and the GPU would scale the raster, blurring every glyph. See <see cref="ContentTransform"/> for
+        /// the rule in full.
+        /// </para>
         /// </summary>
         public virtual float DpiScale { get; set; } = 1f;
 
