@@ -43,6 +43,10 @@ public class LayoutPainterTests
             RenderLayout(root, bounds, fontPath: fontPath);
         }
 
+        /// <summary>Arranges without painting, so a test can compare geometry alone.</summary>
+        public System.Collections.Immutable.ImmutableArray<Layout.ArrangedNode<float>> Arrange(Layout.Node root, RectF32 bounds)
+            => ArrangeLayout(root, bounds, fontPath: string.Empty, dpiScale: 1f);
+
         public HitResult? DispatchAt(float x, float y) => HitTestAndDispatch(x, y);
     }
 
@@ -182,5 +186,127 @@ public class LayoutPainterTests
         var regions = widget.Render(stack, new RectF32(0, 0, 100, 100));
 
         regions.Length.ShouldBe(0);
+    }
+
+    // ---- Node.Radius ----
+
+    private static readonly RGBAColor32 Backdrop = new RGBAColor32(0, 0, 0, 255);
+    private static readonly RGBAColor32 Fill = new RGBAColor32(255, 255, 255, 255);
+
+    private static RGBAColor32 PixelAt(RgbaImage image, int x, int y)
+    {
+        var at = (y * image.Width + x) * 4;
+        return new RGBAColor32(image.Pixels[at], image.Pixels[at + 1], image.Pixels[at + 2], image.Pixels[at + 3]);
+    }
+
+    /// <summary>
+    /// The load-bearing invariant: Radius is chrome, so arrange must not see it. A rounded panel has to
+    /// occupy and inset exactly the rect a square one would, or every layout downstream of it shifts the
+    /// moment someone rounds a corner.
+    /// </summary>
+    [Fact]
+    public void Radius_DoesNotChangeArrangement()
+    {
+        Layout.Node Tree(float radius) => Layout.Builder.VStack(
+            Layout.Builder.Text("header", 12f).RowH(20),
+            Layout.Builder.Box(0, 0).Stretch().Bg(Fill).Radius(radius),
+            Layout.Builder.Text("footer", 12f).RowH(20)).Pad(4).Bg(Backdrop).Radius(radius);
+
+        using var renderer = new RgbaImageRenderer(120, 120);
+        var widget = new TestWidget(renderer);
+
+        var square = widget.Arrange(Tree(0f), new RectF32(0, 0, 120, 120));
+        var rounded = widget.Arrange(Tree(8f), new RectF32(0, 0, 120, 120));
+
+        rounded.Length.ShouldBe(square.Length);
+        for (var i = 0; i < square.Length; i++)
+        {
+            rounded[i].Bounds.ShouldBe(square[i].Bounds, $"node {i} moved when only its corner radius changed");
+        }
+    }
+
+    [Fact]
+    public void Radius_CutsTheCornersOfABackground()
+    {
+        using var renderer = new RgbaImageRenderer(40, 40);
+        renderer.Surface.Clear(Backdrop);
+        var widget = new TestWidget(renderer);
+
+        widget.Render(Layout.Builder.Box(0, 0).Stretch().Bg(Fill).Radius(10f), new RectF32(0, 0, 40, 40));
+
+        PixelAt(renderer.Surface, 0, 0).ShouldBe(Backdrop, "the corner is outside the arc");
+        PixelAt(renderer.Surface, 39, 39).ShouldBe(Backdrop);
+        PixelAt(renderer.Surface, 20, 20).ShouldBe(Fill, "the middle is filled");
+        PixelAt(renderer.Surface, 20, 0).ShouldBe(Fill, "the edge between the arcs is straight");
+    }
+
+    /// <summary>
+    /// A zero radius has to take the plain <c>FillRectangle</c> path, so every existing tree paints exactly
+    /// as it did before this feature existed.
+    /// </summary>
+    [Fact]
+    public void Radius_Zero_PaintsExactlyTheSquarePath()
+    {
+        using var roundedRenderer = new RgbaImageRenderer(40, 40);
+        using var squareRenderer = new RgbaImageRenderer(40, 40);
+        roundedRenderer.Surface.Clear(Backdrop);
+        squareRenderer.Surface.Clear(Backdrop);
+
+        new TestWidget(roundedRenderer).Render(
+            Layout.Builder.Box(0, 0).Stretch().Bg(Fill).Radius(0f), new RectF32(0, 0, 40, 40));
+        new TestWidget(squareRenderer).Render(
+            Layout.Builder.Box(0, 0).Stretch().Bg(Fill), new RectF32(0, 0, 40, 40));
+
+        roundedRenderer.Surface.Pixels.ShouldBe(squareRenderer.Surface.Pixels);
+    }
+
+    /// <summary>
+    /// Radius is a design unit like every other chrome measure, so the same tree must round harder on a
+    /// HiDPI surface. Measured as the run of backdrop pixels along the top edge, which is the arc's bite.
+    /// </summary>
+    [Fact]
+    public void Radius_IsADesignUnit_SoItScalesWithDpi()
+    {
+        static int TopEdgeCut(float dpiScale)
+        {
+            using var renderer = new RgbaImageRenderer(80, 80);
+            renderer.Surface.Clear(Backdrop);
+            var widget = new TestWidget(renderer) { DpiScale = dpiScale };
+            widget.RenderDefaultDpi(Layout.Builder.Box(0, 0).Stretch().Bg(Fill).Radius(8f), new RectF32(0, 0, 80, 80));
+
+            var cut = 0;
+            while (cut < 80 && PixelAt(renderer.Surface, cut, 0) == Backdrop)
+            {
+                cut++;
+            }
+            return cut;
+        }
+
+        var at1x = TopEdgeCut(1f);
+        var at2x = TopEdgeCut(2f);
+
+        at1x.ShouldBeGreaterThan(0, "a radius of 8 must bite into the top edge at all");
+        at2x.ShouldBeGreaterThan(at1x, "the same design-unit radius must round harder at 2x");
+    }
+
+    /// <summary>A Box leaf paints its own fill, so it has to honour the radius too -- otherwise
+    /// <c>Box(...).Radius(n)</c> silently does nothing while <c>Box(...).Bg(c).Radius(n)</c> works.</summary>
+    [Fact]
+    public void Radius_AppliesToABoxLeafsOwnFill()
+    {
+        using var renderer = new RgbaImageRenderer(40, 40);
+        renderer.Surface.Clear(Backdrop);
+        var widget = new TestWidget(renderer);
+
+        var box = new Layout.Node.Leaf(new Layout.Content.Box(0, 0) { Color = Fill })
+        {
+            Width = Layout.Sizing.Star(),
+            Height = Layout.Sizing.Star(),
+            CornerRadius = 10f,
+        };
+        widget.Render(box, new RectF32(0, 0, 40, 40));
+
+        PixelAt(renderer.Surface, 0, 0).ShouldBe(Backdrop, "the Box leaf's own fill is rounded too");
+        PixelAt(renderer.Surface, 20, 20).ShouldBe(Fill);
     }
 }

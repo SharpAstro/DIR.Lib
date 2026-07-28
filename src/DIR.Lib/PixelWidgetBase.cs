@@ -432,9 +432,12 @@ namespace DIR.Lib
             var scale = dpiScale ?? DpiScale;
             foreach (var (node, bounds) in arranged)
             {
+                // CornerRadius is in design units like every other chrome measure, so it scales with DPI.
+                var radius = node.CornerRadius * scale;
+
                 if (node.Background is { } bg)
                 {
-                    FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, bg);
+                    FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, bg, radius);
                 }
 
                 // Auto-bind the click region to the arranged rect. Any node can be a hit target -- a whole
@@ -453,7 +456,7 @@ namespace DIR.Lib
                                 text.FontSize * scale, text.Color, text.HAlign, text.VAlign);
                             break;
                         case Layout.Content.Box box when box.Color.Alpha > 0:
-                            FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, box.Color);
+                            FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, box.Color, radius);
                             break;
                         case Layout.Content.Fill fill:
                             drawFill?.Invoke(fill, new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height));
@@ -489,11 +492,30 @@ namespace DIR.Lib
         // --- Drawing helpers ---
 
         protected void FillRect(float x, float y, float w, float h, RGBAColor32 color)
+            => FillRect(x, y, w, h, color, cornerRadius: 0f);
+
+        /// <summary>
+        /// Fills a rect, optionally with rounded corners. A <paramref name="cornerRadius"/> of 0 routes to
+        /// <see cref="Renderer{TSurface}.FillRectangle"/> so the untouched path stays byte-identical; a
+        /// positive one goes through <see cref="Renderer{TSurface}.FillRoundedRectangle"/>, which a GPU
+        /// backend may override with a single SDF quad.
+        /// <para>
+        /// The radius is expected in <b>surface</b> pixels here (already multiplied by the DPI scale),
+        /// unlike <see cref="Layout.Node.CornerRadius"/>, which is in design units.
+        /// </para>
+        /// </summary>
+        protected void FillRect(float x, float y, float w, float h, RGBAColor32 color, float cornerRadius)
         {
             if (w <= 0 || h <= 0) return;
-            Renderer.FillRectangle(
-                new RectInt(new PointInt((int)(x + w), (int)(y + h)), new PointInt((int)x, (int)y)),
-                color);
+            var rect = new RectInt(new PointInt((int)(x + w), (int)(y + h)), new PointInt((int)x, (int)y));
+            if (cornerRadius > 0f)
+            {
+                Renderer.FillRoundedRectangle(rect, color, cornerRadius);
+            }
+            else
+            {
+                Renderer.FillRectangle(rect, color);
+            }
         }
 
         /// <summary>

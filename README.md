@@ -63,7 +63,13 @@ Layout.Builder.HStack(
 ```
 
 - **Factories** — `VStack` / `HStack` / `Text` / `Box` / `Fill` / `Spacer` / `Grid` / `WrapH` / `WrapV` / `Overlay` / `Split` / `Dock` (+ `Left`/`Right`/`Top`/`Bottom` dock-strip helpers).
-- **Fluent modifiers** (instance methods on `Layout.Node`, each a pure `this with { … }` transform) — `.W`/`.H`/`.WFixed`/`.WStar(weight, min, max)`/`.WAuto` (+ `H*`), `.WClamp`/`.HClamp(min, max)` (clamp the current kind), `.RowH(u)` (full-width row), `.ColW(u)` (fixed-width column), `.Stretch()` (fill both axes), `.Bg`, `.Pad`, `.Clickable(hit, onClick?)`, `.CollapseBelow(u)`, `.WithGap`/`.WithGaps`/`.WithLineGap`.
+- **Fluent modifiers** (instance methods on `Layout.Node`, each a pure `this with { … }` transform) — `.W`/`.H`/`.WFixed`/`.WStar(weight, min, max)`/`.WAuto` (+ `H*`), `.WClamp`/`.HClamp(min, max)` (clamp the current kind), `.RowH(u)` (full-width row), `.ColW(u)` (fixed-width column), `.Stretch()` (fill both axes), `.Bg`, `.Radius(u)`, `.Pad`, `.Clickable(hit, onClick?)`, `.CollapseBelow(u)`, `.WithGap`/`.WithGaps`/`.WithLineGap`.
+- **`.Radius(u)` is chrome, not geometry.** It rounds the node's `.Bg` (and a `Box` leaf's own fill) by `u`
+  design units, but arrange never sees it — a rounded node occupies and insets exactly the rect a square one
+  would, so rounding a panel can never shift the layout inside or around it. Each surface honours it as far
+  as it can: a pixel painter via `Renderer.FillRoundedRectangle` (which a GPU backend may override with one
+  SDF quad), a cell painter via arc corners `╭ ╮ ╰ ╯`, since a character grid cannot round by fractions of a
+  cell. A radius of `0` takes the plain `FillRectangle` path, so untouched trees paint byte-identically.
 - **Consumer convention** — alias `using Layout = DIR.Lib.Layout;` (a `global using`, or a csproj `<Using Include="DIR.Lib.Layout" Alias="Layout" />`) and write the qualified `Layout.Node` / `Layout.Builder`. Do **not** `using DIR.Lib.Layout;` directly — it drops the collision-prone barewords (`Node`, `Content`, `Size<T>`) into scope. (A plain `using DIR.Lib;` does not surface the nested `Layout` namespace; a using-directive imports types, not nested namespaces.) A consumer that already owns a `Layout` type must rename it.
 
 ## Text Input

@@ -36,6 +36,19 @@ public abstract partial record Node
     /// parent-before-children, a container's background lands under its content (panels, rows, headers).</summary>
     public RGBAColor32? Background { get; init; }
 
+    /// <summary>Corner radius in design units for this node's <see cref="Background"/> (and a
+    /// <see cref="Content.Box"/> leaf's own fill). 0 (default) is a square corner and paints exactly as
+    /// before, so this is inert until asked for.
+    /// <para>
+    /// Purely a <b>chrome</b> property: arrange does not know about it, so a rounded node occupies and
+    /// insets precisely the rect a square one would. Each surface honours it as far as it can -- a pixel
+    /// painter through <c>Renderer.FillRoundedRectangle</c>, a cell painter by drawing arc corners
+    /// (U+256D..U+2570) since a character grid cannot round by fractions of a cell. A surface that cannot
+    /// express it at all just fills square, which is why this is a hint rather than a guarantee.
+    /// </para>
+    /// Set via <see cref="Radius"/>.</summary>
+    public float CornerRadius { get; init; }
+
     /// <summary>Optional click region bound to this node's arranged rect (draw == hit by construction).
     /// Lives on the node, not the content, so a whole container (a slot row, a panel) is clickable -- not
     /// just leaves. Inner nodes registered later win the hit (top-most), so a button inside a clickable row

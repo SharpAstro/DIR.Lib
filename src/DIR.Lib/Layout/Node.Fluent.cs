@@ -64,6 +64,12 @@ public abstract partial record Node
     /// <summary>Paint a background across this node's whole arranged rect (under its children).</summary>
     public Node Bg(RGBAColor32 color) => this with { Background = color };
 
+    /// <summary>Round the corners of this node's <see cref="Bg"/> (and a <see cref="Content.Box"/> leaf's
+    /// own fill) by <paramref name="designUnits"/>. Chrome only -- arrange is unchanged, so a rounded node
+    /// occupies exactly the rect a square one would. See <see cref="CornerRadius"/> for how each surface
+    /// approximates it.</summary>
+    public Node Radius(float designUnits) => this with { CornerRadius = designUnits };
+
     /// <summary>Inset this node's children by <paramref name="designUnits"/> of inner padding.</summary>
     public Node Pad(float designUnits) => this with { Padding = designUnits };
 
