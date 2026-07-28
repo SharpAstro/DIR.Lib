@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using DIR.Lib;
 using Shouldly;
@@ -12,6 +12,32 @@ namespace DIR.Lib.Tests;
 /// </summary>
 public class LayoutPainterTests
 {
+    /// <summary>
+    /// Records every <c>DrawText</c> the painter issues, with the font it chose, and answers MeasureText
+    /// itself so no real font file is ever loaded.
+    /// </summary>
+    private sealed class RecordingRenderer(uint w, uint h) : RgbaImageRenderer(w, h)
+    {
+        public List<(string Text, string Font)> Runs { get; } = [];
+
+        public override (float Width, float Height) MeasureText(ReadOnlySpan<char> text, string fontFamily, float fontSize)
+            => (text.Length * fontSize * 0.5f, fontSize);
+
+        public override void DrawText(ReadOnlySpan<char> text, string fontFamily, float fontSize,
+            RGBAColor32 fontColor, in RectInt layout, TextAlign horizAlign = TextAlign.Near,
+            TextAlign vertAlign = TextAlign.Center)
+            => Runs.Add((text.ToString(), fontFamily));
+    }
+
+    private sealed class FontWidget(Renderer<RgbaImage> renderer) : PixelWidgetBase<RgbaImage>(renderer)
+    {
+        public void Render(Layout.Node root, RectF32 bounds)
+        {
+            BeginFrame();
+            RenderLayout(root, bounds, dpiScale: 1f);
+        }
+    }
+
     private sealed class TestWidget(Renderer<RgbaImage> renderer) : PixelWidgetBase<RgbaImage>(renderer)
     {
         public ClickableRegion[] Render(Layout.Node root, RectF32 bounds)
@@ -309,4 +335,68 @@ public class LayoutPainterTests
         PixelAt(renderer.Surface, 0, 0).ShouldBe(Backdrop, "the Box leaf's own fill is rounded too");
         PixelAt(renderer.Surface, 20, 20).ShouldBe(Fill);
     }
+
+    // --- emoji font fallback ---
+
+    [Fact]
+    public void MixedTextAndEmoji_SplitsIntoRunsWithTheRightFontEach()
+    {
+        // A run is drawn with exactly ONE font, so without a split the socket renders as blank space in a
+        // text font. This is what lets a glyph and its label live in the same string.
+        var renderer = new RecordingRenderer(400, 100);
+        var widget = new FontWidget(renderer) { FontPath = "text.ttf", EmojiFontPath = "emoji.ttf" };
+
+        widget.Render(Layout.Builder.Text("🔌 4 of 6", 12f, new RGBAColor32(0xff, 0xff, 0xff, 0xff)),
+            new RectF32(0, 0, 400, 100));
+
+        renderer.Runs.Count.ShouldBe(2);
+        renderer.Runs[0].Font.ShouldBe("emoji.ttf");
+        renderer.Runs[0].Text.ShouldBe("🔌");
+        renderer.Runs[1].Font.ShouldBe("text.ttf");
+        renderer.Runs[1].Text.ShouldBe(" 4 of 6");
+    }
+
+    [Fact]
+    public void PlainText_StaysASingleDrawWithTheTextFont()
+    {
+        // The untouched path: no surrogate, no split, no extra measuring.
+        var renderer = new RecordingRenderer(400, 100);
+        var widget = new FontWidget(renderer) { FontPath = "text.ttf", EmojiFontPath = "emoji.ttf" };
+
+        widget.Render(Layout.Builder.Text("6 of 6", 12f, new RGBAColor32(0xff, 0xff, 0xff, 0xff)),
+            new RectF32(0, 0, 400, 100));
+
+        renderer.Runs.ShouldHaveSingleItem().Font.ShouldBe("text.ttf");
+    }
+
+    [Fact]
+    public void WithNoEmojiFont_TextIsDrawnAsOneRunEvenIfItHoldsAnEmoji()
+    {
+        // No fallback configured means no split: one draw with whatever font there is, exactly as before.
+        var renderer = new RecordingRenderer(400, 100);
+        var widget = new FontWidget(renderer) { FontPath = "text.ttf" };
+
+        widget.Render(Layout.Builder.Text("🔌 4 of 6", 12f, new RGBAColor32(0xff, 0xff, 0xff, 0xff)),
+            new RectF32(0, 0, 400, 100));
+
+        renderer.Runs.ShouldHaveSingleItem().Font.ShouldBe("text.ttf");
+    }
+
+    [Fact]
+    public void AVariationSelectorStaysWithTheGlyphItModifies()
+    {
+        // VS16 attaches to the emoji before it; splitting there would strand it in the text run and could
+        // change how the sequence renders.
+        var renderer = new RecordingRenderer(400, 100);
+        var widget = new FontWidget(renderer) { FontPath = "text.ttf", EmojiFontPath = "emoji.ttf" };
+
+        widget.Render(Layout.Builder.Text("🔌️ ok", 12f, new RGBAColor32(0xff, 0xff, 0xff, 0xff)),
+            new RectF32(0, 0, 400, 100));
+
+        renderer.Runs.Count.ShouldBe(2);
+        renderer.Runs[0].Font.ShouldBe("emoji.ttf");
+        renderer.Runs[0].Text.ShouldBe("🔌️");
+        renderer.Runs[1].Text.ShouldBe(" ok");
+    }
 }
+

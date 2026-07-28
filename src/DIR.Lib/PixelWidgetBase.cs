@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Runtime.InteropServices;
@@ -576,10 +576,130 @@ namespace DIR.Lib
             float fontSize, RGBAColor32 color, TextAlign horizAlign = TextAlign.Near, TextAlign vertAlign = TextAlign.Center)
         {
             if (string.IsNullOrEmpty(fontPath)) return;
+
+            // Mixed text + emoji needs two fonts, because a run is drawn with exactly one. Without this an
+            // emoji inside ordinary text renders as blank space (a text font has no pictograph glyphs), which
+            // is why callers used to have to pass the emoji font AS the font and therefore could never put a
+            // glyph and a label in the same string.
+            if (EmojiFontPath is { Length: > 0 } emojiFont
+                && !string.Equals(emojiFont, fontPath, StringComparison.Ordinal)
+                && ContainsEmoji(text))
+            {
+                DrawMixedEmojiText(text, fontPath, emojiFont, x, y, w, h, fontSize, color, horizAlign, vertAlign);
+                return;
+            }
+
             Renderer.DrawText(text, fontPath, fontSize, color,
                 new RectInt(new PointInt((int)(x + w), (int)(y + h)), new PointInt((int)x, (int)y)),
                 horizAlign, vertAlign);
         }
+
+        /// <summary>
+        /// Whether <paramref name="text"/> holds a codepoint that needs the emoji font.
+        /// <para>
+        /// <b>Supplementary planes only</b> (U+1F000 and above), deliberately. The BMP symbol blocks are full
+        /// of glyphs the text font already draws well and the app already relies on -- arrows, box drawing,
+        /// stars, check marks -- and routing those to an emoji font would change existing chrome everywhere.
+        /// Every pictograph anyone actually wants a colour glyph for lives in the supplementary planes.
+        /// </para>
+        /// </summary>
+        private static bool ContainsEmoji(ReadOnlySpan<char> text)
+        {
+            // A supplementary codepoint is encoded as a surrogate pair, so a high surrogate is the cheap test.
+            foreach (var c in text)
+            {
+                if (char.IsHighSurrogate(c)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Draws <paramref name="text"/> as alternating text/emoji runs, each with its own font, laid out
+        /// left to right and aligned as a whole.
+        /// <para>
+        /// Alignment is resolved from the summed width of every run, then each run is drawn
+        /// <see cref="TextAlign.Near"/> inside its own slice -- so a centred or right-aligned mixed string
+        /// lands where a single-font one would, rather than each run centring itself.
+        /// </para>
+        /// </summary>
+        private void DrawMixedEmojiText(ReadOnlySpan<char> text, string fontPath, string emojiFont,
+            float x, float y, float w, float h, float fontSize, RGBAColor32 color,
+            TextAlign horizAlign, TextAlign vertAlign)
+        {
+            // Split and measure ONCE: alignment needs the total before anything can be placed, so the widths
+            // are kept rather than recomputed on a second pass over the same runs.
+            var runs = EnumerateRuns(text);
+            var widths = new float[runs.Count];
+            var total = 0f;
+            for (var i = 0; i < runs.Count; i++)
+            {
+                var (run, isEmoji) = runs[i];
+                widths[i] = Renderer.MeasureText(
+                    text.Slice(run.Start, run.Length), isEmoji ? emojiFont : fontPath, fontSize).Width;
+                total += widths[i];
+            }
+
+            var cursor = horizAlign switch
+            {
+                TextAlign.Center => x + (w - total) / 2f,
+                TextAlign.Far => x + w - total,
+                _ => x,
+            };
+
+            for (var i = 0; i < runs.Count; i++)
+            {
+                var (run, isEmoji) = runs[i];
+                Renderer.DrawText(text.Slice(run.Start, run.Length), isEmoji ? emojiFont : fontPath, fontSize, color,
+                    new RectInt(
+                        new PointInt((int)(cursor + widths[i]), (int)(y + h)),
+                        new PointInt((int)cursor, (int)y)),
+                    TextAlign.Near, vertAlign);
+                cursor += widths[i];
+            }
+        }
+
+        /// <summary>
+        /// Splits <paramref name="text"/> into maximal runs of "needs the emoji font" / "does not".
+        /// <para>
+        /// A variation selector, a zero-width joiner and a skin-tone modifier all attach to the glyph before
+        /// them, so they stay in the emoji run they belong to -- splitting there would break a ZWJ sequence
+        /// into pieces that render as separate glyphs.
+        /// </para>
+        /// </summary>
+        private static List<(TextRun Run, bool IsEmoji)> EnumerateRuns(ReadOnlySpan<char> text)
+        {
+            var runs = new List<(TextRun, bool)>();
+            var i = 0;
+            while (i < text.Length)
+            {
+                var emoji = IsEmojiAt(text, i, out var len);
+                var start = i;
+                i += len;
+                while (i < text.Length && IsEmojiAt(text, i, out var nextLen) == emoji)
+                {
+                    i += nextLen;
+                }
+                runs.Add((new TextRun(start, i - start), emoji));
+            }
+            return runs;
+        }
+
+        private static bool IsEmojiAt(ReadOnlySpan<char> text, int index, out int length)
+        {
+            var c = text[index];
+            if (char.IsHighSurrogate(c) && index + 1 < text.Length && char.IsLowSurrogate(text[index + 1]))
+            {
+                length = 2;
+                return true;
+            }
+
+            length = 1;
+            // Attaches to whatever came before, so it must not start a run of the other kind.
+            return c is '️' or '‍';
+        }
+
+        /// <summary>A slice of a text span: an index and a length, so no substring is allocated.</summary>
+        private readonly record struct TextRun(int Start, int Length);
 
         /// <summary>
         /// Draws a run of text AND registers it as a selectable region for this frame. Unless the host
