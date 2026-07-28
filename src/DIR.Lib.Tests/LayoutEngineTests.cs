@@ -24,6 +24,18 @@ public class LayoutEngineTests
         public float ToSurface(float designUnits) => designUnits * Scale;
     }
 
+    /// <summary>
+    /// A cell surface whose unit is NOT square: a tree authored in pixel-ish design units, mapped onto
+    /// 8x16 cells. This is the case one isotropic scalar cannot express.
+    /// </summary>
+    private sealed class AnisotropicCellCtx : Layout.IMeasureContext<int>
+    {
+        public Layout.Size<int> MeasureText(ReadOnlySpan<char> text, float fontSize) => new(text.Length, 1);
+        public int ToSurface(float designUnits) => (int)MathF.Round(designUnits);
+        public int ToSurfaceX(float designUnits) => (int)MathF.Round(designUnits / 8f);
+        public int ToSurfaceY(float designUnits) => (int)MathF.Round(designUnits / 16f);
+    }
+
     private sealed class CellCtx : Layout.IMeasureContext<int>
     {
         public Layout.Size<int> MeasureText(ReadOnlySpan<char> text, float fontSize) => new(text.Length, 1);
@@ -344,6 +356,63 @@ public class LayoutEngineTests
 
         RectOf(arranged, cells[0]).Height.ShouldBe(50f);
         RectOf(arranged, cells[1]).Height.ShouldBe(50f);
+    }
+
+    // --- anisotropic surface units ---
+
+    [Fact]
+    public void AnAnisotropicSurfaceResolvesWidthAndHeightThroughDifferentScales()
+    {
+        // The whole point: one design-unit number means a different count of surface units across than down
+        // when the surface unit is not square. A 250x132 card is 31x8 cells at 8x16, not 250x132 of either.
+        // Nested, because Arrange places the ROOT at the bounds it is given -- a node's own sizing only
+        // resolves against a parent.
+        var card = Layout.Builder.Spacer().WFixed(250f).HFixed(132f);
+        var arranged = Layout.Engine.Arrange(
+            Layout.Builder.VStack(card), new Rect<int>(0, 0, 200, 60), new AnisotropicCellCtx());
+
+        var rect = RectOf(arranged, card);
+        rect.Width.ShouldBe(31);  // 250 / 8
+        rect.Height.ShouldBe(8);  // 132 / 16
+
+        // And the intrinsic measure agrees, since both go through the same per-axis mapping.
+        var measured = Layout.Engine.Measure(card, new Layout.Size<int>(200, 60), new AnisotropicCellCtx());
+        measured.Width.ShouldBe(31);
+        measured.Height.ShouldBe(8);
+    }
+
+    [Fact]
+    public void PaddingAndGapsAlsoResolvePerAxis()
+    {
+        // Padding is a single scalar and a Stack gap runs along one axis only, so both have to pick a scale.
+        // 16 units of padding is 2 cells across and 1 down; a vertical stack's 16-unit gap is 1 row.
+        var first = Layout.Builder.Spacer().HFixed(16f);
+        var second = Layout.Builder.Spacer().HFixed(16f);
+        var stack = Layout.Builder.VStack(first, second).WithGap(16f).Pad(16f);
+
+        var arranged = Layout.Engine.Arrange(stack, new Rect<int>(0, 0, 100, 40), new AnisotropicCellCtx());
+
+        RectOf(arranged, first).X.ShouldBe(2);   // 16 / 8 columns of padding
+        RectOf(arranged, first).Y.ShouldBe(1);   // 16 / 16 rows of padding
+        RectOf(arranged, first).Height.ShouldBe(1);
+        RectOf(arranged, second).Y.ShouldBe(3);  // first row (1) + gap (1) + padding (1)
+    }
+
+    [Fact]
+    public void AnIsotropicContextIsUnaffectedByTheAxisSplit()
+    {
+        // Every existing context implements only ToSurface; the axis-aware pair default to it, so the
+        // resolved geometry has to be exactly what it was before the split.
+        var child = Layout.Builder.Spacer().WFixed(30f).HFixed(20f);
+        var stack = Layout.Builder.VStack(child).Pad(5f);
+
+        var arranged = Layout.Engine.Arrange(stack, new Rect<float>(0, 0, 100, 100), new PixelCtx { Scale = 2f });
+
+        var rect = RectOf(arranged, child);
+        rect.Width.ShouldBe(60f);   // 30 x 2 on both axes
+        rect.Height.ShouldBe(40f);
+        rect.X.ShouldBe(10f);       // 5 x 2 padding, same across and down
+        rect.Y.ShouldBe(10f);
     }
 
     // --- overlay (z-order) ---

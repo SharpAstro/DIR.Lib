@@ -17,8 +17,31 @@ public interface IMeasureContext<T> where T : INumber<T>
     Size<T> MeasureText(ReadOnlySpan<char> text, float fontSize);
 
     /// <summary>Map a design-unit scalar (the pixel-base values on <see cref="Sizing"/>/<see cref="Node.Padding"/>)
-    /// into surface units: pixels x DPI, or rounded character cells.</summary>
+    /// into surface units, with no axis in mind: pixels x DPI, or rounded character cells. Still the base
+    /// mapping and the only one an isotropic surface needs -- <see cref="ToSurfaceX"/> and
+    /// <see cref="ToSurfaceY"/> default to it, so an existing context stays correct unchanged.</summary>
     T ToSurface(float designUnits);
+
+    /// <summary>
+    /// Map a design-unit scalar along the HORIZONTAL axis.
+    /// <para>
+    /// Separate from <see cref="ToSurfaceY"/> because a surface unit is not always square, and where it is
+    /// not, one scalar cannot describe it. A terminal cell is roughly 8x16 pixels, so a design unit that is
+    /// one pixel on a GPU surface is an EIGHTH of a cell across and a SIXTEENTH down. That is what lets a
+    /// tree authored for one surface arrange correctly on the other, rather than a 250-unit card becoming
+    /// 250 columns wide.
+    /// </para>
+    /// <para>
+    /// Note this is NOT <c>DeviceTransform</c>'s job. That maps content pixels to device pixels (DPI x app
+    /// rotation x letterbox) and is deliberately uniform-scale, because uniform scale is what keeps
+    /// axis-aligned rects axis-aligned and glyph sampling clean. This is the layer above it: design units to
+    /// surface units, where the surface unit itself may not be square.
+    /// </para>
+    /// </summary>
+    T ToSurfaceX(float designUnits) => ToSurface(designUnits);
+
+    /// <summary>Map a design-unit scalar along the VERTICAL axis. See <see cref="ToSurfaceX"/>.</summary>
+    T ToSurfaceY(float designUnits) => ToSurface(designUnits);
 }
 
 /// <summary>
@@ -54,14 +77,17 @@ public static class Engine
         // Inner padding grows the intrinsic box (except a Dock / Split, which are already "fill").
         if (node is not Node.Dock and not Node.Split && node.Padding != 0f)
         {
-            var pad2 = ctx.ToSurface(node.Padding) + ctx.ToSurface(node.Padding);
-            intrinsic = new Size<T>(intrinsic.Width + pad2, intrinsic.Height + pad2);
+            // One design-unit scalar, two surface extents: on an anisotropic surface the same inset is a
+            // different number of units across than it is down.
+            var padX = ctx.ToSurfaceX(node.Padding);
+            var padY = ctx.ToSurfaceY(node.Padding);
+            intrinsic = new Size<T>(intrinsic.Width + padX + padX, intrinsic.Height + padY + padY);
         }
 
         // Explicit Fixed sizing on the node overrides the intrinsic extent on that axis;
         // Auto/Star intrinsics honour the Sizing's Min/Max clamps.
-        var w = node.Width.IsFixed ? ctx.ToSurface(node.Width.Value) : Clamp(intrinsic.Width, node.Width, ctx);
-        var h = node.Height.IsFixed ? ctx.ToSurface(node.Height.Value) : Clamp(intrinsic.Height, node.Height, ctx);
+        var w = node.Width.IsFixed ? ctx.ToSurfaceX(node.Width.Value) : Clamp(intrinsic.Width, node.Width, ctx, Axis.Horizontal);
+        var h = node.Height.IsFixed ? ctx.ToSurfaceY(node.Height.Value) : Clamp(intrinsic.Height, node.Height, ctx, Axis.Vertical);
         return new Size<T>(w, h);
     }
 
@@ -83,7 +109,7 @@ public static class Engine
     {
         output.Add(new ArrangedNode<T>(node, rect) { Depth = depth });
 
-        var inner = Inset(rect, ctx.ToSurface(node.Padding));
+        var inner = Inset(rect, ctx.ToSurfaceX(node.Padding), ctx.ToSurfaceY(node.Padding));
         var childDepth = depth + 1;
         switch (node)
         {
@@ -116,11 +142,11 @@ public static class Engine
     {
         var horizontal = split.Axis == Axis.Horizontal;
         var mainAvail = horizontal ? inner.Width : inner.Height;
-        var divider = ctx.ToSurface(split.DividerThickness);
+        var divider = ToSurfaceOn(ctx, split.DividerThickness, split.Axis);
 
         // FirstExtent is consumer-owned; clamp so the divider + both panes always fit the bounds.
         var maxFirst = Max(T.Zero, mainAvail - divider);
-        var first = Min(Max(ctx.ToSurface(split.FirstExtent), T.Zero), maxFirst);
+        var first = Min(Max(ToSurfaceOn(ctx, split.FirstExtent, split.Axis), T.Zero), maxFirst);
         var second = Max(T.Zero, mainAvail - divider - first);
 
         Rect<T> firstRect, dividerRect, secondRect;
@@ -166,7 +192,7 @@ public static class Engine
         }
 
         var axis = stack.Axis;
-        var gap = ctx.ToSurface(stack.Gap);
+        var gap = ToSurfaceOn(ctx, stack.Gap, axis);
         var availSize = new Size<T>(inner.Width, inner.Height);
         var mainAvail = MainOf(axis, availSize);
         var crossAvail = CrossOf(axis, availSize);
@@ -188,7 +214,7 @@ public static class Engine
             for (var i = 0; i < n; i++)
             {
                 if (included[i] && children[i].CollapseThreshold > 0f
-                    && mains[i] < ctx.ToSurface(children[i].CollapseThreshold))
+                    && mains[i] < ToSurfaceOn(ctx, children[i].CollapseThreshold, axis))
                 {
                     included[i] = false;
                     includedCount--;
@@ -219,11 +245,11 @@ public static class Engine
             var crossSizing = CrossSizing(axis, children[i]);
             var cross = crossSizing.Kind switch
             {
-                SizeKind.Fixed => ctx.ToSurface(crossSizing.Value),
+                SizeKind.Fixed => ToSurfaceOn(ctx, crossSizing.Value, CrossAxis(axis)),
                 SizeKind.Star => crossAvail,                                   // stretch to fill cross axis
                 _ => Min(crossAvail, CrossOf(axis, Measure(children[i], availSize, ctx))),
             };
-            cross = Clamp(cross, crossSizing, ctx);
+            cross = Clamp(cross, crossSizing, ctx, CrossAxis(axis));
 
             var childRect = axis == Axis.Vertical
                 ? new Rect<T>(inner.X, cursor, cross, mains[i])
@@ -263,8 +289,8 @@ public static class Engine
             }
 
             var size = sizing.IsFixed
-                ? ctx.ToSurface(sizing.Value)
-                : Clamp(MainOf(axis, Measure(children[i], availSize, ctx)), sizing, ctx);
+                ? ToSurfaceOn(ctx, sizing.Value, axis)
+                : Clamp(MainOf(axis, Measure(children[i], availSize, ctx)), sizing, ctx, axis);
             mains[i] = size;
             usedMain += size;
         }
@@ -340,7 +366,7 @@ public static class Engine
             for (var a = 0; a < activeSlots.Count; a++)
             {
                 var s = activeSlots[a];
-                var clamped = Clamp(shares[a], MainSizing(axis, children[starIndices[s]]), ctx);
+                var clamped = Clamp(shares[a], MainSizing(axis, children[starIndices[s]]), ctx, axis);
                 if (clamped != shares[a])
                 {
                     mains[starIndices[s]] = clamped;
@@ -371,17 +397,19 @@ public static class Engine
             var remaining = layout.Fill();
             var alongAxis = dc.Side is DockSide.Top or DockSide.Bottom; // vertical strip => measure height
 
+            var stripAxis = alongAxis ? Axis.Vertical : Axis.Horizontal;
+
             T size;
             if (dc.Size.IsFixed)
             {
-                size = ctx.ToSurface(dc.Size.Value);
+                size = ToSurfaceOn(ctx, dc.Size.Value, stripAxis);
             }
             else
             {
                 // Auto (or Star, which a dock strip treats as Auto): measure along the dock axis,
                 // honouring the strip Sizing's own Min/Max clamps.
                 var measured = Measure(dc.Child, new Size<T>(remaining.Width, remaining.Height), ctx);
-                size = Clamp(alongAxis ? measured.Height : measured.Width, dc.Size, ctx);
+                size = Clamp(alongAxis ? measured.Height : measured.Width, dc.Size, ctx, stripAxis);
             }
 
             var r = layout.Dock(ToDockStyle(dc.Side), size);
@@ -402,8 +430,8 @@ public static class Engine
         }
 
         var rows = (cells.Length + columns - 1) / columns;
-        var colGap = ctx.ToSurface(grid.ColumnGap);
-        var rowGap = ctx.ToSurface(grid.RowGap);
+        var colGap = ctx.ToSurfaceX(grid.ColumnGap);
+        var rowGap = ctx.ToSurfaceY(grid.RowGap);
         var totalColGap = colGap * T.CreateChecked(Math.Max(0, columns - 1));
         var totalRowGap = rowGap * T.CreateChecked(Math.Max(0, rows - 1));
 
@@ -449,8 +477,8 @@ public static class Engine
         }
 
         var axis = wrap.Axis;
-        var gap = ctx.ToSurface(wrap.Gap);
-        var lineGap = ctx.ToSurface(wrap.LineGap);
+        var gap = ToSurfaceOn(ctx, wrap.Gap, axis);
+        var lineGap = ToSurfaceOn(ctx, wrap.LineGap, CrossAxis(axis));
         var availSize = new Size<T>(inner.Width, inner.Height);
         var mainAvail = MainOf(axis, availSize);
 
@@ -489,7 +517,7 @@ public static class Engine
             {
                 // A Star cross stretches to the line's extent; everything else keeps its natural cross.
                 var crossSizing = CrossSizing(axis, children[i]);
-                var cross = crossSizing.IsStar ? Clamp(lineCross, crossSizing, ctx) : childCrosses[i];
+                var cross = crossSizing.IsStar ? Clamp(lineCross, crossSizing, ctx, CrossAxis(axis)) : childCrosses[i];
                 var childRect = axis == Axis.Horizontal
                     ? new Rect<T>(mainCursor, crossCursor, childMains[i], cross)
                     : new Rect<T>(crossCursor, mainCursor, cross, childMains[i]);
@@ -508,8 +536,8 @@ public static class Engine
         => content switch
         {
             Content.Text text => ctx.MeasureText(text.Value.AsSpan(), text.FontSize),
-            Content.Box box => new Size<T>(ctx.ToSurface(box.Width), ctx.ToSurface(box.Height)),
-            Content.Fill fill => new Size<T>(ctx.ToSurface(fill.MinWidth), ctx.ToSurface(fill.MinHeight)),
+            Content.Box box => new Size<T>(ctx.ToSurfaceX(box.Width), ctx.ToSurfaceY(box.Height)),
+            Content.Fill fill => new Size<T>(ctx.ToSurfaceX(fill.MinWidth), ctx.ToSurfaceY(fill.MinHeight)),
             _ => Size<T>.Zero,
         };
 
@@ -533,7 +561,7 @@ public static class Engine
             cross = Max(cross, CrossOf(axis, size));
         }
 
-        main += ctx.ToSurface(stack.Gap) * T.CreateChecked(Math.Max(0, n - 1));
+        main += ToSurfaceOn(ctx, stack.Gap, axis) * T.CreateChecked(Math.Max(0, n - 1));
         return Compose(axis, main, cross);
     }
 
@@ -567,8 +595,8 @@ public static class Engine
         }
 
         var rows = (grid.Cells.Length + columns - 1) / columns;
-        var colGap = ctx.ToSurface(grid.ColumnGap);
-        var rowGap = ctx.ToSurface(grid.RowGap);
+        var colGap = ctx.ToSurfaceX(grid.ColumnGap);
+        var rowGap = ctx.ToSurfaceY(grid.RowGap);
         var totalColGap = colGap * T.CreateChecked(Math.Max(0, columns - 1));
         var totalRowGap = rowGap * T.CreateChecked(Math.Max(0, rows - 1));
 
@@ -611,12 +639,12 @@ public static class Engine
         var measured = Measure(child, available, ctx);
         var mainSizing = MainSizing(axis, child);
         var main = mainSizing.IsFixed
-            ? ctx.ToSurface(mainSizing.Value)
-            : Clamp(MainOf(axis, measured), mainSizing, ctx);
+            ? ToSurfaceOn(ctx, mainSizing.Value, axis)
+            : Clamp(MainOf(axis, measured), mainSizing, ctx, axis);
         var crossSizing = CrossSizing(axis, child);
         var cross = crossSizing.IsFixed
-            ? ctx.ToSurface(crossSizing.Value)
-            : Clamp(CrossOf(axis, measured), crossSizing, ctx);
+            ? ToSurfaceOn(ctx, crossSizing.Value, CrossAxis(axis))
+            : Clamp(CrossOf(axis, measured), crossSizing, ctx, CrossAxis(axis));
         return (main, cross);
     }
 
@@ -631,8 +659,8 @@ public static class Engine
         }
 
         var axis = wrap.Axis;
-        var gap = ctx.ToSurface(wrap.Gap);
-        var lineGap = ctx.ToSurface(wrap.LineGap);
+        var gap = ToSurfaceOn(ctx, wrap.Gap, axis);
+        var lineGap = ToSurfaceOn(ctx, wrap.LineGap, CrossAxis(axis));
         var mainAvail = MainOf(axis, available);
 
         // Same line flow as ArrangeWrap: intrinsic main = the longest line, intrinsic cross = the sum of
@@ -746,15 +774,26 @@ public static class Engine
     private static Size<T> Union<T>(Size<T> a, Size<T> b) where T : INumber<T>
         => new(Max(a.Width, b.Width), Max(a.Height, b.Height));
 
-    private static Rect<T> Inset<T>(Rect<T> r, T padding) where T : INumber<T>
-        => padding == T.Zero
+    private static Rect<T> Inset<T>(Rect<T> r, T padX, T padY) where T : INumber<T>
+        => padX == T.Zero && padY == T.Zero
             ? r
-            : new Rect<T>(r.X + padding, r.Y + padding,
-                Max(T.Zero, r.Width - padding - padding), Max(T.Zero, r.Height - padding - padding));
+            : new Rect<T>(r.X + padX, r.Y + padY,
+                Max(T.Zero, r.Width - padX - padX), Max(T.Zero, r.Height - padY - padY));
+
+    /// <summary>The axis at right angles to <paramref name="axis"/>.</summary>
+    private static Axis CrossAxis(Axis axis) => axis == Axis.Horizontal ? Axis.Vertical : Axis.Horizontal;
+
+    /// <summary>
+    /// Maps a design-unit scalar along <paramref name="axis"/>. Every design unit in the tree resolves
+    /// through here or through an explicit X/Y call, so an anisotropic surface never has to guess which
+    /// direction a number was meant for.
+    /// </summary>
+    private static T ToSurfaceOn<T>(IMeasureContext<T> ctx, float designUnits, Axis axis) where T : INumber<T>
+        => axis == Axis.Horizontal ? ctx.ToSurfaceX(designUnits) : ctx.ToSurfaceY(designUnits);
 
     /// <summary>Applies a <see cref="Sizing"/>'s design-unit Min/Max clamps to a resolved extent.
     /// No-op for Fixed (explicit wins) and for unset bounds (0 = unclamped sentinel).</summary>
-    private static T Clamp<T>(T extent, Sizing sizing, IMeasureContext<T> ctx) where T : INumber<T>
+    private static T Clamp<T>(T extent, Sizing sizing, IMeasureContext<T> ctx, Axis axis) where T : INumber<T>
     {
         if (sizing.IsFixed)
         {
@@ -763,12 +802,12 @@ public static class Engine
 
         if (sizing.Min > 0f)
         {
-            extent = Max(extent, ctx.ToSurface(sizing.Min));
+            extent = Max(extent, ToSurfaceOn(ctx, sizing.Min, axis));
         }
 
         if (sizing.Max > 0f)
         {
-            extent = Min(extent, ctx.ToSurface(sizing.Max));
+            extent = Min(extent, ToSurfaceOn(ctx, sizing.Max, axis));
         }
 
         return extent;

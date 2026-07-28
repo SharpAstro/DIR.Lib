@@ -80,7 +80,7 @@ env:
   #        Design units like every other chrome measure, so it scales with DpiScale. A cell surface
   #        approximates it with arc corners; a surface that cannot express it fills square, which is
   #        why it is a hint rather than a guarantee.
-  VERSION_PREFIX: 6.22.${{ github.run_number }}
+  VERSION_PREFIX: 6.23.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
