@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Immutable;
 using System.Numerics;
 
@@ -73,7 +73,23 @@ public abstract partial record Node
     public sealed record Dock(ImmutableArray<DockChild> Docked, Node Fill) : Node;
 
     /// <summary>A uniform N-column grid; cells fill row-major. Column widths split evenly, rows size to the tallest Auto cell.</summary>
-    public sealed record Grid(int Columns, ImmutableArray<Node> Cells, float RowGap = 0f, float ColumnGap = 0f) : Node;
+    /// <param name="AutoRows">
+    /// When <see langword="false"/> (the default) the grid divides its rect evenly: every row gets an equal
+    /// share of the height, so cells stretch to fill and a row cannot be taller than its neighbours.
+    /// <para>
+    /// When <see langword="true"/> each row instead takes the height its OWN tallest cell needs, and the
+    /// grid's intrinsic height is the sum of those rows. That is what makes cards "push" the rows: adding
+    /// one adds height rather than shrinking every existing row, and an Auto-height grid inside a stack
+    /// reports exactly the height its content needs, so a trailing spacer can absorb the slack. Columns are
+    /// still an even split -- only the cross axis becomes content-driven.
+    /// </para>
+    /// </param>
+    public sealed record Grid(
+        int Columns,
+        ImmutableArray<Node> Cells,
+        float RowGap = 0f,
+        float ColumnGap = 0f,
+        bool AutoRows = false) : Node;
 
     /// <summary>Children flow along <paramref name="Axis"/> and wrap into a new line when the next child
     /// would overflow the available extent -- the flexbox <c>wrap</c> for toolbars / chip rows on narrow

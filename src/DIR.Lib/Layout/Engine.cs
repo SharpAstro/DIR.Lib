@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Numerics;
@@ -407,9 +407,15 @@ public static class Engine
         var totalColGap = colGap * T.CreateChecked(Math.Max(0, columns - 1));
         var totalRowGap = rowGap * T.CreateChecked(Math.Max(0, rows - 1));
 
-        // Even column/row split, with remainder distributed so cell rects exactly tile the inner rect.
+        // Columns are always an even split, with the remainder distributed so cells exactly tile the width.
         var colWidths = DistributeByWeight(Max(T.Zero, inner.Width - totalColGap), EqualWeights(columns));
-        var rowHeights = DistributeByWeight(Max(T.Zero, inner.Height - totalRowGap), EqualWeights(rows));
+
+        // Rows: an even split of the height by default, or each row's own content height with AutoRows. The
+        // content case measures against the COLUMN width, not the whole inner width, so a cell that wraps or
+        // grows as it narrows reports the height it will actually be arranged at.
+        var rowHeights = grid.AutoRows
+            ? AutoRowHeights(grid, columns, rows, colWidths, inner.Height, ctx)
+            : DistributeByWeight(Max(T.Zero, inner.Height - totalRowGap), EqualWeights(rows));
 
         for (var idx = 0; idx < cells.Length; idx++)
         {
@@ -531,6 +537,26 @@ public static class Engine
         return Compose(axis, main, cross);
     }
 
+    /// <summary>
+    /// Each row's height taken from its own tallest cell (<see cref="Node.Grid.AutoRows"/>). A cell whose
+    /// height is <c>Star</c> has no intrinsic height of its own, so it contributes nothing and a row of only
+    /// Star cells collapses to zero -- Star means "share what the parent gives me", which in a content-sized
+    /// row is nothing. Give such a cell a Fixed height, or leave AutoRows off.
+    /// </summary>
+    private static T[] AutoRowHeights<T>(Node.Grid grid, int columns, int rows, T[] colWidths,
+        T availableHeight, IMeasureContext<T> ctx) where T : INumber<T>
+    {
+        var heights = new T[rows];
+        for (var idx = 0; idx < grid.Cells.Length; idx++)
+        {
+            var col = idx % columns;
+            var row = idx / columns;
+            var cellAvailable = new Size<T>(colWidths[col], availableHeight);
+            heights[row] = Max(heights[row], Measure(grid.Cells[idx], cellAvailable, ctx).Height);
+        }
+        return heights;
+    }
+
     private static Size<T> MeasureGrid<T>(Node.Grid grid, Size<T> available, IMeasureContext<T> ctx)
         where T : INumber<T>
     {
@@ -541,6 +567,26 @@ public static class Engine
         }
 
         var rows = (grid.Cells.Length + columns - 1) / columns;
+        var colGap = ctx.ToSurface(grid.ColumnGap);
+        var rowGap = ctx.ToSurface(grid.RowGap);
+        var totalColGap = colGap * T.CreateChecked(Math.Max(0, columns - 1));
+        var totalRowGap = rowGap * T.CreateChecked(Math.Max(0, rows - 1));
+
+        if (grid.AutoRows)
+        {
+            // Intrinsic height = the sum of the rows, so an Auto-height grid in a stack reports exactly what
+            // its content needs and adding a cell adds a row rather than shrinking the existing ones. Rows
+            // are measured against the same even column split Arrange will use, so the two agree.
+            var colWidths = DistributeByWeight(Max(T.Zero, available.Width - totalColGap), EqualWeights(columns));
+            var rowHeights = AutoRowHeights(grid, columns, rows, colWidths, available.Height, ctx);
+            var summed = totalRowGap;
+            foreach (var rowHeight in rowHeights)
+            {
+                summed += rowHeight;
+            }
+            return new Size<T>(available.Width, summed);
+        }
+
         var maxW = T.Zero;
         var maxH = T.Zero;
         foreach (var cell in grid.Cells)
@@ -550,8 +596,8 @@ public static class Engine
             maxH = Max(maxH, size.Height);
         }
 
-        var w = maxW * T.CreateChecked(columns) + ctx.ToSurface(grid.ColumnGap) * T.CreateChecked(Math.Max(0, columns - 1));
-        var h = maxH * T.CreateChecked(rows) + ctx.ToSurface(grid.RowGap) * T.CreateChecked(Math.Max(0, rows - 1));
+        var w = maxW * T.CreateChecked(columns) + totalColGap;
+        var h = maxH * T.CreateChecked(rows) + totalRowGap;
         return new Size<T>(w, h);
     }
 

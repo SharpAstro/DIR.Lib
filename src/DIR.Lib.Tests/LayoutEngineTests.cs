@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Immutable;
 using System.Numerics;
 using DIR.Lib;
@@ -262,6 +262,88 @@ public class LayoutEngineTests
         RectOf(arranged, cells[1]).ShouldBe(new Rect<float>(50, 0, 50, 50));
         RectOf(arranged, cells[2]).ShouldBe(new Rect<float>(0, 50, 50, 50));
         RectOf(arranged, cells[3]).ShouldBe(new Rect<float>(50, 50, 50, 50));
+    }
+
+    [Fact]
+    public void Grid_AutoRows_GivesEachRowItsOwnContentHeight()
+    {
+        // Row 0 holds a 30-unit cell, row 1 a 10-unit cell. Evenly split they would both be 50; with
+        // AutoRows each row is exactly as tall as its own tallest cell, and row 1 starts right below row 0
+        // instead of halfway down.
+        var cells = new Layout.Node[]
+        {
+            Layout.Builder.Spacer().HFixed(30f),
+            Layout.Builder.Spacer().HFixed(30f),
+            Layout.Builder.Spacer().HFixed(10f),
+            Layout.Builder.Spacer().HFixed(10f),
+        };
+        var grid = new Layout.Node.Grid(2, [.. cells], AutoRows: true);
+
+        var arranged = Layout.Engine.Arrange(grid, new Rect<float>(0, 0, 100, 100), new PixelCtx());
+
+        RectOf(arranged, cells[0]).ShouldBe(new Rect<float>(0, 0, 50, 30));
+        RectOf(arranged, cells[1]).ShouldBe(new Rect<float>(50, 0, 50, 30));
+        RectOf(arranged, cells[2]).ShouldBe(new Rect<float>(0, 30, 50, 10));
+        RectOf(arranged, cells[3]).ShouldBe(new Rect<float>(50, 30, 50, 10));
+    }
+
+    [Fact]
+    public void Grid_AutoRows_AddingACellAddsHeightRatherThanShrinkingTheOthers()
+    {
+        // The point of the mode: a card pushes a new row instead of every existing row getting shorter.
+        static Layout.Node Cell() => Layout.Builder.Spacer().HFixed(20f);
+
+        var twoCells = new Layout.Node[] { Cell(), Cell() };
+        var threeCells = new Layout.Node[] { Cell(), Cell(), Cell() };
+
+        var oneRow = Layout.Engine.Arrange(
+            new Layout.Node.Grid(2, [.. twoCells], AutoRows: true), new Rect<float>(0, 0, 100, 100), new PixelCtx());
+        var twoRows = Layout.Engine.Arrange(
+            new Layout.Node.Grid(2, [.. threeCells], AutoRows: true), new Rect<float>(0, 0, 100, 100), new PixelCtx());
+
+        RectOf(oneRow, twoCells[0]).Height.ShouldBe(20f);
+        RectOf(twoRows, threeCells[0]).Height.ShouldBe(20f, 0.001f);
+        RectOf(twoRows, threeCells[2]).Y.ShouldBe(20f, 0.001f);
+    }
+
+    [Fact]
+    public void Grid_AutoRows_IntrinsicHeightIsTheSumOfItsRowsSoASpacerCanTakeTheSlack()
+    {
+        // An Auto-height AutoRows grid in a stack must report exactly its content height, or the trailing
+        // spacer has nothing to absorb and the grid silently fills the container.
+        var cells = new Layout.Node[]
+        {
+            Layout.Builder.Spacer().HFixed(20f),
+            Layout.Builder.Spacer().HFixed(20f),
+            Layout.Builder.Spacer().HFixed(20f),
+        };
+        var grid = new Layout.Node.Grid(2, [.. cells], RowGap: 4f, AutoRows: true);
+        var slack = Layout.Builder.Spacer().HStar();
+        var stack = Layout.Builder.VStack(grid, slack);
+
+        var arranged = Layout.Engine.Arrange(stack, new Rect<float>(0, 0, 100, 100), new PixelCtx());
+
+        // Two rows of 20 plus one 4-unit row gap.
+        RectOf(arranged, grid).Height.ShouldBe(44f, 0.001f);
+        RectOf(arranged, slack).Y.ShouldBe(44f, 0.001f);
+        RectOf(arranged, slack).Height.ShouldBe(56f, 0.001f);
+    }
+
+    [Fact]
+    public void Grid_WithoutAutoRows_StillSplitsEvenly()
+    {
+        // The default must be untouched: every existing consumer relies on an even tile.
+        var cells = new Layout.Node[]
+        {
+            Layout.Builder.Spacer().HFixed(30f),
+            Layout.Builder.Spacer().HFixed(10f),
+        };
+        var grid = new Layout.Node.Grid(1, [.. cells]);
+
+        var arranged = Layout.Engine.Arrange(grid, new Rect<float>(0, 0, 100, 100), new PixelCtx());
+
+        RectOf(arranged, cells[0]).Height.ShouldBe(50f);
+        RectOf(arranged, cells[1]).Height.ShouldBe(50f);
     }
 
     // --- overlay (z-order) ---

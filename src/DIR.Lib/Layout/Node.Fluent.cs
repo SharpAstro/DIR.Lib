@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace DIR.Lib.Layout;
 
@@ -97,4 +97,12 @@ public abstract partial record Node
 
     /// <summary>Set the row/column gaps on a <see cref="Grid"/>; no-op on any other node.</summary>
     public Node WithGaps(float rowGap, float columnGap) => this is Grid g ? g with { RowGap = rowGap, ColumnGap = columnGap } : this;
+
+    /// <summary>
+    /// Size a <see cref="Grid"/>'s rows to their own content instead of splitting the height evenly; no-op on
+    /// any other node. Named With* like the gap setters, and because a bare AutoRows would shadow the
+    /// record property it sets. See <see cref="Grid.AutoRows"/> -- this is what makes cells push rows rather than
+    /// every row shrinking as cells are added.
+    /// </summary>
+    public Node WithAutoRows(bool autoRows = true) => this is Grid g ? g with { AutoRows = autoRows } : this;
 }
