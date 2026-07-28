@@ -64,6 +64,13 @@ env:
   #        than the middle. A GPU backend can override with its existing SDF ellipse path.
   #        Additive: a zero radius is exactly FillRectangle, so nothing renders differently
   #        until a caller asks for a radius.
+  #        BEHAVIOUR CHANGE in the same release: RgbaImage.FillRect's SIMD alpha compositing is
+  #        fixed. It skipped the Porter-Duff alpha fix-up whenever the FIRST pixel of a vector had
+  #        an opaque destination, and applied that one verdict to all Count/4 pixels -- leaving the
+  #        RGB-formula value (192 for 50% over opaque) where the scalar tail correctly wrote 255.
+  #        A translucent fill over an opaque surface now yields alpha 255 as it always should have;
+  #        RGB is bit-identical. Consumers holding RGBA goldens that contain a translucent fill over
+  #        an opaque backdrop will need to re-record them (one baseline changed here).
   VERSION_PREFIX: 6.20.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
