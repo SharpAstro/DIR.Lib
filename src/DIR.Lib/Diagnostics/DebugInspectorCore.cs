@@ -257,7 +257,13 @@ public sealed class DebugInspectorCore : IDisposable
     /// Starts the command server on an ephemeral loopback port and announces it on stderr. The host must
     /// then call <see cref="Pump"/> from its loop, or no command will ever run.
     /// </summary>
-    public static DebugInspectorCore Start(IDebugInspectorHost host)
+    /// <param name="host">The surface being driven.</param>
+    /// <param name="enableDiscovery">
+    /// Whether to answer multicast discovery. On by default, because being found without being told a port is
+    /// the point. Turning it off leaves the command server fully working and merely unadvertised — for a host
+    /// that would rather not announce itself on a shared network, or where the multicast bind is unwelcome.
+    /// </param>
+    public static DebugInspectorCore Start(IDebugInspectorHost host, bool enableDiscovery = true)
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
@@ -266,11 +272,15 @@ public sealed class DebugInspectorCore : IDisposable
         var core = new DebugInspectorCore(host, listener, port);
 
         // stderr, not stdout: a TUI owns stdout, and writing the banner there would corrupt the screen.
-        Console.Error.WriteLine($"[inspector] '{host.AppName}' command server on 127.0.0.1:{port}");
+        Console.Error.WriteLine($"[inspector] '{host.AppName}' command server on 127.0.0.1:{port}"
+            + (enableDiscovery ? "" : " (discovery off)"));
         Console.Error.Flush();
 
         _ = Task.Run(core.AcceptLoopAsync);
-        core._discovery = Task.Run(core.DiscoveryLoopAsync);
+        if (enableDiscovery)
+        {
+            core._discovery = Task.Run(core.DiscoveryLoopAsync);
+        }
         return core;
     }
 
@@ -540,10 +550,14 @@ public sealed class DebugInspectorCore : IDisposable
     public static readonly IPAddress DiscoveryGroup = IPAddress.Parse("239.255.77.91");
 
     /// <summary>
-    /// The discovery port. Deliberately NOT SdlVulkan.Renderer's 47891: until that inspector migrates onto
-    /// this core the two speak different query tokens, and sharing a port would mean each sidecar receiving
-    /// queries it must parse and ignore. One port per protocol is cheaper to reason about than one port with
-    /// two dialects.
+    /// The discovery port — now the only one. It was chosen to avoid SdlVulkan.Renderer's 47891 while that
+    /// inspector still spoke its own <c>sdlvk-inspect</c> dialect on its own port; since it moved onto this
+    /// core there is one token, one group and one port, and a sidecar tells surfaces apart by
+    /// <see cref="IDebugInspectorHost.SurfaceKind"/> instead of by which port answered.
+    /// <para>
+    /// Which is what the kind field is for. Sharing a port only works because every reply is self-describing;
+    /// without that a terminal and a GPU window answering the same query would be indistinguishable.
+    /// </para>
     /// </summary>
     public const int DiscoveryPortNumber = 47892;
 

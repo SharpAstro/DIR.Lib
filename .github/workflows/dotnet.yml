@@ -80,7 +80,29 @@ env:
   #        Design units like every other chrome measure, so it scales with DpiScale. A cell surface
   #        approximates it with arc corners; a surface that cannot express it fills square, which is
   #        why it is a hint rather than a guarantee.
-  VERSION_PREFIX: 7.2.${{ github.run_number }}
+  # 7.3 - the inspector core can express a command that spans FRAMES, which is what let SdlVulkan.Renderer's
+  #       inspector fold onto it (see SdlVulkan.Renderer 7.3). Pump could previously only run commands that
+  #       finished within one call, so a host with frame-spanning verbs had to keep a private scheduler -- and,
+  #       because a scheduler needs feeding, a private copy of the transport too. New IDebugInspectorOperation
+  #       (Exclusive / Timeout / Advance) plus IDebugInspectorSteppedHost (SteppedMethods / Begin) express both
+  #       timings the SDL inspector actually needed, and they are genuinely different: an EXCLUSIVE operation
+  #       owns the pump so one step happens per iteration with a real frame in between (a batch), while a
+  #       BACKGROUND one advances every pump WITHOUT blocking the queue, so observe verbs are answered while it
+  #       runs (a press-and-hold -- the whole point being to inspect the UI the hold put on screen). Two rules
+  #       fall out and are tested: one background operation at a time, and an exclusive one may not start on
+  #       top of a background one, since two scripts driving one surface would interleave by frame timing.
+  #       SteppedMethods is a DECLARED set and is consulted before Begin, because Begin ACTS (a hold presses
+  #       the button) -- asking it speculatively whether it knows a method would press the button as a side
+  #       effect of the question. `batch` and `wait` are now CORE verbs: stepping one command per iteration is
+  #       pure scheduling with no surface in it, so every host gets them, and nesting is refused rather than
+  #       given a scheduler stack. A per-operation Timeout rides alongside CommandTimeout, resolved in two
+  #       stages by the socket side, so a five-minute hold is not cut off at ten seconds while a host that
+  #       never pumps still fails fast. ALSO: Detached + Submit drive the scheduler with no listener and no
+  #       multicast bind (the assertions are about ordering, not ports); a DiscoveryExtras default member lets
+  #       a host add fields to its discovery reply, read per reply so a window title that changes stays
+  #       current; Start takes enableDiscovery, preserving the SDL inspector's ability to run unadvertised.
+  #       ADDITIVE -- Console.Lib's host compiles unchanged, verified against its working tree. 17 tests.
+  VERSION_PREFIX: 7.3.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
