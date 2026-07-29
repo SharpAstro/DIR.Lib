@@ -27,8 +27,16 @@ public interface IDebugInspectorHost
     string AppName { get; }
 
     /// <summary>
-    /// What KIND of surface this is — <c>"console"</c>, <c>"pixel"</c>. Carried in the discovery reply so a
-    /// sidecar can filter to instances it knows how to drive.
+    /// What KIND of surface this is, so a sidecar can filter the discovery replies to instances it knows how
+    /// to drive. The established vocabulary:
+    /// <list type="bullet">
+    /// <item><c>"tui"</c> — a character-cell terminal (Console.Lib). Speaks a cell grid: screen, row, cell.</item>
+    /// <item><c>"sdl"</c> — an SDL-hosted pixel window (SdlVulkan.Renderer). Speaks a framebuffer:
+    /// screenshot, and window verbs like minimize.</item>
+    /// <item><c>"webgl"</c> — reserved for a browser surface, should WebGl.Renderer ever host one.</item>
+    /// </list>
+    /// It is free text rather than an enum because the KIND is the host's own claim about itself, and DIR.Lib
+    /// should not have to be edited to admit a surface it has never heard of.
     /// <para>
     /// Load-bearing, not decorative: discovery is one shared multicast group, so a terminal app and a GPU app
     /// on the same machine answer the same query. A sidecar that assumed every reply spoke its own verbs
