@@ -27,6 +27,18 @@ public interface IDebugInspectorHost
     string AppName { get; }
 
     /// <summary>
+    /// What KIND of surface this is — <c>"console"</c>, <c>"pixel"</c>. Carried in the discovery reply so a
+    /// sidecar can filter to instances it knows how to drive.
+    /// <para>
+    /// Load-bearing, not decorative: discovery is one shared multicast group, so a terminal app and a GPU app
+    /// on the same machine answer the same query. A sidecar that assumed every reply spoke its own verbs
+    /// would offer <c>screen</c> to a Vulkan window or <c>minimize</c> to a terminal. This family has already
+    /// been bitten by an unfiltered shared broadcast domain once, in LAN peer discovery.
+    /// </para>
+    /// </summary>
+    string SurfaceKind => "unknown";
+
+    /// <summary>
     /// Wakes the host's loop, if it can idle. A pull loop that already ticks on a timer can leave this
     /// empty; an event-driven one must return promptly or a queued command waits for unrelated input.
     /// </summary>
@@ -105,6 +117,7 @@ public sealed class DebugInspectorCore : IDisposable
         Console.Error.Flush();
 
         _ = Task.Run(core.AcceptLoopAsync);
+        core._discovery = Task.Run(core.DiscoveryLoopAsync);
         return core;
     }
 
@@ -165,6 +178,75 @@ public sealed class DebugInspectorCore : IDisposable
             }
         }
         return sb.Append('"').ToString();
+    }
+
+    /// <summary>The multicast group discovery queries arrive on. Site-local; not 5353, not DNS-SD.</summary>
+    public static readonly IPAddress DiscoveryGroup = IPAddress.Parse("239.255.77.91");
+
+    /// <summary>
+    /// The discovery port. Deliberately NOT SdlVulkan.Renderer's 47891: until that inspector migrates onto
+    /// this core the two speak different query tokens, and sharing a port would mean each sidecar receiving
+    /// queries it must parse and ignore. One port per protocol is cheaper to reason about than one port with
+    /// two dialects.
+    /// </summary>
+    public const int DiscoveryPortNumber = 47892;
+
+    /// <summary>The query a sidecar multicasts; a reply is sent unicast back to its source.</summary>
+    public const string DiscoveryQueryToken = "dir-inspect";
+
+    private Task? _discovery;
+
+    /// <summary>
+    /// Answers discovery queries so a sidecar can find this instance without being told a port. Best-effort:
+    /// if the socket cannot bind (another process holds it, or the environment forbids multicast) the command
+    /// server keeps working and only discovery is lost, which is why the failure is reported rather than
+    /// thrown.
+    /// </summary>
+    private async Task DiscoveryLoopAsync()
+    {
+        using var udp = new UdpClient { ExclusiveAddressUse = false };
+        try
+        {
+            udp.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+            udp.Client.Bind(new IPEndPoint(IPAddress.Any, DiscoveryPortNumber));
+            udp.JoinMulticastGroup(DiscoveryGroup);
+        }
+        catch (SocketException ex)
+        {
+            Console.Error.WriteLine($"[inspector] discovery disabled (bind failed): {ex.Message}");
+            Console.Error.Flush();
+            return;
+        }
+
+        var descriptor = Encoding.UTF8.GetBytes(
+            $"{{\"app\":{Quote(_host.AppName)},\"kind\":{Quote(_host.SurfaceKind)}," +
+            $"\"tcpPort\":{Port},\"pid\":{Environment.ProcessId},\"proto\":{ProtocolVersion}}}");
+
+        while (!_stopping.IsCancellationRequested)
+        {
+            UdpReceiveResult recv;
+            try { recv = await udp.ReceiveAsync(_stopping.Token); }
+            catch (OperationCanceledException) { break; }
+            catch (ObjectDisposedException) { break; }
+            catch (SocketException) { continue; }
+
+            if (!IsDiscoveryQuery(recv.Buffer)) continue;
+
+            try { await udp.SendAsync(descriptor, descriptor.Length, recv.RemoteEndPoint); }
+            catch (SocketException) { /* reply is best-effort */ }
+        }
+    }
+
+    private static bool IsDiscoveryQuery(byte[] buffer)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(buffer);
+            return doc.RootElement.TryGetProperty("q", out var q)
+                && q.ValueKind == JsonValueKind.String
+                && q.GetString() == DiscoveryQueryToken;
+        }
+        catch { return false; }
     }
 
     private async Task AcceptLoopAsync()
@@ -265,6 +347,7 @@ public sealed class DebugInspectorCore : IDisposable
     {
         _stopping.Cancel();
         try { _listener.Stop(); } catch (SocketException) { }
+        try { _discovery?.Wait(TimeSpan.FromSeconds(1)); } catch { /* best-effort */ }
         _stopping.Dispose();
     }
 }
