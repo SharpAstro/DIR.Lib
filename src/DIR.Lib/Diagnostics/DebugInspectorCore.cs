@@ -119,7 +119,7 @@ public sealed class DebugInspectorCore : IDisposable
             try
             {
                 var result = command.Method == "ping"
-                    ? $"{{\"ok\":true,\"protocol\":{ProtocolVersion},\"app\":{JsonSerializer.Serialize(_host.AppName)}}}"
+                    ? $"{{\"ok\":true,\"protocol\":{ProtocolVersion},\"app\":{Quote(_host.AppName)}}}"
                     : _host.Invoke(command.Method, command.Parameters);
 
                 command.Result.TrySetResult(result ?? "");
@@ -132,6 +132,41 @@ public sealed class DebugInspectorCore : IDisposable
         }
     }
 
+    /// <summary>
+    /// A JSON string literal, escaped by hand.
+    /// <para>
+    /// Deliberately not the framework serializer: a trimmed or AOT-configured app sets
+    /// <c>JsonSerializerIsReflectionEnabledByDefault=false</c>, and the generic serialize overload then
+    /// throws at runtime even for a plain string — which is what Chess.Console did the first time it
+    /// answered a request. Every AOT-compatible consumer in this family would hit it, so the inspector
+    /// escapes its own strings and never asks the serializer for a type.
+    /// </para>
+    /// </summary>
+    public static string Quote(string? value)
+    {
+        if (value is null) return "null";
+
+        var sb = new StringBuilder(value.Length + 2).Append('"');
+        foreach (var ch in value)
+        {
+            switch (ch)
+            {
+                case '"': sb.Append("\\\""); break;
+                case '\\': sb.Append("\\\\"); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\t': sb.Append("\\t"); break;
+                case '\b': sb.Append("\\b"); break;
+                case '\f': sb.Append("\\f"); break;
+                default:
+                    if (ch < 0x20) sb.Append("\\u").Append(((int)ch).ToString("x4"));
+                    else sb.Append(ch);
+                    break;
+            }
+        }
+        return sb.Append('"').ToString();
+    }
+
     private async Task AcceptLoopAsync()
     {
         try
@@ -139,7 +174,20 @@ public sealed class DebugInspectorCore : IDisposable
             while (!_stopping.IsCancellationRequested)
             {
                 var client = await _listener.AcceptTcpClientAsync(_stopping.Token);
-                _ = Task.Run(() => ServeAsync(client));
+                _ = Task.Run(async () =>
+                {
+                    // A serve loop that dies silently looks identical, from the client, to a server that
+                    // dropped the connection on purpose. Say why on stderr instead.
+                    try
+                    {
+                        await ServeAsync(client);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"[inspector] connection failed: {ex.GetType().Name}: {ex.Message}");
+                        Console.Error.Flush();
+                    }
+                });
             }
         }
         catch (OperationCanceledException) { }
@@ -164,7 +212,7 @@ public sealed class DebugInspectorCore : IDisposable
                 var (id, response) = await HandleAsync(line);
                 await writer.WriteLineAsync(
                     response.StartsWith('!')
-                        ? $"{{\"id\":{id},\"error\":{JsonSerializer.Serialize(response[1..])}}}"
+                        ? $"{{\"id\":{id},\"error\":{Quote(response[1..])}}}"
                         : $"{{\"id\":{id},\"result\":{response}}}");
             }
         }
