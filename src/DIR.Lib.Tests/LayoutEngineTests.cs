@@ -830,4 +830,50 @@ public class LayoutEngineTests
         wrap.LineGap.ShouldBe(2f);
         wrap.Children.Length.ShouldBe(2);
     }
+
+    /// <summary>
+    /// Sizing one axis of a Stack child says nothing about the other, and a <see cref="Layout.Content.Fill"/>
+    /// leaf's intrinsic extent is its declared minimum -- zero by default. So a child given only a WIDTH
+    /// inside an HStack arranges one cell tall at most, paints nothing, and reports no error.
+    /// <para>
+    /// This emptied five TianWen TUI tabs at once (Equipment, Session, Planner, Guider, Live Session): each
+    /// wrote <c>Fill(key).WFixed(n)</c> in an HStack whose own <see cref="Layout.Node.Stretch"/> made the
+    /// STACK full-height, which reads correct right up until you notice the children are not.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void AStackChildSizedOnOneAxisOnlyKeepsItsIntrinsicExtentOnTheOther()
+    {
+        var widthOnly = Layout.Builder.Fill(key: "a").WFixed(24);
+        var column = Layout.Builder.Fill(key: "b").ColW(24);
+        var row = Layout.Builder.HStack(widthOnly, column).Stretch();
+
+        var arranged = Layout.Engine.Arrange(row, new Rect<int>(0, 0, 120, 40), new CellCtx());
+
+        RectOf(arranged, widthOnly).Height.ShouldBe(0, "WFixed leaves the cross axis on Auto");
+        RectOf(arranged, column).Height.ShouldBe(40, "ColW is Width=Fixed + Height=Star");
+
+        // Both are 24 wide, so the difference is invisible in the dimension the author was thinking about.
+        RectOf(arranged, widthOnly).Width.ShouldBe(24);
+        RectOf(arranged, column).Width.ShouldBe(24);
+    }
+
+    /// <summary>
+    /// The same trap exists on the other axis -- and this is why it is so rarely hit there. Everyone reaches
+    /// for <see cref="Layout.Node.RowH"/> in a VStack, which sets the cross axis to Star for them, whereas
+    /// the HStack counterpart <see cref="Layout.Node.ColW"/> is easy not to know about: <c>WFixed</c> reads
+    /// like the obvious way to give a column a width.
+    /// </summary>
+    [Fact]
+    public void RowHIsWhyTheVerticalCaseAlmostNeverBites()
+    {
+        var heightOnly = Layout.Builder.Fill(key: "a").HFixed(1);
+        var fullRow = Layout.Builder.Fill(key: "b").RowH(1);
+        var column = Layout.Builder.VStack(heightOnly, fullRow).Stretch();
+
+        var arranged = Layout.Engine.Arrange(column, new Rect<int>(0, 0, 120, 40), new CellCtx());
+
+        RectOf(arranged, heightOnly).Width.ShouldBe(0, "HFixed leaves the cross axis on Auto");
+        RectOf(arranged, fullRow).Width.ShouldBe(120, "RowH is Width=Star + Height=Fixed");
+    }
 }
