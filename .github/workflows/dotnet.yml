@@ -102,7 +102,17 @@ env:
   #       a host add fields to its discovery reply, read per reply so a window title that changes stays
   #       current; Start takes enableDiscovery, preserving the SDL inspector's ability to run unadvertised.
   #       ADDITIVE -- Console.Lib's host compiles unchanged, verified against its working tree. 17 tests.
-  VERSION_PREFIX: 7.3.${{ github.run_number }}
+  # 7.4 - a CELL-authored tree arranges on a pixel surface: PixelMeasureContext gains per-axis scales plus a
+  #       CellAuthored factory (nominal 8x16, pass the real cell size when known) -- the exact mirror of
+  #       Console.Lib's CellMeasureContext.PixelAuthored, so a tree authored in either unit convention now
+  #       arranges on either surface. fontSize rides the VERTICAL scale (an em is a height): fontSize 1f is
+  #       one cell of text on both sides. Alongside it, PixelWidgetBase's Arrange/Paint/RenderLayout gain
+  #       overloads taking the CONTEXT itself, and the painter reads FontPath/FontScale/radius from it --
+  #       previously dpiScale was a scalar threaded separately into measure and paint, two copies kept in
+  #       step by hand, which is exactly the drift a per-axis context would have turned into wrong text
+  #       sizes. The scalar overloads delegate to the context ones (isotropic), so existing callers paint
+  #       byte-identically. ADDITIVE. 5 tests, incl. measure-and-paint-agree-by-construction.
+  VERSION_PREFIX: 7.4.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

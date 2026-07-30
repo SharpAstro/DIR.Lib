@@ -423,10 +423,17 @@ namespace DIR.Lib
         /// device pixels).
         /// </summary>
         protected ImmutableArray<Layout.ArrangedNode<float>> ArrangeLayout(Layout.Node root, RectF32 bounds, string? fontPath = null, float? dpiScale = null)
-        {
-            var ctx = new PixelMeasureContext<TSurface>(Renderer, fontPath ?? FontPath, dpiScale ?? DpiScale);
-            return Layout.Engine.Arrange(root, new Rect<float>(bounds.X, bounds.Y, bounds.Width, bounds.Height), ctx);
-        }
+            => ArrangeLayout(root, bounds, new PixelMeasureContext<TSurface>(Renderer, fontPath ?? FontPath, dpiScale ?? DpiScale));
+
+        /// <summary>
+        /// <see cref="ArrangeLayout(Layout.Node, RectF32, string?, float?)"/> with an explicit measure
+        /// context — for a tree authored in another unit convention (e.g.
+        /// <see cref="PixelMeasureContext{TSurface}.CellAuthored"/> for a cell-authored tree shared with a
+        /// terminal). Pass the SAME context to <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, PixelMeasureContext{TSurface}, Action{Layout.Content.Fill, RectF32}?)"/>,
+        /// which is what makes measure and paint incapable of disagreeing on font or scale.
+        /// </summary>
+        protected ImmutableArray<Layout.ArrangedNode<float>> ArrangeLayout(Layout.Node root, RectF32 bounds, PixelMeasureContext<TSurface> ctx)
+            => Layout.Engine.Arrange(root, new Rect<float>(bounds.X, bounds.Y, bounds.Width, bounds.Height), ctx);
 
         /// <summary>
         /// Paints an already-arranged tree: each node's <see cref="Layout.Node.Background"/> fills first
@@ -438,13 +445,25 @@ namespace DIR.Lib
         /// </summary>
         protected void PaintLayout(ImmutableArray<Layout.ArrangedNode<float>> arranged, string? fontPath = null, float? dpiScale = null,
             Action<Layout.Content.Fill, RectF32>? drawFill = null)
+            => PaintLayout(arranged, new PixelMeasureContext<TSurface>(Renderer, fontPath ?? FontPath, dpiScale ?? DpiScale), drawFill);
+
+        /// <summary>
+        /// <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, string?, float?, Action{Layout.Content.Fill, RectF32}?)"/>
+        /// driven by the SAME measure context the tree was arranged with — the context is the one authority
+        /// on font (<see cref="PixelMeasureContext{TSurface}.FontPath"/>), text scale
+        /// (<see cref="PixelMeasureContext{TSurface}.FontScale"/>) and chrome scale, so a paint cannot use a
+        /// scale the measure did not. The scalar overload delegates here with an isotropic context, which is
+        /// byte-identical to what it always did.
+        /// </summary>
+        protected void PaintLayout(ImmutableArray<Layout.ArrangedNode<float>> arranged, PixelMeasureContext<TSurface> ctx,
+            Action<Layout.Content.Fill, RectF32>? drawFill = null)
         {
-            var fp = fontPath ?? FontPath;
-            var scale = dpiScale ?? DpiScale;
+            var fp = ctx.FontPath;
             foreach (var (node, bounds) in arranged)
             {
-                // CornerRadius is in design units like every other chrome measure, so it scales with DPI.
-                var radius = node.CornerRadius * scale;
+                // CornerRadius is in design units like every other chrome measure, so it scales with DPI —
+                // through the context's axis-free mapping, the same one that resolved it at measure time.
+                var radius = ctx.ToSurface(node.CornerRadius);
 
                 if (node.Background is { } bg)
                 {
@@ -464,7 +483,7 @@ namespace DIR.Lib
                     {
                         case Layout.Content.Text text:
                             DrawText(text.Value.AsSpan(), fp, bounds.X, bounds.Y, bounds.Width, bounds.Height,
-                                text.FontSize * scale, text.Color, text.HAlign, text.VAlign);
+                                text.FontSize * ctx.FontScale, text.Color, text.HAlign, text.VAlign);
                             break;
                         case Layout.Content.Box box when box.Color.Alpha > 0:
                             FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, box.Color, radius);
@@ -492,11 +511,19 @@ namespace DIR.Lib
         /// </summary>
         protected ImmutableArray<Layout.ArrangedNode<float>> RenderLayout(Layout.Node root, RectF32 bounds, string? fontPath = null,
             float? dpiScale = null, Action<Layout.Content.Fill, RectF32>? drawFill = null)
+            => RenderLayout(root, bounds,
+                new PixelMeasureContext<TSurface>(Renderer, fontPath ?? FontPath, dpiScale ?? DpiScale), drawFill);
+
+        /// <summary>
+        /// <see cref="RenderLayout(Layout.Node, RectF32, string?, float?, Action{Layout.Content.Fill, RectF32}?)"/>
+        /// with an explicit measure context, threaded through BOTH halves — one object answers measure and
+        /// paint, so the two cannot drift.
+        /// </summary>
+        protected ImmutableArray<Layout.ArrangedNode<float>> RenderLayout(Layout.Node root, RectF32 bounds,
+            PixelMeasureContext<TSurface> ctx, Action<Layout.Content.Fill, RectF32>? drawFill = null)
         {
-            var fp = fontPath ?? FontPath;
-            var scale = dpiScale ?? DpiScale;
-            var arranged = ArrangeLayout(root, bounds, fp, scale);
-            PaintLayout(arranged, fp, scale, drawFill);
+            var arranged = ArrangeLayout(root, bounds, ctx);
+            PaintLayout(arranged, ctx, drawFill);
             return arranged;
         }
 

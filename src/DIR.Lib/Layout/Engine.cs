@@ -95,6 +95,17 @@ public static class Engine
     /// Arranges <paramref name="root"/> into <paramref name="bounds"/>, returning every node placed at an
     /// absolute rect, in pre-order (parent before children; Overlay base-subtree before top-subtree) so a
     /// painter drawing in list order gets correct z-stacking.
+    /// <para>
+    /// <b><paramref name="root"/> is placed at <paramref name="bounds"/> verbatim; its own
+    /// <see cref="Node.Width"/>/<see cref="Node.Height"/> are never read.</b> Sizing is a parent-to-child
+    /// protocol -- a node's Width/Height instructs its PARENT, and the root has none, so the caller owns the
+    /// outer rect outright. Only <see cref="Node.Padding"/> is honoured on the root, because it insets the
+    /// child rect rather than the node's own. Two consequences worth knowing: a root does not need
+    /// <c>WStar()</c>/<c>HStar()</c> to fill what it was given (its <c>Bg</c> covers the whole rect even
+    /// though a Stack's default Width is <see cref="Sizing.Auto"/>), and the "an Auto container whose
+    /// children are all Star measures to near-zero and arranges to nothing" hazard applies to NESTED
+    /// containers only, since it needs a parent to measure it.
+    /// </para>
     /// </summary>
     public static ImmutableArray<ArrangedNode<T>> Arrange<T>(Node root, Rect<T> bounds, IMeasureContext<T> ctx)
         where T : INumber<T>
