@@ -170,4 +170,64 @@ public sealed class FontResolverTests
         if (path is null) return;
         Path.GetFileName(path).ToLowerInvariant().ShouldBe("tahoma.ttf");
     }
+
+    /// <summary>
+    /// Every indexed face must name a file that exists and a face index the file actually has —
+    /// the id is handed straight to the rasterizer, so a bad one is a load exception at draw time.
+    /// </summary>
+    [Fact]
+    public void InstalledFaces_EveryEntryPointsAtALoadableFace()
+    {
+        var index = FontResolver.InstalledFaces;
+        if (index.Count == 0) return; // no fonts installed (a bare CI container)
+
+        foreach (var (key, faces) in index)
+        {
+            key.ShouldNotBeNullOrEmpty();
+            faces.Length.ShouldBe(4); // one slot per FontStyle
+            foreach (var face in faces)
+            {
+                if (face.Path is null) continue; // unfilled style slot
+                File.Exists(face.Path).ShouldBeTrue($"'{key}' indexes a missing file: {face.Path}");
+                face.FaceIndex.ShouldBeGreaterThanOrEqualTo(0);
+                FontFaceId.TryParse(face.Id, out var parsedPath, out var parsedIndex);
+                parsedPath.ShouldBe(face.Path);
+                parsedIndex.ShouldBe(face.FaceIndex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The case a file-name-derived lookup cannot reach: Segoe UI Symbol's file is seguisym.ttf,
+    /// so neither the standard-family table nor a "&lt;family&gt;.ttf" probe finds it. Only the
+    /// face's own declared family name does.
+    /// </summary>
+    [Fact]
+    public void ResolveInstalledFont_FindsAFaceWhoseFileNameIsNotItsFamily()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var path = FontResolver.ResolveInstalledFont("Segoe UI Symbol");
+        if (path is null) return; // not installed on this SKU
+        Path.GetFileName(path).ToLowerInvariant().ShouldBe("seguisym.ttf");
+    }
+
+    /// <summary>
+    /// A face past the first inside a collection has no file name at all, so it can only be named
+    /// by a font id carrying its index. Cambria Math is face 1 of cambria.ttc.
+    /// </summary>
+    [Fact]
+    public void ResolveInstalledFont_ReachesFacesInsideACollection()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var id = FontResolver.ResolveInstalledFont("Cambria Math");
+        if (id is null) return; // Office fonts not present
+
+        FontFaceId.TryParse(id, out var path, out var faceIndex).ShouldBeTrue();
+        Path.GetFileName(path).ToLowerInvariant().ShouldBe("cambria.ttc");
+        faceIndex.ShouldBeGreaterThan(0);
+
+        // ...and the id must reach the face it names, not merely parse.
+        var rasterizer = new ManagedFontRasterizer();
+        Should.NotThrow(() => rasterizer.RasterizeGlyph(id, 24f, new System.Text.Rune('A')));
+    }
 }

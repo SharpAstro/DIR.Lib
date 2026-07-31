@@ -743,7 +743,11 @@ public sealed class ManagedFontRasterizer : IDisposable
         if (fontPath.StartsWith("mem:", StringComparison.Ordinal))
             throw new InvalidOperationException($"Memory font not registered: '{fontPath}'");
 
-        var font = OpenTypeFont.LoadFromFile(fontPath);
+        // A '#N' suffix names a face inside a collection (see FontFaceId). Check the whole id as
+        // a path first so a file whose name genuinely ends that way still opens.
+        var font = FontFaceId.TryParse(fontPath, out var path, out var faceIndex) && !File.Exists(fontPath)
+            ? OpenTypeFont.LoadFromFile(path, faceIndex)
+            : OpenTypeFont.LoadFromFile(fontPath);
         return _fonts.GetOrAdd(fontPath, font);
     }
 
