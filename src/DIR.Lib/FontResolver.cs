@@ -268,13 +268,7 @@ public static class FontResolver
         style = (bold ? FontStyle.Bold : FontStyle.Regular) | (italic ? FontStyle.Italic : FontStyle.Regular);
 
         // Strip style words, the PostScript "ps"/"mt" tags, and separators to isolate the family.
-        ReadOnlySpan<string> noise = ["bold", "italic", "oblique", "regular", "ps", "mt"];
-        var key = lower;
-        foreach (var token in noise)
-            key = key.Replace(token, "");
-        // "+" is in the separator set so a degenerate name with no family after the
-        // subset tag ("+", "ABCDEF+") collapses to empty rather than a junk family.
-        family = key.Replace(",", "").Replace("-", "").Replace("_", "").Replace(" ", "").Replace("+", "");
+        family = NormalizeFamilyKey(lower);
         return family.Length > 0;
     }
 
@@ -299,15 +293,140 @@ public static class FontResolver
 
     /// <summary>
     /// Resolves a font name (in any of the forms <see cref="TryParseFamilyStyle"/>
-    /// accepts) to an installed font file. Tries the standard-family table first,
-    /// then a direct "&lt;family&gt;.ttf" probe against the installed-font index so it
-    /// also covers fonts beyond the standard families (Tahoma → tahoma.ttf,
-    /// ISOCPEUR → isocpeur.ttf). Returns null when nothing installed matches.
+    /// accepts) to an installed face, as a <see cref="FontFaceId"/> — a plain file path for
+    /// an ordinary font, <c>path#index</c> for a face inside a collection.
+    ///
+    /// <para>Three strategies in order of cost: the standard-family table, a direct
+    /// "&lt;family&gt;.ttf" probe against the file-name index (Tahoma → tahoma.ttf), and
+    /// finally <see cref="InstalledFaces"/> — every installed face keyed by the family name it
+    /// declares in its own 'name' table. The last is what finds a face whose file name isn't
+    /// its family ("Segoe UI Symbol" lives in seguisym.ttf) or that has no file name of its own
+    /// at all (anything past the first face of a .ttc). It builds an index on first use, so the
+    /// two cheap probes run first.</para>
+    ///
+    /// <para>Returns null when nothing installed matches.</para>
     /// </summary>
     public static string? ResolveInstalledFont(string name)
     {
         if (!TryParseFamilyStyle(name, out var family, out var style))
             return null;
-        return ResolveInstalledFace(family, style) ?? FindInstalledFile([family + ".ttf"]);
+        return ResolveInstalledFace(family, style)
+            ?? FindInstalledFile([family + ".ttf"])
+            ?? ResolveDeclaredFamily(family, style);
+    }
+
+    // ---- Declared-name resolution (every installed face, by its own 'name' table) -----------
+
+    /// <summary>
+    /// One installed face. <see cref="FaceIndex"/> is its position inside a collection (0 for a
+    /// single-face file); <see cref="Id"/> is the string to hand to the rasterizer.
+    /// </summary>
+    /// <param name="Path">Absolute path of the file holding the face.</param>
+    /// <param name="FaceIndex">Index within a .ttc/.otc; 0 for a plain font file.</param>
+    /// <param name="Family">The family the face declares.</param>
+    /// <param name="Subfamily">The style the face declares, verbatim ("Book", "SemiBold Italic").</param>
+    /// <param name="Style">The subfamily reduced to the four style-linked faces.</param>
+    /// <param name="Weight">OS/2 usWeightClass (400 = Regular, 700 = Bold); 0 if the face declares none.</param>
+    public readonly record struct InstalledFace(
+        string Path, int FaceIndex, string Family, string? Subfamily, FontStyle Style, ushort Weight)
+    {
+        /// <summary>The <see cref="FontFaceId"/> naming this face.</summary>
+        public string Id => FontFaceId.Create(Path, FaceIndex);
+    }
+
+    // Normalized family key -> faces sharing it. Built once, lazily: the scan reads only each
+    // file's 'name'/'OS/2' tables (SharpAstro.Fonts.FontFaceReader seeks rather than loading),
+    // which costs tens of milliseconds warm across a few hundred installed files — but seconds
+    // when the OS file cache is cold, so it must not be triggered from a render thread.
+    // Lazy<T> is thread-safe by default.
+    private static readonly Lazy<IReadOnlyDictionary<string, InstalledFace[]>> DeclaredFamilies =
+        new(BuildDeclaredFamilyIndex);
+
+    /// <summary>
+    /// Every installed face, grouped by normalized family key, each group indexed by
+    /// <c>(int)</c><see cref="FontStyle"/>. Built on first access (see
+    /// <see cref="ResolveInstalledFont"/> for the cost); warm it off the render thread if a
+    /// stall would be visible.
+    /// </summary>
+    public static IReadOnlyDictionary<string, InstalledFace[]> InstalledFaces => DeclaredFamilies.Value;
+
+    /// <summary>
+    /// All faces of one family, indexed by <c>(int)</c><see cref="FontStyle"/>; null if the
+    /// family isn't installed. <paramref name="family"/> is matched leniently — the same
+    /// normalization <see cref="TryParseFamilyStyle"/> applies is applied to both sides, so
+    /// spacing, case and separators don't matter.
+    /// </summary>
+    public static InstalledFace[]? FindDeclaredFamily(string family)
+        => DeclaredFamilies.Value.TryGetValue(NormalizeFamilyKey(family), out var faces) ? faces : null;
+
+    private static string? ResolveDeclaredFamily(string family, FontStyle style)
+    {
+        var faces = FindDeclaredFamily(family);
+        if (faces is null) return null;
+        // Prefer the exact styled face, else the family's regular — a same-family substitute
+        // beats an unrelated fallback, matching ResolveInstalledFace.
+        var exact = faces[(int)style];
+        if (exact.Path is not null) return exact.Id;
+        var regular = faces[(int)FontStyle.Regular];
+        return regular.Path is not null ? regular.Id : null;
+    }
+
+    private static Dictionary<string, InstalledFace[]> BuildDeclaredFamilyIndex()
+    {
+        // Materialize first so the fold below is deterministic: the parallel scan writes into
+        // slots, and first-wins is then resolved in FontDirectories order (system before user)
+        // rather than in whatever order threads happened to finish.
+        var files = EnumerateInstalledFonts().ToArray();
+        var perFile = new SharpAstro.Fonts.FontFaceInfo[files.Length][];
+        Parallel.For(0, files.Length, i => perFile[i] = SharpAstro.Fonts.FontFaceReader.ReadFaces(files[i]));
+
+        var index = new Dictionary<string, InstalledFace[]>(StringComparer.Ordinal);
+        foreach (var faces in perFile)
+        {
+            foreach (var face in faces)
+            {
+                // A face with no declared family (a PDF subset carrying only a PostScript name)
+                // can't be looked up by family; its PostScript name is indexed instead.
+                Add(index, face.Family, face);
+                Add(index, face.LegacyFamily, face);
+                Add(index, face.PostScriptName, face);
+            }
+        }
+        return index;
+    }
+
+    private static void Add(Dictionary<string, InstalledFace[]> index, string? family, SharpAstro.Fonts.FontFaceInfo face)
+    {
+        if (string.IsNullOrEmpty(family)) return;
+        var key = NormalizeFamilyKey(family);
+        if (key.Length == 0) return;
+
+        if (!index.TryGetValue(key, out var slots))
+            index[key] = slots = new InstalledFace[4];
+
+        var style = (face.IsBold ? FontStyle.Bold : FontStyle.Regular)
+                  | (face.IsItalic ? FontStyle.Italic : FontStyle.Regular);
+        // First wins: FontDirectories yields system fonts before per-user ones, and a face's
+        // typographic family is offered before its legacy one.
+        if (slots[(int)style].Path is not null) return;
+        slots[(int)style] = new InstalledFace(
+            face.Path, face.FaceIndex, family, face.Subfamily, style, face.WeightClass);
+    }
+
+    /// <summary>
+    /// Reduce a family name to the key both sides of a lookup are compared on: lowercase, with
+    /// style words, the PostScript "PS"/"MT" tags and all separators removed. Applied to the
+    /// caller's string and to the face's declared family alike, so whatever it mangles, it
+    /// mangles identically on both sides.
+    /// </summary>
+    private static string NormalizeFamilyKey(string name)
+    {
+        ReadOnlySpan<string> noise = ["bold", "italic", "oblique", "regular", "ps", "mt"];
+        var key = name.ToLowerInvariant();
+        foreach (var token in noise)
+            key = key.Replace(token, "");
+        // "+" is in the separator set so a degenerate name with no family after the
+        // subset tag ("+", "ABCDEF+") collapses to empty rather than a junk family.
+        return key.Replace(",", "").Replace("-", "").Replace("_", "").Replace(" ", "").Replace("+", "");
     }
 }

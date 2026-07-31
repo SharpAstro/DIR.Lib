@@ -47,6 +47,17 @@ public sealed class PixelMeasureContext<TSurface>(Renderer<TSurface> renderer, s
     public string FontPath => fontPath;
 
     /// <summary>
+    /// Optional per-codepoint font fallback. When set, a text leaf is measured across its
+    /// coverage runs instead of against <see cref="FontPath"/> alone — so a label mixing scripts,
+    /// or carrying a symbol the primary face lacks, is sized for the fonts it will actually be
+    /// drawn with. The painter reads this same property, which is what stops measure and paint
+    /// from disagreeing; set it on the context, not separately on both halves.
+    ///
+    /// <para>Null (the default) leaves every measurement byte-identical to before.</para>
+    /// </summary>
+    public FontFallbackResolver? Fallback { get; init; }
+
+    /// <summary>
     /// Device pixels per design unit of FONT size — the vertical scale, because an em is a height. On the
     /// isotropic path this is exactly the DPI scale, so <c>fontSize * FontScale</c> is the same number the
     /// painter always multiplied by; on the cell-authored path it is the cell height, so <c>fontSize: 1f</c>
@@ -62,9 +73,31 @@ public sealed class PixelMeasureContext<TSurface>(Renderer<TSurface> renderer, s
             return new Layout.Size<float>(0f, fontSize * FontScale);
         }
 
-        var (width, height) = renderer.MeasureText(text, fontPath, fontSize * FontScale);
+        var px = fontSize * FontScale;
+
+        // Only split when the primary can't draw the whole run — PrimaryCoversAll is
+        // allocation-free and true for essentially all chrome, so the common path is unchanged.
+        if (Fallback is { } fallback && !fallback.PrimaryCoversAll(text))
+        {
+            var runs = _runs ??= [];
+            fallback.CoverageRuns(text, runs);
+            float w = 0f, h = 0f;
+            foreach (var (start, length, runFont) in runs)
+            {
+                var (rw, rh) = renderer.MeasureText(text.Slice(start, length), runFont, px);
+                w += rw;
+                if (rh > h) h = rh;
+            }
+            return new Layout.Size<float>(w, h);
+        }
+
+        var (width, height) = renderer.MeasureText(text, fontPath, px);
         return new Layout.Size<float>(width, height);
     }
+
+    // Scratch for the run split. A context is per-widget-per-paint and used from the render
+    // thread, so one reusable list keeps the fallback path off the allocator too.
+    private List<FontFallbackResolver.FontRun>? _runs;
 
     /// <summary>
     /// The axis-free mapping, used for genuinely axis-free scalars such as a corner radius. Resolved against

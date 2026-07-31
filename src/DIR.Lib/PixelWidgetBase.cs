@@ -118,6 +118,18 @@ namespace DIR.Lib
         public virtual string? EmojiFontPath { get; set; }
 
         /// <summary>
+        /// Optional per-codepoint font fallback covering the whole font set — the general form of
+        /// <see cref="EmojiFontPath"/>, which handles exactly one extra face and only for the emoji
+        /// ranges. When set, <c>DrawText</c> splits a string into runs each drawn with a font that
+        /// actually covers it, so a symbol or a foreign script inside an ordinary label renders instead
+        /// of coming out as <c>.notdef</c>. The layout helpers propagate it into the measure context, so
+        /// text is sized for the fonts it will be drawn with.
+        ///
+        /// <para>Null (the default) leaves drawing exactly as it was, including the emoji path.</para>
+        /// </summary>
+        public virtual FontFallbackResolver? FontFallback { get; set; }
+
+        /// <summary>
         /// Clears clickable regions (and the inspector layout capture, if enabled). Call at the start
         /// of each Render pass.
         /// </summary>
@@ -423,7 +435,15 @@ namespace DIR.Lib
         /// device pixels).
         /// </summary>
         protected ImmutableArray<Layout.ArrangedNode<float>> ArrangeLayout(Layout.Node root, RectF32 bounds, string? fontPath = null, float? dpiScale = null)
-            => ArrangeLayout(root, bounds, new PixelMeasureContext<TSurface>(Renderer, fontPath ?? FontPath, dpiScale ?? DpiScale));
+            => ArrangeLayout(root, bounds, DefaultContext(fontPath, dpiScale));
+
+        /// <summary>
+        /// The measure context the scalar overloads use: the widget's font, DPI scale and
+        /// <see cref="FontFallback"/>. Threading the resolver through here is what lets a consumer set it
+        /// once on the widget and have measure and paint both honour it.
+        /// </summary>
+        private PixelMeasureContext<TSurface> DefaultContext(string? fontPath, float? dpiScale)
+            => new(Renderer, fontPath ?? FontPath, dpiScale ?? DpiScale) { Fallback = FontFallback };
 
         /// <summary>
         /// <see cref="ArrangeLayout(Layout.Node, RectF32, string?, float?)"/> with an explicit measure
@@ -445,7 +465,7 @@ namespace DIR.Lib
         /// </summary>
         protected void PaintLayout(ImmutableArray<Layout.ArrangedNode<float>> arranged, string? fontPath = null, float? dpiScale = null,
             Action<Layout.Content.Fill, RectF32>? drawFill = null)
-            => PaintLayout(arranged, new PixelMeasureContext<TSurface>(Renderer, fontPath ?? FontPath, dpiScale ?? DpiScale), drawFill);
+            => PaintLayout(arranged, DefaultContext(fontPath, dpiScale), drawFill);
 
         /// <summary>
         /// <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, string?, float?, Action{Layout.Content.Fill, RectF32}?)"/>
@@ -482,7 +502,10 @@ namespace DIR.Lib
                     switch (leaf.Content)
                     {
                         case Layout.Content.Text text:
-                            DrawText(text.Value.AsSpan(), fp, bounds.X, bounds.Y, bounds.Width, bounds.Height,
+                            // The context's resolver, not the widget's: paint must split on exactly what
+                            // measure split on, or the arranged rect won't fit what lands in it.
+                            DrawText(text.Value.AsSpan(), fp, ctx.Fallback,
+                                bounds.X, bounds.Y, bounds.Width, bounds.Height,
                                 text.FontSize * ctx.FontScale, text.Color, text.HAlign, text.VAlign);
                             break;
                         case Layout.Content.Box box when box.Color.Alpha > 0:
@@ -511,8 +534,7 @@ namespace DIR.Lib
         /// </summary>
         protected ImmutableArray<Layout.ArrangedNode<float>> RenderLayout(Layout.Node root, RectF32 bounds, string? fontPath = null,
             float? dpiScale = null, Action<Layout.Content.Fill, RectF32>? drawFill = null)
-            => RenderLayout(root, bounds,
-                new PixelMeasureContext<TSurface>(Renderer, fontPath ?? FontPath, dpiScale ?? DpiScale), drawFill);
+            => RenderLayout(root, bounds, DefaultContext(fontPath, dpiScale), drawFill);
 
         /// <summary>
         /// <see cref="RenderLayout(Layout.Node, RectF32, string?, float?, Action{Layout.Content.Fill, RectF32}?)"/>
@@ -612,13 +634,34 @@ namespace DIR.Lib
 
         protected void DrawText(ReadOnlySpan<char> text, string fontPath, float x, float y, float w, float h,
             float fontSize, RGBAColor32 color, TextAlign horizAlign = TextAlign.Near, TextAlign vertAlign = TextAlign.Center)
+            => DrawText(text, fontPath, FontFallback, x, y, w, h, fontSize, color, horizAlign, vertAlign);
+
+        /// <summary>
+        /// <see cref="DrawText(ReadOnlySpan{char}, string, float, float, float, float, float, RGBAColor32, TextAlign, TextAlign)"/>
+        /// with an explicit fallback resolver, so a layout paint can draw with exactly the resolver its
+        /// measure used rather than with whatever the widget currently has set.
+        /// </summary>
+        private void DrawText(ReadOnlySpan<char> text, string fontPath, FontFallbackResolver? fallback,
+            float x, float y, float w, float h,
+            float fontSize, RGBAColor32 color, TextAlign horizAlign, TextAlign vertAlign)
         {
             if (string.IsNullOrEmpty(fontPath)) return;
+
+            // A run draws with exactly one font, so any string whose glyphs don't all live in one face has
+            // to be split. The general form is coverage-driven: ask the resolver which font covers each
+            // codepoint. PrimaryCoversAll is allocation-free and true for essentially all chrome, so the
+            // split machinery only engages for the strings that actually need it.
+            if (fallback is not null && !fallback.PrimaryCoversAll(text))
+            {
+                DrawCoverageRuns(text, fallback, x, y, w, h, fontSize, color, horizAlign, vertAlign);
+                return;
+            }
 
             // Mixed text + emoji needs two fonts, because a run is drawn with exactly one. Without this an
             // emoji inside ordinary text renders as blank space (a text font has no pictograph glyphs), which
             // is why callers used to have to pass the emoji font AS the font and therefore could never put a
-            // glyph and a label in the same string.
+            // glyph and a label in the same string. Superseded by the resolver above when one is set; kept
+            // for widgets that declare only an emoji font.
             if (EmojiFontPath is { Length: > 0 } emojiFont
                 && !string.Equals(emojiFont, fontPath, StringComparison.Ordinal)
                 && ContainsEmoji(text))
@@ -630,6 +673,52 @@ namespace DIR.Lib
             Renderer.DrawText(text, fontPath, fontSize, color,
                 new RectInt(new PointInt((int)(x + w), (int)(y + h)), new PointInt((int)x, (int)y)),
                 horizAlign, vertAlign);
+        }
+
+        // Reusable scratch for the coverage split — a widget paints on the render thread, one string at a
+        // time, so a single list per widget keeps the fallback path allocation-free.
+        private List<FontFallbackResolver.FontRun>? _coverageRuns;
+        private float[]? _coverageWidths;
+
+        private void DrawCoverageRuns(ReadOnlySpan<char> text, FontFallbackResolver fallback,
+            float x, float y, float w, float h, float fontSize, RGBAColor32 color,
+            TextAlign horizAlign, TextAlign vertAlign)
+        {
+            var runs = _coverageRuns ??= [];
+            fallback.CoverageRuns(text, runs);
+            if (runs.Count == 0) return;
+
+            // Split and measure ONCE: alignment needs the total before anything can be placed, so the widths
+            // are kept rather than recomputed on a second pass over the same runs.
+            if (_coverageWidths is null || _coverageWidths.Length < runs.Count)
+                _coverageWidths = new float[Math.Max(runs.Count, 8)];
+            var widths = _coverageWidths;
+
+            var total = 0f;
+            for (var i = 0; i < runs.Count; i++)
+            {
+                var (start, length, runFont) = runs[i];
+                widths[i] = Renderer.MeasureText(text.Slice(start, length), runFont, fontSize).Width;
+                total += widths[i];
+            }
+
+            var cursor = horizAlign switch
+            {
+                TextAlign.Center => x + (w - total) / 2f,
+                TextAlign.Far => x + w - total,
+                _ => x,
+            };
+
+            for (var i = 0; i < runs.Count; i++)
+            {
+                var (start, length, runFont) = runs[i];
+                Renderer.DrawText(text.Slice(start, length), runFont, fontSize, color,
+                    new RectInt(
+                        new PointInt((int)(cursor + widths[i]), (int)(y + h)),
+                        new PointInt((int)cursor, (int)y)),
+                    TextAlign.Near, vertAlign);
+                cursor += widths[i];
+            }
         }
 
         /// <summary>

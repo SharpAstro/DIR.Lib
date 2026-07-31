@@ -112,7 +112,26 @@ env:
   #       step by hand, which is exactly the drift a per-axis context would have turned into wrong text
   #       sizes. The scalar overloads delegate to the context ones (isotropic), so existing callers paint
   #       byte-identically. ADDITIVE. 5 tests, incl. measure-and-paint-agree-by-construction.
-  VERSION_PREFIX: 7.4.${{ github.run_number }}
+  # 7.5 - fonts are found by the family they DECLARE, and every face of a collection is reachable.
+  #       FontResolver indexed families by guessing a file name ("<family>.ttf") plus a table of the
+  #       standard 14 -- which finds Segoe UI only because Windows happens to call that file segoeui.ttf,
+  #       never finds Segoe UI Symbol (seguisym.ttf), and cannot name ANY face past the first of a .ttc,
+  #       since those have no file name of their own. It now indexes each installed face's own 'name'
+  #       table (SharpAstro.Fonts 1.7 FontFaceReader, which seeks to 'name'/'OS/2' rather than loading the
+  #       font: ~25ms warm over 500 files). The two cheap probes still run first; the index builds lazily
+  #       behind them. Faces are named by FontFaceId -- a plain path, or path#index for a collection --
+  #       honoured by ManagedFontRasterizer and FontFallbackResolver; since the id is already every
+  #       glyph/atlas/shaper cache key, two faces of one file separate with no further plumbing.
+  #       FontFallbackResolver gains TryResolveFont/CanRender (it could not previously report "nothing
+  #       covers this", so callers duplicated its coverage cache to get a nullable answer) and role-based
+  #       construction (FromRoles: primary/symbol/emoji/scripts). PixelWidgetBase.FontFallback +
+  #       PixelMeasureContext.Fallback carry per-run fallback into the declarative painter, so a text leaf
+  #       splits into runs each drawn with a font that covers it instead of being drawn whole in one --
+  #       the general form of the emoji-only split, which stays for widgets that declare just EmojiFontPath.
+  #       The split is allocation-free and gated on an allocation-free PrimaryCoversAll, so text needing no
+  #       fallback costs nothing. FIX: the all-ASCII shortcut now checks that the primary covers ASCII.
+  #       ADDITIVE. 31 tests.
+  VERSION_PREFIX: 7.5.${{ github.run_number }}
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

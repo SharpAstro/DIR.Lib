@@ -17,7 +17,7 @@
     <!-- Tracks Fonts.Lib repo CI cadence. 1.5.x decodes CBDT colour-bitmap glyph
          PNGs via SharpAstro.Png instead of the stb_image port, so pulling it drops
          the transitive SharpAstro.StbImage dependency from downstream consumers. -->
-    <PackageVersion Include="SharpAstro.Fonts" Version="1.6.*" />
+    <PackageVersion Include="SharpAstro.Fonts" Version="1.7.*" />
     <!-- The pure-managed shaping engine, consumed by the DIR.Lib.Shaping satellite (the
          ITextShaper adapter). Same Fonts.Lib CI cadence as SharpAstro.Fonts. -->
     <PackageVersion Include="SharpAstro.Fonts.Shaping" Version="1.6.*" />

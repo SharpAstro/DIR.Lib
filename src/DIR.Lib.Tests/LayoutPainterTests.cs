@@ -398,5 +398,107 @@ public class LayoutPainterTests
         renderer.Runs[0].Text.ShouldBe("🔌️");
         renderer.Runs[1].Text.ShouldBe(" ok");
     }
+
+    // ---- Coverage-driven fallback in the declarative painter -------------------------------
+    //
+    // Real fixture files, because the split is decided by reading each candidate's cmap. The
+    // renderer is still the recording stub, so nothing is rasterized.
+
+    private static string Fixture(string name) => Path.Combine(AppContext.BaseDirectory, "Fonts", name);
+
+    /// <summary>
+    /// The gap this closes: a text leaf was drawn whole in one font, so a symbol the primary lacked
+    /// came out as .notdef with no way for the caller to intervene short of an escape-hatch leaf.
+    /// </summary>
+    [Fact]
+    public void PaintLayout_SplitsATextLeafAcrossCoveringFonts()
+    {
+        var dejavu = Fixture("DejaVuSans.ttf");
+        var emoji = Fixture("NotoColorEmoji.ttf");
+        var renderer = new RecordingRenderer(400, 100);
+        var widget = new FontWidget(renderer)
+        {
+            FontPath = dejavu,
+            FontFallback = new FontFallbackResolver(dejavu, [emoji]),
+        };
+
+        // The rocket is the only part DejaVu can't draw.
+        widget.Render(Layout.Builder.Text("hi\U0001F680!", 12f), new RectF32(0, 0, 400, 100));
+
+        renderer.Runs.Select(r => r.Text).ShouldBe(["hi", "\U0001F680", "!"]);
+        renderer.Runs[0].Font.ShouldBe(dejavu);
+        renderer.Runs[1].Font.ShouldBe(emoji);
+        renderer.Runs[2].Font.ShouldBe(dejavu);
+    }
+
+    /// <summary>Text the primary covers is still one draw — the split must not cost anything.</summary>
+    [Fact]
+    public void PaintLayout_CoveredText_StaysASingleRun()
+    {
+        var dejavu = Fixture("DejaVuSans.ttf");
+        var renderer = new RecordingRenderer(400, 100);
+        var widget = new FontWidget(renderer)
+        {
+            FontPath = dejavu,
+            FontFallback = new FontFallbackResolver(dejavu, [Fixture("NotoColorEmoji.ttf")]),
+        };
+
+        widget.Render(Layout.Builder.Text("hello", 12f), new RectF32(0, 0, 400, 100));
+
+        renderer.Runs.ShouldHaveSingleItem().Text.ShouldBe("hello");
+    }
+
+    /// <summary>Without a resolver the painter behaves exactly as it always did.</summary>
+    [Fact]
+    public void PaintLayout_WithoutAFallback_DrawsTheWholeLeafInTheOneFont()
+    {
+        var dejavu = Fixture("DejaVuSans.ttf");
+        var renderer = new RecordingRenderer(400, 100);
+        var widget = new FontWidget(renderer) { FontPath = dejavu };
+
+        widget.Render(Layout.Builder.Text("hi\U0001F680!", 12f), new RectF32(0, 0, 400, 100));
+
+        var run = renderer.Runs.ShouldHaveSingleItem();
+        run.Text.ShouldBe("hi\U0001F680!");
+        run.Font.ShouldBe(dejavu);
+    }
+
+    /// <summary>
+    /// Measure has to split on the same boundaries as paint, or the arranged rect won't fit what
+    /// lands in it. Measured with a renderer whose widths differ per font, so a measure that ignored
+    /// the fallback would produce a visibly different number.
+    /// </summary>
+    [Fact]
+    public void MeasureText_SplitsOnTheSameCoverageRunsAsThePainter()
+    {
+        var dejavu = Fixture("DejaVuSans.ttf");
+        var emoji = Fixture("NotoColorEmoji.ttf");
+        var renderer = new PerFontWidthRenderer(400, 100, wideFont: emoji);
+        const string Text = "hi\U0001F680!"; // 5 UTF-16 units; the rocket is 2 of them
+
+        var plain = new PixelMeasureContext<RgbaImage>(renderer, dejavu, 1f);
+        var withFallback = new PixelMeasureContext<RgbaImage>(renderer, dejavu, 1f)
+        {
+            Fallback = new FontFallbackResolver(dejavu, [emoji]),
+        };
+
+        // Measured whole in the primary: 5 units x 6px. Measured per run, the rocket's 2 units come
+        // from the emoji face at 10px: 2*6 + 2*10 + 1*6 = 38.
+        plain.MeasureText(Text, 12f).Width.ShouldBe(30f);
+        withFallback.MeasureText(Text, 12f).Width.ShouldBe(38f);
+    }
+
+    /// <summary>Widths depend on the font, so a measure that used the wrong one is visible.</summary>
+    private sealed class PerFontWidthRenderer(uint w, uint h, string wideFont) : RgbaImageRenderer(w, h)
+    {
+        public override (float Width, float Height) MeasureText(ReadOnlySpan<char> text, string fontFamily, float fontSize)
+            => (text.Length * (fontFamily == wideFont ? 10f : 6f), fontSize);
+
+        public override void DrawText(ReadOnlySpan<char> text, string fontFamily, float fontSize,
+            RGBAColor32 fontColor, in RectInt layout, TextAlign horizAlign = TextAlign.Near,
+            TextAlign vertAlign = TextAlign.Center)
+        {
+        }
+    }
 }
 
