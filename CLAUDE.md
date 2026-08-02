@@ -9,8 +9,8 @@ DIR.Lib is a Device-Independent input + Rendering library for .NET — the share
 ## Build & Test Commands
 
 ```bash
-# Build
-dotnet build src/DIR.Lib.sln
+# Build (solution lives at the repo root)
+dotnet build DIR.Lib.sln
 
 # Run all tests
 dotnet test src/DIR.Lib.Tests
