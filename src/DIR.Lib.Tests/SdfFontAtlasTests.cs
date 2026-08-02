@@ -259,4 +259,102 @@ public sealed class SdfFontAtlasTests : IDisposable
         }
         maxPageSeen.ShouldBeGreaterThanOrEqualTo(1, "the round-trip must be exercised beyond page 0");
     }
+
+    /// <summary>Mirrors the real Vulkan backend's shape: one GPU resource per page held in an
+    /// index-parallel list, appended in <see cref="OnPageCreated"/> and addressed by the core's
+    /// page index in <see cref="OnPageDestroyed"/>. From <paramref name="failAtPage"/> onward
+    /// creation throws BEFORE recording — what VkSdfFontAtlas does when its descriptor set cannot
+    /// be allocated. <paramref name="throwOnDestroyPage"/> fails teardown of one page instead.</summary>
+    private sealed class MirroringBackend(int failAtPage = int.MaxValue, int throwOnDestroyPage = -1)
+        : ISdfAtlasBackend
+    {
+        public readonly List<int> Resources = new();
+
+        public void OnPageCreated(int pageIndex, int pageDimension)
+        {
+            if (pageIndex >= failAtPage) throw new InvalidOperationException("out of pool memory");
+            Resources.Add(pageIndex);
+        }
+
+        public void OnPagesWillBeDestroyed() { }
+
+        public void OnPageDestroyed(int pageIndex)
+        {
+            if (pageIndex == throwOnDestroyPage) throw new InvalidOperationException("teardown failed");
+            _ = Resources[pageIndex];   // the index coupling under test
+            Resources.RemoveAt(pageIndex);
+        }
+    }
+
+    /// <summary>Drives appends until the backend refuses one. Returns the refusal.</summary>
+    private Exception? AppendUntilRefused(SdfFontAtlas atlas)
+    {
+        try
+        {
+            for (var c = 'A'; c <= 'Z'; c++)
+                atlas.GetGlyph(FontPath, SdfFontAtlas.SdfRasterSize, new Rune(c));
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex;
+        }
+    }
+
+    [Fact]
+    public void PageAppend_BackendRefuses_CoreDoesNotKeepThePage()
+    {
+        // Page 0 is allocated by the ctor; the first APPEND is refused.
+        var backend = new MirroringBackend(failAtPage: 1);
+        using var atlas = CreateAtlas(pageDim: 64, backend: backend);
+        atlas.PageCount.ShouldBe(1);
+
+        AppendUntilRefused(atlas).ShouldNotBeNull("the backend refusal must reach the caller");
+
+        // Core pages and backend resources are correlated BY INDEX, so they must stay the same
+        // length. Before the fix the core kept the page the backend never allocated and ran one
+        // ahead of it permanently.
+        atlas.PageCount.ShouldBe(backend.Resources.Count);
+    }
+
+    [Fact]
+    public void PageAppend_RepeatedRefusals_DoNotCompound()
+    {
+        var backend = new MirroringBackend(failAtPage: 1);
+        using var atlas = CreateAtlas(pageDim: 64, backend: backend);
+
+        // Once the backend is out of resources every insert needing a fresh page keeps failing —
+        // that part is expected. What must NOT happen is the rollback drifting: each refusal has
+        // to leave exactly the state the one before it did, or the counters it unwinds
+        // (_activePageIdx, _framePagesAppended) walk away over a frame's worth of retries.
+        for (var i = 0; i < 5; i++)
+        {
+            AppendUntilRefused(atlas).ShouldNotBeNull($"refusal {i} should still surface");
+            atlas.PageCount.ShouldBe(backend.Resources.Count, $"lists diverged after refusal {i}");
+            atlas.PageCount.ShouldBe(1, $"no page should have been kept after refusal {i}");
+        }
+
+        Should.NotThrow(atlas.Dispose);
+    }
+
+    [Fact]
+    public void Dispose_BackendTeardownThrows_FreesEveryOtherPageAndDoesNotThrow()
+    {
+        var backend = new MirroringBackend(throwOnDestroyPage: 0);
+        var atlas = CreateAtlas(pageDim: 64, backend: backend);
+        for (var c = 'A'; c <= 'K' && atlas.PageCount < 3; c++)
+            atlas.GetGlyph(FontPath, SdfFontAtlas.SdfRasterSize, new Rune(c));
+        atlas.PageCount.ShouldBeGreaterThanOrEqualTo(2);
+        var pages = atlas.PageCount;
+
+        // Dispose runs on the GPU-error recovery path. Throwing out of it replaces the error that
+        // started the recovery and kills the process mid-teardown. Observed downstream as an
+        // ArgumentOutOfRangeException from this loop being the whole of the reported stack, with
+        // the actual device error nowhere in it.
+        Should.NotThrow(() => atlas.Dispose());
+
+        // Page 0 is the one that threw; every other page must still have been handed back.
+        backend.Resources.Count.ShouldBe(1);
+        pages.ShouldBeGreaterThan(1);
+    }
 }
