@@ -292,13 +292,31 @@ public sealed class SdfFontAtlas : IDisposable
             Staging = new byte[_pageDim * _pageDim * BytesPerTexel],
             DirtyX0 = _pageDim, DirtyY0 = _pageDim, DirtyX1 = 0, DirtyY1 = 0,
         };
+        var priorActiveIdx = _activePageIdx;
+        var priorAppendTick = _lastPageAppendTick;
         _pages.Add(page);
         _activePageIdx = _pages.Count - 1;
         page.LastUsedFrame = _frameTick;
         page.CreatedTick = _frameTick;
         _framePagesAppended++;
         _lastPageAppendTick = _frameTick;
-        _backend?.OnPageCreated(_pages.Count - 1, _pageDim);
+        try
+        {
+            _backend?.OnPageCreated(_pages.Count - 1, _pageDim);
+        }
+        catch
+        {
+            // The backend could not allocate this page's GPU resource (descriptor pool or device
+            // memory exhausted). Undo the core-side append: core pages and backend pages are
+            // correlated BY INDEX ONLY, so leaving ours longer than theirs mis-addresses every
+            // later page and finally throws out of Dispose — where it surfaces as an unrelated
+            // IndexOutOfRange, buries the real error, and takes the process down.
+            _pages.RemoveAt(_pages.Count - 1);
+            _activePageIdx = priorActiveIdx;
+            _lastPageAppendTick = priorAppendTick;
+            _framePagesAppended--;
+            throw;
+        }
         return page;
     }
 
@@ -649,7 +667,20 @@ public sealed class SdfFontAtlas : IDisposable
         // is idle before disposing, so no OnPagesWillBeDestroyed here — backends free each page's
         // resource directly. Descending order keeps an index-mirroring backend consistent.
         for (var i = _pages.Count - 1; i >= 0; i--)
-            _backend?.OnPageDestroyed(i);
+        {
+            // Teardown must not throw. Dispose runs on the GPU-error recovery path, where the
+            // backend may already be inconsistent with us; rethrowing there replaces the error
+            // that started the recovery and kills the process mid-teardown, leaving the rest of
+            // the pages leaked. Log and keep freeing.
+            try
+            {
+                _backend?.OnPageDestroyed(i);
+            }
+            catch (Exception ex)
+            {
+                AtlasDiag.Log("sdf.dispose", $"page {i} backend teardown failed: {ex.Message}");
+            }
+        }
         _pages.Clear();
     }
 
