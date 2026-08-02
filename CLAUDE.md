@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-DIR.Lib is a Device-Independent input + Rendering library for .NET — the shared foundation for both GPU (SDL3+Vulkan) and terminal (Console) SharpAstro applications. It provides platform-agnostic rendering primitives, a widget system with hit testing, input handling, a signal bus, and a pure-managed font rasterizer (no native dependencies).
+DIR.Lib is a Device-Independent input + Rendering library for .NET — the shared foundation for GPU (SDL3+Vulkan), terminal (Console), and browser (WebGL2 / Blazor WebAssembly) SharpAstro applications. It provides platform-agnostic rendering primitives, a widget system with hit testing, input handling, a signal bus, and a pure-managed font rasterizer (no native dependencies).
 
 ## Build & Test Commands
 

@@ -230,4 +230,25 @@ public sealed class FontResolverTests
         var rasterizer = new ManagedFontRasterizer();
         Should.NotThrow(() => rasterizer.RasterizeGlyph(id, 24f, new System.Text.Rune('A')));
     }
+
+    /// <summary>
+    /// The shaper's seam must resolve a collection-face id too. Shaping runs before any glyph
+    /// of the face has been rasterized, so <see cref="ManagedFontRasterizer.TryGetOpenTypeFont"/>
+    /// is the first loader the id reaches — on a fresh rasterizer there is no cached face for
+    /// <see cref="ManagedFontRasterizer.RasterizeGlyph"/> to have left behind.
+    /// </summary>
+    [Fact]
+    public void TryGetOpenTypeFont_LoadsACollectionFaceId()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var id = FontResolver.ResolveInstalledFont("Cambria Math");
+        if (id is null) return; // Office fonts not present
+
+        using var rasterizer = new ManagedFontRasterizer();
+        rasterizer.TryGetOpenTypeFont(id, out var font).ShouldBeTrue();
+        font.ShouldNotBeNull();
+        // Proves the id reached face 1, not face 0: Cambria Math carries a MATH table,
+        // plain Cambria (face 0) does not.
+        font.Math.ShouldNotBeNull();
+    }
 }

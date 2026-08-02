@@ -15,7 +15,9 @@ namespace DIR.Lib;
 /// <c>{font-content-hash}.sdfg</c>. The hash is FNV-1a 64-bit over the font's bytes,
 /// so cross-machine path differences don't invalidate the cache, but a font binary
 /// change generates a new file (the old file is orphaned; eviction by age is a future
-/// concern).</para>
+/// concern). A face inside a collection (a <c>path#index</c> id — see
+/// <see cref="FontFaceId"/>) gets its own file: the container's hash with the face index
+/// folded in, since faces have independent glyph-id spaces.</para>
 ///
 /// <para>Format versioning: the file header carries a <see cref="FormatVersion"/>
 /// constant; mismatched versions or mismatched rasterSize/spread cause the file to
@@ -465,9 +467,33 @@ public sealed class SdfGlyphDiskCache : IDisposable
 
         // File-backed fonts: hash the file contents once and memoize.
         if (_fontPathToHash.TryGetValue(fontPath, out hash)) return true;
-        if (!File.Exists(fontPath)) return false;
-        hash = _fontPathToHash.GetOrAdd(fontPath, ComputeFileHash);
-        return true;
+        if (File.Exists(fontPath))
+        {
+            hash = _fontPathToHash.GetOrAdd(fontPath, ComputeFileHash);
+            return true;
+        }
+
+        // A '#N' suffix names a face inside a collection (see FontFaceId; the File.Exists above
+        // ran first so a file whose name genuinely ends that way still hashes as itself). Faces
+        // of one collection have independent glyph-id spaces, so each face must get its own
+        // cache file: fold the face index into the container's content hash. Bare paths keep
+        // the hash they always had — no FormatVersion bump, no orphaned v6 files.
+        if (FontFaceId.TryParse(fontPath, out var path, out var faceIndex) && File.Exists(path))
+        {
+            hash = _fontPathToHash.GetOrAdd(fontPath, _ => MixFaceIndex(ComputeFileHash(path), faceIndex));
+            return true;
+        }
+        return false;
+    }
+
+    private static ulong MixFaceIndex(ulong hash, int faceIndex)
+    {
+        // One more FNV-1a fold (matching the ComputeContentHash length fold) so face 1 of a
+        // collection cannot collide with the container's own file.
+        const ulong FnvPrime = 1099511628211UL;
+        hash ^= (uint)faceIndex;
+        hash *= FnvPrime;
+        return hash;
     }
 
     private static ulong ComputeFileHash(string fontPath)

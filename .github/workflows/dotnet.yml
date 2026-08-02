@@ -136,6 +136,17 @@ env:
   #       The split is allocation-free and gated on an allocation-free PrimaryCoversAll, so text needing no
   #       fallback costs nothing. FIX: the all-ASCII shortcut now checks that the primary covers ASCII.
   #       ADDITIVE. 31 tests.
+  # 7.6 - collection faces reach the last two consumers of a font id (completes 7.5 / closes #29).
+  #       FIX: TryGetOpenTypeFont -- the shaper's seam -- loaded the raw id, so the FIRST shape of a
+  #       fresh "path#index" face threw FileNotFoundException (shaping runs before rasterization, so
+  #       nothing had populated the cache the id would have hit); it now resolves through the same
+  #       loader drawing uses. FIX: SdfGlyphDiskCache probed File.Exists on the raw id, so every
+  #       collection face silently bypassed the disk cache; a face now hashes as its container's
+  #       content hash with the face index folded in (one more FNV-1a step), giving each face its own
+  #       .sdfg -- faces have independent glyph-id spaces, so sharing one file would serve one face's
+  #       bitmaps under another's gids. No FormatVersion bump: bare-path hashes are unchanged, and
+  #       collection ids never reached the cache before. README: WebGl.Renderer joins
+  #       SdlVulkan.Renderer + Console.Lib as the third platform bridge (closes #26). 2 tests.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

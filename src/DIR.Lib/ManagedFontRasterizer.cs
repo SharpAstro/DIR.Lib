@@ -733,7 +733,7 @@ public sealed class ManagedFontRasterizer : IDisposable
         if (_type1Fonts.ContainsKey(fontPath)) return false;      // Type1 has no OpenType face
         if (_fonts.TryGetValue(fontPath, out font)) return true;  // already loaded
         if (fontPath.StartsWith("mem:", StringComparison.Ordinal)) return false; // not registered yet
-        font = _fonts.GetOrAdd(fontPath, OpenTypeFont.LoadFromFile(fontPath));
+        font = GetOrLoad(fontPath); // resolves a '#N' collection-face id the same way drawing does
         return true;
     }
 

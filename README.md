@@ -1,6 +1,6 @@
 # DIR.Lib
 
-**D**evice-**I**ndependent input + **R**endering library for .NET. Provides the shared foundation for both GPU (SDL3 + Vulkan) and terminal (Console) applications. Pure-managed, AOT-compatible, no native dependencies.
+**D**evice-**I**ndependent input + **R**endering library for .NET. Provides the shared foundation for GPU (SDL3 + Vulkan), terminal (Console), and browser (WebGL2 / Blazor WebAssembly) applications. Pure-managed, AOT-compatible, no native dependencies.
 
 ## Rendering Primitives
 
@@ -26,6 +26,7 @@
 Platform bridges (in downstream packages):
 - `SdlVulkan.Renderer` provides `SdlInputMapping` (SDL3 Scancode → InputKey)
 - `Console.Lib` provides `ConsoleInputMapping` (ConsoleKey → InputKey)
+- `WebGl.Renderer` provides `WebGlCanvas`, a Blazor component that maps DOM pointer / wheel / pinch events to backing-space coordinates (`CanvasPointerEventArgs`, `CanvasWheelEventArgs`, `CanvasPinchEventArgs`) and forwards `keydown` raw; the browser `KeyboardEvent.Key` → InputKey map lives in the consuming app (see `MapKey` in TianWen.UI.Web's Planner)
 
 ## Widget System
 

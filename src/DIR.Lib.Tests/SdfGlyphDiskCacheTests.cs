@@ -97,6 +97,37 @@ public sealed class SdfGlyphDiskCacheTests : IDisposable
     }
 
     [Fact]
+    public void CollectionFaceId_CachesUnderItsOwnFile()
+    {
+        // A face inside a collection is addressed as "path#index" (FontFaceId). It must be
+        // cacheable — the raw File.Exists probe used to miss the suffix, so collection faces
+        // silently bypassed the disk cache — and it must NOT share a file with its container:
+        // faces have independent glyph-id spaces, so a shared file would serve one face's
+        // bitmaps under another face's gids.
+        Directory.CreateDirectory(_dir);
+        var container = Path.Combine(_dir, "fake-collection.ttc");
+        File.WriteAllBytes(container, FontBytes); // content hashing never parses the font
+        var face1 = container + "#1";
+
+        var bitmap = MakeBitmap(10);
+        using (var cache = new SdfGlyphDiskCache(_dir, rasterSize: 64f, spread: 4f))
+        {
+            cache.HasHashFor(face1).ShouldBeTrue();
+            cache.AppendGlyph(face1, gid: 7, name: null, in bitmap);
+        }
+
+        using var reader = new SdfGlyphDiskCache(_dir, rasterSize: 64f, spread: 4f);
+        var entries = reader.LoadEntriesForFont(face1);
+        entries.Count.ShouldBe(1);
+        entries[0].Gid.ShouldBe(7u);
+        entries[0].Bitmap.Rgba.ShouldBe(bitmap.Rgba);
+
+        // Neither the container itself nor a sibling face sees face 1's entry.
+        reader.LoadEntriesForFont(container).ShouldBeEmpty();
+        reader.LoadEntriesForFont(container + "#2").ShouldBeEmpty();
+    }
+
+    [Fact]
     public void MismatchedRasterParams_SelfHeals_ToEmpty()
     {
         var ot = MakeBitmap(10);
