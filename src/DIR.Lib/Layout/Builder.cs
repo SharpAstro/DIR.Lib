@@ -21,14 +21,20 @@ public static class Builder
 {
     // ---- Leaf content factories (each returns a Node.Leaf wrapping the content) ----
 
-    /// <summary>A text leaf. Styling (colour/alignment) is intrinsic to the run, so it is set here at creation.</summary>
+    /// <summary>
+    /// A text leaf. Styling (colour/alignment/trim) is intrinsic to the run, so it is set here at creation.
+    /// <paramref name="trim"/> picks which end survives when the run does not fit — <c>Start</c> for a path
+    /// or a URL, whose distinguishing part is at the end.
+    /// </summary>
     public static Node Text(string value, float fontSize = 14f, RGBAColor32? color = null,
-        TextAlign hAlign = TextAlign.Near, TextAlign vAlign = TextAlign.Center)
+        TextAlign hAlign = TextAlign.Near, TextAlign vAlign = TextAlign.Center,
+        TextTrim trim = TextTrim.End)
         => new Node.Leaf(new Content.Text(value, fontSize)
         {
             Color = color ?? new RGBAColor32(0xff, 0xff, 0xff, 0xff),
             HAlign = hAlign,
             VAlign = vAlign,
+            Trim = trim,
         });
 
     /// <summary>A fixed-size box (icon/swatch/separator). Transparent <paramref name="color"/> (the default) is a pure spacer.</summary>

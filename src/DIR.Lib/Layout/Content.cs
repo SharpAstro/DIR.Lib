@@ -19,6 +19,20 @@ public abstract record Content
 
         /// <summary>Vertical alignment of the text within the leaf's arranged rect.</summary>
         public TextAlign VAlign { get; init; } = TextAlign.Center;
+
+        /// <summary>
+        /// Which end to sacrifice when the run does not fit its arranged rect. Intrinsic to the run for the
+        /// same reason <see cref="Color"/> and <see cref="HAlign"/> are: only the author knows which half
+        /// carries the meaning. See <see cref="TextTrim"/>.
+        /// <para>
+        /// Honoured by painters that ellipsize. Console.Lib's <c>CellLayout</c> does, because a cell surface
+        /// measures in whole characters and has to cut somewhere. The pixel painter currently does NOT
+        /// ellipsize — an overlong run is clipped by its rect — so this is inert there until it grows one
+        /// (<see cref="FontFallbackResolver.FitEllipsis"/> is the measure-driven primitive it would use, and
+        /// is End-only today).
+        /// </para>
+        /// </summary>
+        public TextTrim Trim { get; init; } = TextTrim.End;
     }
 
     /// <summary>A fixed-size piece (icon, swatch, separator, spacer) -- intrinsic size is <paramref name="Width"/> x <paramref name="Height"/> design units. The painter fills it only when <see cref="Color"/> is non-transparent, so a transparent Box is a pure spacer.</summary>

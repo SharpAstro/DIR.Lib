@@ -27,8 +27,16 @@
     <!-- LALR.CC drives the markdown + LaTeX grammars baked into the
          DIR.Lib.Markdown subsystem. Source generator runs build-time;
          the runtime LALR.CC assembly is referenced for the Parser /
-         IVisitor types the generated code emits. -->
-    <PackageVersion Include="SharpAstro.LALR.CC" Version="3.1.*" />
+         IVisitor types the generated code emits.
+
+         Keep this tracking the current LALR.CC major. DIR.Lib.csproj swaps this
+         PackageReference for a ProjectReference whenever the sibling LALR.CC
+         checkout exists (UseLocalLalrCc), so a local build always compiles
+         against LALR.CC HEAD and never exercises this number — only CI does.
+         That is how this sat at 3.1.* through the whole 4.x line: 3.1.0 still
+         exists on nuget.org, so restore succeeded and the build stayed green
+         while CI shipped a package declaring a major-behind dependency. -->
+    <PackageVersion Include="SharpAstro.LALR.CC" Version="4.7.*" />
     <!-- YamlDotNet is build-only — consumed by the LALR.CC source generator
          to parse grammars/*.lalr.yaml. PrivateAssets="all" in the csproj
          keeps it out of the runtime closure. -->

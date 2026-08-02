@@ -147,6 +147,31 @@ env:
   #       bitmaps under another's gids. No FormatVersion bump: bare-path hashes are unchanged, and
   #       collection ids never reached the cache before. README: WebGl.Renderer joins
   #       SdlVulkan.Renderer + Console.Lib as the third platform bridge (closes #26). 2 tests.
+  # 7.7 - a LAYOUT TREE can state a hyperlink, so one authored tree is a real link on every surface that
+  #       has one. HitResult.LinkHit was the declared way to say "this points somewhere" and PaintLayout
+  #       already bound it as a click region -- but the only route to SelectableTextRegion.Href was the
+  #       immediate-mode DrawSelectableText, which no layout tree calls. So a web host, the one host that
+  #       can render a real <a href>, got a bare clickable rect and had to reimplement new-tab / open /
+  #       copy-link itself. PaintLayout now resolves the nearest enclosing LinkHit (depth-keyed, matching
+  #       Console.Lib's CellLayout exactly, so the same tree cannot mean different things per surface) and
+  #       routes text under it through DrawSelectableText with Href set. The pixel counterpart to the OSC 8
+  #       wrap CellLayout paints for the same node. ADDITIVE: only LINKED text takes the new route, so
+  #       ordinary layout text neither changes nor starts landing in the host's selection layer; the click
+  #       binding is untouched; a raster host still rasters. HostRendersSelectableText is honoured, so a
+  #       DOM host does not double-draw the linked run. Adds a fallback-aware DrawSelectableText overload
+  #       mirroring the DrawText pair -- without it a linked run would silently split on the widget's
+  #       resolver rather than the one its measure used. 8 tests.
+  #       ALSO: Layout.Content.Text gains Trim (TextTrim.End default / Start), naming which end an
+  #       overlong run sacrifices. Intrinsic to the run for the same reason Color and HAlign are: only
+  #       the author knows which half carries the meaning. A label keeps its head; a PATH must keep its
+  #       tail, because every path on a machine shares its head -- end-trimmed, "C:\Users\seb\repos\so…"
+  #       identifies nothing while "…\ftw\Program.cs" is the part being read. Callers used to work around
+  #       the fixed rule by pre-truncating against the column width, and a row's width is exactly what the
+  #       layout engine took over, so after rows became layout trees the workaround stopped existing and
+  #       path columns silently lost their filenames. ADDITIVE (new property with the previous behaviour
+  #       as its default, new optional Builder.Text parameter). Honoured by painters that ellipsize --
+  #       Console.Lib's CellLayout does; the pixel painter does not ellipsize at all today (an overlong
+  #       run is clipped by its rect), so it is inert there until it grows one.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

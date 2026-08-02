@@ -17,6 +17,14 @@ namespace DIR.Lib
     /// natively). A raster host has no navigation model and ignores it -- the run still draws as ordinary
     /// text -- so a link is a progressive enhancement that only the web host acts on.
     /// </para>
+    /// <para>
+    /// Two things set it. An immediate-mode widget passes <c>href:</c> to
+    /// <see cref="PixelWidgetBase{TSurface}.DrawSelectableText"/>. A LAYOUT TREE states a
+    /// <see cref="HitResult.LinkHit"/> on the node instead, and <c>PaintLayout</c> routes the text under it
+    /// through this same region (7.7+) -- which is what lets one authored tree be a real anchor on the web
+    /// and a real OSC 8 hyperlink on a terminal. Only LINKED layout text takes that route; ordinary layout
+    /// text stays on <c>DrawText</c> and never reaches the host's selection layer.
+    /// </para>
     /// </summary>
     public readonly record struct SelectableTextRegion(
         float X, float Y, float Width, float Height,

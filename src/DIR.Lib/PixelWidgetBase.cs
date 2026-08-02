@@ -479,8 +479,28 @@ namespace DIR.Lib
             Action<Layout.Content.Fill, RectF32>? drawFill = null)
         {
             var fp = ctx.FontPath;
-            foreach (var (node, bounds) in arranged)
+
+            // The enclosing hyperlink, so a LinkHit stated on a row wrapper reaches the text leaves under it
+            // rather than only working when it happens to sit on the text itself. Keyed by depth: entering a
+            // node pops every entry at or below its own depth (those belong to a sibling subtree), so the top
+            // is always the nearest enclosing link. Console.Lib's CellLayout resolves it identically -- the
+            // two painters have to agree, or the same tree means different things per surface.
+            var links = new Stack<(int Depth, string Url)>();
+
+            foreach (var arrangedNode in arranged)
             {
+                var (node, bounds) = arrangedNode;
+
+                while (links.Count > 0 && links.Peek().Depth >= arrangedNode.Depth)
+                {
+                    links.Pop();
+                }
+
+                if (node.Hit is HitResult.LinkHit linkHit)
+                {
+                    links.Push((arrangedNode.Depth, linkHit.Url));
+                }
+
                 // CornerRadius is in design units like every other chrome measure, so it scales with DPI —
                 // through the context's axis-free mapping, the same one that resolved it at measure time.
                 var radius = ctx.ToSurface(node.CornerRadius);
@@ -504,9 +524,29 @@ namespace DIR.Lib
                         case Layout.Content.Text text:
                             // The context's resolver, not the widget's: paint must split on exactly what
                             // measure split on, or the arranged rect won't fit what lands in it.
-                            DrawText(text.Value.AsSpan(), fp, ctx.Fallback,
-                                bounds.X, bounds.Y, bounds.Width, bounds.Height,
-                                text.FontSize * ctx.FontScale, text.Color, text.HAlign, text.VAlign);
+                            //
+                            // Text under a LinkHit goes out as a selectable run carrying an Href, which is
+                            // how a DOM host gets a real <a href> (new-tab, open, copy-link handled by the
+                            // browser) instead of a bare clickable rect it has to reimplement. The click
+                            // binding above is unchanged and still applies on every host -- the Href is the
+                            // navigation affordance on top of it, the pixel-surface counterpart to the OSC 8
+                            // wrap Console.Lib's CellLayout paints for the same node.
+                            //
+                            // Only LINKED text takes this path. Ordinary layout text stays on DrawText, so
+                            // nothing else starts landing in the host's selection layer.
+                            if (links.Count > 0)
+                            {
+                                DrawSelectableText(text.Value, fp, ctx.Fallback,
+                                    bounds.X, bounds.Y, bounds.Width, bounds.Height,
+                                    text.FontSize * ctx.FontScale, text.Color, text.HAlign, text.VAlign,
+                                    links.Peek().Url);
+                            }
+                            else
+                            {
+                                DrawText(text.Value.AsSpan(), fp, ctx.Fallback,
+                                    bounds.X, bounds.Y, bounds.Width, bounds.Height,
+                                    text.FontSize * ctx.FontScale, text.Color, text.HAlign, text.VAlign);
+                            }
                             break;
                         case Layout.Content.Box box when box.Color.Alpha > 0:
                             FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, box.Color, radius);
@@ -855,11 +895,24 @@ namespace DIR.Lib
         protected void DrawSelectableText(string text, string fontPath, float x, float y, float w, float h,
             float fontSize, RGBAColor32 color, TextAlign horizAlign = TextAlign.Near, TextAlign vertAlign = TextAlign.Center,
             string? href = null)
+            => DrawSelectableText(text, fontPath, FontFallback, x, y, w, h, fontSize, color, horizAlign, vertAlign, href);
+
+        /// <summary>
+        /// <see cref="DrawSelectableText(string, string, float, float, float, float, float, RGBAColor32, TextAlign, TextAlign, string?)"/>
+        /// with an explicit fallback resolver, mirroring the <see cref="DrawText(ReadOnlySpan{char}, string, float, float, float, float, float, RGBAColor32, TextAlign, TextAlign)"/>
+        /// pair — so a layout paint draws with exactly the resolver its MEASURE used rather than with
+        /// whatever the widget currently has set. Without this overload, routing a linked run through
+        /// selectable text would silently drop back to the widget's resolver and split the string
+        /// differently from the arrange that sized its rect.
+        /// </summary>
+        private void DrawSelectableText(string text, string fontPath, FontFallbackResolver? fallback,
+            float x, float y, float w, float h,
+            float fontSize, RGBAColor32 color, TextAlign horizAlign, TextAlign vertAlign, string? href)
         {
             if (string.IsNullOrEmpty(fontPath) || string.IsNullOrEmpty(text)) return;
             if (!Renderer.HostRendersSelectableText)
             {
-                DrawText(text.AsSpan(), fontPath, x, y, w, h, fontSize, color, horizAlign, vertAlign);
+                DrawText(text.AsSpan(), fontPath, fallback, x, y, w, h, fontSize, color, horizAlign, vertAlign);
             }
             _selectableText.Add(new SelectableTextRegion(
                 x, y, w, h, text, fontPath, fontSize, color, horizAlign, vertAlign, href));
