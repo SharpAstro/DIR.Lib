@@ -458,7 +458,7 @@ namespace DIR.Lib
         /// <summary>
         /// Paints an already-arranged tree: each node's <see cref="Layout.Node.Background"/> fills first
         /// (parent-before-children emission = correct z-order), then leaf content draws, and any
-        /// <see cref="Layout.Content.Hit"/> is bound to the node's arranged rect via
+        /// <see cref="Layout.Node.Hit"/> is bound to the node's arranged rect via
         /// <see cref="RegisterClickable"/> -- so draw-position and hit-region cannot drift.
         /// <paramref name="drawFill"/> handles <see cref="Layout.Content.Fill"/> escape-hatch leaves
         /// (charts, sky map, custom widgets).

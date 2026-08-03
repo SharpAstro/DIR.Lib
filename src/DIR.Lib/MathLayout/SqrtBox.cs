@@ -38,7 +38,7 @@ namespace DIR.Lib.MathLayout;
 ///
 /// <para>An optional <c>index</c> box (the small "n" in <c>ⁿ√x</c>) is
 /// rendered tucked into the radical's hook, raised by
-/// <see cref="MathConstants.RadicalDegreeBottomRaisePercent"/> of the radical's
+/// <c>RadicalDegreeBottomRaisePercent</c> of the radical's
 /// total height when MATH metrics are available, with horizontal positioning
 /// driven by <c>RadicalKernBeforeDegree</c> / <c>RadicalKernAfterDegree</c>.
 /// Falls back to TeX-style heuristics (60% raise, ~half-radical-width

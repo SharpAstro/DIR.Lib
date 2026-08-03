@@ -11,8 +11,8 @@ namespace DIR.Lib;
 
 /// <summary>
 /// Pure-managed glyph rasterizer backed by SharpAstro.Fonts.
-/// Drop-in replacement for <see cref="FreeTypeGlyphRasterizer"/> — same
-/// public API, no native dependencies, no GC pinning, AOT-compatible.
+/// Took over from the FreeType-backed rasterizer this library used to carry,
+/// keeping its public API — no native dependencies, no GC pinning, AOT-compatible.
 ///
 /// <para>Loaded fonts are cached per (path or memory-id). Cache lookup is
 /// lock-free (<see cref="ConcurrentDictionary{TKey,TValue}"/>); per-glyph
@@ -93,7 +93,7 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// codepoint — the recipe used to build a scalable radical, paren, brace,
     /// or other delimiter at an arbitrary height. Returns null if the font
     /// has no MATH table, or if this codepoint is not in the table's vertical
-    /// coverage. Use the returned <see cref="MathGlyphConstruction"/> to walk
+    /// coverage. Use the returned <see cref="Tables.OpenTypeMath.MathGlyphConstruction"/> to walk
     /// pre-drawn variants and (beyond the largest variant) the assembly recipe.
     /// </summary>
     public Tables.OpenTypeMath.MathGlyphConstruction? GetVerticalMathConstruction(string fontPath, Rune codepoint)
@@ -621,7 +621,7 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// Type1/PFB fonts, by glyph name (<see cref="RasterizeGlyphMtsdfByType1Name"/> /
     /// <see cref="RasterizeGlyphByType1Name"/>).
     ///
-    /// <para>Same inputs → same <see cref="GetGlyphId(uint,uint,GlyphMapHint)"/> / Type1-name
+    /// <para>Same inputs → same <see cref="OpenTypeFont.GetGlyphId(uint,uint,FontsHint)"/> / Type1-name
     /// lookup → same glyph as the rasterize methods produce: this moves <em>where</em> resolution
     /// happens (to the cache-key boundary), not the resolution itself.</para>
     ///
