@@ -5,9 +5,9 @@ using DIR.Lib.MathLayout;
 namespace DIR.Lib.Markdown;
 
 /// <summary>
-/// AST for the LALR.CC-based markdown renderer. Replaces the Markdig
-/// <c>Block</c> and <c>Inline</c> hierarchies that
-/// <see cref="MarkdownRenderer"/>'s switch statement currently walks.
+/// AST for the LALR.CC-based markdown renderer. Replaced the Markdig
+/// <c>Block</c> and <c>Inline</c> hierarchies that the earlier
+/// Markdig-based renderer walked with a switch statement.
 /// All types are <c>record</c>s for value-equality semantics — handy
 /// for AST diffing in tests, and the cost is negligible for read-mostly
 /// tree walks.

@@ -542,7 +542,7 @@ public static class MarkdownMacros
 
     /// <summary>
     /// Parse + lay out + raster-render a math expression as pixels via
-    /// <see cref="BoxBuildingVisitor"/> + <see cref="BoxRenderer"/>. Returns
+    /// <see cref="BoxBuildingVisitor"/> + <see cref="BoxRasterizer"/>. Returns
     /// false (without writing to <paramref name="result"/>) if any step
     /// fails — font resolution, parse, layout, or render — so the caller
     /// can fall through to the Unicode path. The mode-specific font size

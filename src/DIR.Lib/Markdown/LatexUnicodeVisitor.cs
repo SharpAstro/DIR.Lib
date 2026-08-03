@@ -8,8 +8,8 @@ namespace DIR.Lib.Markdown;
 /// <summary>
 /// IVisitor&lt;string&gt; for the math-mode LaTeX grammar: walks each AST node
 /// to a plain-Unicode string suitable for inline rendering inside a single
-/// terminal row. Used by <see cref="MarkdownRenderer"/> for Markdig's
-/// <c>MathInline</c> nodes (single-dollar <c>$x^2$</c> / inline <c>\(...\)</c>
+/// terminal row. Used by <see cref="MarkdownInlineVisitor"/> for inline
+/// math nodes (single-dollar <c>$x^2$</c> / inline <c>\(...\)</c>
 /// math); the box-rendered counterpart <see cref="BoxBuildingVisitor"/>
 /// handles <c>MathBlock</c> nodes (double-dollar <c>$$...$$</c> / display
 /// <c>\[...\]</c> math) where multi-row pixel output is acceptable.

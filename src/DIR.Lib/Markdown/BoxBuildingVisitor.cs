@@ -11,7 +11,7 @@ namespace DIR.Lib.Markdown;
 /// IVisitor implementation: maps each Latex AST record to a deferred
 /// <see cref="Box"/> builder — a <c>Func&lt;BoxStyle, Box&gt;</c> that materialises
 /// the subtree at whatever style its caller chooses. Pairs with
-/// <see cref="BoxRenderer"/>, which paints the materialised Box into an RGBA
+/// <see cref="BoxRasterizer"/>, which paints the materialised Box into an RGBA
 /// buffer for sixel/sextant/half-block output.
 ///
 /// <para><b>Why deferred:</b> the visitor runs bottom-up at parse time, so when
@@ -79,7 +79,7 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
     /// <summary>
     /// Binary relation (\approx \leq \geq \neq \equiv \ll \gg \in \notin
     /// \subset \to \leftarrow \rightarrow \pm \mp). Looks up the bare glyph
-    /// via <see cref="RenderCommand"/> then uses the standard relation
+    /// via <see cref="Commands"/> then uses the standard relation
     /// kerning of 0.35em (matching TeX's <c>\thickmuskip</c>-style
     /// surrounding space for <c>\mathrel</c>). Falls back to the raw token
     /// bytes for any rel name we haven't mapped, so a typo surfaces
