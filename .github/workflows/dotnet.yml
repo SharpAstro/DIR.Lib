@@ -172,6 +172,30 @@ env:
   #       as its default, new optional Builder.Text parameter). Honoured by painters that ellipsize --
   #       Console.Lib's CellLayout does; the pixel painter does not ellipsize at all today (an overlong
   #       run is clipped by its rect), so it is inert there until it grows one.
+  # 7.8 - the PIXEL painter grows one, so a text run can no longer escape the rect the engine gave it.
+  #       7.7 shipped Trim as an author's declaration that only the cell painter acted on; on a pixel
+  #       surface DrawText starts at its rect's edge and keeps going, so an over-wide run drew straight
+  #       over its neighbour -- silently, and only at the surface sizes where it happened not to fit,
+  #       which is the worst way to find out. The engine already owned the rect and the run already said
+  #       which half of itself mattered; the painter was the piece honouring neither. PaintLayout now
+  #       fits every Content.Text to its arranged rect through the new TextFit, which is also public for
+  #       the hand-placed draw paths a tree does not cover.
+  #       TextTrim gains two members a pixel surface can express and a character grid cannot, each with a
+  #       stated degradation so one tree still paints on both: Shrink scales the run DOWN and keeps every
+  #       character (for a run where a smaller WHOLE beats a larger fragment -- a chess move, a reading, a
+  #       coordinate; a cell surface end-trims), and None draws it whole and lets it overhang, which is
+  #       exactly what every pixel run did before this (a cell surface hard-clips, with no ellipsis to
+  #       claim a removal the author declined). PixelWidgetBase.FitFontSize is the Shrink answer for the
+  #       widget-level helpers -- a status bar, a strip either side of a camera cutout -- measured through
+  #       the widget's FontFallback, which every hand-rolled consumer copy of this loop got wrong.
+  #       BEHAVIOUR CHANGE, not additive: a run wide enough to overflow and left on the DEFAULT
+  #       TextTrim.End now ellipsizes on pixel surfaces where it used to overhang. That is the contract
+  #       7.7 wrote down and the cell painter has always kept, so it is a fix rather than a new policy --
+  #       but it IS visible, and a run that meant to overhang now says TextTrim.None. Fitting costs one
+  #       measurement per text leaf per frame, early-outing on the run that already fits.
+  #       An EMPTY font path still means "draw no text" and never measures, keeping FontPath's unresolved
+  #       contract; a non-empty font the renderer cannot load throws exactly where DrawText already did.
+  #       Console.Lib 4.16 carries the cell-side degradations. 15 tests.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

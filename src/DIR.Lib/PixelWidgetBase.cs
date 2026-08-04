@@ -287,6 +287,40 @@ namespace DIR.Lib
             return Math.Min(width, clampMax);
         }
 
+        /// <summary>
+        /// The largest size at or below <paramref name="preferred"/> at which <paramref name="text"/> measures
+        /// no wider than <paramref name="maxWidth"/> — <see cref="TextTrim.Shrink"/> for the draw helpers, which
+        /// take a rect and a size directly rather than a <see cref="Layout.Node"/> tree.
+        ///
+        /// <para>Needed because <see cref="DrawText"/> does not bound a run to the rect it is handed: it starts
+        /// at the edge and keeps going, so an over-long label draws over whatever shares its strip. Inside a
+        /// layout tree the painter now does this for you from the run's own
+        /// <see cref="Layout.Content.Text.Trim"/>; this is the same fit for the hand-placed paths — a status
+        /// bar, a two-ended strip either side of a camera cutout, a column header beside a button.</para>
+        ///
+        /// <para>Measured with the widget's <see cref="FontPath"/> and <see cref="FontFallback"/>, so the width
+        /// is the one <see cref="DrawText"/> will actually produce. Sizes are in drawing units, like every
+        /// other <c>fontSize</c> on this type.</para>
+        /// </summary>
+        /// <param name="text">The run that has to fit.</param>
+        /// <param name="preferred">The size it wants; never exceeded.</param>
+        /// <param name="maxWidth">Space available. Zero or negative is "unconstrained" and returns
+        /// <paramref name="preferred"/> — nothing is known about the space, so nothing is given up.</param>
+        /// <param name="minFontSize">Floor, below which overflowing visibly beats shrinking further.</param>
+        protected float FitFontSize(ReadOnlySpan<char> text, float preferred, float maxWidth,
+            float minFontSize = TextFit.DefaultMinFontSize)
+            => FitFontSize(text, FontPath, preferred, maxWidth, minFontSize);
+
+        /// <summary>
+        /// <see cref="FitFontSize(ReadOnlySpan{char}, float, float, float)"/> measured with an explicit font —
+        /// for a widget that draws a run in a face other than its own <see cref="FontPath"/> (a symbol or
+        /// emoji face, a second UI font). The widget's <see cref="FontFallback"/> still applies, matching
+        /// <see cref="DrawText"/>.
+        /// </summary>
+        protected float FitFontSize(ReadOnlySpan<char> text, string fontPath, float preferred, float maxWidth,
+            float minFontSize = TextFit.DefaultMinFontSize)
+            => TextFit.ShrinkToWidth(Renderer, text, fontPath, FontFallback, preferred, maxWidth, minFontSize);
+
         /// <inheritdoc/>
         public List<TextInputState> GetRegisteredTextInputs() => _tracker.GetRegisteredTextInputs();
 
@@ -525,6 +559,18 @@ namespace DIR.Lib
                             // The context's resolver, not the widget's: paint must split on exactly what
                             // measure split on, or the arranged rect won't fit what lands in it.
                             //
+                            // Fit the run to the rect the engine resolved for it, per the run's OWN policy
+                            // (Layout.Content.Text.Trim): cut it at either end, scale it down, or -- with
+                            // TextTrim.None -- let it overhang, which is what every run did before this
+                            // painter learned to fit. Not cosmetic: DrawText starts at the rect edge and
+                            // keeps going, so an over-wide run used to draw straight over its neighbour, on
+                            // whichever surface sizes happened not to fit. The engine owns the rect; only
+                            // the run knows which half of itself carries the meaning, which is why the
+                            // policy travels with the run rather than living here.
+                            var (value, fontSize) = TextFit.ForWidth(
+                                Renderer, text.Value, fp, ctx.Fallback,
+                                text.FontSize * ctx.FontScale, bounds.Width, text.Trim);
+                            //
                             // Text under a LinkHit goes out as a selectable run carrying an Href, which is
                             // how a DOM host gets a real <a href> (new-tab, open, copy-link handled by the
                             // browser) instead of a bare clickable rect it has to reimplement. The click
@@ -536,16 +582,16 @@ namespace DIR.Lib
                             // nothing else starts landing in the host's selection layer.
                             if (links.Count > 0)
                             {
-                                DrawSelectableText(text.Value, fp, ctx.Fallback,
+                                DrawSelectableText(value, fp, ctx.Fallback,
                                     bounds.X, bounds.Y, bounds.Width, bounds.Height,
-                                    text.FontSize * ctx.FontScale, text.Color, text.HAlign, text.VAlign,
+                                    fontSize, text.Color, text.HAlign, text.VAlign,
                                     links.Peek().Url);
                             }
                             else
                             {
-                                DrawText(text.Value.AsSpan(), fp, ctx.Fallback,
+                                DrawText(value.AsSpan(), fp, ctx.Fallback,
                                     bounds.X, bounds.Y, bounds.Width, bounds.Height,
-                                    text.FontSize * ctx.FontScale, text.Color, text.HAlign, text.VAlign);
+                                    fontSize, text.Color, text.HAlign, text.VAlign);
                             }
                             break;
                         case Layout.Content.Box box when box.Color.Alpha > 0:

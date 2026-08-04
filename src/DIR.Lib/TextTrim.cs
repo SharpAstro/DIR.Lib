@@ -24,4 +24,30 @@ public enum TextTrim
     /// any run whose distinguishing part is at the end.
     /// </summary>
     Start,
+
+    /// <summary>
+    /// Keep every character and scale the run DOWN until it fits — <c>"a long label"</c> a little smaller
+    /// rather than <c>"a long lab…"</c>. For a run where every character carries meaning and a smaller
+    /// WHOLE beats a larger fragment: a chess move (<c>Nc6xb4</c> cut to <c>Nc6x…</c> has lost the
+    /// destination square, which is the part being read), a measurement, a coordinate, a short title
+    /// sharing a strip with a control.
+    /// <para>
+    /// Only a surface that can scale text can honour this. A CELL surface cannot — a character grid has one
+    /// size — so it treats Shrink as <see cref="End"/>, the closest thing available to it. That degradation
+    /// is deliberate: a tree authored for both surfaces still arranges and paints on both.
+    /// </para>
+    /// </summary>
+    Shrink,
+
+    /// <summary>
+    /// Do not fit at all: draw the run whole, at its stated size, and let it overflow its rect.
+    /// <para>
+    /// The escape hatch, and the pixel painter's behaviour for every run before it learned to fit — so a
+    /// label that was deliberately overhanging its box, or one whose neighbours are known to be empty, says
+    /// so with this rather than being silently ellipsized. A cell surface cannot overflow (writing past the
+    /// rect would corrupt the neighbouring cells), so it hard-clips instead: the same "keep the head, add
+    /// nothing" cut, without the ellipsis that would claim something was removed.
+    /// </para>
+    /// </summary>
+    None,
 }

@@ -77,10 +77,16 @@ public class LayoutPainterTests
     }
 
     /// <summary>Captures the font family each <see cref="DrawText"/> resolves to (draw is skipped, so no
-    /// real font file is needed) -- proves the layout painter fed through the widget-owned FontPath.</summary>
+    /// real font file is needed) -- proves the layout painter fed through the widget-owned FontPath.
+    /// <para>MeasureText is stubbed as well as DrawText, because the painter now measures every text leaf to
+    /// fit it to its rect (<see cref="TextFit"/>): a double that draws a named font but cannot measure it is
+    /// a double the real renderer contract does not allow.</para></summary>
     private sealed class FontSpyRenderer(uint width, uint height) : RgbaImageRenderer(width, height)
     {
         public string? LastTextFont { get; private set; }
+
+        public override (float Width, float Height) MeasureText(ReadOnlySpan<char> text, string fontFamily, float fontSize)
+            => (text.Length * fontSize * 0.5f, fontSize);
 
         public override void DrawText(ReadOnlySpan<char> text, string fontFamily, float fontSize, RGBAColor32 fontColor,
             in RectInt layout, TextAlign horizAlignment = TextAlign.Center, TextAlign vertAlignment = TextAlign.Near)
