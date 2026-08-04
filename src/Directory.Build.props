@@ -26,6 +26,16 @@
     <!-- Local builds get Major.Minor.0; CI passes -p:Version=Major.Minor.<run><attempt>+<sha>, and the
          condition lets it win. -->
     <VersionPrefix Condition="'$(VersionPrefix)' == ''">$(VersionMajorMinor).0</VersionPrefix>
+    <!-- Assembly identity, derived here so it cannot be forgotten. It WAS forgotten: both DIR.Lib and
+         DIR.Lib.Shaping carried a literal <AssemblyVersion>6.4.0.0</AssemblyVersion> in their csprojs and
+         shipped it unchanged from 6.5 through 7.8 — every published assembly since claimed 6.4 while its
+         informational version said 7.8. Nothing compared the two, so nothing complained. CI stamps
+         -p:Version and -p:FileVersion but NOT -p:AssemblyVersion, which is why the literal won in the one
+         build that matters. It is unconditional (not Condition="'$(AssemblyVersion)' == ''") on purpose:
+         the value is the repo's, and a per-project override is the bug this replaces.
+         Only Major.Minor is significant — the build counter deliberately stays out, so a republish of the
+         same X.Y does not change assembly identity. -->
+    <AssemblyVersion>$(VersionMajorMinor).0.0</AssemblyVersion>
   </PropertyGroup>
 
 </Project>

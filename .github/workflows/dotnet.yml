@@ -196,6 +196,21 @@ env:
   #       An EMPTY font path still means "draw no text" and never measures, keeping FontPath's unresolved
   #       contract; a non-empty font the renderer cannot load throws exactly where DrawText already did.
   #       Console.Lib 4.16 carries the cell-side degradations. 15 tests.
+  #       Later in 7.8, no X.Y bump: AssemblyVersion is now DERIVED from VersionMajorMinor in
+  #       src/Directory.Build.props like every other version value, instead of being restated as a literal
+  #       in each csproj. Both DIR.Lib and DIR.Lib.Shaping carried <AssemblyVersion>6.4.0.0</AssemblyVersion>
+  #       and had published it unchanged since 6.5 -- so every package from 6.5 through 7.8.1841 claims
+  #       assembly identity 6.4 while its informational version says 7.8. It survived the version
+  #       single-sourcing because CI stamps -p:Version and -p:FileVersion but NOT -p:AssemblyVersion, so
+  #       unlike a stale VersionPrefix (which only spoils a local pack) the literal won in the build that
+  #       ships, and nothing compares the two. Now 7.8.0.0.
+  #       Deliberately NOT a minor bump: the value only moves UP, toward the version the package already
+  #       advertised, and the runtime rejects a loaded assembly LOWER than the compiled reference, never
+  #       higher -- so anything already built against 6.4.0.0 keeps loading. Consumers on a floating 7.8.*
+  #       pin take the correction on their next restore with no props change. Only Major.Minor is
+  #       significant, the build counter stays out, so republishing 7.8 does not churn identity again.
+  #       The same correction lands in SdlVulkan.Renderer 7.6 (6.11.0.0 and two 6.0.0.0), and the property
+  #       now sits in the props file in all seven sibling repos with none left in any csproj.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
