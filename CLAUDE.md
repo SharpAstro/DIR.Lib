@@ -67,4 +67,10 @@ CI runs tests in Release config after building, before publishing NuGet packages
 
 ## Package Versioning
 
-Central Package Management via `src/Directory.Packages.props` — all package versions are defined there, never in individual `.csproj` files. The library version prefix is in `src/DIR.Lib/DIR.Lib.csproj` (`VersionPrefix`).
+Central Package Management via `src/Directory.Packages.props` — all package versions are defined there, never in individual `.csproj` files.
+
+This repo's OWN version has **one place to bump**: `VersionMajorMinor` in `src/Directory.Build.props`. Local builds get `Major.Minor.0`; the workflow reads that same property back (`dotnet msbuild src/Directory.Build.props -getProperty:VersionMajorMinor`) rather than restating the number, so CI cannot stamp a version the packages disagree with.
+
+It covers both DIR.Lib and DIR.Lib.Shaping, because CI stamps a single `-p:Version` across them. No csproj declares its own `VersionPrefix` — a per-project one silently overrides the props file, which is how DIR.Lib.Shaping once sat at 6.8.0 while DIR.Lib shipped 7.5.0.
+
+Add the matching entry to the changelog comment block in `.github/workflows/dotnet.yml`.
