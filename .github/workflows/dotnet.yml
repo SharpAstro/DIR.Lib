@@ -225,6 +225,15 @@ env:
   #       Needs SharpAstro.Fonts 1.8, which also loads a PDF subset font whose cmap a subsetter
   #       malformed -- one bad subtable used to reject the whole font, dropping every glyph to a system
   #       face. Additive apart from the rename; consumers that never register an encoding are unaffected.
+  # 7.10 - TabBar takes a colour palette instead of hard-coding one. Its eight colours were private
+  #        static fields, so a consumer could not theme the strip at all -- an app offering a light mode
+  #        had a dark band across the top of every window and no way to change it. TabBarColors is a
+  #        record whose defaults are the values the bar has always drawn, so a consumer that sets nothing
+  #        is unchanged, and TabBar.Colors is settable (like Scale) because a theme can flip while the bar
+  #        is alive. Surfaces and text are separated from ActiveAccent deliberately: the accent means
+  #        "this is the tab you are on", which reads the same on a light strip as a dark one, so theming
+  #        it changes what it communicates rather than how it reads. Additive; five tests, two rendering
+  #        through RgbaImageRenderer so an override is proven to reach the pixels.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
