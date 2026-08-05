@@ -37,4 +37,35 @@ public record TabBarColors
 
     /// <summary>The per-tab close mark. Default: light grey (#c0c0c8).</summary>
     public RGBAColor32 CloseMark { get; init; } = new(0xc0, 0xc0, 0xc8, 0xff);
+
+    /// <summary>
+    /// Derives a bar palette from the shared chrome roles in <paramref name="palette"/>, so an app that
+    /// already holds a <see cref="UiTheme"/> drives the bar from that one source instead of restating
+    /// eight colours next to it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="UiPalette"/> names two chrome surfaces, and the bar draws three: strip, idle tab and
+    /// active tab. The strip and idle tabs therefore share <see cref="UiPalette.PanelBg"/> and are told
+    /// apart by the separator the bar already rules between them, while the active tab takes
+    /// <see cref="UiPalette.HeaderBg"/> — it is the header of the content beneath it, which is what that
+    /// role means. Inventing a third tone by blending the two was the alternative and it would put a
+    /// colour on screen that the app's theme never chose.
+    /// </para>
+    /// <para>
+    /// <see cref="ActiveAccent"/> is deliberately NOT taken from the palette; it keeps its default for
+    /// the reason given on <see cref="TabBarColors"/>. Anything here can still be overridden after the
+    /// fact — <c>FromPalette(p) with { InactiveBackground = … }</c> — which is why this is a record.
+    /// </para>
+    /// </remarks>
+    public static TabBarColors FromPalette(UiPalette palette) => new()
+    {
+        BarBackground = palette.PanelBg,
+        InactiveBackground = palette.PanelBg,
+        ActiveBackground = palette.HeaderBg,
+        Separator = palette.Separator,
+        ActiveText = palette.HeaderText,
+        InactiveText = palette.DimText,
+        CloseMark = palette.BodyText,
+    };
 }
