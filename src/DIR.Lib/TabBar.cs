@@ -31,14 +31,9 @@ public sealed class TabBar
     private float MaxTabW => BaseMaxTabW * Scale;
     private int Border => Math.Max(1, (int)Scale);
 
-    private static readonly RGBAColor32 BarBg = new(0x14, 0x14, 0x1c, 0xff);
-    private static readonly RGBAColor32 ActiveBg = new(0x2c, 0x2c, 0x3c, 0xff);
-    private static readonly RGBAColor32 InactiveBg = new(0x1c, 0x1c, 0x26, 0xff);
-    private static readonly RGBAColor32 Separator = new(0x3a, 0x3a, 0x48, 0xff);
-    private static readonly RGBAColor32 ActiveAccent = new(0x44, 0x88, 0xff, 0xff);
-    private static readonly RGBAColor32 ActiveText = new(0xf0, 0xf0, 0xf0, 0xff);
-    private static readonly RGBAColor32 InactiveText = new(0x9a, 0x9a, 0xa6, 0xff);
-    private static readonly RGBAColor32 CloseColor = new(0xc0, 0xc0, 0xc8, 0xff);
+    /// <summary>Palette, settable by the host like <see cref="Scale"/> — a theme can change while the bar
+    /// is alive, so this is not init-only. Defaults reproduce the bar's original dark styling.</summary>
+    public TabBarColors Colors { get; set; } = new();
 
     /// <summary>A click that landed on a tab. <see cref="Close"/> = the × button (else the body).</summary>
     public readonly record struct TabClick(int Index, bool Close);
@@ -68,7 +63,7 @@ public sealed class TabBar
         var barLeft = (int)contentLeft;
         var barRight = (int)viewportW;
         renderer.PushClip(new RectInt((barRight, h), (barLeft, 0)));
-        renderer.FillRectangle(new RectInt((barRight, h), (barLeft, 0)), BarBg);
+        renderer.FillRectangle(new RectInt((barRight, h), (barLeft, 0)), Colors.BarBackground);
 
         var x = contentLeft;
         var closeSize = CloseBox;
@@ -83,25 +78,25 @@ public sealed class TabBar
             var x1 = x + w;
 
             // Tab background + the accent strip / separators that distinguish active from idle.
-            var bg = active ? ActiveBg : InactiveBg;
+            var bg = active ? Colors.ActiveBackground : Colors.InactiveBackground;
             renderer.FillRectangle(new RectInt(((int)x1, h), ((int)x0, 0)), bg);
             if (active)
-                renderer.FillRectangle(new RectInt(((int)x1, Border * 2), ((int)x0, 0)), ActiveAccent);
+                renderer.FillRectangle(new RectInt(((int)x1, Border * 2), ((int)x0, 0)), Colors.ActiveAccent);
             // Right-hand separator between tabs.
-            renderer.FillRectangle(new RectInt(((int)x1, h), ((int)x1 - Border, 0)), Separator);
+            renderer.FillRectangle(new RectInt(((int)x1, h), ((int)x1 - Border, 0)), Colors.Separator);
 
             // Label, truncated to leave room for the close button. Drawn with per-script fallback.
             var labelRight = (int)(x1 - closeSize - Pad * 0.5f);
             var labelLeft = (int)(x0 + Pad);
             var label = _fallback.FitEllipsis(renderer, title, Font, labelRight - labelLeft);
-            _fallback.Draw(renderer, label, Font, active ? ActiveText : InactiveText,
+            _fallback.Draw(renderer, label, Font, active ? Colors.ActiveText : Colors.InactiveText,
                 new RectInt((labelRight, h - (int)(2 * Scale)), (labelLeft, 0)),
                 TextAlign.Near, TextAlign.Center);
 
             // Close button (×) at the right edge — Latin, always covered by the primary font.
             var cx1 = (int)(x1 - Pad * 0.4f);
             var cx0 = (int)(cx1 - closeSize);
-            renderer.DrawText("×".AsSpan(), _fontPath, Font, CloseColor,
+            renderer.DrawText("×".AsSpan(), _fontPath, Font, Colors.CloseMark,
                 new RectInt((cx1, h), (cx0, 0)), TextAlign.Center, TextAlign.Center);
 
             _rects.Add((x0, x1, cx0, cx1));
@@ -111,7 +106,7 @@ public sealed class TabBar
         }
 
         // Bottom edge of the whole bar.
-        renderer.FillRectangle(new RectInt((barRight, h), (barLeft, h - Border)), Separator);
+        renderer.FillRectangle(new RectInt((barRight, h), (barLeft, h - Border)), Colors.Separator);
         renderer.PopClip();
     }
 
