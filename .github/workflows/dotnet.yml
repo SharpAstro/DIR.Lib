@@ -211,6 +211,20 @@ env:
   #       significant, the build counter stays out, so republishing 7.8 does not churn identity again.
   #       The same correction lands in SdlVulkan.Renderer 7.6 (6.11.0.0 and two 6.0.0.0), and the property
   #       now sits in the props file in all seven sibling repos with none left in any csproj.
+  # 7.9 - a PDF font's own /Encoding decides which glyph a character code selects, so an embedded
+  #       name-keyed CFF subset stops drawing unrelated glyphs. A simple font can name its encoding in the
+  #       PDF (a base encoding, /Differences, or both), and for a name-keyed CFF that naming is the ONLY
+  #       thing that resolves a code to a glyph: the subset carries no cmap and often no CFF Encoding
+  #       either, so a code fell through to being used as a glyph index directly. Page numbers rendered as
+  #       whatever glyph happened to sit at index 49, 50, 51 -- 'W', 'X', 'Y' where the document said 1, 2,
+  #       3 -- which reads as a font bug rather than a lookup one.
+  #       RegisterPdfEncoding takes the code -> glyph-name map a consumer parsed out of the PDF, and glyph
+  #       resolution consults it before falling back to the cmap, resolving the name through the new
+  #       SharpAstro.Fonts 1.8 GidForName. The old RegisterType1Encoding stays as an [Obsolete] forwarder:
+  #       the map was never Type 1-specific, it was only ever registered from that path.
+  #       Needs SharpAstro.Fonts 1.8, which also loads a PDF subset font whose cmap a subsetter
+  #       malformed -- one bad subtable used to reject the whole font, dropping every glyph to a system
+  #       face. Additive apart from the rename; consumers that never register an encoding are unaffected.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

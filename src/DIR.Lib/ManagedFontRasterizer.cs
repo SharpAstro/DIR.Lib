@@ -27,10 +27,13 @@ public sealed class ManagedFontRasterizer : IDisposable
     // through OpenTypeFont; it's looked up by char code → glyph name via the font's own Encoding.
     private readonly ConcurrentDictionary<string, T1.Type1Font> _type1Fonts = new();
 
-    // Per-font char code → glyph name overrides from the PDF /Encoding /Differences (same id as
-    // _type1Fonts). Authoritative over the font's built-in encoding; this is how a PDF reaches a
-    // glyph (e.g. the fi/fl ligatures) it places at a code the built-in encoding doesn't cover.
-    private readonly ConcurrentDictionary<string, IReadOnlyDictionary<int, string>> _type1Encoding = new();
+    // Per-font char code → PostScript glyph name from the PDF /Encoding (base encoding +
+    // /Differences). Authoritative over anything inside the font program — §9.6.6.2 has a named
+    // base encoding REPLACE the built-in encoding, and /Differences override individual codes.
+    // Consulted for every embedded simple font: Type1 resolves the name against its charstrings,
+    // OpenType via GetGlyphIdByName (the CFF charset — the only route into a bare name-keyed CFF
+    // with no cmap and no Encoding operator, e.g. the Canon manual's Lithos-Bold subset).
+    private readonly ConcurrentDictionary<string, IReadOnlyDictionary<int, string>> _pdfEncoding = new();
 
     // Session-stable memo for ResolveGlyphIdentity: the same (font, codepoint, charCode, hint)
     // always resolves to the same identity once the font is registered, but atlas consumers that
@@ -41,6 +44,22 @@ public sealed class ManagedFontRasterizer : IDisposable
     // invalidates its font's entries — /Differences overrides win over the built-in encoding
     // and may be registered after a glyph was already resolved.
     private readonly ConcurrentDictionary<(string Font, int Codepoint, int CharCode, GlyphMapHint Hint), GlyphIdentity> _identityMemo = new();
+
+    // Char-code → gid for a loaded OpenType face, the PDF's named glyph first: a registered
+    // /Encoding designates glyphs BY NAME (code → name → glyph), that designation is
+    // authoritative over any cmap strategy, and for a bare name-keyed CFF with no cmap it is
+    // the only route that exists. TrueType faces return 0 from the name lookup and fall
+    // through to the cmap/char-code strategies unchanged.
+    private uint ResolveOpenTypeGid(string fontPath, OpenTypeFont font, uint codepoint, uint charCode, FontsHint hint)
+    {
+        if (charCode <= int.MaxValue && _pdfEncoding.TryGetValue(fontPath, out var enc)
+            && enc.TryGetValue((int)charCode, out var name))
+        {
+            var byName = font.GetGlyphIdByName(name);
+            if (byName != 0) return byName;
+        }
+        return font.GetGlyphId(codepoint, charCode, hint);
+    }
 
     /// <summary>
     /// Rasterize a glyph with PDF char-code + cmap lookup hint.
@@ -55,7 +74,7 @@ public sealed class ManagedFontRasterizer : IDisposable
         // DIR.Lib.GlyphMapHint and SharpAstro.Fonts' enum share value layout
         // (Auto=0, EmbeddedSubset=1, CharCodeIsGID=2, Unicode=3) so the cast
         // is a no-op at runtime.
-        var gid = font.GetGlyphId((uint)codepoint.Value, charCode, (FontsHint)hint);
+        var gid = ResolveOpenTypeGid(fontPath, font, (uint)codepoint.Value, charCode, (FontsHint)hint);
         if (gid == 0) return default;
         return Render(font, gid, fontSize);
     }
@@ -524,21 +543,30 @@ public sealed class ManagedFontRasterizer : IDisposable
     }
 
     /// <summary>
-    /// Install the PDF <c>/Encoding /Differences</c> char code → glyph name overrides for the Type1
-    /// font registered under <paramref name="fontId"/>. These win over the font's built-in encoding,
-    /// so a code the embedded font maps to <c>.notdef</c> (e.g. a remapped <c>fi</c> ligature) still
-    /// resolves to its named glyph. No-op for non-Type1 fonts (the override is only consulted there).
+    /// Install the PDF <c>/Encoding</c> char code → glyph name map (named base encoding with
+    /// <c>/Differences</c> layered on top) for the embedded font registered under
+    /// <paramref name="fontId"/>. The map wins over the font program's built-in encoding —
+    /// §9.6.6.2 has a named base encoding replace it outright — so a code the embedded font
+    /// maps to <c>.notdef</c> (e.g. a remapped <c>fi</c> ligature) still resolves to its named
+    /// glyph. Type1 fonts resolve the name against their charstrings; OpenType faces through
+    /// <see cref="OpenTypeFont.GetGlyphIdByName"/> (name-keyed CFF charsets); TrueType outlines
+    /// have no name authority and keep resolving by cmap/char-code, so the map is inert there.
     /// </summary>
-    public void RegisterType1Encoding(string fontId, IReadOnlyDictionary<int, string> differences)
+    public void RegisterPdfEncoding(string fontId, IReadOnlyDictionary<int, string> encoding)
     {
-        if (differences.Count == 0) return;
-        _type1Encoding[fontId] = differences;
+        if (encoding.Count == 0) return;
+        _pdfEncoding[fontId] = encoding;
         // The overrides change what a char code resolves to for this font — drop its memoized
         // identities so earlier built-in-encoding resolutions can't shadow the /Differences names.
         foreach (var key in _identityMemo.Keys)
             if (key.Font == fontId)
                 _identityMemo.TryRemove(key, out _);
     }
+
+    /// <inheritdoc cref="RegisterPdfEncoding"/>
+    [Obsolete("Renamed: the encoding map applies to any embedded simple font, not just Type1. Use RegisterPdfEncoding.")]
+    public void RegisterType1Encoding(string fontId, IReadOnlyDictionary<int, string> differences)
+        => RegisterPdfEncoding(fontId, differences);
 
     /// <summary>
     /// Rasterize a glyph as a signed distance field by Unicode codepoint.
@@ -565,7 +593,7 @@ public sealed class ManagedFontRasterizer : IDisposable
         if (_type1Fonts.TryGetValue(fontPath, out var t1))
             return RenderType1Sdf(t1, ResolveType1Name(fontPath, t1, charCode), fontSize, spread);
         var font = GetOrLoad(fontPath);
-        var gid = font.GetGlyphId((uint)codepoint.Value, charCode, (FontsHint)hint);
+        var gid = ResolveOpenTypeGid(fontPath, font, (uint)codepoint.Value, charCode, (FontsHint)hint);
         if (gid == 0) return default;
         return RenderSdf(font, gid, fontSize, spread);
     }
@@ -595,7 +623,7 @@ public sealed class ManagedFontRasterizer : IDisposable
         if (_type1Fonts.TryGetValue(fontPath, out var t1))
             return RenderType1Mtsdf(t1, ResolveType1Name(fontPath, t1, charCode), fontSize, spread);
         var font = GetOrLoad(fontPath);
-        var gid = font.GetGlyphId((uint)codepoint.Value, charCode, (FontsHint)hint);
+        var gid = ResolveOpenTypeGid(fontPath, font, (uint)codepoint.Value, charCode, (FontsHint)hint);
         if (gid == 0) return default;
         return RenderMtsdf(font, gid, fontSize, spread);
     }
@@ -660,11 +688,12 @@ public sealed class ManagedFontRasterizer : IDisposable
         try { font = GetOrLoad(fontPath); }
         catch (InvalidOperationException) { return default; }
 
-        // The SAME GetGlyphId call the rasterize methods make: charCode-aware for CID/subset fonts
-        // when a PDF char code is supplied, plain Unicode cmap otherwise. GlyphMapHint casts to the
-        // Fonts enum (shared value layout — see RasterizeGlyphWithCharCode).
+        // The SAME resolution the rasterize methods make: the PDF encoding's named glyph first,
+        // then charCode-aware cmap strategies for CID/subset fonts when a PDF char code is
+        // supplied, plain Unicode cmap otherwise. GlyphMapHint casts to the Fonts enum (shared
+        // value layout — see RasterizeGlyphWithCharCode).
         var gid = charCode >= 0
-            ? font.GetGlyphId((uint)codepoint.Value, (uint)charCode, (FontsHint)hint)
+            ? ResolveOpenTypeGid(fontPath, font, (uint)codepoint.Value, (uint)charCode, (FontsHint)hint)
             : font.GetGlyphId((uint)codepoint.Value);
         return new GlyphIdentity(gid, null);
     }
@@ -823,7 +852,7 @@ public sealed class ManagedFontRasterizer : IDisposable
     // it names a glyph the font actually has), otherwise the font's built-in encoding.
     private string? ResolveType1Name(string fontPath, T1.Type1Font font, uint charCode)
     {
-        if (_type1Encoding.TryGetValue(fontPath, out var diffs)
+        if (_pdfEncoding.TryGetValue(fontPath, out var diffs)
             && diffs.TryGetValue((int)charCode, out var name)
             && font.HasGlyph(name))
             return name;

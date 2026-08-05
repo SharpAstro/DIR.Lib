@@ -6,7 +6,7 @@ namespace DIR.Lib.Tests;
 
 /// <summary>
 /// The embedded-Type1 (/FontFile, PFB) glyph path in <see cref="ManagedFontRasterizer"/> plus the PDF
-/// <c>/Encoding /Differences</c> overlay (<see cref="ManagedFontRasterizer.RegisterType1Encoding"/>).
+/// <c>/Encoding /Differences</c> overlay (<see cref="ManagedFontRasterizer.RegisterPdfEncoding"/>).
 /// This is the seam behind the LaTeX / Computer-Modern "De nition" bug: without it the whole doc falls
 /// back to a Latin font and the f-ligatures blank. cmr10.pfb is a small, freely-redistributable fixture.
 /// </summary>
@@ -62,7 +62,7 @@ public class Type1RasterizeTests
         baseName.ShouldNotBe("fi");
 
         // A PDF /Differences [65 /fi] remaps the code; the override must win over the built-in encoding.
-        r.RegisterType1Encoding(FontId, new Dictionary<int, string> { [code] = "fi" });
+        r.RegisterPdfEncoding(FontId, new Dictionary<int, string> { [code] = "fi" });
         r.ResolveGlyphIdentity(FontId, new Rune('A'), code, GlyphMapHint.Auto).Type1Name.ShouldBe("fi");
     }
 
@@ -77,7 +77,7 @@ public class Type1RasterizeTests
 
         // An override naming a glyph the font lacks must fall back to the built-in name — resolving to
         // the missing name would render blank, the exact failure this overlay exists to prevent.
-        r.RegisterType1Encoding(FontId, new Dictionary<int, string> { [code] = "glyph_not_in_cmr10" });
+        r.RegisterPdfEncoding(FontId, new Dictionary<int, string> { [code] = "glyph_not_in_cmr10" });
         r.ResolveGlyphIdentity(FontId, new Rune('A'), code, GlyphMapHint.Auto).Type1Name.ShouldBe(baseName);
     }
 
