@@ -88,6 +88,63 @@ public class TabBarColorsTests
         SampleEmptyBarArea(light).ShouldBe(new RGBAColor32(0xff, 0xff, 0xff, 0xff));
     }
 
+    private static readonly UiPalette LightChrome = new(
+        ContentBg: new RGBAColor32(0xff, 0xff, 0xff, 0xff),
+        PanelBg: new RGBAColor32(0xf2, 0xf2, 0xf4, 0xff),
+        HeaderBg: new RGBAColor32(0xff, 0xff, 0xff, 0xff),
+        HeaderText: new RGBAColor32(0x1a, 0x1a, 0x1e, 0xff),
+        BodyText: new RGBAColor32(0x33, 0x33, 0x38, 0xff),
+        DimText: new RGBAColor32(0x6a, 0x6a, 0x72, 0xff),
+        Separator: new RGBAColor32(0xc8, 0xc8, 0xd0, 0xff),
+        Selection: new RGBAColor32(0x20, 0x60, 0xff, 0xff));
+
+    [Fact]
+    public void FromPalette_takes_every_surface_and_text_colour_from_the_shared_roles()
+    {
+        var c = TabBarColors.FromPalette(LightChrome);
+
+        c.BarBackground.ShouldBe(LightChrome.PanelBg);
+        c.InactiveBackground.ShouldBe(LightChrome.PanelBg);
+        c.ActiveBackground.ShouldBe(LightChrome.HeaderBg);
+        c.Separator.ShouldBe(LightChrome.Separator);
+        c.ActiveText.ShouldBe(LightChrome.HeaderText);
+        c.InactiveText.ShouldBe(LightChrome.DimText);
+        c.CloseMark.ShouldBe(LightChrome.BodyText);
+    }
+
+    [Fact]
+    public void FromPalette_leaves_the_accent_alone_rather_than_theming_it()
+    {
+        // Selection is the nearest role and mapping it would look reasonable, which is the trap: the
+        // accent means "the tab you are on" and must not drift with the theme. See TabBarColors remarks.
+        TabBarColors.FromPalette(LightChrome).ActiveAccent.ShouldBe(new TabBarColors().ActiveAccent);
+    }
+
+    [Fact]
+    public void FromPalette_can_be_adjusted_afterwards_for_the_third_surface()
+    {
+        // The bar draws three surfaces where UiPalette names two, so a consumer that wants idle tabs
+        // distinct from the strip says so here rather than DIR.Lib inventing a blended tone.
+        var idle = new RGBAColor32(0xe4, 0xe4, 0xe8, 0xff);
+
+        var c = TabBarColors.FromPalette(LightChrome) with { InactiveBackground = idle };
+
+        c.InactiveBackground.ShouldBe(idle);
+        c.BarBackground.ShouldBe(LightChrome.PanelBg);
+    }
+
+    [Fact]
+    public void A_palette_derived_bar_paints_the_themed_strip()
+    {
+        var renderer = new RgbaImageRenderer(400, 40);
+        var bar = NewBar();
+        bar.Colors = TabBarColors.FromPalette(LightChrome);
+
+        bar.Render(renderer, contentLeft: 0, viewportW: 400, ["One", "Two"], activeIndex: 0);
+
+        SampleEmptyBarArea(renderer).ShouldBe(LightChrome.PanelBg);
+    }
+
     [Fact]
     public void An_override_leaves_the_colours_it_does_not_name_at_their_defaults()
     {
