@@ -365,15 +365,15 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
         if (_glyphCache.TryGetValue(key, out var cached))
             return cached;
 
-        if (Rune.IsWhiteSpace(rune))
-        {
-            var refGlyph = GetGlyph(fontPath, fontSize, new Rune('n'));
-            var space = new GlyphBitmap([], 0, 0, 0, 0, refGlyph.AdvanceX);
-            _glyphCache[key] = space;
-            return space;
-        }
-
         var bitmap = _rasterizer.RasterizeGlyph(fontPath, fontSize, rune);
+
+        // A space rasterizes to no ink but keeps its own hmtx advance, which is how wide a space in
+        // this font actually is — so it needs no special case. Only a face carrying no glyph for it
+        // does: that resolves to .notdef and comes back with no advance at all, which would lay out
+        // as no gap, so borrow the 'n' glyph's width. ('n' is not whitespace, so this recurses once.)
+        if (bitmap.AdvanceX == 0f && Rune.IsWhiteSpace(rune))
+            bitmap = new GlyphBitmap([], 0, 0, 0, 0, GetGlyph(fontPath, fontSize, new Rune('n')).AdvanceX);
+
         _glyphCache[key] = bitmap;
         return bitmap;
     }

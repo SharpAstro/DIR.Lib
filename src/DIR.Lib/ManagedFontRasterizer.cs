@@ -787,18 +787,15 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// </summary>
     private static GlyphBitmap Render(OpenTypeFont font, uint gid, float pixelsPerEm)
     {
+        var advanceX = AdvancePx(font, gid, pixelsPerEm);
+
         var color = font.RenderColor(gid, pixelsPerEm);
         if (color is { IsEmpty: false })
-        {
-            var advance = font.Hmtx is not null
-                ? font.Hmtx.GetAdvanceWidth(gid) * pixelsPerEm / font.UnitsPerEm
-                : 0f;
             return new GlyphBitmap(color.Pixels, color.Width, color.Height,
-                color.Left, color.Top, advance, IsColored: true);
-        }
+                color.Left, color.Top, advanceX, IsColored: true);
 
         var gray = font.RenderGlyphHinted(gid, pixelsPerEm);
-        if (gray.IsEmpty) return default;
+        if (gray.IsEmpty) return Blank(advanceX);
 
         // Expand grayscale alpha to white-RGBA for compositing parity with
         // FreeType's grayscale path in the existing renderer.
@@ -811,36 +808,46 @@ public sealed class ManagedFontRasterizer : IDisposable
             rgba[di + 2] = 255;
             rgba[di + 3] = gray.Alpha[i];
         }
-        var advanceX = font.Hmtx is not null
-            ? font.Hmtx.GetAdvanceWidth(gid) * pixelsPerEm / font.UnitsPerEm
-            : 0f;
         return new GlyphBitmap(rgba, gray.Width, gray.Height,
             gray.Left, gray.Top, advanceX, IsColored: false);
     }
 
     private static SdfGlyphBitmap RenderSdf(OpenTypeFont font, uint gid, float pixelsPerEm, float spread)
     {
+        var advanceX = AdvancePx(font, gid, pixelsPerEm);
         var sdf = font.RenderSdf(gid, pixelsPerEm, spread);
-        if (sdf.IsEmpty) return default;
+        if (sdf.IsEmpty) return new SdfGlyphBitmap([], 0, 0, 0, 0, advanceX, spread);
 
-        var advanceX = font.Hmtx is not null
-            ? font.Hmtx.GetAdvanceWidth(gid) * pixelsPerEm / font.UnitsPerEm
-            : 0f;
         return new SdfGlyphBitmap(sdf.Alpha, sdf.Width, sdf.Height,
             sdf.Left, sdf.Top, advanceX, spread);
     }
 
     private static MtsdfGlyphBitmap RenderMtsdf(OpenTypeFont font, uint gid, float pixelsPerEm, float spread)
     {
+        var advanceX = AdvancePx(font, gid, pixelsPerEm);
         var mtsdf = font.RenderMtsdf(gid, pixelsPerEm, spread);
-        if (mtsdf.IsEmpty) return default;
+        if (mtsdf.IsEmpty) return new MtsdfGlyphBitmap([], 0, 0, 0, 0, advanceX, spread);
 
-        var advanceX = font.Hmtx is not null
-            ? font.Hmtx.GetAdvanceWidth(gid) * pixelsPerEm / font.UnitsPerEm
-            : 0f;
         return new MtsdfGlyphBitmap(mtsdf.Rgba, mtsdf.Width, mtsdf.Height,
             mtsdf.Left, mtsdf.Top, advanceX, spread);
     }
+
+    /// <summary>
+    /// The glyph's horizontal advance in pixels at <paramref name="pixelsPerEm"/>, or 0 for a face
+    /// with no <c>hmtx</c> table.
+    /// </summary>
+    private static float AdvancePx(OpenTypeFont font, uint gid, float pixelsPerEm) =>
+        font.Hmtx is not null
+            ? font.Hmtx.GetAdvanceWidth(gid) * pixelsPerEm / font.UnitsPerEm
+            : 0f;
+
+    /// <summary>
+    /// A glyph with no pixels but a real advance. An empty outline is <em>not</em> a missing glyph:
+    /// a space exists precisely to move the pen, so bailing out with <c>default</c> discarded the one
+    /// piece of information it carries. Callers still distinguish the two cases, because a genuinely
+    /// absent glyph resolves to gid 0 and is rejected before it ever reaches a render method.
+    /// </summary>
+    private static GlyphBitmap Blank(float advanceX) => new([], 0, 0, 0, 0, advanceX);
 
     // ---- Type1 (PFB) glyph rendering -------------------------------------
 

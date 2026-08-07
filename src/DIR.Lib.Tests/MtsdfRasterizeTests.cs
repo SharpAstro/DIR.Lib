@@ -44,11 +44,13 @@ public class MtsdfRasterizeTests
     }
 
     [Fact]
-    public void RasterizeGlyphMtsdf_EmptyGlyph_ReturnsDefault()
+    public void RasterizeGlyphMtsdf_EmptyGlyph_HasNoPixelsButKeepsItsAdvance()
     {
         using var rasterizer = new ManagedFontRasterizer();
         var m = rasterizer.RasterizeGlyphMtsdf(FontPath, 48f, new Rune(' '));
         Assert.Equal(0, m.Width);
-        Assert.Null(m.Rgba);
+        Assert.Empty(m.Rgba);
+        // A space has no field to sample but still moves the pen — see WhitespaceAdvanceTests.
+        Assert.True(m.AdvanceX > 0f);
     }
 }

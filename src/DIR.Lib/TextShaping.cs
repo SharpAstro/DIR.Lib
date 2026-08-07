@@ -12,9 +12,9 @@ namespace DIR.Lib;
 /// <para><b>Advances stay with the renderer.</b> The renderer looks up each glyph's <i>base</i>
 /// advance and bearings from its own glyph cache — which is raster-size- and atlas-specific
 /// (the SDF atlas scales from a fixed raster size; the software renderer rounds the font size;
-/// each derives whitespace advance from the <c>'n'</c> reference glyph). No single font-table
-/// advance reproduces both bit-for-bit, so the shaper does <em>not</em> own the advance. Instead
-/// it contributes only <see cref="XAdvanceAdjust"/> (kerning / GPOS advance adjustment) on top of
+/// each substitutes the <c>'n'</c> glyph's advance for whitespace a font has no glyph for). No
+/// single font-table advance reproduces both bit-for-bit, so the shaper does <em>not</em> own it.
+/// Instead it contributes only <see cref="XAdvanceAdjust"/> (kerning / GPOS advance adjustment) on top of
 /// the cache advance, plus <see cref="XOffset"/>/<see cref="YOffset"/> positioning shifts. Under
 /// the default <see cref="AdvanceShaper"/> all three are zero and clusters are 1:1 with runes, so
 /// glyph placement is byte-identical to the pre-seam per-rune loop.</para>
