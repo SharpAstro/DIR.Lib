@@ -11,9 +11,9 @@
     <!-- Roslyn API for the DIR.Lib.SourceGenerators analyzer (build-time only; PrivateAssets=all in
          the SG csproj keeps it out of the runtime/package closure). -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.13.0" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.3.0" />
-    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.201" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.301" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
     <!-- Tracks Fonts.Lib repo CI cadence. 1.5.x decodes CBDT colour-bitmap glyph
          PNGs via SharpAstro.Png instead of the stb_image port, so pulling it drops
          the transitive SharpAstro.StbImage dependency from downstream consumers.
@@ -40,7 +40,7 @@
     <!-- YamlDotNet is build-only — consumed by the LALR.CC source generator
          to parse grammars/*.lalr.yaml. PrivateAssets="all" in the csproj
          keeps it out of the runtime closure. -->
-    <PackageVersion Include="YamlDotNet" Version="17.1.0" />
+    <PackageVersion Include="YamlDotNet" Version="18.1.0" />
     <!-- DIR.Lib 4.0 dropped its codec dependencies; the test project still
          renders artifacts as PNG for visual baselines, so SharpAstro.Png
          stays here for the test-only reference. -->
