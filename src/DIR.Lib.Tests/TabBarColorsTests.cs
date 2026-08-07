@@ -88,15 +88,25 @@ public class TabBarColorsTests
         SampleEmptyBarArea(light).ShouldBe(new RGBAColor32(0xff, 0xff, 0xff, 0xff));
     }
 
-    private static readonly UiPalette LightChrome = new(
-        ContentBg: new RGBAColor32(0xff, 0xff, 0xff, 0xff),
-        PanelBg: new RGBAColor32(0xf2, 0xf2, 0xf4, 0xff),
-        HeaderBg: new RGBAColor32(0xff, 0xff, 0xff, 0xff),
-        HeaderText: new RGBAColor32(0x1a, 0x1a, 0x1e, 0xff),
-        BodyText: new RGBAColor32(0x33, 0x33, 0x38, 0xff),
-        DimText: new RGBAColor32(0x6a, 0x6a, 0x72, 0xff),
-        Separator: new RGBAColor32(0xc8, 0xc8, 0xd0, 0xff),
-        Selection: new RGBAColor32(0x20, 0x60, 0xff, 0xff));
+    // Object-initializer rather than the positional form this used to take: UiPalette became a
+    // sealed record with required roles (see UiTheme.cs and MIGRATION.md). HeaderText is stated
+    // explicitly even though it is now derivable, because these tests assert on it directly and a
+    // fixture that leaned on the fallback would be testing the default rather than the mapping.
+    private static readonly UiPalette LightChrome = new()
+    {
+        ContentBg = new RGBAColor32(0xff, 0xff, 0xff, 0xff),
+        PanelBg = new RGBAColor32(0xf2, 0xf2, 0xf4, 0xff),
+        HeaderBg = new RGBAColor32(0xff, 0xff, 0xff, 0xff),
+        HeaderText = new RGBAColor32(0x1a, 0x1a, 0x1e, 0xff),
+        BodyText = new RGBAColor32(0x33, 0x33, 0x38, 0xff),
+        DimText = new RGBAColor32(0x6a, 0x6a, 0x72, 0xff),
+        Separator = new RGBAColor32(0xc8, 0xc8, 0xd0, 0xff),
+        Selection = new RGBAColor32(0x20, 0x60, 0xff, 0xff),
+        Accent = new RGBAColor32(0x20, 0x60, 0xff, 0xff),
+        Info = new RGBAColor32(0x0a, 0x63, 0xa8, 0xff),
+        Warn = new RGBAColor32(0x8a, 0x50, 0x00, 0xff),
+        Error = new RGBAColor32(0xb0, 0x2a, 0x20, 0xff),
+    };
 
     [Fact]
     public void FromPalette_takes_every_surface_and_text_colour_from_the_shared_roles()
