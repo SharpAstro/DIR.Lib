@@ -234,6 +234,21 @@ env:
   #        "this is the tab you are on", which reads the same on a light strip as a dark one, so theming
   #        it changes what it communicates rather than how it reads. Additive; five tests, two rendering
   #        through RgbaImageRenderer so an override is proven to reach the pixels.
+  # 7.11 - BREAKING, see MIGRATION.md. UiPalette gains eight roles (Accent, AccentAlt, Focus,
+  #        SeparatorStrong, Success, Info, Warn, Error) and becomes a sealed record with required
+  #        members instead of a positional readonly record struct. Two reasons, both load-bearing.
+  #        A record struct always has an implicit parameterless constructor that property
+  #        initializers do not run, so default(UiPalette) was all-zero: transparent black, painted
+  #        silently with nothing on screen to say why. required makes the omission a compile
+  #        error. And a positional record cannot grow without breaking every call site,
+  #        which is exactly what a palette has to do. Five roles are DERIVED (SeparatorStrong,
+  #        HeaderText, AccentAlt, Focus, Success default to the role they extend) so a palette with
+  #        one rule weight or one accent need not invent a second; the fallback is stored in
+  #        nullable backing fields, so `with` keeps an unstated role unstated. HeaderText moves
+  #        from required to derived-from-Accent, so a palette that omits it now gets the accent
+  #        rather than a compile error. Adds MenuColors.FromPalette, the menu counterpart of
+  #        TabBarColors.FromPalette from 7.10, and UiPalette.IsDark computed from ContentBg so it
+  #        cannot disagree with the colours it describes.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
