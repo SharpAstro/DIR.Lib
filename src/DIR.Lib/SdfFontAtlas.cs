@@ -26,9 +26,10 @@ public sealed class SdfFontAtlas : IDisposable
     // workaround collapses: two codepoints that resolve to the same glyph now share one entry.
     private readonly record struct GlyphKey(string Font, float Size, uint Gid, string? Name);
 
-    // Sentinel Gid for whitespace, which carries no ink and derives its advance from the 'n'
-    // reference glyph. Kept off gid 0 (the shared notdef/blank entry for genuinely-missing
-    // glyphs) and off any real glyph id (< NumGlyphs) so whitespace never collides with either.
+    // Fallback Gid for whitespace a font has no glyph for, which therefore has no advance of its own
+    // and borrows the 'n' reference glyph's. Kept off gid 0 (the shared notdef/blank entry for
+    // genuinely-missing glyphs) and off any real glyph id (< NumGlyphs) so it collides with neither.
+    // Whitespace the font DOES carry is keyed by its own glyph id like anything else — see MakeKey.
     private const uint WhitespaceGid = uint.MaxValue;
 
     public readonly record struct GlyphInfo(float U0, float V0, float U1, float V1,
@@ -353,11 +354,12 @@ public sealed class SdfFontAtlas : IDisposable
             if (info.Width > 0)
                 _diskCache?.AppendGlyph(r.Key.Font, r.Key.Gid, r.Key.Name, in r.Bitmap);
             else if (!_needsEviction && !_glyphs.ContainsKey(r.Key))
-                // Genuinely blank glyph (empty SDF — InsertRasterized doesn't record those). Cache a
-                // zero sentinel so the draw path / prewarm don't re-queue it every frame — otherwise
-                // _rasterizeInFlight never settles and IsDirty pins the loop in a redraw busy-spin.
-                // (The ContainsKey guard keeps a saturation RefusedSentinel — written by the refusal
-                // branch itself — from being overwritten with the permanent blank flavour.)
+                // Unplaceable glyph — one larger than a whole page, which InsertRasterized refuses
+                // without recording. Cache a zero sentinel so the draw path / prewarm don't re-queue
+                // it every frame; otherwise _rasterizeInFlight never settles and IsDirty pins the
+                // loop in a redraw busy-spin. The ContainsKey guard is what keeps the entries
+                // InsertRasterized DOES record — a saturation RefusedSentinel, or an ink-free glyph
+                // holding its advance — from being flattened into the zero flavour here.
                 _glyphs[r.Key] = default;
             inserted++;
             // Page cap hit (InsertRasterized set _needsEviction): stop; BeginFrame evicts next frame
@@ -457,9 +459,9 @@ public sealed class SdfFontAtlas : IDisposable
     /// fetches by a pre-resolved glyph identity (the glyph id, or the PostScript name for Type1)
     /// instead of mapping a codepoint through the font cmap. This is the shaped-text entry point —
     /// once an <c>ITextShaper</c> has run (GSUB ligatures, Arabic joining, contextual forms, …) the
-    /// source codepoint no longer identifies the glyph, only the substituted id does. There is no
-    /// whitespace sentinel here: a shaper emits the real space glyph id, whose empty ink and hmtx
-    /// advance are already correct (only the codepoint path uses WhitespaceGid + the 'n' reference).
+    /// source codepoint no longer identifies the glyph, only the substituted id does. A shaper emits
+    /// the real space glyph id, which rasterizes to no ink and keeps its hmtx advance, so whitespace
+    /// needs no special handling here — nor, for a font that has the glyph, in the codepoint path.
     /// </summary>
     public GlyphInfo GetGlyphByGid(string fontPath, uint gid, string? type1Name = null,
         bool skipUnflushed = false, bool rasterizeOnMiss = true)
@@ -472,7 +474,8 @@ public sealed class SdfFontAtlas : IDisposable
     // Shared cache lookup / per-page LRU touch / background-rasterize / skipUnflushed logic behind
     // both the codepoint path (GetGlyph) and the GID-direct path (GetGlyphByGid). isWhitespace
     // suppresses background-queuing on a draw-path miss: whitespace carries no ink and is warmed
-    // synchronously by PreRasterizeBatch, so it never needs queuing here.
+    // synchronously by PreRasterizeBatch, so it never needs queuing here. (It applies to the
+    // codepoint path only — a GID caller has already resolved the identity and cannot tell us.)
     private GlyphInfo GetGlyphByKey(GlyphKey key, bool isWhitespace, bool skipUnflushed, bool rasterizeOnMiss)
     {
         if (_glyphs.TryGetValue(key, out var existing))
@@ -516,13 +519,17 @@ public sealed class SdfFontAtlas : IDisposable
     }
 
     // Resolve a (character, PDF charCode, cmap hint) request to the atlas identity key: the glyph
-    // id for OpenType fonts, the glyph name for Type1/PFB. Whitespace has no ink and shares one
-    // sentinel key (its advance derives from the 'n' reference glyph in RasterizeGlyph).
+    // id for OpenType fonts, the glyph name for Type1/PFB.
     private GlyphKey MakeKey(string fontPath, Rune character, int charCode, GlyphMapHint hint)
     {
-        if (Rune.IsWhiteSpace(character))
-            return new GlyphKey(fontPath, _rasterSize, WhitespaceGid, null);
         var id = _rasterizer.ResolveGlyphIdentity(fontPath, character, charCode, hint);
+        // Whitespace goes through the ordinary identity path, because the font's own space glyph is
+        // what knows how wide a space is — borrowing another glyph's advance makes text drawn by
+        // codepoint disagree with the same text drawn by glyph id (any shaped run). The sentinel
+        // survives only as the fallback for a face carrying no glyph for this space at all — common
+        // in symbol and subset fonts, and a .notdef resolve would otherwise lay out as no gap.
+        if (id.Gid == 0 && id.Type1Name is null && Rune.IsWhiteSpace(character))
+            return new GlyphKey(fontPath, _rasterSize, WhitespaceGid, null);
         return new GlyphKey(fontPath, _rasterSize, id.Gid, id.Type1Name);
     }
 
@@ -686,6 +693,9 @@ public sealed class SdfFontAtlas : IDisposable
 
     private GlyphInfo RasterizeGlyph(GlyphKey key)
     {
+        // Only reachable for whitespace this font has no glyph for (MakeKey's fallback). With nothing
+        // in hmtx to read, borrow the 'n' glyph's advance so the gap is at least the right order of
+        // magnitude instead of nothing at all.
         if (key.Gid == WhitespaceGid)
         {
             var refGlyph = GetGlyph(key.Font, _rasterSize, new Rune('n'));
@@ -714,7 +724,17 @@ public sealed class SdfFontAtlas : IDisposable
         var glyphWidth = bitmap.Width;
         var glyphHeight = bitmap.Height;
 
-        if (glyphWidth == 0 || glyphHeight == 0) return default;
+        if (glyphWidth == 0 || glyphHeight == 0)
+        {
+            // No ink to pack, but the glyph can still move the pen — a space is the whole point of
+            // the case. Record it as a blank entry CARRYING ITS ADVANCE, so the draw path hits the
+            // cache (rather than re-offering the key for rasterization every frame) and lays text
+            // out with the right gaps. Returning `default` here is what made shaped text, which
+            // addresses the space by glyph id, run every word together.
+            var blank = new GlyphInfo(0, 0, 0, 0, 0, 0, bitmap.AdvanceX, 0, 0, bitmap.Spread);
+            _glyphs[key] = blank;
+            return blank;
+        }
         // A glyph bigger than a whole page can never be placed (shouldn't happen at 64px raster).
         if (glyphWidth > _pageDim || glyphHeight > _pageDim) return default;
 
@@ -883,8 +903,10 @@ public sealed class SdfFontAtlas : IDisposable
     /// <see cref="ConcurrentDictionary{TKey,TValue}"/> for its font cache and allocates
     /// only a per-call result bitmap, so concurrent rasterization is safe.</para>
     ///
-    /// <para>Whitespace glyphs go through the serial path because their info is derived
-    /// from a reference glyph ('n'), which requires reentry into <see cref="GetGlyph"/>.</para>
+    /// <para>Whitespace glyphs go through the serial path instead. There is no distance field to
+    /// compute for an outline with no ink, so rasterizing one costs nothing — whereas routing it
+    /// through the background queue would leave the pen advancing by zero until the drain lands,
+    /// i.e. a frame of text laid out with no gaps between its words.</para>
     /// </summary>
     public void PreRasterizeBatch(IReadOnlyList<(string Font, Rune Character, int CharCode, GlyphMapHint Hint)> keys)
     {
@@ -922,8 +944,8 @@ public sealed class SdfFontAtlas : IDisposable
         // Phase 2 (shared with the ByGid batch): rasterize OFF the render thread.
         RasterizeClaimedBatchAsync(toRasterize);
 
-        // Phase 3: whitespace keys are cheap (their info derives from the 'n' reference glyph) and
-        // need GetGlyph reentry, so warm them synchronously — there are only a handful per font.
+        // Phase 3: whitespace has no ink to rasterize, so warming it synchronously is free — and it
+        // avoids a frame of zero-width gaps waiting on the background drain. A handful per font.
         foreach (var (font, ch, charCode, hint) in keys)
         {
             if (Rune.IsWhiteSpace(ch)) GetGlyph(font, _rasterSize, ch, charCode: charCode, hint: hint);
@@ -933,9 +955,8 @@ public sealed class SdfFontAtlas : IDisposable
     /// <summary>
     /// GID-direct variant of <see cref="PreRasterizeBatch"/>: batch-warms pre-resolved glyph
     /// identities (glyph id, or PostScript name for Type1) without the per-key cmap resolve.
-    /// There is no whitespace phase — a GID caller passes the real space glyph id, which
-    /// rasterizes to an empty bitmap once and is cached like any other glyph (only the codepoint
-    /// path uses the WhitespaceGid sentinel + 'n' reference-glyph metrics).
+    /// There is no whitespace phase — a GID caller passes the real space glyph id, which rasterizes
+    /// to an empty bitmap once and is cached, advance and all, like any other glyph.
     /// </summary>
     public void PreRasterizeBatchByGid(IReadOnlyList<(string Font, uint Gid, string? Type1Name)> keys)
     {
