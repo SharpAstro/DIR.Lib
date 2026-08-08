@@ -19,11 +19,11 @@
          the transitive SharpAstro.StbImage dependency from downstream consumers.
          1.7 adds FontFaceReader and OpenTypeFont.Name/.Os2, which the declared-family
          resolver and the symbol-role fallback both read. -->
-    <PackageVersion Include="SharpAstro.Fonts" Version="1.8.*" />
+    <PackageVersion Include="SharpAstro.Fonts" Version="1.9.*" />
     <!-- The pure-managed shaping engine, consumed by the DIR.Lib.Shaping satellite (the
          ITextShaper adapter). Same Fonts.Lib CI cadence as SharpAstro.Fonts — one
          -p:Version covers the whole repo, so the two always ship the same number. -->
-    <PackageVersion Include="SharpAstro.Fonts.Shaping" Version="1.8.*" />
+    <PackageVersion Include="SharpAstro.Fonts.Shaping" Version="1.9.*" />
     <!-- LALR.CC drives the markdown + LaTeX grammars baked into the
          DIR.Lib.Markdown subsystem. Source generator runs build-time;
          the runtime LALR.CC assembly is referenced for the Parser /
@@ -41,10 +41,6 @@
          to parse grammars/*.lalr.yaml. PrivateAssets="all" in the csproj
          keeps it out of the runtime closure. -->
     <PackageVersion Include="YamlDotNet" Version="18.1.0" />
-    <!-- DIR.Lib 4.0 dropped its codec dependencies; the test project still
-         renders artifacts as PNG for visual baselines, so SharpAstro.Png
-         stays here for the test-only reference. -->
-    <PackageVersion Include="SharpAstro.Png" Version="3.4.*" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
