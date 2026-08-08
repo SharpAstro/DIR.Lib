@@ -9,14 +9,21 @@ namespace DIR.Lib;
 /// </summary>
 public static class TextInputRenderer
 {
-    private static readonly RGBAColor32 FieldBackground = new(40, 40, 50, 255);
-    private static readonly RGBAColor32 FieldBackgroundActive = new(50, 50, 65, 255);
-    private static readonly RGBAColor32 FieldBorder = new(80, 80, 100, 255);
-    private static readonly RGBAColor32 FieldBorderActive = new(100, 140, 200, 255);
-    private static readonly RGBAColor32 TextColor = new(220, 220, 220, 255);
-    private static readonly RGBAColor32 PlaceholderColor = new(120, 120, 140, 255);
-    private static readonly RGBAColor32 CursorColor = new(200, 200, 255, 255);
-    private static readonly RGBAColor32 SelectionColor = new(60, 90, 150, 180);
+    /// <summary>
+    /// The palette every field draws with. Defaults to the scheme this renderer has always used, so a
+    /// consumer that sets nothing is unchanged.
+    /// </summary>
+    /// <remarks>
+    /// Set it once when the theme MOVES, not per frame, the same contract <see cref="TabBar.Colors"/>
+    /// carries: <see cref="TextInputColors.FromPalette"/> derives eight colours, and doing that per
+    /// draw would rebuild them for every field on screen every frame.
+    /// <para>
+    /// A static rather than a per-call parameter because a text field is drawn from a dozen call sites
+    /// across a consumer's tabs, and threading a palette through all of them buys nothing: an app has
+    /// one input style, not one per caller.
+    /// </para>
+    /// </remarks>
+    public static TextInputColors Colors { get; set; } = new TextInputColors();
 
     /// <summary>
     /// Renders a text input field at the specified position.
@@ -37,8 +44,9 @@ public static class TextInputRenderer
         string fontFamily, float fontSize,
         long frameCount = 0)
     {
-        var bgColor = state.IsActive ? FieldBackgroundActive : FieldBackground;
-        var borderColor = state.IsActive ? FieldBorderActive : FieldBorder;
+        var colors = Colors;
+        var bgColor = state.IsActive ? colors.BackgroundActive : colors.Background;
+        var borderColor = state.IsActive ? colors.BorderActive : colors.Border;
 
         // Background
         renderer.FillRectangle(
@@ -58,7 +66,7 @@ public static class TextInputRenderer
         var textH = height;
 
         var displayText = state.Text.Length > 0 ? state.Text : (state.IsActive ? "" : state.Placeholder);
-        var textColor = state.Text.Length > 0 ? TextColor : PlaceholderColor;
+        var textColor = state.Text.Length > 0 ? colors.Text : colors.Placeholder;
 
         if (displayText.Length > 0)
         {
@@ -88,7 +96,7 @@ public static class TextInputRenderer
 
             renderer.FillRectangle(
                 new RectInt(new PointInt(selEndX, selY + selH), new PointInt(selStartX, selY)),
-                SelectionColor);
+                colors.Selection);
         }
 
         // Cursor (blinking)
@@ -104,7 +112,7 @@ public static class TextInputRenderer
 
             renderer.FillRectangle(
                 new RectInt(new PointInt(cursorX + 2, cursorY + cursorH), new PointInt(cursorX, cursorY)),
-                CursorColor);
+                colors.Cursor);
         }
     }
 
