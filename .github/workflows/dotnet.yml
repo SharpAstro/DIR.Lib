@@ -249,6 +249,18 @@ env:
   #        rather than a compile error. Adds MenuColors.FromPalette, the menu counterpart of
   #        TabBarColors.FromPalette from 7.10, and UiPalette.IsDark computed from ContentBg so it
   #        cannot disagree with the colours it describes.
+  # 7.12 - Additive. TextInputRenderer takes a palette, the same shape TabBar got in 7.10: a
+  #        TextInputColors record whose defaults are the values it has always drawn, a FromPalette
+  #        factory, and a settable TextInputRenderer.Colors derived when the theme MOVES rather
+  #        than per frame. A consumer that sets nothing is unchanged. The renderer previously held
+  #        eight private static readonly colours, which are the first consumer's dark scheme frozen
+  #        into a shared widget: a themed app could restyle every surface it draws itself and still
+  #        get a slate-blue box in the middle of it, which is what TianWen's night mode hit. Two
+  #        derivation choices worth knowing: the field's ground comes from ContentBg rather than
+  #        PanelBg, because a field sits on a panel and has to read as recessed into it with focus
+  #        lifting it halfway back; and the caret takes the accent rather than the text colour,
+  #        since on a palette with one hue to spend a caret in the text colour is invisible against
+  #        the text beside it.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
