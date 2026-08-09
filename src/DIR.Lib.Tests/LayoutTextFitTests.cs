@@ -154,4 +154,63 @@ public class LayoutTextFitTests
         (label.Text.Length * label.FontSize * 0.5f).ShouldBeLessThanOrEqualTo(60f,
             "the label must stay inside the rect the dock left it");
     }
+
+    /// <summary>
+    /// A real rasterizer quantizes the pixel size, so measured width is a STEP function of the requested
+    /// size — and <see cref="FitRenderer"/>'s continuous oracle above cannot express that, which is exactly
+    /// why it never caught the bug below. Rounds the size to whole pixels before measuring, as a glyph raster
+    /// does.
+    /// </summary>
+    private sealed class QuantizedRenderer(uint w, uint h) : RgbaImageRenderer(w, h)
+    {
+        public override (float Width, float Height) MeasureText(ReadOnlySpan<char> text, string fontFamily, float fontSize)
+            => (text.Length * MathF.Round(fontSize) * 0.5f, fontSize);
+    }
+
+    /// <summary>
+    /// <see cref="TextFit.ShrinkToWidth"/> must return a size it has MEASURED to fit, never an unverified
+    /// estimate.
+    ///
+    /// <para>The ratio refinement assumes width scales continuously with the size. Against a quantizing
+    /// rasterizer it does not: successive estimates land inside one step, measure identically, and the ratio
+    /// reapplies the same factor — converging to a fixed point still above the budget, which was then returned
+    /// as the answer. Chess found it as a 12-glyph panel header drawn ~1px past the column it had just been
+    /// fitted to, on one surface aspect, every frame.</para>
+    ///
+    /// <para>Swept across budgets so what is asserted is the INVARIANT (what comes back fits) rather than one
+    /// arithmetic answer — a step function has plateaus, and a budget landing mid-plateau is the whole
+    /// hazard.</para>
+    /// </summary>
+    [Theory]
+    [InlineData(182f)]
+    [InlineData(183f)]
+    [InlineData(100f)]
+    [InlineData(61f)]
+    [InlineData(60f)]
+    [InlineData(59.5f)]
+    [InlineData(36f)]   // exactly the floor's own width — fits, but only just
+    public void ShrinkToWidth_ReturnsASizeThatWasMeasuredToFit(float maxWidth)
+    {
+        using var renderer = new QuantizedRenderer(400, 40);
+
+        var size = TextFit.ShrinkToWidth(renderer, "Move History".AsSpan(), Font, null,
+            fontSize: 30.25f, maxWidth: maxWidth);
+
+        size.ShouldBeLessThanOrEqualTo(30.25f, "the preferred size is a ceiling, never exceeded");
+        renderer.MeasureText("Move History".AsSpan(), Font, size).Width
+            .ShouldBeLessThanOrEqualTo(maxWidth,
+                $"ShrinkToWidth returned {size}, which does not fit {maxWidth} — an unverified estimate");
+    }
+
+    /// <summary>The floor still wins: a budget nothing can satisfy comes back AT the floor and overflows
+    /// visibly, rather than scaling the run away to nothing.</summary>
+    [Fact]
+    public void ShrinkToWidth_KeepsTheFloorWhenNothingFits()
+    {
+        using var renderer = new QuantizedRenderer(400, 40);
+
+        TextFit.ShrinkToWidth(renderer, "Move History".AsSpan(), Font, null,
+                fontSize: 30.25f, maxWidth: 1f, minFontSize: 6f)
+            .ShouldBe(6f, "the floor is the answer when even it overflows");
+    }
 }
