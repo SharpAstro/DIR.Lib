@@ -519,7 +519,7 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// </summary>
     public bool RegisterFontFromMemory(string fontId, byte[] fontData)
     {
-        if (_fonts.ContainsKey(fontId) || _type1Fonts.ContainsKey(fontId)) return true;
+        if (IsFontRegistered(fontId)) return true;
         try
         {
             // Adobe Type1 (/FontFile, PFB) is not SFNT — OpenTypeFont.Load can't read it. Route the
@@ -541,6 +541,19 @@ public sealed class ManagedFontRasterizer : IDisposable
             return false;
         }
     }
+
+    /// <summary>
+    /// Whether <paramref name="fontId"/> has a face loaded here — an SFNT in the OpenType cache, or an
+    /// embedded Type1. This is the predicate every rasterize entry point implicitly fails on: a
+    /// <c>mem:</c> id that was never registered (or whose bytes would not parse) throws from all of
+    /// them, and a caller that queues glyph work on a background thread wants to SAY that in its own
+    /// diagnostics rather than surface an exception message from three frames ago.
+    /// <para>A real file path answers false until something loads it — files load on demand, and
+    /// asking about one is not a request to load it. Only <c>mem:</c> ids, which cannot load on
+    /// demand, make this the whole truth.</para>
+    /// </summary>
+    public bool IsFontRegistered(string fontId) =>
+        _fonts.ContainsKey(fontId) || _type1Fonts.ContainsKey(fontId);
 
     /// <summary>
     /// Install the PDF <c>/Encoding</c> char code → glyph name map (named base encoding with

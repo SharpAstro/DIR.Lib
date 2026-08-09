@@ -39,6 +39,18 @@ public sealed class SdfFontAtlasTests : IDisposable
         new(_rasterizer, maxTextureDimension: 8192, framesInFlight: 2,
             backend: backend, initialPageDim: pageDim);
 
+    /// <summary>Entries in the atlas's glyph dictionary, read back off
+    /// <see cref="SdfFontAtlas.FrameStats"/> (which ends "(N resident, M glyphs)"). The one public
+    /// window onto a glyph that occupies no pixels: a blank carries no staging bytes and no page, so
+    /// it moves this count and nothing else in the stats line.</summary>
+    private static int CachedGlyphCount(SdfFontAtlas atlas)
+    {
+        var stats = atlas.FrameStats;
+        var end = stats.LastIndexOf(" glyphs)", StringComparison.Ordinal);
+        var start = stats.LastIndexOf(", ", end, StringComparison.Ordinal) + 2;
+        return int.Parse(stats[start..end]);
+    }
+
     /// <summary>Converts a glyph's normalized UVs to page-local pixel rectangles via DecodePage —
     /// the same math a GPU backend's vertex path performs.</summary>
     private static (int Page, float X0, float Y0, float X1, float Y1) PixelRect(
@@ -225,6 +237,65 @@ public sealed class SdfFontAtlasTests : IDisposable
         // zero sentinels without counting as inserts, so allow a small deficit from 150.
         perFrame.Sum().ShouldBeInRange(140, 150);
         atlas.IsDirty.ShouldBeFalse("after draining + flushing, the atlas must settle");
+    }
+
+    [Fact]
+    public void GlyphThatCanNeverRasterize_IsGivenUpOn_AndTheAtlasSettles()
+    {
+        using var atlas = new SdfFontAtlas(_rasterizer, maxTextureDimension: 8192, framesInFlight: 2,
+            synchronousRasterize: true);
+
+        // An unregistered "mem:" id is the real shape of this: it cannot load on demand the way a file
+        // path can, so every rasterize call for it throws, every time.
+        const string missing = "mem:never-registered";
+        _rasterizer.IsFontRegistered(missing).ShouldBeFalse();
+
+        // Re-offer the same glyph every frame, which is exactly what prewarm does with the visible set.
+        // Comfortably more rounds than the attempt bound, so the give-up has to happen inside the loop.
+        for (var frame = 0; frame < 8; frame++)
+        {
+            atlas.PreRasterizeBatchByGid([(missing, 7u, null)]);
+            atlas.BeginFrame();
+        }
+
+        // Giving up records the glyph as a blank, and that entry is the whole observable difference
+        // between a bounded retry and an endless one: an unbounded atlas re-attempts forever and
+        // records nothing, which is precisely why the symptom was "never settles" rather than an error.
+        CachedGlyphCount(atlas).ShouldBe(1, "the give-up should record the glyph blank");
+        // What the bound buys: a glyph that can never rasterize does not hold the atlas dirty. While it
+        // did, an offscreen capture waited out its whole frame budget and then reported a golden-image
+        // diff — a font error arriving as a pixel difference.
+        atlas.IsDirty.ShouldBeFalse("a permanently failing glyph must not pin IsDirty");
+        atlas.GetGlyphByGid(missing, 7u, rasterizeOnMiss: false).Width.ShouldBe(0);
+    }
+
+    [Fact]
+    public void FontRegisteredAfterAFailedFrame_StillRasterizes()
+    {
+        using var atlas = new SdfFontAtlas(_rasterizer, maxTextureDimension: 8192, framesInFlight: 2,
+            synchronousRasterize: true);
+
+        // A gid with ink, learned from the same font opened by PATH, so the assertion below is about the
+        // retry rather than about which gid DejaVu happens to draw something at.
+        using var probe = new SdfFontAtlas(_rasterizer, maxTextureDimension: 8192, framesInFlight: 2,
+            synchronousRasterize: true);
+        var inked = 4u;
+        while (inked < 200 && probe.GetGlyphByGid(FontPath, inked).Width == 0) inked++;
+        inked.ShouldBeLessThan(200u, "the fixture font should draw ink for some low gid");
+
+        // The failure that legitimately heals: an embedded subset losing the race with its own
+        // registration. One failed frame must not be fatal to the glyph.
+        const string late = "mem:registered-late";
+        atlas.PreRasterizeBatchByGid([(late, inked, null)]);
+        atlas.BeginFrame();
+        atlas.GetGlyphByGid(late, inked, rasterizeOnMiss: false).Width.ShouldBe(0);
+
+        _rasterizer.RegisterFontFromMemory(late, File.ReadAllBytes(FontPath)).ShouldBeTrue();
+        atlas.PreRasterizeBatchByGid([(late, inked, null)]);
+        atlas.BeginFrame();
+
+        atlas.GetGlyphByGid(late, inked, rasterizeOnMiss: false).Width
+            .ShouldBeGreaterThan(0, "the retry after registration should place the glyph");
     }
 
     [Fact]

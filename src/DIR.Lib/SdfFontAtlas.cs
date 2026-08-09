@@ -110,6 +110,19 @@ public sealed class SdfFontAtlas : IDisposable
     // The key already carries the resolved identity, so the finished bitmap needs nothing else
     // to be inserted and persisted (identity → gid/name lives in Key).
     private readonly ConcurrentQueue<(GlyphKey Key, MtsdfGlyphBitmap Bitmap)> _pendingRasterized = new();
+    // Attempts spent on keys whose rasterization threw, and the bound on them. A failure IS retried,
+    // because the one that legitimately heals itself is an embedded "mem:" subset font losing the race
+    // with its own registration — the next frame has the bytes. Retrying FOREVER is the defect:
+    // prewarm re-offers the whole visible set every frame, so a glyph that can NEVER rasterize (a font
+    // that never registers, an outline the rasterizer refuses) is re-claimed indefinitely and
+    // _rasterizeInFlight never empties, which pins IsDirty true. That converts a font problem into
+    // "the render never settles" — and is how one such failure reached us as an offscreen golden-image
+    // diff rather than as the font error it was. Past the bound the glyph is recorded blank instead.
+    private readonly ConcurrentDictionary<GlyphKey, int> _rasterizeFailures = new();
+    private const int MaxRasterizeAttempts = 3;
+    // Give-up logging is once per FONT, not per glyph: a font that never registers fails every glyph it
+    // owns — hundreds on a CJK page — and the first line already says everything the rest would.
+    private readonly ConcurrentDictionary<string, byte> _giveUpLoggedFonts = new();
     // Max glyphs inserted (staging blit + dirty-region upload) per frame from the rasterized queue.
     // Bounds per-frame upload so a 2000-glyph CJK page drains over ~frames (IsDirty keeps the loop
     // awake until empty), never in one stall.
@@ -564,11 +577,34 @@ public sealed class SdfFontAtlas : IDisposable
         }
         catch (Exception ex)
         {
-            // Don't leave the key permanently claimed if rasterization throws — release it so a
-            // later frame can retry; otherwise the glyph would never appear.
-            _rasterizeInFlight.TryRemove(key, out _);
-            Console.Error.WriteLine($"[SdfAtlas] async rasterize failed for {DescribeKey(key)}: {ex.Message}");
+            OnRasterizeFailed(key, ex);
         }
+    }
+
+    // Shared failure path for both rasterize entry points. Runs on a background rasterize thread (or
+    // inline on a synchronous host), so it touches only concurrent state — never _glyphs, which is
+    // render-thread-owned.
+    private void OnRasterizeFailed(GlyphKey key, Exception ex)
+    {
+        var attempts = _rasterizeFailures.AddOrUpdate(key, 1, static (_, n) => n + 1);
+        if (attempts < MaxRasterizeAttempts)
+        {
+            // Don't leave the key permanently claimed — release it so a later frame retries. This is
+            // where a font registering a frame late heals itself, and the reason retrying exists.
+            _rasterizeInFlight.TryRemove(key, out _);
+            return;
+        }
+        // Out of attempts. Hand the render thread an EMPTY bitmap rather than releasing the claim:
+        // DrainPendingRasterized records it as a blank in _glyphs, which is what stops the draw path
+        // and prewarm re-offering the key, and it drops the claim on the way through. The glyph draws
+        // as nothing and the atlas can finally report clean, so the failure reads as missing text plus
+        // the line below — instead of a render that never settles and says nothing about fonts at all.
+        _pendingRasterized.Enqueue((key, default));
+        if (_giveUpLoggedFonts.TryAdd(key.Font, 0))
+            Console.Error.WriteLine(
+                $"[SdfAtlas] giving up on {DescribeKey(key)} after {attempts} attempts, drawing it blank: "
+                + $"{ex.Message} (font registered now: {_rasterizer.IsFontRegistered(key.Font)}). "
+                + $"Later give-ups for '{key.Font}' are not logged.");
     }
 
     // Human-readable identity for diagnostics: "gid N" for OpenType, "'name'" for Type1.
@@ -1019,9 +1055,7 @@ public sealed class SdfFontAtlas : IDisposable
             }
             catch (Exception ex)
             {
-                // Release the claim so a later frame can retry; otherwise the glyph never appears.
-                _rasterizeInFlight.TryRemove(atlasKey, out _);
-                Console.Error.WriteLine($"[SdfAtlas] batch rasterize failed for {DescribeKey(atlasKey)}: {ex.Message}");
+                OnRasterizeFailed(atlasKey, ex);
             }
         }));
     }
@@ -1036,6 +1070,13 @@ public sealed class SdfFontAtlas : IDisposable
         // claimed anymore, so at worst the glyph is re-rasterized once. Re-requested on next draw.
         _pendingRasterized.Clear();
         _rasterizeInFlight.Clear();
+        // The blank entries that gave-up glyphs were recorded as went with _glyphs, so those keys are
+        // about to be re-offered. Reset their attempt counters (and the once-per-font log gate) so they
+        // get a fresh bound rather than giving up on sight: a "mem:" font that had not registered when
+        // they last failed may well be registered by now. Bounded either way — the worst case is
+        // MaxRasterizeAttempts more failures per eviction cycle, not per frame.
+        _rasterizeFailures.Clear();
+        _giveUpLoggedFonts.Clear();
         // Clear the disk-loaded guard too: after eviction the next use of a font should RE-LOAD its
         // cached glyphs from disk (cheap bulk read) instead of re-rasterizing each (~10ms) AND
         // re-appending them as duplicates. Leaving this set meant every eviction cycle re-rasterized
