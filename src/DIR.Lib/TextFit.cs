@@ -75,7 +75,18 @@ public static class TextFit
     ///
     /// <para>Advance widths scale linearly with the size, so one division lands on the answer; hinting and
     /// integer rounding can still leave a pixel or two over, so the estimate is verified and refined a
-    /// bounded few times rather than trusted outright. The floor wins over the fit: a run that cannot fit
+    /// bounded few times rather than trusted outright.</para>
+    ///
+    /// <para><b>The returned size is always one that was MEASURED to fit</b> (or the floor — see below). That
+    /// needs saying because the ratio alone cannot promise it: a rasterizer quantizes the pixel size, so the
+    /// measured width is a STEP function of the requested one. Every estimate that lands inside one step
+    /// measures identically, the ratio then shrinks by the same factor on the next pass, and the iteration
+    /// converges to a fixed point that is still ABOVE <paramref name="maxWidth"/> — so the refined estimate
+    /// was returned unverified and the run drew wider than the rect it had just been fitted to. Once the
+    /// ratio stops converging, the search moves to the grid the rasterizer actually has (whole sizes) and
+    /// keeps stepping down until a measurement fits.</para>
+    ///
+    /// <para>The floor wins over the fit: a run that cannot fit
     /// even at <paramref name="minFontSize"/> comes back AT the floor and overflows visibly, because
     /// overflow a reader can see beats text scaled to nothing.</para>
     /// </summary>
@@ -100,7 +111,20 @@ public static class TextFit
             size = MathF.Max(minFontSize, size * (maxWidth / measured));
         }
 
-        return size;
+        // The ratio has stopped making progress — the estimates are landing inside one quantization step, so
+        // they all measure the same and the factor no longer moves the result (see the remarks). Step down
+        // whole sizes from here: that is the grid the rasterizer quantizes onto, so each step is the next
+        // distinct width available rather than another estimate inside the same one.
+        for (var whole = MathF.Floor(size); whole >= minFontSize; whole -= 1f)
+        {
+            if (Measure(renderer, text, fontPath, fallback, whole) <= maxWidth)
+            {
+                return whole;
+            }
+        }
+
+        // Not even the floor fits, so the floor is the answer and the run overflows where a reader can see it.
+        return minFontSize;
     }
 
     /// <summary>
