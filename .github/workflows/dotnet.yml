@@ -276,6 +276,31 @@ env:
   #        registered later still gets a fresh bound. Also adds ManagedFontRasterizer.IsFontRegistered,
   #        the predicate every rasterize entry point already failed on implicitly -- a background
   #        caller can now state it in its own diagnostics rather than quote a stale exception message.
+  # 7.14 - BEHAVIOUR CHANGE, and a fix no consumer could work around. TextFit.ShrinkToWidth returned a
+  #        size it had never measured, so a run fitted with TextTrim.Shrink could be drawn PAST the rect
+  #        it was just fitted to. It refined by ratio -- size *= maxWidth / measured, up to four passes
+  #        -- then returned the last estimate unverified, on the premise its own remarks stated out
+  #        loud: "advance widths scale linearly with the size, so one division lands on the answer".
+  #        They scale linearly in the IDEAL advance. A rasterizer quantizes the size to whole pixels
+  #        before measuring, so measured width is a STEP function of the requested size and every
+  #        estimate inside one step measures identically. The ratio then reapplies the same factor
+  #        every pass and converges to a fixed point still ABOVE the budget. "Move History" against a
+  #        182.54px budget went 30.25 -> 28.07 -> 27.91 -> 27.75 -> 27.59, and 27.59 measures 183.60 --
+  #        it rounds to 28, exactly as 27.91 and 27.75 already had. Now, once the ratio stops making
+  #        progress the search steps down WHOLE sizes -- the grid the rasterizer actually has, so each
+  #        step is the next distinct width available rather than another estimate inside the same one --
+  #        and returns the first size MEASURED to fit, which is now a guarantee the remarks can state.
+  #        minFontSize stays the only value allowed to overflow: a run that cannot fit even at the floor
+  #        should overflow where a reader can see it rather than shrink away to nothing. The fast path
+  #        (it already fits) is untouched, so the common case does not pay for this.
+  #        What MOVES, and for whom: a run fitted with Shrink that used to sit a fraction of a pixel over
+  #        its rect now takes the next whole size down, so a golden image containing shrunk text differs
+  #        by one size step. TextTrim.Shrink is OPT-IN and the default is End, so a consumer that never
+  #        asks for it renders byte-identically -- which is why this is a minor and not a major.
+  #        Also makes the tests able to see this class of bug at all. The stub renderer they measured
+  #        with was CONTINUOUS (length * fontSize * 0.5), so no plateau existed and the bug was
+  #        unreachable by construction; a quantizing oracle now sweeps budgets and asserts the
+  #        INVARIANT -- what comes back fits -- instead of one arithmetic answer.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
