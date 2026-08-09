@@ -261,6 +261,21 @@ env:
   #        lifting it halfway back; and the caret takes the accent rather than the text colour,
   #        since on a palette with one hue to spend a caret in the text colour is invisible against
   #        the text beside it.
+  # 7.13 - A glyph the SDF atlas can never rasterize is given up on after three attempts and recorded
+  #        blank, instead of being retried forever. A failed rasterization released its in-flight claim
+  #        so a later frame could retry, which is right for the one failure that heals itself: an
+  #        embedded "mem:" subset font losing the race with its own registration. But nothing counted
+  #        the attempts, and the caller re-offers the whole visible glyph set every frame, so a glyph
+  #        that could NEVER rasterize was re-claimed indefinitely and _rasterizeInFlight never emptied
+  #        -- which pins IsDirty true. Any permanent font failure therefore presented as "the render
+  #        never settles", with nothing on screen or in the log naming a font: downstream it arrived as
+  #        an offscreen golden-image diff and cost a day in the render pipeline. Past the bound the
+  #        glyph draws as nothing, the atlas reports clean, and one line per FONT (not per glyph -- a
+  #        font that never registers fails hundreds) says which glyph, how many attempts, and whether
+  #        the font is registered by the time we gave up. The counters reset on evict-all, so a font
+  #        registered later still gets a fresh bound. Also adds ManagedFontRasterizer.IsFontRegistered,
+  #        the predicate every rasterize entry point already failed on implicitly -- a background
+  #        caller can now state it in its own diagnostics rather than quote a stale exception message.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
