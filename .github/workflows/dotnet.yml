@@ -276,6 +276,17 @@ env:
   #        registered later still gets a fresh bound. Also adds ManagedFontRasterizer.IsFontRegistered,
   #        the predicate every rasterize entry point already failed on implicitly -- a background
   #        caller can now state it in its own diagnostics rather than quote a stale exception message.
+  #        ALSO IN 7.13, and missing from these notes until 7.14 was written -- a BEHAVIOUR CHANGE that
+  #        shipped unannounced, recorded here late rather than left unrecorded: a whitespace codepoint's
+  #        advance now comes from the font's own hmtx table instead of being borrowed from the 'n' glyph.
+  #        An ink-free outline threw its advance away, and measurement fell back to 'n'. In DejaVu Sans a
+  #        space is 651/2048 em and 'n' is 1303/2048, so every measured space was 1.99x too wide. Any
+  #        layout whose width depends on spaces therefore MOVES on 7.13: narrower, by nearly half a space
+  #        per space. Specifically, a column padded with spaces that lined up only because a space
+  #        measured like a digit stops lining up -- chess's move-history index column was exactly that,
+  #        and the fix downstream is to pad with U+2007 FIGURE SPACE, which a font defines to advance
+  #        like a digit, rather than to widen a tolerance around a premise that was never true. Cell
+  #        surfaces are unaffected, since there one character is one cell whatever the font says.
   # 7.14 - BEHAVIOUR CHANGE, and a fix no consumer could work around. TextFit.ShrinkToWidth returned a
   #        size it had never measured, so a run fitted with TextTrim.Shrink could be drawn PAST the rect
   #        it was just fitted to. It refined by ratio -- size *= maxWidth / measured, up to four passes
