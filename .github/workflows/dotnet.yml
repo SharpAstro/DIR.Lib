@@ -336,6 +336,19 @@ env:
   #        keeps the two readable apart. The close plate is Separator, the one role guaranteed to read
   #        against both the panel and the header surface, so it needs no colour of its own in either
   #        theme. A consumer that leaves Pointer null renders exactly as before.
+  # 7.17 - Dependency refresh: SharpAstro.Fonts / .Fonts.Shaping 1.9 -> 1.11, which MOVES rendered
+  #        output, in every case from wrong to right. 1.10 fixes the TrueType hinting interpreter,
+  #        where three defects each masked the next (a twilight zone reporting zero points forever, so
+  #        every twilight op was a silent no-op; an out-of-range guard that returned without popping,
+  #        which hung 'g' and 'x'; and 'cvt ' read unsigned when FWORD is signed, mangling 26 of
+  #        NotoSans-Regular's 150 control values), and propagates GPOS mark attachment the RTL way, so
+  #        an Arabic mark no longer sits one base-glyph advance from where it belongs. 1.11 stops an
+  #        embedded PDF subset whose ONLY cmap is Mac Roman (1,0) from falling through to the
+  #        char-code-as-glyph-id guess, which is what turned Korean body text into plausible-but-wrong
+  #        Hangul and made small Latin subsets render as nothing at all.
+  #        What this means for a consumer: hinted TrueType text and RTL text with marks change shape
+  #        where they were previously malformed, and a golden image containing either differs. Nothing
+  #        in this repo's own baselines moved.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
