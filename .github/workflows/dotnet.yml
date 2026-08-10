@@ -324,6 +324,18 @@ env:
   #        there whatever face the host passed in, and geometry stays crisp at a 30px strip height.
   #        The button is dropped, not clipped, when the tabs have used up the width -- reporting hits on
   #        a control the clip hides is worse than not offering it.
+  # 7.16 - Additive. TabBar.Pointer hands the bar the mouse position and it hovers itself from there:
+  #        the tab under the pointer takes the active plate and label, and the close mark inside that
+  #        tab gets a plate of its own. NewTabHovered still works and now ORs with it. A position
+  #        rather than a hovered index, for the same reason the + button lives here: the bar owns the
+  #        tab widths, so a host supplying an index would be hit-testing the PREVIOUS frame's
+  #        geometry, which lags on the frame a tab opens, closes or is dragged past a still pointer.
+  #        Hover reuses ActiveBackground rather than adding a palette role. It previews what clicking
+  #        gives you, UiPalette names no hover surface, and blending one would paint a colour the
+  #        theme never chose; the accent strip stays exclusive to the active tab, and that is what
+  #        keeps the two readable apart. The close plate is Separator, the one role guaranteed to read
+  #        against both the panel and the header surface, so it needs no colour of its own in either
+  #        theme. A consumer that leaves Pointer null renders exactly as before.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

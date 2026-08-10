@@ -2,7 +2,8 @@ namespace DIR.Lib;
 
 /// <summary>
 /// Reusable horizontal tab strip: one tab per title, an active highlight + accent, a close button
-/// per tab, ellipsis truncation, and drag-to-reorder hit-testing. Backend-agnostic — it draws via
+/// per tab, ellipsis truncation, hover feedback (give it <see cref="Pointer"/>), and drag-to-reorder
+/// hit-testing. Backend-agnostic — it draws via
 /// <see cref="Renderer{TSurface}"/> and is told the model (titles + active index) each frame; the
 /// host maps the returned <see cref="TabClick"/> / <see cref="SlotAt"/> to its own actions.
 ///
@@ -52,8 +53,23 @@ public sealed class TabBar
     public bool NewTabActive { get; set; }
 
     /// <summary>Whether the pointer is over the +, set by the host, which is what owns the mouse
-    /// position. Affects only its plate, so leaving it false just means no hover feedback.</summary>
+    /// position. Affects only its plate, so leaving it false just means no hover feedback.
+    /// <para>Superseded by <see cref="Pointer"/>, which covers the tabs as well; the two OR together,
+    /// so a host that already sets this keeps working.</para></summary>
     public bool NewTabHovered { get; set; }
+
+    /// <summary>
+    /// Where the pointer is, in the coordinates <see cref="Render"/> is given, or null when it is
+    /// outside the window (or over something in front of the bar). Hovering the strip needs no other
+    /// call: the bar resolves which tab, and whether the ✕ inside it, while it lays the tabs out.
+    /// </summary>
+    /// <remarks>
+    /// A position rather than a hovered index, because the bar owns the tab widths — see
+    /// <see cref="ShowNewTabButton"/> for the same argument about the + button's placement. A host
+    /// asked to supply the index instead would have to hit-test against the PREVIOUS frame's
+    /// geometry, which lags visibly on the frame a tab opens, closes or is dragged past the pointer.
+    /// </remarks>
+    public (float X, float Y)? Pointer { get; set; }
 
     private readonly string _fontPath;
     // Per-script font fallback so a file name in another script renders run-by-run rather than as boxes.
@@ -86,6 +102,10 @@ public sealed class TabBar
         renderer.PushClip(new RectInt((barRight, h), (barLeft, 0)));
         renderer.FillRectangle(new RectInt((barRight, h), (barLeft, 0)), Colors.BarBackground);
 
+        // The pointer's x, but only while it is within the strip's own band — one test here instead of
+        // per tab, and null keeps every hover below switched off in one place.
+        var hoverX = Pointer is { } p && p.Y >= 0f && p.Y < h ? p.X : (float?)null;
+
         var x = contentLeft;
         var closeSize = CloseBox;
         for (var i = 0; i < titles.Count; i++)
@@ -97,10 +117,16 @@ public sealed class TabBar
             var w = Math.Clamp(textW + Pad * 2 + closeSize, MinTabW, MaxTabW);
             var x0 = x;
             var x1 = x + w;
+            var hovered = hoverX is { } hx && hx >= x0 && hx < x1;
 
-            // Tab background + the accent strip / separators that distinguish active from idle.
-            var bg = active ? Colors.ActiveBackground : Colors.InactiveBackground;
-            renderer.FillRectangle(new RectInt(((int)x1, h), ((int)x0, 0)), bg);
+            // Tab background + the accent strip / separators that distinguish active from idle. A
+            // hovered idle tab takes the ACTIVE plate rather than a tone of its own: it previews what
+            // clicking gives you, it is what the + already does, and the palette names no hover
+            // surface — inventing one by blending would paint a colour the theme never chose. The
+            // accent strip stays exclusive to the active tab, which is what keeps the two apart.
+            var lifted = active || hovered;
+            renderer.FillRectangle(new RectInt(((int)x1, h), ((int)x0, 0)),
+                lifted ? Colors.ActiveBackground : Colors.InactiveBackground);
             if (active)
                 renderer.FillRectangle(new RectInt(((int)x1, Border * 2), ((int)x0, 0)), Colors.ActiveAccent);
             // Right-hand separator between tabs.
@@ -110,13 +136,21 @@ public sealed class TabBar
             var labelRight = (int)(x1 - closeSize - Pad * 0.5f);
             var labelLeft = (int)(x0 + Pad);
             var label = _fallback.FitEllipsis(renderer, title, Font, labelRight - labelLeft);
-            _fallback.Draw(renderer, label, Font, active ? Colors.ActiveText : Colors.InactiveText,
+            _fallback.Draw(renderer, label, Font, lifted ? Colors.ActiveText : Colors.InactiveText,
                 new RectInt((labelRight, h - (int)(2 * Scale)), (labelLeft, 0)),
                 TextAlign.Near, TextAlign.Center);
 
             // Close button (×) at the right edge — Latin, always covered by the primary font.
             var cx1 = (int)(x1 - Pad * 0.4f);
             var cx0 = (int)(cx1 - closeSize);
+            // Its own plate under the pointer, because the ✕ is a second target inside the tab and a
+            // tab-wide hover says nothing about where its edge is. Separator is the plate: it is the
+            // one role guaranteed to read against both the panel and the header surface, so this needs
+            // no colour of its own in either theme.
+            if (hovered && hoverX >= cx0 && hoverX <= cx1)
+                renderer.FillRoundedRectangle(
+                    new RectInt((cx1, (int)((h + closeSize) * 0.5f)), (cx0, (int)((h - closeSize) * 0.5f))),
+                    Colors.Separator, closeSize * 0.25f);
             renderer.DrawText("×".AsSpan(), _fontPath, Font, Colors.CloseMark,
                 new RectInt((cx1, h), (cx0, 0)), TextAlign.Center, TextAlign.Center);
 
@@ -133,9 +167,9 @@ public sealed class TabBar
         {
             var x0 = x;
             var x1 = x + h;   // square, so it matches the strip's own height
+            var hovered = NewTabHovered || (hoverX is { } hx && hx >= x0 && hx < x1);
             renderer.FillRectangle(new RectInt(((int)x1, h), ((int)x0, 0)),
-                NewTabActive ? Colors.ActiveBackground
-                : NewTabHovered ? Colors.ActiveBackground : Colors.InactiveBackground);
+                NewTabActive || hovered ? Colors.ActiveBackground : Colors.InactiveBackground);
             if (NewTabActive)
                 renderer.FillRectangle(new RectInt(((int)x1, Border * 2), ((int)x0, 0)), Colors.ActiveAccent);
             renderer.FillRectangle(new RectInt(((int)x1, h), ((int)x1 - Border, 0)), Colors.Separator);
@@ -146,7 +180,7 @@ public sealed class TabBar
             var cy = h * 0.5f;
             var arm = 5f * Scale;
             var t = Math.Max(1f, 1.6f * Scale);
-            var ink = NewTabActive ? Colors.ActiveText : Colors.InactiveText;
+            var ink = NewTabActive || hovered ? Colors.ActiveText : Colors.InactiveText;
             renderer.FillRectangle(new RectInt(((int)(cx + arm), (int)(cy + t * 0.5f)),
                 ((int)(cx - arm), (int)(cy - t * 0.5f))), ink);
             renderer.FillRectangle(new RectInt(((int)(cx + t * 0.5f), (int)(cy + arm)),
