@@ -312,6 +312,18 @@ env:
   #        with was CONTINUOUS (length * fontSize * 0.5), so no plateau existed and the bug was
   #        unreachable by construction; a quantizing oracle now sweeps budgets and asserts the
   #        INVARIANT -- what comes back fits -- instead of one arithmetic answer.
+  # 7.15 - Additive. TabBar can draw a "+" after the last tab, the way a terminal or a browser does:
+  #        ShowNewTabButton, NewTabActive, NewTabHovered, and HitNewTabButton to report the click. A
+  #        consumer that sets nothing is unchanged. It belongs here rather than in the host because the
+  #        bar owns the tab widths and published no edge to place it against, so an app wanting the
+  #        affordance had to either duplicate the width arithmetic -- silently drifting the day this
+  #        file changes -- or park the button at the strip's far end, which reads as a toolbar rather
+  #        than as the next slot. HandleMouseDown deliberately returns null over the button rather than
+  #        inventing a tab index for it, so a host that forgets HitNewTabButton swallows the click
+  #        instead of activating tab 0. The mark is two filled bars, not a typeset "+": it has to be
+  #        there whatever face the host passed in, and geometry stays crisp at a 30px strip height.
+  #        The button is dropped, not clipped, when the tabs have used up the width -- reporting hits on
+  #        a control the clip hides is worse than not offering it.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

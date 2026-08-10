@@ -38,6 +38,23 @@ public sealed class TabBar
     /// <summary>A click that landed on a tab. <see cref="Close"/> = the × button (else the body).</summary>
     public readonly record struct TabClick(int Index, bool Close);
 
+    /// <summary>
+    /// Draw a "+" immediately after the last tab, the way a terminal or a browser does. What it opens is
+    /// the host's business: <see cref="HitNewTabButton"/> reports the click and nothing else happens here.
+    /// </summary>
+    public bool ShowNewTabButton { get; set; }
+
+    /// <summary>
+    /// True while whatever the + opens is what the window is showing. It then wears the accent an active
+    /// tab wears — a host that puts a real page behind the + (a new-tab page) needs the strip to say so,
+    /// or nothing in the bar reads as selected while the marked tab is not the one on screen.
+    /// </summary>
+    public bool NewTabActive { get; set; }
+
+    /// <summary>Whether the pointer is over the +, set by the host, which is what owns the mouse
+    /// position. Affects only its plate, so leaving it false just means no hover feedback.</summary>
+    public bool NewTabHovered { get; set; }
+
     private readonly string _fontPath;
     // Per-script font fallback so a file name in another script renders run-by-run rather than as boxes.
     private readonly FontFallbackResolver _fallback;
@@ -45,6 +62,9 @@ public sealed class TabBar
     // Per-tab body + close-button bounds, cached each Render for hit-testing.
     private readonly List<(float X0, float X1, float CloseX0, float CloseX1)> _rects = new();
     private float _barBottom;
+    // The + button's bounds, cached each Render. Empty (X1 <= X0) whenever it was not drawn — which is
+    // what stops a click at the origin from hitting a button that is not on screen.
+    private (float X0, float X1) _newTab;
 
     public TabBar(string fontPath, FontFallbackResolver fallback)
     {
@@ -56,6 +76,7 @@ public sealed class TabBar
         IReadOnlyList<string> titles, int activeIndex)
     {
         _rects.Clear();
+        _newTab = default;
         var h = (int)Height;
         _barBottom = h;
 
@@ -105,13 +126,50 @@ public sealed class TabBar
             if (x >= viewportW) break; // ran out of room — remaining tabs clip off (max-resident keeps this rare)
         }
 
+        // The + goes where the tabs stopped, so it reads as the next slot in the strip rather than as a
+        // toolbar button parked at the far end. Skipped when the tabs have already filled the width:
+        // drawing it past the edge would put a control where the clip hides it.
+        if (ShowNewTabButton && x + h <= viewportW)
+        {
+            var x0 = x;
+            var x1 = x + h;   // square, so it matches the strip's own height
+            renderer.FillRectangle(new RectInt(((int)x1, h), ((int)x0, 0)),
+                NewTabActive ? Colors.ActiveBackground
+                : NewTabHovered ? Colors.ActiveBackground : Colors.InactiveBackground);
+            if (NewTabActive)
+                renderer.FillRectangle(new RectInt(((int)x1, Border * 2), ((int)x0, 0)), Colors.ActiveAccent);
+            renderer.FillRectangle(new RectInt(((int)x1, h), ((int)x1 - Border, 0)), Colors.Separator);
+
+            // Two bars rather than a "+" glyph: the mark has to be there on any face the host happens to
+            // be using, and geometry stays crisp at 30 px where a typeset plus does not.
+            var cx = (x0 + x1) * 0.5f;
+            var cy = h * 0.5f;
+            var arm = 5f * Scale;
+            var t = Math.Max(1f, 1.6f * Scale);
+            var ink = NewTabActive ? Colors.ActiveText : Colors.InactiveText;
+            renderer.FillRectangle(new RectInt(((int)(cx + arm), (int)(cy + t * 0.5f)),
+                ((int)(cx - arm), (int)(cy - t * 0.5f))), ink);
+            renderer.FillRectangle(new RectInt(((int)(cx + t * 0.5f), (int)(cy + arm)),
+                ((int)(cx - t * 0.5f), (int)(cy - arm))), ink);
+
+            _newTab = (x0, x1);
+        }
+
         // Bottom edge of the whole bar.
         renderer.FillRectangle(new RectInt((barRight, h), (barLeft, h - Border)), Colors.Separator);
         renderer.PopClip();
     }
 
+    /// <summary>
+    /// True if the click landed on the + (see <see cref="ShowNewTabButton"/>). Ask this BEFORE
+    /// <see cref="HandleMouseDown"/> — that one reports tabs only and returns null here, so a host that
+    /// forgets this call silently swallows the click instead of misrouting it.
+    /// </summary>
+    public bool HitNewTabButton(float x, float y) =>
+        y < _barBottom && _newTab.X1 > _newTab.X0 && x >= _newTab.X0 && x < _newTab.X1;
+
     /// <summary>Maps a click to a tab (and whether the ✕ was hit). Null if the click is below the
-    /// bar or in empty bar space.</summary>
+    /// bar, on the + button, or in empty bar space.</summary>
     public TabClick? HandleMouseDown(float x, float y)
     {
         if (y >= _barBottom) return null;
