@@ -370,6 +370,15 @@ env:
   #        rect and nothing else. Also weights the Auto brackets to match (a hairline bracket beside a
   #        solid crescent read as two families) and floors the sun gap at 1.5 px, without which the rays
   #        closed on the disc at the 13 px a header actually uses. Additive.
+  # 7.20 - An icon is now DRAWN at the size it declares, centred in and clamped by its arranged rect,
+  #        instead of being stretched to fill that rect. Content.Icon.Size was previously consulted only
+  #        at measure time, which made it meaningless the moment a node carried explicit sizing, and every
+  #        real icon does since it lives in a button. The visible symptom is a mark beside a text run: a
+  #        13-unit icon in a 20-unit cell painted at 20, standing 38 percent taller than the word cap
+  #        height and reading as vertically misaligned even though both were centred on the same row.
+  #        BEHAVIOUR CHANGE for anyone already on 7.18 or 7.19: an icon in a cell larger than its declared
+  #        size now draws smaller than before. Restore the old look by declaring the size you want, which
+  #        is the point of the field.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

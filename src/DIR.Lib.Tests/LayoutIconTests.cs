@@ -191,6 +191,52 @@ public class LayoutIconTests
         inked(25, 16).ShouldBeTrue("...but its rim should be inked");
     }
 
+    /// <summary>
+    /// An icon is drawn at the size it DECLARES, centred, not stretched to whatever cell it landed in.
+    /// <para>
+    /// Size used to be consulted only at measure time, so it meant nothing once a node carried explicit
+    /// sizing -- which every real icon does, since it lives in a button. Beside a text run that showed up as
+    /// a mark standing well above the word's cap height and reading as misaligned, with both perfectly
+    /// centred on the same row. Two rects, one twice the other, must ink the same number of rows.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void AnIconIsDrawnAtItsDeclaredSize_NotStretchedToItsCell()
+    {
+        static int InkedRows(float cellSide)
+        {
+            var renderer = new RgbaImageRenderer(Surface, Surface);
+            var widget = new IconWidget(renderer);
+            var inset = ((float)Surface - cellSide) / 2f;
+
+            widget.Render(Layout.Builder.Icon(Layout.IconKind.ThemeDark, 12f, Ink),
+                new RectF32(inset, inset, cellSide, cellSide));
+
+            var pixels = renderer.Surface.Pixels;
+            var rows = 0;
+            for (var y = 0; y < (int)Surface; y++)
+            {
+                for (var x = 0; x < (int)Surface; x++)
+                {
+                    if (pixels[(y * (int)Surface + x) * 4 + 3] > 0)
+                    {
+                        rows++;
+                        break;
+                    }
+                }
+            }
+
+            return rows;
+        }
+
+        // The declared 12 fits inside both cells, so the mark is the same size in each.
+        InkedRows(16f).ShouldBe(InkedRows(32f));
+
+        // ...and a cell SMALLER than the declared size still clamps, so a collapsed button shrinks the mark
+        // rather than letting it overflow.
+        InkedRows(8f).ShouldBeLessThan(InkedRows(16f));
+    }
+
     [Fact]
     public void AZeroSizedRectDrawsNothing_RatherThanDividingByIt()
     {

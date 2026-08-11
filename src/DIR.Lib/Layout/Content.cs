@@ -54,6 +54,13 @@ public abstract record Content
     /// relied on to carry. Naming the meaning rather than the drawing lets both be right at once.
     /// </para>
     /// </summary>
+    /// <param name="Size">
+    /// The mark's size in design units. This is both the intrinsic (Auto) size AND the size it is DRAWN at,
+    /// centred in whatever rect it is arranged into and clamped by it -- so an icon in a taller button stays
+    /// the size it asked for instead of growing to fill the button. That matters most beside a text run,
+    /// where a mark scaled to its cell rather than to its declared size overshoots the word's cap height and
+    /// reads as vertically misaligned even when the two are centred on the same row.
+    /// </param>
     public sealed record Icon(IconKind Kind, float Size = 14f) : Content
     {
         /// <summary>Ink colour (default white), the same convention as <see cref="Text.Color"/>.</summary>

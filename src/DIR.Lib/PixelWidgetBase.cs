@@ -852,8 +852,22 @@ namespace DIR.Lib
                             FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, box.Color, radius);
                             break;
                         case Layout.Content.Icon icon:
+                            // Draw at the size the icon DECLARES, centred, rather than filling whatever rect
+                            // it was arranged into. Size was previously consulted only at measure time, which
+                            // made it meaningless the moment a node carried explicit sizing -- and every real
+                            // one does, since an icon lives in a button. The visible symptom was a mark
+                            // beside a text run: a 13-unit icon in a 20-unit cell painted at 20, so it stood
+                            // 38% taller than the word's cap height and read as misaligned even though both
+                            // were centred on the same row. The rect still CLAMPS it, so a collapsed cell
+                            // shrinks the mark rather than overflowing.
+                            var iconSide = MathF.Min(
+                                MathF.Min(bounds.Width, bounds.Height), ctx.ToSurface(icon.Size));
                             DrawLayoutIcon(icon.Kind,
-                                new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height), icon.Color);
+                                new RectF32(
+                                    bounds.X + (bounds.Width - iconSide) / 2f,
+                                    bounds.Y + (bounds.Height - iconSide) / 2f,
+                                    iconSide, iconSide),
+                                icon.Color);
                             break;
                         case Layout.Content.Fill fill:
                             drawFill?.Invoke(fill, new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height));
