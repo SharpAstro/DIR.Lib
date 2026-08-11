@@ -358,6 +358,18 @@ env:
   #        Content.Icon, IconKind (Grid, List, Auto), Builder.Icon, DrawLayoutIcon. IconKind is
   #        deliberately closed and tiny, since every kind costs a drawing here AND a glyph choice in
   #        every cell painter; a one-off belongs in a Content.Fill the app draws itself.
+  # 7.19 - Three theme marks join IconKind: ThemeSystem (a disc half filled, half outlined),
+  #        ThemeLight (a rayed disc) and ThemeDark (a crescent). They arrive as a family because an app
+  #        with a light/dark setting needs all three or none, and both surfaces can say each one;
+  #        Console.Lib 4.22 maps them to the geometric-shapes circles (empty / half / full), which keep
+  #        the light-to-dark ordering without gambling on a monospace face covering the sun and moon of
+  #        Miscellaneous Symbols. Each is built from SCANLINE SPANS, so a curve needs no path support:
+  #        notably the crescent is the spans an offset disc does not cover, NOT the usual trick of
+  #        over-painting that disc in the button background -- that needs to know the ground, so it
+  #        breaks over a gradient, an image or a transparent node, and this painter is handed ink and a
+  #        rect and nothing else. Also weights the Auto brackets to match (a hairline bracket beside a
+  #        solid crescent read as two families) and floors the sun gap at 1.5 px, without which the rays
+  #        closed on the disc at the 13 px a header actually uses. Additive.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

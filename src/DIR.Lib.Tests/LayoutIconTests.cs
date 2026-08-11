@@ -122,6 +122,75 @@ public class LayoutIconTests
         middleInk.ShouldBeGreaterThan(0, "the A should cross the icon's centre column");
     }
 
+    /// <summary>
+    /// The crescent is the outer disc MINUS an offset one, and the assertion that separates it from a plain
+    /// disc is that the bite is EMPTY. It is drawn as scanline spans rather than by over-painting the offset
+    /// disc in the button's background, so this also pins the property that made that choice: the icon needs
+    /// no ground, and paints correctly over a rect nothing filled.
+    /// </summary>
+    [Fact]
+    public void TheDarkIconIsACrescent_WithItsBiteLeftEmpty()
+    {
+        var (inked, _) = Paint(Layout.IconKind.ThemeDark);
+
+        // The thick limb sits on the lower left, opposite the bite.
+        inked(9, 20).ShouldBeTrue("the crescent's limb should be inked");
+
+        // The bite is offset up and to the right of centre, and nothing may be drawn inside it.
+        inked(22, 10).ShouldBeFalse("the bite should be empty, not filled");
+
+        // ...and the disc's own outside is empty too, which is what stops "bite is empty" from passing
+        // trivially for an icon that drew nothing at all.
+        inked(1, 1).ShouldBeFalse("outside the disc should be empty");
+    }
+
+    /// <summary>
+    /// The sun is a disc ringed by rays with a GAP between them -- the property that keeps it from reading as
+    /// a fuzzy dot at 13 px, which is the size a header actually uses.
+    /// </summary>
+    [Fact]
+    public void TheLightIconKeepsAGapBetweenItsDiscAndItsRays()
+    {
+        var (inked, _) = Paint(Layout.IconKind.ThemeLight);
+
+        // Centre is the disc.
+        inked(16, 16).ShouldBeTrue("the sun's disc should be inked");
+
+        // Walking out along the horizontal from the centre must cross ink, then a gap, then ink again
+        // (the disc, the gap, a ray). Two runs is what makes it a sun rather than a blob.
+        var runs = 0;
+        var wasInk = false;
+        for (var x = 16; x < (int)Surface; x++)
+        {
+            var isInk = inked(x, 16);
+            if (isInk && !wasInk)
+            {
+                runs++;
+            }
+
+            wasInk = isInk;
+        }
+
+        runs.ShouldBe(2, "disc then gap then ray");
+    }
+
+    /// <summary>
+    /// Half filled, half outlined. The outlined half is the whole point: it is what stops the mark reading as
+    /// a moon, which is the neighbour it sits next to in a theme control.
+    /// </summary>
+    [Fact]
+    public void TheSystemIconFillsOneHalfAndOutlinesTheOther()
+    {
+        var (inked, _) = Paint(Layout.IconKind.ThemeSystem);
+
+        // Left half: solid, so a point midway between centre and the left edge carries ink.
+        inked(11, 16).ShouldBeTrue("the left half should be filled");
+
+        // Right half: outline only, so the same point mirrored is EMPTY while the rim beyond it is inked.
+        inked(21, 16).ShouldBeFalse("the right half should be hollow");
+        inked(25, 16).ShouldBeTrue("...but its rim should be inked");
+    }
+
     [Fact]
     public void AZeroSizedRectDrawsNothing_RatherThanDividingByIt()
     {

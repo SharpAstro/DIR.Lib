@@ -91,4 +91,22 @@ public enum IconKind
     /// The other common rendering wraps the A in cyclic arrows, which a ring cannot say legibly at icon size.
     /// </summary>
     Auto,
+
+    /// <summary>
+    /// A disc half filled and half outlined: "follow whatever the desktop is set to".
+    /// <para>
+    /// The three theme marks are one family and earn their place together: an app with a light/dark setting
+    /// needs all three or none, and both surfaces can say each one. The divided disc is the long-standing
+    /// contrast mark, and the outlined half is load-bearing rather than decoration -- a bare half-disc reads
+    /// as a moon, which is the one neighbour it must not be confused with.
+    /// </para>
+    /// </summary>
+    ThemeSystem,
+
+    /// <summary>A rayed disc: "light, whatever the desktop says". The sun, drawn with the rays clear of the
+    /// disc so the two read as separate marks rather than one soft blob at icon size.</summary>
+    ThemeLight,
+
+    /// <summary>A crescent: "dark, whatever the desktop says".</summary>
+    ThemeDark,
 }

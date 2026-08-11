@@ -222,7 +222,10 @@ namespace DIR.Lib
                     // rather than spelled for the same reason as the others -- but note the A itself would
                     // have been safe as text, since the .notdef risk is about symbol faces and this is ASCII.
                     var arm = unit * 1.6f;
-                    var pen = MathF.Max(1f, unit * 0.45f);
+                    // Weighted to match the theme marks, which are filled shapes and so read heavier at the
+                    // same nominal size. A hairline bracket beside a solid crescent makes the six look like
+                    // two families sharing a header rather than one set.
+                    var pen = MathF.Max(1.2f, unit * 0.58f);
                     var inset = unit * 0.35f;
                     var l = rect.X + inset;
                     var t = rect.Y + inset;
@@ -242,7 +245,7 @@ namespace DIR.Lib
                     var ah = unit * 2.4f;
                     var acx = rect.X + rect.Width / 2f;
                     var acy = rect.Y + rect.Height / 2f;
-                    var stroke = (int)MathF.Max(1f, unit * 0.45f);
+                    var stroke = (int)MathF.Round(MathF.Max(1f, unit * 0.58f));
                     DrawLine(acx - aw / 2f, acy + ah / 2f, acx, acy - ah / 2f, ink, stroke);
                     DrawLine(acx + aw / 2f, acy + ah / 2f, acx, acy - ah / 2f, ink, stroke);
                     DrawLine(acx - aw * 0.3f, acy + ah * 0.16f, acx + aw * 0.3f, acy + ah * 0.16f, ink, stroke);
@@ -260,6 +263,172 @@ namespace DIR.Lib
                     }
 
                     break;
+
+                case Layout.IconKind.ThemeLight:
+                    // A disc with eight rays. The GAP between disc and rays is what makes this a sun rather
+                    // than a fuzzy dot, so it is a proportion with a floor rather than a proportion alone: at
+                    // 13 px a flat fraction left under 2 px of gap and the rays closed on the disc.
+                    var sunR = side * 0.155f;
+                    DiscSpans(rect, sunR, ink);
+                    var rayInner = sunR + MathF.Max(1.5f, side * 0.085f);
+                    var rayOuter = side * 0.45f;
+                    var rayPen = (int)MathF.Max(1f, side * 0.075f);
+                    var scx = rect.X + rect.Width / 2f;
+                    var scy = rect.Y + rect.Height / 2f;
+                    for (var i = 0; i < 8; i++)
+                    {
+                        var (sin, cos) = MathF.SinCos(i * MathF.PI / 4f);
+                        DrawLine(scx + cos * rayInner, scy + sin * rayInner,
+                            scx + cos * rayOuter, scy + sin * rayOuter, ink, rayPen);
+                    }
+
+                    break;
+
+                case Layout.IconKind.ThemeDark:
+                    // A crescent: the outer disc MINUS an offset one. Built from the spans the subtraction
+                    // leaves rather than by over-painting the offset disc in the button's background, which is
+                    // how a renderer with no path subtraction usually fakes it. That trick needs to know the
+                    // ground, so it breaks over a gradient, an image, or a transparent node -- and this
+                    // painter is handed ink and a rect, nothing else. Scanline spans need no ground at all.
+                    CrescentSpans(rect, side * 0.34f, side * 0.30f, ink);
+                    break;
+
+                case Layout.IconKind.ThemeSystem:
+                    // Half filled, half outlined: the conventional "follow the system" / contrast mark. The
+                    // outlined half is what makes it read as a divided disc rather than as a half-moon, which
+                    // is the distinction that matters when ThemeDark sits next to it.
+                    var sysR = side * 0.32f;
+                    DiscSpans(rect, sysR, ink, leftHalfOnly: true);
+                    RingSpans(rect, sysR, MathF.Max(1f, side * 0.075f), ink, rightHalfOnly: true);
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Fills a disc as horizontal spans, one per device row, so a curve costs no path support and no
+        /// per-pixel plotting. <paramref name="leftHalfOnly"/> keeps the spans left of centre.
+        /// </summary>
+        private void DiscSpans(RectF32 rect, float r, RGBAColor32 ink, bool leftHalfOnly = false)
+        {
+            var cx = rect.X + rect.Width / 2f;
+            var cy = rect.Y + rect.Height / 2f;
+            var rows = (int)MathF.Ceiling(r * 2f);
+            for (var i = 0; i < rows; i++)
+            {
+                var y = cy - r + i;
+                var dy = y + 0.5f - cy;
+                var half = r * r - dy * dy;
+                if (half <= 0f)
+                {
+                    continue;
+                }
+
+                half = MathF.Sqrt(half);
+                var x0 = cx - half;
+                var x1 = leftHalfOnly ? cx : cx + half;
+                if (x1 > x0)
+                {
+                    FillRect(x0, y, x1 - x0, 1f, ink);
+                }
+            }
+        }
+
+        /// <summary>Outlines a disc as spans: the same scan, keeping only <paramref name="pen"/> at each end.</summary>
+        private void RingSpans(RectF32 rect, float r, float pen, RGBAColor32 ink, bool rightHalfOnly = false)
+        {
+            var cx = rect.X + rect.Width / 2f;
+            var cy = rect.Y + rect.Height / 2f;
+            var rows = (int)MathF.Ceiling(r * 2f);
+            for (var i = 0; i < rows; i++)
+            {
+                var y = cy - r + i;
+                var dy = y + 0.5f - cy;
+                var outer = r * r - dy * dy;
+                if (outer <= 0f)
+                {
+                    continue;
+                }
+
+                outer = MathF.Sqrt(outer);
+                var inner = (r - pen) * (r - pen) - dy * dy;
+                if (inner <= 0f)
+                {
+                    // Past the ring's shoulders the row is solid, which is what closes the top and bottom.
+                    var x0 = rightHalfOnly ? cx : cx - outer;
+                    if (cx + outer > x0)
+                    {
+                        FillRect(x0, y, cx + outer - x0, 1f, ink);
+                    }
+
+                    continue;
+                }
+
+                inner = MathF.Sqrt(inner);
+                if (!rightHalfOnly)
+                {
+                    FillRect(cx - outer, y, outer - inner, 1f, ink);
+                }
+
+                FillRect(cx + inner, y, outer - inner, 1f, ink);
+            }
+        }
+
+        /// <summary>
+        /// Fills the crescent left by subtracting a disc of <paramref name="biteR"/>, offset up and to the
+        /// right, from one of <paramref name="r"/> -- as the spans of the outer disc that the inner one does
+        /// not cover.
+        /// </summary>
+        private void CrescentSpans(RectF32 rect, float r, float biteR, RGBAColor32 ink)
+        {
+            var cx = rect.X + rect.Width / 2f;
+            var cy = rect.Y + rect.Height / 2f;
+            // Offset toward the upper right, so the crescent opens that way and its horns point down-left --
+            // the orientation nearly every "dark mode" mark uses.
+            var bx = cx + r * 0.52f;
+            var by = cy - r * 0.34f;
+
+            var rows = (int)MathF.Ceiling(r * 2f);
+            for (var i = 0; i < rows; i++)
+            {
+                var y = cy - r + i;
+                var dy = y + 0.5f - cy;
+                var outer = r * r - dy * dy;
+                if (outer <= 0f)
+                {
+                    continue;
+                }
+
+                outer = MathF.Sqrt(outer);
+                float x0 = cx - outer, x1 = cx + outer;
+
+                var bdy = y + 0.5f - by;
+                var bite = biteR * biteR - bdy * bdy;
+                if (bite > 0f)
+                {
+                    bite = MathF.Sqrt(bite);
+                    float b0 = bx - bite, b1 = bx + bite;
+
+                    // The bite covers this row's right end (it is offset right), so the visible part is
+                    // whatever lies left of it. A row swallowed whole contributes nothing.
+                    if (b0 <= x0 && b1 >= x1)
+                    {
+                        continue;
+                    }
+
+                    if (b0 > x0 && b0 < x1)
+                    {
+                        x1 = b0;
+                    }
+                    else if (b1 > x0 && b1 < x1)
+                    {
+                        x0 = b1;
+                    }
+                }
+
+                if (x1 > x0)
+                {
+                    FillRect(x0, y, x1 - x0, 1f, ink);
+                }
             }
         }
 
