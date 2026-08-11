@@ -179,6 +179,91 @@ namespace DIR.Lib
         // -------------------------------------------------------------------------------------------------
 
         /// <summary>
+        /// Draws a <see cref="Layout.IconKind"/> into <paramref name="rect"/> out of rectangles, which is the
+        /// whole point of naming an icon rather than spelling it: nothing has to carry the codepoint, so a
+        /// machine missing a symbol face cannot turn the icon into a .notdef box. Sized off the rect's short
+        /// side, so it scales with whatever the engine arranged and takes no DPI argument.
+        /// <para>
+        /// A kind with no drawing here paints nothing rather than throwing -- a blank button is visible on
+        /// the first frame, which is the right way for a forgotten kind to announce itself.
+        /// </para>
+        /// </summary>
+        protected void DrawLayoutIcon(Layout.IconKind kind, RectF32 rect, RGBAColor32 ink)
+        {
+            var side = MathF.Min(rect.Width, rect.Height);
+            if (side <= 0f)
+            {
+                return;
+            }
+
+            // 5.4 units across the icon: two 2.2-unit cells plus the 1-unit gutter between them. The bars
+            // below reuse the same unit, so the two icons read as one family at any size.
+            var unit = MathF.Max(1f, side / 5.4f);
+
+            switch (kind)
+            {
+                case Layout.IconKind.Grid:
+                    var cell = unit * 2.2f;
+                    var quad = cell * 2f + unit;
+                    var ox = rect.X + (rect.Width - quad) / 2f;
+                    var oy = rect.Y + (rect.Height - quad) / 2f;
+                    for (var r = 0; r < 2; r++)
+                    {
+                        for (var c = 0; c < 2; c++)
+                        {
+                            FillRect(ox + c * (cell + unit), oy + r * (cell + unit), cell, cell, ink);
+                        }
+                    }
+
+                    break;
+
+                case Layout.IconKind.Auto:
+                    // Four corner brackets from rectangles, then the A from three strokes. Constructed
+                    // rather than spelled for the same reason as the others -- but note the A itself would
+                    // have been safe as text, since the .notdef risk is about symbol faces and this is ASCII.
+                    var arm = unit * 1.6f;
+                    var pen = MathF.Max(1f, unit * 0.45f);
+                    var inset = unit * 0.35f;
+                    var l = rect.X + inset;
+                    var t = rect.Y + inset;
+                    var r2 = rect.X + rect.Width - inset;
+                    var b = rect.Y + rect.Height - inset;
+                    foreach (var (cx, cy, sx, sy) in new[]
+                    {
+                        (l, t, 1f, 1f), (r2, t, -1f, 1f), (l, b, 1f, -1f), (r2, b, -1f, -1f),
+                    })
+                    {
+                        // Each corner is one horizontal arm and one vertical arm, mirrored by (sx, sy).
+                        FillRect(sx > 0 ? cx : cx - arm, sy > 0 ? cy : cy - pen, arm, pen, ink);
+                        FillRect(sx > 0 ? cx : cx - pen, sy > 0 ? cy : cy - arm, pen, arm, ink);
+                    }
+
+                    var aw = unit * 1.9f;
+                    var ah = unit * 2.4f;
+                    var acx = rect.X + rect.Width / 2f;
+                    var acy = rect.Y + rect.Height / 2f;
+                    var stroke = (int)MathF.Max(1f, unit * 0.45f);
+                    DrawLine(acx - aw / 2f, acy + ah / 2f, acx, acy - ah / 2f, ink, stroke);
+                    DrawLine(acx + aw / 2f, acy + ah / 2f, acx, acy - ah / 2f, ink, stroke);
+                    DrawLine(acx - aw * 0.3f, acy + ah * 0.16f, acx + aw * 0.3f, acy + ah * 0.16f, ink, stroke);
+                    break;
+
+                case Layout.IconKind.List:
+                    var barW = unit * 5.2f;
+                    var barH = MathF.Max(1.5f, unit * 0.6f);
+                    var bars = barH * 3f + unit * 2f;
+                    var bx = rect.X + (rect.Width - barW) / 2f;
+                    var by = rect.Y + (rect.Height - bars) / 2f;
+                    for (var i = 0; i < 3; i++)
+                    {
+                        FillRect(bx, by + i * (barH + unit), barW, barH, ink);
+                    }
+
+                    break;
+            }
+        }
+
+        /// <summary>
         /// Draws one horizontal track slider and registers its drag hit-band. <paramref name="frac"/> is the
         /// normalised fill/handle position in [0, 1]. <paramref name="barCenterY"/> is the vertical centre of
         /// the thin track bar; the draggable handle is a <paramref name="handleH"/>-tall marker at
@@ -596,6 +681,10 @@ namespace DIR.Lib
                             break;
                         case Layout.Content.Box box when box.Color.Alpha > 0:
                             FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, box.Color, radius);
+                            break;
+                        case Layout.Content.Icon icon:
+                            DrawLayoutIcon(icon.Kind,
+                                new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height), icon.Color);
                             break;
                         case Layout.Content.Fill fill:
                             drawFill?.Invoke(fill, new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height));

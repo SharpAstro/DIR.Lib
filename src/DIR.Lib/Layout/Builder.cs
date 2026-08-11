@@ -41,6 +41,16 @@ public static class Builder
     public static Node Box(float width, float height, RGBAColor32? color = null)
         => new Node.Leaf(new Content.Box(width, height) { Color = color ?? default });
 
+    /// <summary>
+    /// An icon leaf, <paramref name="size"/> design units square, named by meaning so each surface draws it
+    /// its own way (rectangles on pixels, a block-element glyph on cells). See <see cref="Content.Icon"/>.
+    /// </summary>
+    public static Node Icon(IconKind kind, float size = 14f, RGBAColor32? color = null)
+        => new Node.Leaf(new Content.Icon(kind, size)
+        {
+            Color = color ?? new RGBAColor32(0xff, 0xff, 0xff, 0xff),
+        });
+
     /// <summary>An app-drawn escape-hatch leaf (chart/sky map/text input). Pair with <c>Star</c> sizing to fill; set <paramref name="key"/> to route multiple fills.</summary>
     public static Node Fill(float minWidth = 0f, float minHeight = 0f, string? key = null)
         => new Node.Leaf(new Content.Fill(minWidth, minHeight, key));

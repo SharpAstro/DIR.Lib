@@ -349,6 +349,15 @@ env:
   #        What this means for a consumer: hinted TrueType text and RTL text with marks change shape
   #        where they were previously malformed, and a golden image containing either differs. Nothing
   #        in this repo's own baselines moved.
+  # 7.18 - Layout.Content.Icon: a leaf that names a pictogram by MEANING, so each surface draws it the
+  #        way that surface can. The pixel painter constructs it from rectangles (PixelWidgetBase's new
+  #        DrawLayoutIcon, beside DrawTrackSlider); Console.Lib 4.21 maps the same node to a glyph from
+  #        the block-element range. Naming rather than spelling is the point: a symbol codepoint has to
+  #        exist in the bound font and arrives as .notdef when it does not, which is an empty box exactly
+  #        where the icon should be, while a character grid cannot draw rectangles at all. Additive:
+  #        Content.Icon, IconKind (Grid, List, Auto), Builder.Icon, DrawLayoutIcon. IconKind is
+  #        deliberately closed and tiny, since every kind costs a drawing here AND a glyph choice in
+  #        every cell painter; a one-off belongs in a Content.Fill the app draws itself.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
