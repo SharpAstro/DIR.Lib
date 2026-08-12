@@ -262,9 +262,25 @@ public static class Engine
             };
             cross = Clamp(cross, crossSizing, ctx, CrossAxis(axis));
 
+            // Cross-axis placement. A Star child already fills the axis, so its offset is zero whatever the
+            // alignment says; everything else is nudged by the slack. The engine owns this because it is the
+            // only party that knows both extents -- a call site computing it needs the parent's inner size,
+            // which is exactly the arithmetic the layout pass exists to remove.
+            var slack = crossAvail - cross;
+            var crossOffset = stack.CrossAlign switch
+            {
+                CrossAlign.Center => slack / (T.One + T.One),
+                CrossAlign.End => slack,
+                _ => T.Zero,
+            };
+            if (crossOffset < T.Zero)
+            {
+                crossOffset = T.Zero;
+            }
+
             var childRect = axis == Axis.Vertical
-                ? new Rect<T>(inner.X, cursor, cross, mains[i])
-                : new Rect<T>(cursor, inner.Y, mains[i], cross);
+                ? new Rect<T>(inner.X + crossOffset, cursor, cross, mains[i])
+                : new Rect<T>(cursor, inner.Y + crossOffset, mains[i], cross);
             ArrangeNode(children[i], childRect, ctx, output, depth);
 
             cursor += mains[i] + gap;

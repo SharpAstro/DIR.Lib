@@ -73,6 +73,16 @@ public abstract partial record Node
     /// <summary>Inset this node's children by <paramref name="designUnits"/> of inner padding.</summary>
     public Node Pad(float designUnits) => this with { Padding = designUnits };
 
+    /// <summary>Set where a <see cref="Node.Stack"/> places its children across its own axis.</summary>
+    public Node Align(CrossAlign align) => this with { CrossAlign = align };
+
+    /// <summary>
+    /// Centre this stack's children across its axis: a row's controls vertically, a column's horizontally.
+    /// The common case, and the one that otherwise gets re-derived at the call site as padding or a spacer
+    /// sandwich.
+    /// </summary>
+    public Node CrossCenter() => this with { CrossAlign = Layout.CrossAlign.Center };
+
     /// <summary>Bind a click region (and optional handler) to this node's whole rect -- draw == hit by construction.</summary>
     public Node Clickable(HitResult? hit, Action<InputModifier>? onClick = null) => this with { Hit = hit, OnClick = onClick };
 

@@ -7,6 +7,23 @@ namespace DIR.Lib.Layout;
 /// <summary>Main axis of a <see cref="Node.Stack"/>.</summary>
 public enum Axis { Vertical, Horizontal }
 
+/// <summary>
+/// Where a <see cref="Node.Stack"/> places a child ACROSS its axis: for an <see cref="Axis.Horizontal"/>
+/// stack, vertically. Only affects a child whose cross-axis sizing is not <c>Star</c>, since a Star child
+/// fills the axis and has nowhere to go.
+/// </summary>
+public enum CrossAlign
+{
+    /// <summary>Top of a row, left of a column. The long-standing behaviour and the default.</summary>
+    Start,
+
+    /// <summary>Centred across the axis: what a row of differently-sized controls almost always wants.</summary>
+    Center,
+
+    /// <summary>Bottom of a row, right of a column.</summary>
+    End
+}
+
 /// <summary>Edge a docked child is pinned to in a <see cref="Node.Dock"/>.</summary>
 public enum DockSide { Top, Bottom, Left, Right }
 
@@ -31,6 +48,23 @@ public abstract partial record Node
 
     /// <summary>Inner padding (design units) inset from this node's rect before its children are laid out.</summary>
     public float Padding { get; init; }
+
+    /// <summary>
+    /// Where a <see cref="Stack"/> places its children across its own axis: an HStack's children up or down,
+    /// a VStack's left or right. Default <see cref="Layout.CrossAlign.Start"/>, which is what a stack has
+    /// always done.
+    /// <para>
+    /// Set on the CONTAINER, like <see cref="Padding"/> and like every other layout system's align-items:
+    /// the common case is "centre this row's controls", and per-child alignment would mean repeating it on
+    /// each. A child sized <c>Star</c> across the axis fills it and is unaffected.
+    /// </para>
+    /// <para>
+    /// Without this, a Fixed-height button in a taller bar hugs the bar's top, and centring it means either
+    /// padding the bar or wrapping every child in a spacer sandwich -- both of which re-derive, at the call
+    /// site, a position the engine already knows.
+    /// </para>
+    /// </summary>
+    public CrossAlign CrossAlign { get; init; } = CrossAlign.Start;
 
     /// <summary>Optional fill painted across this node's whole rect before its children. Since arrange emits
     /// parent-before-children, a container's background lands under its content (panels, rows, headers).</summary>

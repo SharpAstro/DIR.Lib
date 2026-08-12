@@ -184,6 +184,12 @@ namespace DIR.Lib
         /// machine missing a symbol face cannot turn the icon into a .notdef box. Sized off the rect's short
         /// side, so it scales with whatever the engine arranged and takes no DPI argument.
         /// <para>
+        /// <b>Every kind inks the FULL square it is given</b>, so a row of different marks at one declared
+        /// size comes out one height. That is not free -- each drawing is tuned to reach its bounding box --
+        /// and it is the property that makes the set usable as a family: before it, the same declared size
+        /// produced ink spanning 63% (a half-disc) to 100% (the grid) of it, a 1.6x spread that no amount of
+        /// centring can hide. A new kind owes the same, and the LayoutIconTests measure it.
+        /// <para>
         /// A kind with no drawing here paints nothing rather than throwing -- a blank button is visible on
         /// the first frame, which is the right way for a forgotten kind to announce itself.
         /// </para>
@@ -226,7 +232,8 @@ namespace DIR.Lib
                     // same nominal size. A hairline bracket beside a solid crescent makes the six look like
                     // two families sharing a header rather than one set.
                     var pen = MathF.Max(1.2f, unit * 0.58f);
-                    var inset = unit * 0.35f;
+                    // Flush to the edges: Size is the mark's BOUNDING BOX, so the brackets reach it.
+                    const float inset = 0f;
                     var l = rect.X + inset;
                     var t = rect.Y + inset;
                     var r2 = rect.X + rect.Width - inset;
@@ -253,13 +260,16 @@ namespace DIR.Lib
 
                 case Layout.IconKind.List:
                     var barW = unit * 5.2f;
-                    var barH = MathF.Max(1.5f, unit * 0.6f);
-                    var bars = barH * 3f + unit * 2f;
+                    // Three bars and two gaps span the full side, keeping the old 0.6-to-1 bar:gap ratio:
+                    // 3(0.6g) + 2g = 3.8g = side.
+                    var listGap = side / 3.8f;
+                    var barH = MathF.Max(1.5f, listGap * 0.6f);
+                    var bars = barH * 3f + listGap * 2f;
                     var bx = rect.X + (rect.Width - barW) / 2f;
                     var by = rect.Y + (rect.Height - bars) / 2f;
                     for (var i = 0; i < 3; i++)
                     {
-                        FillRect(bx, by + i * (barH + unit), barW, barH, ink);
+                        FillRect(bx, by + i * (barH + listGap), barW, barH, ink);
                     }
 
                     break;
@@ -268,11 +278,13 @@ namespace DIR.Lib
                     // A disc with eight rays. The GAP between disc and rays is what makes this a sun rather
                     // than a fuzzy dot, so it is a proportion with a floor rather than a proportion alone: at
                     // 13 px a flat fraction left under 2 px of gap and the rays closed on the disc.
-                    var sunR = side * 0.155f;
+                    var sunR = side * 0.17f;
                     DiscSpans(rect, sunR, ink);
-                    var rayInner = sunR + MathF.Max(1.5f, side * 0.085f);
-                    var rayOuter = side * 0.45f;
                     var rayPen = (int)MathF.Max(1f, side * 0.075f);
+                    var rayInner = sunR + MathF.Max(1.5f, side * 0.085f);
+                    // A stroke is centred on its endpoint, so stopping half a pen short puts its outer edge
+                    // exactly on the bounding box.
+                    var rayOuter = (side - rayPen) / 2f;
                     var scx = rect.X + rect.Width / 2f;
                     var scy = rect.Y + rect.Height / 2f;
                     for (var i = 0; i < 8; i++)
@@ -290,14 +302,14 @@ namespace DIR.Lib
                     // how a renderer with no path subtraction usually fakes it. That trick needs to know the
                     // ground, so it breaks over a gradient, an image, or a transparent node -- and this
                     // painter is handed ink and a rect, nothing else. Scanline spans need no ground at all.
-                    CrescentSpans(rect, side * 0.34f, side * 0.30f, ink);
+                    CrescentSpans(rect, side * 0.5f, side * 0.44f, ink);
                     break;
 
                 case Layout.IconKind.ThemeSystem:
                     // Half filled, half outlined: the conventional "follow the system" / contrast mark. The
                     // outlined half is what makes it read as a divided disc rather than as a half-moon, which
                     // is the distinction that matters when ThemeDark sits next to it.
-                    var sysR = side * 0.32f;
+                    var sysR = side * 0.5f;
                     DiscSpans(rect, sysR, ink, leftHalfOnly: true);
                     RingSpans(rect, sysR, MathF.Max(1f, side * 0.075f), ink, rightHalfOnly: true);
                     break;

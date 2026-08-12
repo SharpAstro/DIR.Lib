@@ -102,9 +102,11 @@ public class LayoutIconTests
 
         // The brackets reach the extreme corners, which is what separates this from Grid: Grid's quadrants
         // are inset and leave an empty gutter cross, so probing a corner tells the two apart.
-        // One pixel inside the arms rather than on them: the inset is a fraction of a unit (~2.07 at this
-        // size), so the outermost row sits on the rasteriser's rounding boundary and is not a stable probe.
-        foreach (var (x, y) in new[] { (3, 3), (28, 3), (3, 28), (28, 28) })
+        // One pixel IN from the corner rather than on it: an arm is a few units thick and its far edge lands
+        // on the rasteriser's rounding boundary, so probing near the corner is stable while probing at the
+        // arm's edge is not. (These moved when every kind was normalised to ink its full bounding box: the
+        // brackets used to sit ~2 units inside it.)
+        foreach (var (x, y) in new[] { (1, 1), (30, 1), (1, 30), (30, 30) })
         {
             inked(x, y).ShouldBeTrue($"corner bracket at ({x},{y}) should be inked");
         }
@@ -184,11 +186,12 @@ public class LayoutIconTests
         var (inked, _) = Paint(Layout.IconKind.ThemeSystem);
 
         // Left half: solid, so a point midway between centre and the left edge carries ink.
-        inked(11, 16).ShouldBeTrue("the left half should be filled");
+        inked(8, 16).ShouldBeTrue("the left half should be filled");
 
         // Right half: outline only, so the same point mirrored is EMPTY while the rim beyond it is inked.
+        // The rim sits at the bounding box now that the disc fills it, rather than ~6 units inside.
         inked(21, 16).ShouldBeFalse("the right half should be hollow");
-        inked(25, 16).ShouldBeTrue("...but its rim should be inked");
+        inked(30, 16).ShouldBeTrue("...but its rim should be inked");
     }
 
     /// <summary>

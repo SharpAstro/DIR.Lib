@@ -379,6 +379,19 @@ env:
   #        BEHAVIOUR CHANGE for anyone already on 7.18 or 7.19: an icon in a cell larger than its declared
   #        size now draws smaller than before. Restore the old look by declaring the size you want, which
   #        is the point of the field.
+  # 7.21 - Two things a consumer had to work around by hand, fixed where they belong.
+  #        (a) Layout.CrossAlign (Start / Center / End) on a Stack, honoured by the arrange pass, plus
+  #        .Align(...) and .CrossCenter(). A Stack placed every child at the cross-axis START, so a
+  #        Fixed-height control in a taller row hugged the top and sat half the slack above centre. The
+  #        workaround was padding the container or wrapping each child in a spacer sandwich, both of which
+  #        re-derive a position from the parent inner size at the call site. Default is Start, so nothing
+  #        moves unless asked. A Star child already fills the axis and is unaffected.
+  #        (b) Every IconKind now inks the FULL square it declares, so a row of different marks at one
+  #        size comes out one height. Measured before and after: the same declared size used to produce
+  #        ink spanning 63 percent (the half-disc) to 100 percent (the grid) of it, a 1.6x spread that no
+  #        amount of centring can hide; it is now 95 to 100 percent, the residue being rasteriser rounding
+  #        on stroke ends. VISIBLE CHANGE for 7.18-7.20 consumers: List, Auto and the three theme marks
+  #        all draw larger at the same declared size. Reduce the declared size to match the old ink.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
