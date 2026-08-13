@@ -440,6 +440,14 @@ env:
   #        PixelWidgetBase gains PushClip(x, y, w, h) / PopClip(), the x/y/w/h form: Renderer.PushClip
   #        takes a RectInt, whose corners go in the opposite order to every other rect a widget states.
   #        Single-level, unchanged: a second push replaces the first. 767 tests.
+  # 7.26 - Renderer.DrawTriangles: a triangle list, x/y pairs, three vertices per triangle. Anything not
+  #        made of rectangles, ellipses and text IS a triangle list -- an arrowhead, a chevron, a chart's
+  #        filled area -- and a widget that cannot say so has to reach past the abstraction to whichever
+  #        backend can, which is enough on its own to pin a whole UI layer to one renderer. The default
+  #        is a scanline fill written in terms of FillRectangle, so every backend has it; a GPU renderer
+  #        overrides it with one draw call. Rows are tested at their CENTRE, so two triangles sharing an
+  #        edge neither double-claim a row nor drop it, and a span the rounding would collapse still
+  #        draws one pixel -- an arrowhead whose tip vanished reads as blunt rather than as slightly off.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

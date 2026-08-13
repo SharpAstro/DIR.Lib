@@ -14,6 +14,74 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
     public abstract void FillEllipse(in RectInt rect, RGBAColor32 fillColor);
 
     /// <summary>
+    /// Fills a triangle list: <paramref name="vertices"/> is x,y pairs, three vertices per triangle,
+    /// in surface pixels. Winding is irrelevant — every triangle is filled.
+    /// </summary>
+    /// <remarks>
+    /// <para>The default is a scanline fill written in terms of <see cref="FillRectangle"/>, so every
+    /// backend has it whether or not it has a triangle pipeline; a GPU renderer overrides it with one
+    /// draw call. Unantialiased, like the other constructed primitives here.</para>
+    ///
+    /// <para><b>Why a primitive rather than a caller's loop.</b> Anything not made of rectangles,
+    /// ellipses and text — an arrowhead, a chevron, a chart's filled area — is a triangle list, and a
+    /// widget that cannot say so has to reach past the abstraction to whichever backend can. One
+    /// missing primitive is enough to pin a whole UI layer to one renderer.</para>
+    /// </remarks>
+    public virtual void DrawTriangles(ReadOnlySpan<float> vertices, RGBAColor32 color)
+    {
+        for (var i = 0; i + 6 <= vertices.Length; i += 6)
+        {
+            FillTriangle(vertices[i], vertices[i + 1], vertices[i + 2],
+                         vertices[i + 3], vertices[i + 4], vertices[i + 5], color);
+        }
+    }
+
+    /// <summary>
+    /// One triangle, as horizontal spans. Each row is tested at its CENTRE (y + 0.5), which is what
+    /// keeps two triangles sharing an edge from both claiming the row or neither doing.
+    /// </summary>
+    private void FillTriangle(float x0, float y0, float x1, float y1, float x2, float y2, RGBAColor32 color)
+    {
+        var top = (int)MathF.Floor(MathF.Min(y0, MathF.Min(y1, y2)));
+        var bottom = (int)MathF.Ceiling(MathF.Max(y0, MathF.Max(y1, y2)));
+
+        for (var y = top; y < bottom; y++)
+        {
+            var cy = y + 0.5f;
+            var lo = float.MaxValue;
+            var hi = float.MinValue;
+
+            Cross(x0, y0, x1, y1, cy, ref lo, ref hi);
+            Cross(x1, y1, x2, y2, cy, ref lo, ref hi);
+            Cross(x2, y2, x0, y0, cy, ref lo, ref hi);
+
+            if (hi <= lo) continue;
+
+            var xa = (int)MathF.Round(lo);
+            var xb = (int)MathF.Round(hi);
+            // A span the rounding collapsed still had ink in it — a one-pixel tip is the whole point of
+            // an arrowhead, and dropping it leaves the mark visibly blunt.
+            if (xb <= xa) xb = xa + 1;
+            FillRectangle(new RectInt(new PointInt(xb, y + 1), new PointInt(xa, y)), color);
+        }
+
+        // Where an edge crosses this row's centre line, if it does. Half-open in y (>= start, < end) so
+        // a shared vertex is counted once rather than twice.
+        static void Cross(float ax, float ay, float bx, float by, float cy, ref float lo, ref float hi)
+        {
+            if (ay > by)
+            {
+                (ax, ay, bx, by) = (bx, by, ax, ay);
+            }
+            if (cy < ay || cy >= by) return;
+
+            var x = ax + (bx - ax) * (cy - ay) / (by - ay);
+            if (x < lo) lo = x;
+            if (x > hi) hi = x;
+        }
+    }
+
+    /// <summary>
     /// Restrict subsequent drawing to <paramref name="rect"/> (pixels) until the matching
     /// <see cref="PopClip"/>. Widgets use this to keep content inside their bounds (e.g. a tab
     /// strip's overflowing labels). The base implementation is a no-op: clipping is an
