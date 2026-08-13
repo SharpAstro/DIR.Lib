@@ -901,4 +901,36 @@ public class LayoutEngineTests
         var longer = Layout.Builder.Text("123456789%", 13f, widthSample: "1000%");
         Layout.Engine.Measure(longer, new Layout.Size<float>(1000, 100), ctx).Width.ShouldBe(5 * 7f);
     }
+
+    /// <summary>
+    /// Padding per axis. The case is a fixed-height bar: a chip wants room either side of its label and
+    /// none above or below, because there is none to give. Padded symmetrically it gets a content box
+    /// thinner than the marks inside it, and an icon — square by the smaller side — collapses to a stub
+    /// while the text, which overflows its rect, goes on looking correct.
+    /// </summary>
+    [Fact]
+    public void PaddingCanDifferPerAxis_SoAFixedHeightBarKeepsItsContentBox()
+    {
+        var ctx = new PixelCtx();                          // 7px per char, 16px line
+
+        // Star-height children, because that is the case that matters: a chip's mark fills the content
+        // box, so the box's height IS what the mark gets, and the whole failure is the box shrinking.
+        var symmetric = Layout.Builder.HStack(Layout.Builder.Text("Ab", 13f).HStar()).Pad(10f);
+        var acrossOnly = Layout.Builder.HStack(Layout.Builder.Text("Ab", 13f).HStar()).PadX(10f);
+
+        // Across: both inset by 10 either side.
+        Layout.Engine.Measure(symmetric, new Layout.Size<float>(1000, 1000), ctx).Width.ShouldBe(2 * 7f + 20f);
+        Layout.Engine.Measure(acrossOnly, new Layout.Size<float>(1000, 1000), ctx).Width.ShouldBe(2 * 7f + 20f);
+
+        // Down: only the symmetric one grows.
+        Layout.Engine.Measure(symmetric, new Layout.Size<float>(1000, 1000), ctx).Height.ShouldBe(16f + 20f);
+        Layout.Engine.Measure(acrossOnly, new Layout.Size<float>(1000, 1000), ctx).Height.ShouldBe(16f);
+
+        // Arranged into a 33-high bar, the child of the symmetric one is left 13; the other keeps all 33.
+        var bar = new Rect<float>(0, 0, 200, 33);
+        var symChild = ((Layout.Node.Stack)symmetric).Children[0];
+        var acrChild = ((Layout.Node.Stack)acrossOnly).Children[0];
+        RectOf(Layout.Engine.Arrange(symmetric, bar, ctx), symChild).Height.ShouldBe(13f);
+        RectOf(Layout.Engine.Arrange(acrossOnly, bar, ctx), acrChild).Height.ShouldBe(33f);
+    }
 }
