@@ -428,6 +428,18 @@ env:
   #        asymmetric enough to hide -- text overflows its rect and goes on looking right, while an icon,
   #        which is square by the smaller side, collapses to a stub. PaddingY null means "same as
   #        Padding", so every existing tree is unchanged. 744 tests.
+  # 7.25 - Clipping a software backend honours, and a widget can state. RgbaImageRenderer overrode
+  #        neither PushClip nor PopClip, which the base permits -- clipping is called an optimization
+  #        there, because on a GPU it is. That reasoning does not survive a widget TEST: a control that
+  #        trims content to its bounds draws over the whole picture on a renderer that ignores the clip,
+  #        so a headless render disagrees with the app about what was drawn, and the disagreement reads
+  #        as a widget bug. RgbaImage now carries the clip itself, so every primitive respects it for the
+  #        cost of different constants in bounds checks it was already doing -- including Clear, which
+  #        still REPLACES rather than blends, and BlitGlyphTinted, the one text path that writes Pixels
+  #        directly and so was the only thing still painting outside a clip once the fills stopped.
+  #        PixelWidgetBase gains PushClip(x, y, w, h) / PopClip(), the x/y/w/h form: Renderer.PushClip
+  #        takes a RectInt, whose corners go in the opposite order to every other rect a widget states.
+  #        Single-level, unchanged: a second push replaces the first. 767 tests.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
