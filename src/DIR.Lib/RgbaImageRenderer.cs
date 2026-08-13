@@ -36,10 +36,10 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
     /// disagree with the app about what was drawn. Every write goes through the image's own bounds
     /// check, so honouring this costs a different pair of constants and nothing else.
     /// </summary>
-    public override void PushClip(in RectInt rect)
+    protected override void ApplyClip(in RectInt rect)
         => Surface.SetClip(rect.UpperLeft.X, rect.UpperLeft.Y, rect.LowerRight.X, rect.LowerRight.Y);
 
-    public override void PopClip() => Surface.ResetClip();
+    protected override void ClearClip() => Surface.ResetClip();
 
     public override void FillRectangle(in RectInt rect, RGBAColor32 fillColor)
         => Surface.FillRect(rect.UpperLeft.X, rect.UpperLeft.Y, rect.LowerRight.X, rect.LowerRight.Y, fillColor);

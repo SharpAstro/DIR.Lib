@@ -54,26 +54,6 @@ public class SoftwareClipTests
         At(r.Surface, 19, 19).ShouldBe(Ink);
     }
 
-    /// <summary>
-    /// Single-level by contract: a second push REPLACES the first. Stated as a test because the
-    /// alternative — intersecting, or stacking — is the reading a caller would guess, and the GPU
-    /// backend does not do it either.
-    /// </summary>
-    [Fact]
-    public void ASecondPushReplacesTheFirst()
-    {
-        using var r = new RgbaImageRenderer(20, 20);
-        r.Surface.Clear(Ground);
-
-        r.PushClip(new RectInt(new PointInt(8, 8), new PointInt(0, 0)));
-        r.PushClip(new RectInt(new PointInt(20, 20), new PointInt(12, 12)));
-        r.FillRectangle(new RectInt(new PointInt(20, 20), new PointInt(0, 0)), Ink);
-        r.PopClip();
-
-        At(r.Surface, 14, 14).ShouldBe(Ink);      // the SECOND rect is what applies
-        At(r.Surface, 4, 4).ShouldBe(Ground);     // the first no longer does
-    }
-
     [Fact]
     public void AClipOutsideTheImageDrawsNothing()
     {
@@ -130,5 +110,95 @@ public class SoftwareClipTests
                 if (At(r.Surface, x, y) != Ground) leftInk++;
 
         leftInk.ShouldBe(0);
+    }
+
+    // --- nesting ---------------------------------------------------------------------------------
+    //
+    // The pair used to be single-level, which reads as a simplification and is not one: a panel that
+    // clips to its bounds and then clips again per row has to intersect the two itself, and has to
+    // re-push its OWN rect to get back — so the inner draw needs to know the outer widget's geometry.
+    // A stack that intersects is what lets a child state its own bounds and nothing else.
+
+    [Fact]
+    public void AnInnerClipNarrowsRatherThanReplacing()
+    {
+        using var r = new RgbaImageRenderer(20, 20);
+        r.Surface.Clear(Ground);
+
+        r.PushClip(new RectInt(new PointInt(15, 15), new PointInt(5, 5)));   // outer
+        r.PushClip(new RectInt(new PointInt(20, 20), new PointInt(10, 10))); // inner, overhanging
+        r.FillRectangle(new RectInt(new PointInt(20, 20), new PointInt(0, 0)), Ink);
+        r.PopClip();
+        r.PopClip();
+
+        At(r.Surface, 12, 12).ShouldBe(Ink);      // in both
+        At(r.Surface, 7, 7).ShouldBe(Ground);     // outer only — the inner one excluded it
+        At(r.Surface, 17, 17).ShouldBe(Ground);   // inner only — it does NOT escape the outer
+    }
+
+    [Fact]
+    public void PoppingAnInnerClipRestoresTheOuterOne()
+    {
+        using var r = new RgbaImageRenderer(20, 20);
+        r.Surface.Clear(Ground);
+
+        r.PushClip(new RectInt(new PointInt(15, 15), new PointInt(5, 5)));
+        r.PushClip(new RectInt(new PointInt(20, 20), new PointInt(10, 10)));
+        r.PopClip();
+        r.FillRectangle(new RectInt(new PointInt(20, 20), new PointInt(0, 0)), Ink);
+        r.PopClip();
+
+        At(r.Surface, 7, 7).ShouldBe(Ink);        // back to the outer clip, not to the whole surface
+        At(r.Surface, 2, 2).ShouldBe(Ground);
+        r.Surface.IsClipped.ShouldBeFalse();      // …and the last pop opened it fully
+    }
+
+    [Fact]
+    public void DisjointNestingDrawsNothing()
+    {
+        using var r = new RgbaImageRenderer(20, 20);
+        r.Surface.Clear(Ground);
+
+        r.PushClip(new RectInt(new PointInt(8, 8), new PointInt(0, 0)));
+        r.PushClip(new RectInt(new PointInt(20, 20), new PointInt(12, 12)));
+        r.FillRectangle(new RectInt(new PointInt(20, 20), new PointInt(0, 0)), Ink);
+        r.PopClip();
+        r.PopClip();
+
+        // No overlap, so the region is empty. It must not invert into a positive-width rect — RectInt
+        // measures its sides with Math.Abs, so an unclamped intersection would report a size and paint.
+        for (var y = 0; y < 20; y++)
+            for (var x = 0; x < 20; x++)
+                At(r.Surface, x, y).ShouldBe(Ground);
+    }
+
+    [Fact]
+    public void ClipDepthTracksThePairs()
+    {
+        using var r = new RgbaImageRenderer(20, 20);
+
+        r.ClipDepth.ShouldBe(0);
+        r.PushClip(new RectInt(new PointInt(10, 10), new PointInt(0, 0)));
+        r.ClipDepth.ShouldBe(1);
+        r.PushClip(new RectInt(new PointInt(8, 8), new PointInt(2, 2)));
+        r.ClipDepth.ShouldBe(2);
+        r.PopClip();
+        r.PopClip();
+        r.ClipDepth.ShouldBe(0);
+    }
+
+    /// <summary>An unmatched pop is the bug this stack exists to make impossible to miss: as a "reset
+    /// the clip" it works on every backend that sets the region absolutely, and silently unclips a
+    /// nested draw on one that does not.</summary>
+    [Fact]
+    public void PoppingWithNothingPushedThrows()
+    {
+        using var r = new RgbaImageRenderer(20, 20);
+
+        Should.Throw<InvalidOperationException>(() => r.PopClip());
+
+        r.PushClip(new RectInt(new PointInt(10, 10), new PointInt(0, 0)));
+        r.PopClip();
+        Should.Throw<InvalidOperationException>(() => r.PopClip());
     }
 }
