@@ -448,6 +448,16 @@ env:
   #        overrides it with one draw call. Rows are tested at their CENTRE, so two triangles sharing an
   #        edge neither double-claim a row nor drop it, and a span the rounding would collapse still
   #        draws one pixel -- an arrowhead whose tip vanished reads as blunt rather than as slightly off.
+  # 7.27 - PushClip/PopClip nest. A push inside a push draws in the INTERSECTION of the two, and a pop
+  #        restores the enclosing clip rather than the whole surface, so a child states its own bounds
+  #        and cannot escape its parent's. The pair was single-level, which reads as a simplification
+  #        and is not one: a panel clipping to its bounds and then per row had to intersect the two by
+  #        hand and re-push its OWN rect to get back, so the inner draw had to know the outer widget's
+  #        geometry -- and "pop" degenerated into "reset", which works only while every backend sets the
+  #        region absolutely. An unmatched pop now throws instead of silently unclipping. BREAKING for
+  #        backends: PushClip/PopClip are no longer virtual; a clipping backend overrides ApplyClip(rect)
+  #        and ClearClip() instead, one absolute rect and no history, since the stack lives in the base.
+  #        Renderer.ClipDepth reports the nesting, and RectInt gains Normalized() + Intersect().
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

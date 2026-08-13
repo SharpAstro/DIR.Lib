@@ -971,13 +971,14 @@ namespace DIR.Lib
         /// <summary>
         /// Restricts drawing to this rect until <see cref="PopClip"/> — the x/y/w/h form of
         /// <see cref="Renderer{TSurface}.PushClip"/>, which takes a <see cref="RectInt"/> and so takes
-        /// its corners in the opposite order to every other rect a widget states. Single-level, like the
-        /// renderer's own pair: a second call replaces the first rather than nesting.
+        /// its corners in the opposite order to every other rect a widget states. Nests: a push inside
+        /// a push draws in the intersection, so a child states its own bounds and nothing else.
         /// </summary>
         protected void PushClip(float x, float y, float w, float h)
             => Renderer.PushClip(new RectInt(new PointInt((int)(x + w), (int)(y + h)), new PointInt((int)x, (int)y)));
 
-        /// <summary>Opens the clip back up to the whole surface.</summary>
+        /// <summary>Restores the enclosing clip, or the whole surface at the outermost level. Throws
+        /// when nothing is pushed — see <see cref="Renderer{TSurface}.PopClip"/>.</summary>
         protected void PopClip() => Renderer.PopClip();
 
         protected void FillRect(float x, float y, float w, float h, RGBAColor32 color)

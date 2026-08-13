@@ -31,9 +31,9 @@ public sealed class RgbaImage
     }
 
     /// <summary>
-    /// Restricts every subsequent write to the intersection of this rect and the image. Not a stack:
-    /// a second call replaces the first, matching the single-level contract on
-    /// <see cref="Renderer{TSurface}.PushClip"/>.
+    /// Restricts every subsequent write to the intersection of this rect and the image. Absolute, not
+    /// a stack: a second call replaces the first. Nesting is <see cref="Renderer{TSurface}.PushClip"/>'s
+    /// job, and it hands this the already-intersected region.
     /// </summary>
     public void SetClip(int x0, int y0, int x1, int y1)
     {

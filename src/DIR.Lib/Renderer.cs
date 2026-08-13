@@ -81,18 +81,76 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
         }
     }
 
-    /// <summary>
-    /// Restrict subsequent drawing to <paramref name="rect"/> (pixels) until the matching
-    /// <see cref="PopClip"/>. Widgets use this to keep content inside their bounds (e.g. a tab
-    /// strip's overflowing labels). The base implementation is a no-op: clipping is an
-    /// optimization, not a correctness requirement, so a backend without scissor support (e.g. a
-    /// pure-software renderer) may ignore it; backends that support it (Vulkan scissor) override
-    /// this pair. Single-level by contract — callers must not nest Push/Pop.
-    /// </summary>
-    public virtual void PushClip(in RectInt rect) { }
+    /// <summary>The pushed clips, innermost last. Each entry is ALREADY intersected with the one
+    /// below it, so the top is the effective region and a backend never combines anything.</summary>
+    private readonly List<RectInt> _clipStack = [];
 
-    /// <summary>Removes the clip set by the matching <see cref="PushClip"/> (restores the full surface).</summary>
-    public virtual void PopClip() { }
+    /// <summary>How many clips are pushed. Zero means drawing is unrestricted. A widget that pushes
+    /// and pops in pairs can assert on this to prove it left the renderer as it found it.</summary>
+    public int ClipDepth => _clipStack.Count;
+
+    /// <summary>
+    /// Restricts subsequent drawing to <paramref name="rect"/> (pixels) until the matching
+    /// <see cref="PopClip"/>. Widgets use this to keep content inside their bounds — a tab strip's
+    /// overflowing labels, a sidebar's rows, a thumbnail inside that sidebar.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Nests, and narrows.</b> A push inside a push draws in the INTERSECTION of the two, so
+    /// an inner widget states only its own bounds and cannot escape its parent's. That is the point of
+    /// the stack: the alternative — one level, where a second push replaces the first — makes every
+    /// nested clip the caller's job to intersect by hand, and makes restoring the outer one a re-push
+    /// of a rect the inner widget has no business knowing. Both were live in this family.</para>
+    ///
+    /// <para>Clipping is an optimization for some backends and correctness for others, so the region
+    /// bookkeeping lives HERE and a backend implements only <see cref="ApplyClip"/> and
+    /// <see cref="ClearClip"/> — one absolute rect, no history. A backend that ignores both still
+    /// reports a correct <see cref="ClipDepth"/>.</para>
+    /// </remarks>
+    public void PushClip(in RectInt rect)
+    {
+        var region = rect.Normalized();
+        if (_clipStack.Count > 0) region = _clipStack[^1].Intersect(region);
+        _clipStack.Add(region);
+        ApplyClip(region);
+    }
+
+    /// <summary>
+    /// Removes the clip set by the matching <see cref="PushClip"/>, restoring the enclosing one — or
+    /// the full surface at depth zero.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Nothing was pushed. Deliberately loud: a pop
+    /// without a push is a caller using this as "reset the clip", which happens to work only while
+    /// every backend sets the region absolutely, and silently unclips a nested draw the moment one
+    /// does not.</exception>
+    public void PopClip()
+    {
+        if (_clipStack.Count == 0)
+            throw new InvalidOperationException(
+                "PopClip with no clip pushed. Push and pop in pairs; there is no 'reset' form.");
+
+        _clipStack.RemoveAt(_clipStack.Count - 1);
+        if (_clipStack.Count > 0) ApplyClip(_clipStack[^1]);
+        else ClearClip();
+    }
+
+    /// <summary>
+    /// Drops every pushed clip and opens the surface back up. For a backend to call where its own frame
+    /// boundary has already discarded the region — a Vulkan command buffer's scissor does not survive
+    /// one — so a widget that threw mid-frame cannot leave the next frame clipped to its bounds.
+    /// </summary>
+    protected void ResetClipStack()
+    {
+        if (_clipStack.Count == 0) return;
+        _clipStack.Clear();
+        ClearClip();
+    }
+
+    /// <summary>Confines drawing to this absolute, already-normalized and already-intersected rect.
+    /// The one thing a clipping backend implements; the default ignores it.</summary>
+    protected virtual void ApplyClip(in RectInt rect) { }
+
+    /// <summary>Opens drawing back up to the whole surface. The counterpart to <see cref="ApplyClip"/>.</summary>
+    protected virtual void ClearClip() { }
 
     /// <summary>
     /// Draws an ellipse outline bounded by the given rectangle with the specified stroke width.
