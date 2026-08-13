@@ -6,7 +6,13 @@ namespace DIR.Lib;
 /// A clickable region registered during rendering. The hit test walks these
 /// in reverse order (last-registered = on top) to find what was clicked.
 /// </summary>
-public readonly record struct ClickableRegion(float X, float Y, float Width, float Height, HitResult Result, Action<InputModifier>? OnClick = null);
+/// <param name="Cursor">What the pointer looks like here, or null to leave it to whatever is
+/// underneath. Declared beside the click for the reason given on <see cref="CursorKind"/>: the region
+/// list already knows what is under the pointer, so a host that answers it separately is maintaining a
+/// second, divergent copy of the same knowledge.</param>
+public readonly record struct ClickableRegion(
+    float X, float Y, float Width, float Height, HitResult Result,
+    Action<InputModifier>? OnClick = null, CursorKind? Cursor = null);
 
 /// <summary>
 /// Describes what was hit during a click. Open hierarchy — extend with
@@ -19,6 +25,14 @@ public record HitResult
 
     /// <summary>A named action button was clicked.</summary>
     public sealed record ButtonHit(string Action) : HitResult;
+
+    /// <summary>
+    /// A chrome surface with no action of its own — a panel's card, a bar's background. Registered so
+    /// the surface can state its cursor and so a host can tell "the pointer is over my overlay" from
+    /// "the pointer is over the content", which is otherwise a geometry predicate the host has to keep
+    /// in step with every overlay by hand.
+    /// </summary>
+    public sealed record ChromeHit : HitResult;
 
     /// <summary>
     /// A hyperlink was hit. Carries the target <see cref="Url"/> so a host can open it (desktop:

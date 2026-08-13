@@ -16,8 +16,35 @@ namespace DIR.Lib
         public void BeginFrame() => _regions.Clear();
 
         /// <summary>Registers a clickable region with an optional click handler.</summary>
-        public void Register(float x, float y, float w, float h, HitResult result, Action<InputModifier>? onClick = null)
-            => _regions.Add(new ClickableRegion(x, y, w, h, result, onClick));
+        public void Register(float x, float y, float w, float h, HitResult result,
+            Action<InputModifier>? onClick = null, CursorKind? cursor = null)
+            => _regions.Add(new ClickableRegion(x, y, w, h, result, onClick, cursor));
+
+        /// <summary>
+        /// Registers a region that only states a cursor — a panel card, a bar — with no action. It still
+        /// takes part in hit testing, as <see cref="HitResult.ChromeHit"/>, which is what lets a host
+        /// distinguish its own overlay from the content beneath without a geometry predicate.
+        /// </summary>
+        public void RegisterCursor(float x, float y, float w, float h, CursorKind cursor)
+            => _regions.Add(new ClickableRegion(x, y, w, h, new HitResult.ChromeHit(), null, cursor));
+
+        /// <summary>
+        /// The cursor for the topmost region under the point that STATES one. Regions without an opinion
+        /// are transparent to this, so a row inside a card inherits the card's cursor instead of having
+        /// to repeat it, and null means nothing under the pointer had a view — the caller's own default.
+        /// </summary>
+        public CursorKind? HitTestCursor(float x, float y)
+        {
+            for (var i = _regions.Count - 1; i >= 0; i--)
+            {
+                var r = _regions[i];
+                if (r.Cursor is { } cursor && x >= r.X && x < r.X + r.Width && y >= r.Y && y < r.Y + r.Height)
+                {
+                    return cursor;
+                }
+            }
+            return null;
+        }
 
         /// <summary>
         /// Hit-tests using regions registered during the last render pass.

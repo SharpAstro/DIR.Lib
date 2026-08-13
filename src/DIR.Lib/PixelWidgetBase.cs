@@ -143,16 +143,23 @@ namespace DIR.Lib
         /// <summary>
         /// Registers a clickable region with an optional direct click handler.
         /// </summary>
-        protected void RegisterClickable(float x, float y, float w, float h, HitResult result, Action<InputModifier>? onClick = null)
-            => _tracker.Register(x, y, w, h, result, onClick);
+        protected void RegisterClickable(float x, float y, float w, float h, HitResult result, Action<InputModifier>? onClick = null, CursorKind? cursor = null)
+            => _tracker.Register(x, y, w, h, result, onClick, cursor);
+
+        /// <summary>Registers a region that only states a cursor -- a card, a bar -- with no action.</summary>
+        protected void RegisterCursor(float x, float y, float w, float h, CursorKind cursor)
+            => _tracker.RegisterCursor(x, y, w, h, cursor);
 
         /// <summary>
         /// Registers a text input field — renders it and registers the clickable region.
         /// </summary>
-        protected void RenderTextInput(TextInputState state, int x, int y, int width, int height, string fontPath, float fontSize)
+        protected void RenderTextInput(TextInputState state, int x, int y, int width, int height, string fontPath,
+            float fontSize, TextInputColors? colors = null)
         {
-            TextInputRenderer.Render(Renderer, state, x, y, width, height, fontPath, fontSize, FrameCount);
-            RegisterClickable(x, y, width, height, new HitResult.TextInputHit(state));
+            TextInputRenderer.Render(Renderer, state, x, y, width, height, fontPath, fontSize, FrameCount, colors);
+            // A field is where text is edited, so the I-beam comes with it rather than being arranged for
+            // separately by whatever happens to enclose it.
+            RegisterClickable(x, y, width, height, new HitResult.TextInputHit(state), cursor: CursorKind.Text);
         }
 
         /// <summary>
@@ -162,11 +169,12 @@ namespace DIR.Lib
         /// integer pixel positions. Rounds to whole pixels once here -- the text-input renderer is
         /// integer-grid (RectInt) internally -- so call sites stop repeating the four-way (int) cast.
         /// </summary>
-        protected void RenderTextInput(TextInputState state, RectF32 rect, string fontPath, float fontSize) =>
+        protected void RenderTextInput(TextInputState state, RectF32 rect, string fontPath, float fontSize,
+            TextInputColors? colors = null) =>
             RenderTextInput(state,
                 (int)MathF.Round(rect.X), (int)MathF.Round(rect.Y),
                 (int)MathF.Round(rect.Width), (int)MathF.Round(rect.Height),
-                fontPath, fontSize);
+                fontPath, fontSize, colors);
 
         // -------------------------------------------------------------------------------------------------
         // TrackSlider -- the one horizontal press/drag/release track (WB / wavelet / scrub / ...).
@@ -609,6 +617,11 @@ namespace DIR.Lib
         /// <inheritdoc/>
         public HitResult? HitTest(float x, float y) => _tracker.HitTest(x, y);
 
+        /// <summary>The cursor stated by the topmost region under the point, or null if none had a
+        /// view — see <see cref="CursorKind"/> for why this is asked of the regions rather than
+        /// computed from geometry by the host.</summary>
+        public CursorKind? HitTestCursor(float x, float y) => _tracker.HitTestCursor(x, y);
+
         /// <inheritdoc/>
         public HitResult? HitTestAndDispatch(float x, float y, InputModifier modifiers = InputModifier.None) => _tracker.HitTestAndDispatch(x, y, modifiers);
 
@@ -814,7 +827,12 @@ namespace DIR.Lib
                 // slot row or panel, not just a leaf -- and inner nodes register later so they win the hit.
                 if (node.Hit is { } hit)
                 {
-                    RegisterClickable(bounds.X, bounds.Y, bounds.Width, bounds.Height, hit, node.OnClick);
+                    RegisterClickable(bounds.X, bounds.Y, bounds.Width, bounds.Height, hit, node.OnClick, node.Cursor);
+                }
+                else if (node.Cursor is { } cursor)
+                {
+                    // A cursor with no hit still needs a region, or the statement has nowhere to live.
+                    RegisterCursor(bounds.X, bounds.Y, bounds.Width, bounds.Height, cursor);
                 }
 
                 if (node is Layout.Node.Leaf leaf)
