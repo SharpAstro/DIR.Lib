@@ -28,10 +28,11 @@ public static class Builder
     /// </summary>
     public static Node Text(string value, float fontSize = 14f, RGBAColor32? color = null,
         TextAlign hAlign = TextAlign.Near, TextAlign vAlign = TextAlign.Center,
-        TextTrim trim = TextTrim.End)
+        TextTrim trim = TextTrim.End, string? widthSample = null)
         => new Node.Leaf(new Content.Text(value, fontSize)
         {
             Color = color ?? new RGBAColor32(0xff, 0xff, 0xff, 0xff),
+            WidthSample = widthSample,
             HAlign = hAlign,
             VAlign = vAlign,
             Trim = trim,

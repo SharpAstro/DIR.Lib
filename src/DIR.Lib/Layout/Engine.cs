@@ -562,7 +562,7 @@ public static class Engine
     private static Size<T> MeasureContent<T>(Content content, IMeasureContext<T> ctx) where T : INumber<T>
         => content switch
         {
-            Content.Text text => ctx.MeasureText(text.Value.AsSpan(), text.FontSize),
+            Content.Text text => ctx.MeasureText((text.WidthSample ?? text.Value).AsSpan(), text.FontSize),
             Content.Box box => new Size<T>(ctx.ToSurfaceX(box.Width), ctx.ToSurfaceY(box.Height)),
             // Square in DESIGN units, so it converts per axis like a Box rather than measuring as text --
             // an icon has no glyph metrics to ask about, and on a cell surface a per-axis conversion is what
