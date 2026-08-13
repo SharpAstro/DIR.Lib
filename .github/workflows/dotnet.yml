@@ -421,6 +421,13 @@ env:
   #        re-derives the measure pass in the one place that cannot see the font the painter will use.
   #        Pair with HAlign Center, or the shorter live value sits at one end of its reserved room.
   #        Both additive; 743 tests.
+  # 7.24 - Padding per axis: Node.PaddingY, .Pad(across, down) and .PadX(...). Padding was one scalar
+  #        for all four sides, which a FIXED-HEIGHT bar cannot use: a chip in a 33-unit bar wants ten
+  #        units either side of its label and nothing above or below, because there is nothing above or
+  #        below to give. Padded symmetrically it gets a three-unit content box, and the failure is
+  #        asymmetric enough to hide -- text overflows its rect and goes on looking right, while an icon,
+  #        which is square by the smaller side, collapses to a stub. PaddingY null means "same as
+  #        Padding", so every existing tree is unchanged. 744 tests.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

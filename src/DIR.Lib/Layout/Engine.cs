@@ -75,12 +75,12 @@ public static class Engine
         };
 
         // Inner padding grows the intrinsic box (except a Dock / Split, which are already "fill").
-        if (node is not Node.Dock and not Node.Split && node.Padding != 0f)
+        if (node is not Node.Dock and not Node.Split && (node.Padding != 0f || node.PadDown != 0f))
         {
-            // One design-unit scalar, two surface extents: on an anisotropic surface the same inset is a
-            // different number of units across than it is down.
+            // One design-unit scalar per axis, two surface extents: on an anisotropic surface the same
+            // inset is a different number of units across than it is down.
             var padX = ctx.ToSurfaceX(node.Padding);
-            var padY = ctx.ToSurfaceY(node.Padding);
+            var padY = ctx.ToSurfaceY(node.PadDown);
             intrinsic = new Size<T>(intrinsic.Width + padX + padX, intrinsic.Height + padY + padY);
         }
 
@@ -120,7 +120,7 @@ public static class Engine
     {
         output.Add(new ArrangedNode<T>(node, rect) { Depth = depth });
 
-        var inner = Inset(rect, ctx.ToSurfaceX(node.Padding), ctx.ToSurfaceY(node.Padding));
+        var inner = Inset(rect, ctx.ToSurfaceX(node.Padding), ctx.ToSurfaceY(node.PadDown));
         var childDepth = depth + 1;
         switch (node)
         {

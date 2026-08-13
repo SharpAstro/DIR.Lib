@@ -73,6 +73,13 @@ public abstract partial record Node
     /// <summary>Inset this node's children by <paramref name="designUnits"/> of inner padding.</summary>
     public Node Pad(float designUnits) => this with { Padding = designUnits };
 
+    /// <summary>Padding stated per axis: <paramref name="across"/> left and right, <paramref name="down"/>
+    /// above and below. What a fixed-height bar wants — see <see cref="Node.PaddingY"/>.</summary>
+    public Node Pad(float across, float down) => this with { Padding = across, PaddingY = down };
+
+    /// <summary>Horizontal padding only, with nothing added above or below.</summary>
+    public Node PadX(float designUnits) => this with { Padding = designUnits, PaddingY = 0f };
+
     /// <summary>Set where a <see cref="Node.Stack"/> places its children across its own axis.</summary>
     public Node Align(CrossAlign align) => this with { CrossAlign = align };
 

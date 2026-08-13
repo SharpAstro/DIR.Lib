@@ -46,8 +46,26 @@ public abstract partial record Node
     /// <summary>How this node is sized along the vertical axis within its parent. Default <see cref="Sizing.Auto"/>.</summary>
     public Sizing Height { get; init; } = Sizing.Auto;
 
-    /// <summary>Inner padding (design units) inset from this node's rect before its children are laid out.</summary>
+    /// <summary>Inner padding (design units) inset from this node's rect before its children are laid out.
+    /// Applies to BOTH axes; <see cref="PaddingY"/> overrides it down the vertical.</summary>
     public float Padding { get; init; }
+
+    /// <summary>
+    /// Vertical inner padding, when it differs from <see cref="Padding"/>. Null means "the same as
+    /// Padding", which is what a symmetric inset wants and what every existing tree gets.
+    /// <para>
+    /// A fixed-height bar is the case that needs the two apart: a chip inside a 33-unit bar wants ten
+    /// units of breathing room either side of its label and nothing above or below it, because there is
+    /// nothing above or below to give. Padded symmetrically it gets a three-unit content box, and
+    /// anything in there that sizes off its own box — an icon, which is square by the smaller side —
+    /// collapses to a stub while the text, which overflows its rect, goes on looking correct. That
+    /// asymmetry in the symptom is what makes it worth an axis rather than a caller's spacer sandwich.
+    /// </para>
+    /// </summary>
+    public float? PaddingY { get; init; }
+
+    /// <summary>The vertical inset actually applied: <see cref="PaddingY"/> if stated, else <see cref="Padding"/>.</summary>
+    public float PadDown => PaddingY ?? Padding;
 
     /// <summary>
     /// Where a <see cref="Stack"/> places its children across its own axis: an HStack's children up or down,
