@@ -29,6 +29,18 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
 
     public override void Resize(uint width, uint height) => Surface.Resize((int)width, (int)height);
 
+    /// <summary>
+    /// Software scissor. The base declares clipping optional -- a backend may ignore it, since on a
+    /// GPU it is an optimization -- but a renderer that ignores it is no use for testing a widget that
+    /// relies on it: content the real surface trims would spill across the picture, and the test would
+    /// disagree with the app about what was drawn. Every write goes through the image's own bounds
+    /// check, so honouring this costs a different pair of constants and nothing else.
+    /// </summary>
+    public override void PushClip(in RectInt rect)
+        => Surface.SetClip(rect.UpperLeft.X, rect.UpperLeft.Y, rect.LowerRight.X, rect.LowerRight.Y);
+
+    public override void PopClip() => Surface.ResetClip();
+
     public override void FillRectangle(in RectInt rect, RGBAColor32 fillColor)
         => Surface.FillRect(rect.UpperLeft.X, rect.UpperLeft.Y, rect.LowerRight.X, rect.LowerRight.Y, fillColor);
 
@@ -402,12 +414,14 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
         var h = glyph.Height;
         var pixels = Surface.Pixels;
         var surfW = Surface.Width;
-        var surfH = Surface.Height;
+        // Against the CLIP, not the surface: this writes Pixels directly rather than going through the
+        // image's own primitives, so it is the one text path a clip does not reach by itself.
+        var (clipX0, clipY0, clipX1, clipY1) = Surface.ClipBounds;
 
         for (var sy = 0; sy < h; sy++)
         {
             var dy = dstY + sy;
-            if (dy < 0 || dy >= surfH) continue;
+            if (dy < clipY0 || dy >= clipY1) continue;
 
             var srcRow = sy * w * 4;
             var dstRow = dy * surfW * 4;
@@ -415,7 +429,7 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
             for (var sx = 0; sx < w; sx++)
             {
                 var dx = dstX + sx;
-                if (dx < 0 || dx >= surfW) continue;
+                if (dx < clipX0 || dx >= clipX1) continue;
 
                 var si = srcRow + sx * 4;
                 var alpha = src[si + 3];

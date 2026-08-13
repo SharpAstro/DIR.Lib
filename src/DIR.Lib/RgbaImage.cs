@@ -9,11 +9,17 @@ public sealed class RgbaImage
     public int Width { get; private set; }
     public int Height { get; private set; }
 
+    // The region every write is clamped to. Defaults to the whole image, which is why a clip costs
+    // nothing: each primitive below already tested its bounds against 0/0/Width/Height, and a clip
+    // only changes what those four numbers are.
+    private int _clipX0, _clipY0, _clipX1, _clipY1;
+
     public RgbaImage(int width, int height)
     {
         Width = width;
         Height = height;
         Pixels = new byte[width * height * 4];
+        ResetClip();
     }
 
     public void Resize(int width, int height)
@@ -21,22 +27,68 @@ public sealed class RgbaImage
         Width = width;
         Height = height;
         Pixels = new byte[width * height * 4];
+        ResetClip();
     }
+
+    /// <summary>
+    /// Restricts every subsequent write to the intersection of this rect and the image. Not a stack:
+    /// a second call replaces the first, matching the single-level contract on
+    /// <see cref="Renderer{TSurface}.PushClip"/>.
+    /// </summary>
+    public void SetClip(int x0, int y0, int x1, int y1)
+    {
+        _clipX0 = Math.Clamp(Math.Min(x0, x1), 0, Width);
+        _clipY0 = Math.Clamp(Math.Min(y0, y1), 0, Height);
+        _clipX1 = Math.Clamp(Math.Max(x0, x1), 0, Width);
+        _clipY1 = Math.Clamp(Math.Max(y0, y1), 0, Height);
+    }
+
+    /// <summary>Opens the clip back up to the whole image.</summary>
+    public void ResetClip()
+    {
+        _clipX0 = 0;
+        _clipY0 = 0;
+        _clipX1 = Width;
+        _clipY1 = Height;
+    }
+
+    /// <summary>Whether a <see cref="SetClip"/> is narrowing writes right now.</summary>
+    public bool IsClipped => _clipX0 != 0 || _clipY0 != 0 || _clipX1 != Width || _clipY1 != Height;
+
+    /// <summary>
+    /// The half-open region writes are confined to — the whole image unless <see cref="SetClip"/> has
+    /// narrowed it. Exposed for the paths that write <see cref="Pixels"/> directly rather than through
+    /// the primitives here; those bypass the clip otherwise, which is how a glyph blit went on painting
+    /// outside one while every fill respected it.
+    /// </summary>
+    public (int X0, int Y0, int X1, int Y1) ClipBounds => (_clipX0, _clipY0, _clipX1, _clipY1);
 
     public void Clear(RGBAColor32 color)
     {
         var packed = (uint)color.Red | ((uint)color.Green << 8) | ((uint)color.Blue << 16) | ((uint)color.Alpha << 24);
-        System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(Pixels.AsSpan()).Fill(packed);
+        var span = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(Pixels.AsSpan());
+        if (!IsClipped)
+        {
+            span.Fill(packed);
+            return;
+        }
+
+        // Clipped: clear the clip region only, and still by OVERWRITING -- a clear replaces what is
+        // there, where FillRect would blend a translucent colour into it.
+        for (var y = _clipY0; y < _clipY1; y++)
+        {
+            span.Slice(y * Width + _clipX0, _clipX1 - _clipX0).Fill(packed);
+        }
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void FillRect(int x0, int y0, int x1, int y1, RGBAColor32 color)
     {
-        // Clamp to bounds
-        if (x0 < 0) x0 = 0;
-        if (y0 < 0) y0 = 0;
-        if (x1 > Width) x1 = Width;
-        if (y1 > Height) y1 = Height;
+        // Clamp to the clip region, which IS the image unless one was set.
+        if (x0 < _clipX0) x0 = _clipX0;
+        if (y0 < _clipY0) y0 = _clipY0;
+        if (x1 > _clipX1) x1 = _clipX1;
+        if (y1 > _clipY1) y1 = _clipY1;
         if (x0 >= x1 || y0 >= y1) return;
 
         var pixels = Pixels;
@@ -161,12 +213,11 @@ public sealed class RgbaImage
     {
         var pixels = Pixels;
         var w = Width;
-        var h = Height;
 
         for (var sy = 0; sy < srcH; sy++)
         {
             var dy = dstY + sy;
-            if (dy < 0 || dy >= h) continue;
+            if (dy < _clipY0 || dy >= _clipY1) continue;
 
             var srcRow = sy * srcW * 4;
             var dstRow = dy * w * 4;
@@ -174,7 +225,7 @@ public sealed class RgbaImage
             for (var sx = 0; sx < srcW; sx++)
             {
                 var dx = dstX + sx;
-                if (dx < 0 || dx >= w) continue;
+                if (dx < _clipX0 || dx >= _clipX1) continue;
 
                 var si = srcRow + sx * 4;
                 var di = dstRow + dx * 4;
@@ -196,11 +247,12 @@ public sealed class RgbaImage
     }
 
     /// <summary>
-    /// Alpha-blends a color onto the pixel at (x, y). Safe for out-of-bounds coordinates.
+    /// Alpha-blends a color onto the pixel at (x, y). Safe for out-of-bounds coordinates, and for
+    /// ones outside the current <see cref="SetClip"/>.
     /// </summary>
     public void BlendPixelAt(int x, int y, RGBAColor32 color)
     {
-        if (x < 0 || x >= Width || y < 0 || y >= Height) return;
+        if (x < _clipX0 || x >= _clipX1 || y < _clipY0 || y >= _clipY1) return;
         var i = (y * Width + x) * 4;
         BlendPixel(Pixels, i, color.Red, color.Green, color.Blue, color.Alpha);
     }
