@@ -92,6 +92,10 @@ public abstract partial record Node
     /// <summary>Optional direct click handler, registered alongside <see cref="Hit"/> when present.</summary>
     public Action<InputModifier>? OnClick { get; init; }
 
+    /// <summary>What the pointer looks like over this node's arranged rect, or null to inherit from
+    /// whatever encloses it. Bound to the rect the content was painted in, like <see cref="Hit"/>.</summary>
+    public CursorKind? Cursor { get; init; }
+
     /// <summary>Collapse threshold in design units, honoured by a parent <see cref="Stack"/>: when this
     /// node's resolved main-axis extent lands below the threshold, the node drops out of the arrangement
     /// entirely (not painted, no hit region, no gap) and its space redistributes to the surviving

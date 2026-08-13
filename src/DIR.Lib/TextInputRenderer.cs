@@ -18,9 +18,12 @@ public static class TextInputRenderer
     /// carries: <see cref="TextInputColors.FromPalette"/> derives eight colours, and doing that per
     /// draw would rebuild them for every field on screen every frame.
     /// <para>
-    /// A static rather than a per-call parameter because a text field is drawn from a dozen call sites
-    /// across a consumer's tabs, and threading a palette through all of them buys nothing: an app has
-    /// one input style, not one per caller.
+    /// A static because a text field is drawn from a dozen call sites across a consumer's tabs and an
+    /// app has one input style, not one per caller — but it is the DEFAULT, not the only answer. A
+    /// field that genuinely differs (one inlaid in a 33px toolbar chip, which cannot afford the fill,
+    /// the border and a full-strength selection on top of each other) passes its own palette to the
+    /// call. Before that was possible the only way through was to assign this static, draw, and assign
+    /// it back — a global mutated around one draw, which is a race the moment anything else paints.
     /// </para>
     /// </remarks>
     public static TextInputColors Colors { get; set; } = new TextInputColors();
@@ -37,14 +40,16 @@ public static class TextInputRenderer
     /// <param name="fontFamily">Font path for text rendering.</param>
     /// <param name="fontSize">Font size in pixels.</param>
     /// <param name="frameCount">Frame counter for cursor blink (blinks every 30 frames).</param>
+    /// <param name="colors">Palette for THIS field, or null for the shared <see cref="Colors"/>.</param>
     public static void Render<TSurface>(
         Renderer<TSurface> renderer,
         TextInputState state,
         int x, int y, int width, int height,
         string fontFamily, float fontSize,
-        long frameCount = 0)
+        long frameCount = 0,
+        TextInputColors? colors = null)
     {
-        var colors = Colors;
+        colors ??= Colors;
         var bgColor = state.IsActive ? colors.BackgroundActive : colors.Background;
         var borderColor = state.IsActive ? colors.BorderActive : colors.Border;
 

@@ -84,7 +84,13 @@ public abstract partial record Node
     public Node CrossCenter() => this with { CrossAlign = Layout.CrossAlign.Center };
 
     /// <summary>Bind a click region (and optional handler) to this node's whole rect -- draw == hit by construction.</summary>
-    public Node Clickable(HitResult? hit, Action<InputModifier>? onClick = null) => this with { Hit = hit, OnClick = onClick };
+    public Node Clickable(HitResult? hit, Action<InputModifier>? onClick = null, CursorKind? cursor = null)
+        => this with { Hit = hit, OnClick = onClick, Cursor = cursor };
+
+    /// <summary>States the pointer's appearance over this node without making it a click target — a
+    /// panel's card saying "arrow here", so nothing inside it has to repeat the claim. Named apart from
+    /// the <see cref="Node.Cursor"/> property it sets, which a same-named method cannot shadow.</summary>
+    public Node WithCursor(CursorKind cursor) => this with { Cursor = cursor };
 
     /// <summary>Drop this node from the arrangement entirely when a parent <see cref="Stack"/> would give
     /// it a main-axis extent below <paramref name="designUnits"/> -- the freed space redistributes to the
