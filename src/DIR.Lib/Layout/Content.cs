@@ -17,6 +17,20 @@ public abstract record Content
         /// <summary>Horizontal alignment of the text within the leaf's arranged rect.</summary>
         public TextAlign HAlign { get; init; } = TextAlign.Near;
 
+        /// <summary>
+        /// Measure the node as if it held this text instead of <see cref="Value"/>. For a readout whose
+        /// content changes while its box must not: a zoom percentage reserves the room "1000%" needs and
+        /// stops the legend beside it shuffling sideways on every scroll notch.
+        /// <para>
+        /// Without it the caller measures a sample string itself, converts to a fixed width, and caches
+        /// that against every input that could invalidate it — re-deriving what the measure pass does,
+        /// in the one place that cannot see the font the painter will actually use. Pair it with
+        /// <see cref="HAlign"/> = <see cref="TextAlign.Center"/>, or the shorter live value sits at one
+        /// end of the room it reserved.
+        /// </para>
+        /// </summary>
+        public string? WidthSample { get; init; }
+
         /// <summary>Vertical alignment of the text within the leaf's arranged rect.</summary>
         public TextAlign VAlign { get; init; } = TextAlign.Center;
 
@@ -87,6 +101,23 @@ public enum IconKind
 {
     /// <summary>A 2x2 of squares: "lay these out as a grid of tiles".</summary>
     Grid,
+
+    /// <summary>
+    /// A solid triangle pointing up: "this opens upward", the mark on a control whose menu drops UP out
+    /// of a bar at the foot of a window. <see cref="CaretDown"/> is the same mark inverted, for the
+    /// opened state or a menu that drops down.
+    /// <para>
+    /// Filled rather than a chevron of two strokes because at the size a chip affords it -- ten pixels,
+    /// often fewer -- a stroked mark is two hairlines with a hole between them, and the hole is the part
+    /// that disappears first. Every consumer that wanted one was drawing its own triangle from raw
+    /// vertices, which is the tell that the family was missing a member rather than that the mark was
+    /// app-specific.
+    /// </para>
+    /// </summary>
+    CaretUp,
+
+    /// <summary><see cref="CaretUp"/> inverted: "this opens downward", or "this is already open".</summary>
+    CaretDown,
 
     /// <summary>Three stacked bars: "lay these out as a list of rows".</summary>
     List,

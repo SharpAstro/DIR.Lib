@@ -876,4 +876,29 @@ public class LayoutEngineTests
         RectOf(arranged, heightOnly).Width.ShouldBe(0, "HFixed leaves the cross axis on Auto");
         RectOf(arranged, fullRow).Width.ShouldBe(120, "RowH is Width=Star + Height=Fixed");
     }
+
+    /// <summary>
+    /// A readout reserves the room its widest reading needs, not the room its current one does — so the
+    /// thing beside it stays put while the value changes. The alternative every caller reached for was
+    /// measuring a sample itself and pinning a fixed width, which re-derives the measure pass in the one
+    /// place that cannot see the font the painter will use.
+    /// </summary>
+    [Fact]
+    public void AWidthSampleMeasuresTheSample_NotTheValue()
+    {
+        var ctx = new PixelCtx();                         // 7px per character
+
+        var live = Layout.Builder.Text("40%", 13f);
+        var reserved = Layout.Builder.Text("40%", 13f, widthSample: "1000%");
+
+        Layout.Engine.Measure(live, new Layout.Size<float>(1000, 100), ctx).Width.ShouldBe(3 * 7f);
+        Layout.Engine.Measure(reserved, new Layout.Size<float>(1000, 100), ctx).Width.ShouldBe(5 * 7f);
+
+        // The value it PAINTS is untouched -- the sample is a measurement, not a substitution.
+        ((Layout.Content.Text)((Layout.Node.Leaf)reserved).Content).Value.ShouldBe("40%");
+
+        // And the reservation does not shrink when the value grows past it: still the sample.
+        var longer = Layout.Builder.Text("123456789%", 13f, widthSample: "1000%");
+        Layout.Engine.Measure(longer, new Layout.Size<float>(1000, 100), ctx).Width.ShouldBe(5 * 7f);
+    }
 }

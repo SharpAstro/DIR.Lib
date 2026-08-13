@@ -231,6 +231,35 @@ namespace DIR.Lib
 
                     break;
 
+                case Layout.IconKind.CaretUp:
+                case Layout.IconKind.CaretDown:
+                {
+                    // Filled from rows of rectangles, because the surface has no triangle primitive and
+                    // the rest of the family is constructed from rectangles too. One row per surface
+                    // pixel of height: the width interpolates from a point to the full span, so the mark
+                    // reaches all four edges of its declared square, which is the contract every kind
+                    // here owes (see the remarks above).
+                    var up = kind == Layout.IconKind.CaretUp;
+                    var rows = Math.Max(1, (int)MathF.Round(side));
+                    var step = side / rows;
+                    var ox2 = rect.X + (rect.Width - side) / 2f;
+                    var oy2 = rect.Y + (rect.Height - side) / 2f;
+                    for (var r = 0; r < rows; r++)
+                    {
+                        // 0 at the apex, 1 at the base. +1 on the numerator so the apex row is a mark
+                        // rather than a zero-width nothing, which would cost the mark its own tip.
+                        var frac = (r + 1f) / rows;
+                        // Snapped to whole pixels, and never thinner than one: a half-pixel apex is a
+                        // half-covered column either side of centre, which at chip size is a tip that
+                        // reads as a blunt end or vanishes into the background entirely.
+                        var w = MathF.Max(1f, MathF.Round(side * frac));
+                        var y = up ? oy2 + r * step : oy2 + side - (r + 1) * step;
+                        FillRect(MathF.Round(ox2 + (side - w) / 2f), y, w, step, ink);
+                    }
+
+                    break;
+                }
+
                 case Layout.IconKind.Auto:
                     // Four corner brackets from rectangles, then the A from three strokes. Constructed
                     // rather than spelled for the same reason as the others -- but note the A itself would

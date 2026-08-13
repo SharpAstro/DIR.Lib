@@ -203,6 +203,32 @@ public class LayoutIconTests
     /// centred on the same row. Two rects, one twice the other, must ink the same number of rows.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// The caret is a solid triangle that reaches all four edges of its square, and points the way it
+    /// says. Its tip is the part a stroked mark loses first at chip size, so the apex row is asserted
+    /// explicitly rather than left to the extent check.
+    /// </summary>
+    [Fact]
+    public void TheCaretIsASolidTriangleThatReachesItsEdges_AndPointsTheWayItIsNamed()
+    {
+        var (up, _) = Paint(Layout.IconKind.CaretUp);
+        var mid = (int)Surface / 2;
+        var last = (int)Surface - 1;
+
+        up(mid, 0).ShouldBeTrue("the tip must reach the top edge");
+        up(0, last).ShouldBeTrue("the base must reach the bottom-left corner");
+        up(last, last).ShouldBeTrue("the base must reach the bottom-right corner");
+        up(0, 0).ShouldBeFalse("the top corners are outside a triangle pointing up");
+        up(last, 0).ShouldBeFalse();
+
+        // Inverted, and only inverted: same mark, other way up.
+        var (down, _) = Paint(Layout.IconKind.CaretDown);
+        down(mid, last).ShouldBeTrue("the tip must reach the bottom edge");
+        down(0, 0).ShouldBeTrue("the base must reach the top-left corner");
+        down(last, 0).ShouldBeTrue();
+        down(0, last).ShouldBeFalse("the bottom corners are outside a triangle pointing down");
+    }
+
     [Fact]
     public void AnIconIsDrawnAtItsDeclaredSize_NotStretchedToItsCell()
     {

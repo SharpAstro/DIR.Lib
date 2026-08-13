@@ -407,6 +407,20 @@ env:
   #        TextInputColors. The static stays the default, but a field that genuinely differs had no way
   #        through except assigning the static, drawing, and assigning it back, which is a race the moment
   #        anything else paints. 6 tests.
+  # 7.23 - Two marks a consumer had to hand-compute, because the tree could not say them.
+  #        (a) IconKind.CaretUp / CaretDown. Every consumer wanting the mark on a drop-up chip was
+  #        drawing its own triangle from raw vertices; that is the tell that the family was missing a
+  #        member, not that the mark was app-specific. Filled rather than a two-stroke chevron because at
+  #        the ten-or-fewer pixels a chip affords, a stroked mark is two hairlines with a hole between
+  #        them and the hole goes first. Rows are snapped to whole pixels and never thinner than one, so
+  #        the tip survives; it reaches all four edges like every other kind.
+  #        (b) Content.Text.WidthSample, and a widthSample: on Builder.Text. Measure the node as if it
+  #        held this text instead of its value -- a readout reserves the room "1000%" needs so the thing
+  #        beside it does not shuffle as the number changes. Callers were measuring a sample themselves,
+  #        pinning a fixed width and caching it against every input that could invalidate it, which
+  #        re-derives the measure pass in the one place that cannot see the font the painter will use.
+  #        Pair with HAlign Center, or the shorter live value sits at one end of its reserved room.
+  #        Both additive; 743 tests.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
