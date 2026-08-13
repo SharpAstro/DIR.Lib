@@ -392,6 +392,21 @@ env:
   #        amount of centring can hide; it is now 95 to 100 percent, the residue being rasteriser rounding
   #        on stroke ends. VISIBLE CHANGE for 7.18-7.20 consumers: List, Auto and the three theme marks
   #        all draw larger at the same declared size. Reduce the declared size to match the old ink.
+  # 7.22 - Two things a host had no way to SAY, so it said them with a global and a geometry predicate.
+  #        (a) CursorKind, and a Cursor on ClickableRegion bound to the same arranged rect as the hit. A
+  #        cursor is a statement about what is under the pointer, and the region list already knows that;
+  #        a host answering it from coordinates ends up with a predicate (over the content, but not the
+  #        palette, and not any open panel) that every overlay added later silently invalidates, because
+  #        the overlay draws over the content and the predicate goes on saying content. A region with no
+  #        stated cursor is TRANSPARENT to HitTestCursor, so a card declares one and its rows inherit it;
+  #        RegisterCursor states one without becoming a click target and reads as ChromeHit, which is how
+  #        a host tells its own overlay from the content beneath. Null means no opinion, NOT Default, or a
+  #        plain button would stamp the arrow over a host that wanted a crosshair. A text field now
+  #        carries the I-beam itself. Additive: existing callers compile and behave the same.
+  #        (b) TextInputRenderer.Render and PixelWidgetBase.RenderTextInput take an optional
+  #        TextInputColors. The static stays the default, but a field that genuinely differs had no way
+  #        through except assigning the static, drawing, and assigning it back, which is a race the moment
+  #        anything else paints. 6 tests.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
