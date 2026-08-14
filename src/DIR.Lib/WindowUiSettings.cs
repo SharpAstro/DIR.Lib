@@ -88,4 +88,29 @@ public sealed class WindowUiSettings
     /// </para>
     /// </remarks>
     public IKeyboardClaimant? KeyboardClaimant { get; set; }
+
+    /// <summary>
+    /// Which text field in this window has the keyboard, and the one way to move it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Per-window for the reason focus is a singleton at all: there is one keyboard, so one owner names the
+    /// one field receiving it, and every widget drawing into the window has to agree about which that is.
+    /// That makes it the same KIND of fact as the DPI scale and the font -- and it lives here so it is
+    /// shared the same way, by <see cref="PixelWidgetBase{TSurface}.ShareUiContext"/>, rather than
+    /// hand-threaded through the constructor of every widget that happens to own a field.
+    /// </para>
+    /// <para>
+    /// The threading is not hypothetical work avoided. A window whose fields sit in more than one widget --
+    /// a search box on a panel, an editable readout in the chrome -- has to give both the SAME
+    /// <see cref="TextInputFocus"/> or they each believe they hold the keyboard, and the symptom is two
+    /// caret blinks on screen with one of them dead. Reached through the context, there is no second
+    /// instance to create.
+    /// </para>
+    /// <para>
+    /// Created here rather than injected, and get-only: a window always has exactly one, and being able to
+    /// replace it is being able to orphan the fields that already registered with the old one.
+    /// </para>
+    /// </remarks>
+    public TextInputFocus Focus { get; } = new();
 }
