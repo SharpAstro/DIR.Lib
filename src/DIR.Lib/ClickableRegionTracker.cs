@@ -12,8 +12,30 @@ namespace DIR.Lib
     {
         private readonly List<ClickableRegion> _regions = [];
 
+        /// <summary>
+        /// The frame the current regions were registered in, as last stated to
+        /// <see cref="BeginFrame(long)"/>. A caller that stamps its frames compares this against the
+        /// frame it is asking about, and so can tell "nothing is under the pointer" from "this widget
+        /// did not draw at all" — see <see cref="PixelWidgetBase{TSurface}.BeginFrame"/>.
+        /// </summary>
+        public long Frame { get; private set; }
+
         /// <summary>Clears all regions. Call at the start of each render pass.</summary>
         public void BeginFrame() => _regions.Clear();
+
+        /// <summary>
+        /// Clears all regions and records which frame the ones registered next belong to.
+        /// </summary>
+        /// <remarks>
+        /// Unstamped (<see cref="BeginFrame()"/>) leaves <see cref="Frame"/> at whatever it was, which is
+        /// how a host that does not count frames keeps the old behaviour exactly: everything stays at 0
+        /// and every comparison matches.
+        /// </remarks>
+        public void BeginFrame(long frame)
+        {
+            _regions.Clear();
+            Frame = frame;
+        }
 
         /// <summary>Registers a clickable region with an optional click handler.</summary>
         public void Register(float x, float y, float w, float h, HitResult result,

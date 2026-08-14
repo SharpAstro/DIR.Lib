@@ -142,4 +142,29 @@ public sealed class WindowUiSettings
     /// </para>
     /// </remarks>
     public RectInt CaretRect { get; set; }
+
+    /// <summary>
+    /// Which frame the window is on. A host bumps it once per frame, before anything draws; every widget
+    /// sharing these settings then agrees on what "this frame" means.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What it buys is one rule: <b>a widget can only be hit where it was drawn, on the frame it was
+    /// drawn</b>. <see cref="PixelWidgetBase{TSurface}.BeginFrame"/> stamps the regions it is about to
+    /// collect with this value, and the hit tests answer only regions carrying the current one — so a
+    /// widget the host stopped drawing goes silent by itself, on the frame it stops.
+    /// </para>
+    /// <para>
+    /// Registering as you paint already makes a widget un-hittable where it is not drawn. It does NOT make
+    /// it un-hittable WHEN it is not drawn: a host that simply stops calling a widget's render — an early
+    /// return for a loading screen, a modal covering the window — leaves the last frame's regions standing,
+    /// and they answer clicks for a control that is no longer on screen. There is nothing local to the
+    /// widget to notice this, which is why it is the window that counts frames.
+    /// </para>
+    /// <para>
+    /// Left at 0 by a host that does not count frames, and then every region is stamped 0 too and every
+    /// comparison matches — the previous behaviour, unchanged.
+    /// </para>
+    /// </remarks>
+    public long FrameId { get; set; }
 }
