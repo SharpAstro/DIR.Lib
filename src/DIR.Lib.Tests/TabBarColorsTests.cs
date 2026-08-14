@@ -5,17 +5,17 @@ using Xunit;
 namespace DIR.Lib.Tests;
 
 /// <summary>
-/// Covers <see cref="TabBar.Colors"/>: that the defaults still are what the bar has always drawn, and
+/// Covers <see cref="TabBar{TSurface}.Colors"/>: that the defaults still are what the bar has always drawn, and
 /// that an override actually reaches the pixels rather than only the property.
 /// </summary>
 public class TabBarColorsTests
 {
     private static string Font(string name) => Path.Combine(AppContext.BaseDirectory, "Fonts", name);
 
-    private static TabBar NewBar()
+    private static TabBar<RgbaImage> NewBar(Renderer<RgbaImage> renderer)
     {
         var path = Font("DejaVuSans.ttf");
-        return new TabBar(path, new FontFallbackResolver(path, []));
+        return new TabBar<RgbaImage>(renderer) { FontPath = path, FontFallback = new FontFallbackResolver(path, []) };
     }
 
     // Sampled just inside the bar's right end, past the last tab: that region is painted with
@@ -49,9 +49,9 @@ public class TabBarColorsTests
     public void A_bar_that_sets_nothing_paints_the_default_background()
     {
         var renderer = new RgbaImageRenderer(400, 40);
-        var bar = NewBar();
+        var bar = NewBar(renderer);
 
-        bar.Render(renderer, contentLeft: 0, viewportW: 400, ["One", "Two"], activeIndex: 0);
+        bar.Render(contentLeft: 0, viewportW: 400, ["One", "Two"], activeIndex: 0);
 
         SampleEmptyBarArea(renderer).ShouldBe(new TabBarColors().BarBackground);
     }
@@ -60,11 +60,11 @@ public class TabBarColorsTests
     public void An_overridden_background_reaches_the_pixels()
     {
         var renderer = new RgbaImageRenderer(400, 40);
-        var bar = NewBar();
+        var bar = NewBar(renderer);
         var paper = new RGBAColor32(0xf2, 0xf2, 0xf4, 0xff);   // a light-theme strip
         bar.Colors = new TabBarColors { BarBackground = paper };
 
-        bar.Render(renderer, contentLeft: 0, viewportW: 400, ["One", "Two"], activeIndex: 0);
+        bar.Render(contentLeft: 0, viewportW: 400, ["One", "Two"], activeIndex: 0);
 
         SampleEmptyBarArea(renderer).ShouldBe(paper);
     }
@@ -74,18 +74,17 @@ public class TabBarColorsTests
     {
         // Not init-only on purpose: the host flips a theme while the bar is alive. Rendering twice with
         // different palettes has to give different pixels from the same instance.
-        var bar = NewBar();
+        var renderer = new RgbaImageRenderer(400, 40);
+        var bar = NewBar(renderer);
 
-        var dark = new RgbaImageRenderer(400, 40);
-        bar.Render(dark, 0, 400, ["One"], 0);
-        var darkPixel = SampleEmptyBarArea(dark);
+        bar.Render(0, 400, ["One"], 0);
+        var darkPixel = SampleEmptyBarArea(renderer);
 
         bar.Colors = new TabBarColors { BarBackground = new RGBAColor32(0xff, 0xff, 0xff, 0xff) };
-        var light = new RgbaImageRenderer(400, 40);
-        bar.Render(light, 0, 400, ["One"], 0);
+        bar.Render(0, 400, ["One"], 0);
 
-        SampleEmptyBarArea(light).ShouldNotBe(darkPixel);
-        SampleEmptyBarArea(light).ShouldBe(new RGBAColor32(0xff, 0xff, 0xff, 0xff));
+        SampleEmptyBarArea(renderer).ShouldNotBe(darkPixel);
+        SampleEmptyBarArea(renderer).ShouldBe(new RGBAColor32(0xff, 0xff, 0xff, 0xff));
     }
 
     // Object-initializer rather than the positional form this used to take: UiPalette became a
@@ -147,10 +146,10 @@ public class TabBarColorsTests
     public void A_palette_derived_bar_paints_the_themed_strip()
     {
         var renderer = new RgbaImageRenderer(400, 40);
-        var bar = NewBar();
+        var bar = NewBar(renderer);
         bar.Colors = TabBarColors.FromPalette(LightChrome);
 
-        bar.Render(renderer, contentLeft: 0, viewportW: 400, ["One", "Two"], activeIndex: 0);
+        bar.Render(contentLeft: 0, viewportW: 400, ["One", "Two"], activeIndex: 0);
 
         SampleEmptyBarArea(renderer).ShouldBe(LightChrome.PanelBg);
     }

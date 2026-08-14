@@ -30,10 +30,15 @@ public class TabBarNewTabButtonTests
         { }
     }
 
-    private static TabBar NewBar()
+    private static TabBar<RgbaImage> NewBar(Renderer<RgbaImage> renderer)
     {
         const string path = "stub.ttf";
-        return new TabBar(path, new FontFallbackResolver(path, [])) { ShowNewTabButton = true };
+        return new TabBar<RgbaImage>(renderer)
+        {
+            FontPath = path,
+            FontFallback = new FontFallbackResolver(path, []),
+            ShowNewTabButton = true,
+        };
     }
 
     // Every title here measures well under TabBar's minimum, so each tab is exactly MinTabW wide.
@@ -42,9 +47,9 @@ public class TabBarNewTabButtonTests
     [Fact]
     public void SitsImmediatelyAfterTheLastTab()
     {
-        var bar = NewBar();
         var renderer = new StubRenderer(600, 40);
-        bar.Render(renderer, contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 0);
+        var bar = NewBar(renderer);
+        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 0);
 
         var afterTabs = MinTabW * 2;
         bar.HitNewTabButton(afterTabs + 1f, Height / 2f).ShouldBeTrue();
@@ -59,9 +64,9 @@ public class TabBarNewTabButtonTests
     {
         // A host with a sidebar hands the bar a left offset; the + has to move with the tabs, not stay
         // measured from the window edge.
-        var bar = NewBar();
         var renderer = new StubRenderer(600, 40);
-        bar.Render(renderer, contentLeft: 120f, viewportW: 600f, ["a"], activeIndex: 0);
+        var bar = NewBar(renderer);
+        bar.Render(contentLeft: 120f, viewportW: 600f, ["a"], activeIndex: 0);
 
         bar.HitNewTabButton(120f + MinTabW + 1f, Height / 2f).ShouldBeTrue();
         bar.HitNewTabButton(MinTabW + 1f, Height / 2f).ShouldBeFalse();
@@ -70,9 +75,9 @@ public class TabBarNewTabButtonTests
     [Fact]
     public void IsNotClaimedByTheTabHitTest()
     {
-        var bar = NewBar();
         var renderer = new StubRenderer(600, 40);
-        bar.Render(renderer, contentLeft: 0f, viewportW: 600f, ["a"], activeIndex: 0);
+        var bar = NewBar(renderer);
+        bar.Render(contentLeft: 0f, viewportW: 600f, ["a"], activeIndex: 0);
 
         var onButton = MinTabW + Height / 2f;
         bar.HandleMouseDown(onButton, Height / 2f).ShouldBeNull();   // tabs only — the host asks separately
@@ -82,9 +87,9 @@ public class TabBarNewTabButtonTests
     [Fact]
     public void IsAbsentBelowTheBar()
     {
-        var bar = NewBar();
         var renderer = new StubRenderer(600, 40);
-        bar.Render(renderer, contentLeft: 0f, viewportW: 600f, ["a"], activeIndex: 0);
+        var bar = NewBar(renderer);
+        bar.Render(contentLeft: 0f, viewportW: 600f, ["a"], activeIndex: 0);
 
         bar.HitNewTabButton(MinTabW + 2f, Height + 4f).ShouldBeFalse();
     }
@@ -92,10 +97,10 @@ public class TabBarNewTabButtonTests
     [Fact]
     public void IsAbsentWhenNotAskedFor()
     {
-        var bar = NewBar();
-        bar.ShowNewTabButton = false;
         var renderer = new StubRenderer(600, 40);
-        bar.Render(renderer, contentLeft: 0f, viewportW: 600f, ["a"], activeIndex: 0);
+        var bar = NewBar(renderer);
+        bar.ShowNewTabButton = false;
+        bar.Render(contentLeft: 0f, viewportW: 600f, ["a"], activeIndex: 0);
 
         bar.HitNewTabButton(MinTabW + 2f, Height / 2f).ShouldBeFalse();
     }
@@ -105,9 +110,9 @@ public class TabBarNewTabButtonTests
     {
         // Two 92 px tabs in a 200 px strip leave 16 px — less than the button's 30 — so it is skipped.
         // Reporting a hit there would hand the host clicks on a control the clip has hidden.
-        var bar = NewBar();
         var renderer = new StubRenderer(200, 40);
-        bar.Render(renderer, contentLeft: 0f, viewportW: 200f, ["a", "b"], activeIndex: 0);
+        var bar = NewBar(renderer);
+        bar.Render(contentLeft: 0f, viewportW: 200f, ["a", "b"], activeIndex: 0);
 
         bar.HitNewTabButton(190f, Height / 2f).ShouldBeFalse();
         bar.HitNewTabButton(MinTabW * 2 + 1f, Height / 2f).ShouldBeFalse();
@@ -118,11 +123,11 @@ public class TabBarNewTabButtonTests
     {
         // The accent strip is what tells a reader which page is showing. With a new-tab page behind the
         // +, that has to be the + and not a tab, or the bar contradicts the window.
-        var bar = NewBar();
+        var renderer = new StubRenderer(600, 40);
+        var bar = NewBar(renderer);
         bar.NewTabActive = true;
         bar.Colors = new TabBarColors { ActiveAccent = new RGBAColor32(0xff, 0x00, 0x00, 0xff) };
-        var renderer = new StubRenderer(600, 40);
-        bar.Render(renderer, contentLeft: 0f, viewportW: 600f, ["a"], activeIndex: 0);
+        bar.Render(contentLeft: 0f, viewportW: 600f, ["a"], activeIndex: 0);
 
         // Top-left pixel of the button, where the 2 px accent strip is painted.
         PixelAt(renderer.Surface, (int)MinTabW + 2, 0).ShouldBe(new RGBAColor32(0xff, 0x00, 0x00, 0xff));

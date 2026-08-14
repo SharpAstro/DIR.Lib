@@ -20,8 +20,8 @@ namespace DIR.Lib.Tests;
 /// </remarks>
 public class TabBarMetricsTests
 {
-    private static TabBar Bar(float scale) =>
-        new("font.ttf", new FontFallbackResolver("font.ttf", [])) { Scale = scale };
+    private static TabBar<RgbaImage> Bar(float scale) =>
+        new(new RgbaImageRenderer(1, 1)) { FontPath = "font.ttf", DpiScale = scale };
 
     [Theory]
     [InlineData(1f)]

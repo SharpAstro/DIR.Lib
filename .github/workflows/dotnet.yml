@@ -547,6 +547,20 @@ env:
   #        Also SearchInteraction.WrapsAround (default false, i.e. unchanged): a find list traverses one
   #        document, where Down past the last hit means "start over", while a suggestion menu's end is
   #        information rather than a wall to bounce off.
+  # 8.0  - BREAKING, see MIGRATION.md. TabBar becomes TabBar<TSurface> : PixelWidgetBase<TSurface>. It
+  #        takes its Renderer at construction like every other widget, and reads the window's font,
+  #        fallback chain and DPI from the shared WindowUiSettings instead of being handed each one
+  #        separately -- so TabBar.Scale is gone (it is DpiScale) and the font/fallback constructor
+  #        arguments are gone with it. Render drops its renderer parameter.
+  #        The payoff is not tidiness: the bar now REGISTERS each tab, each ✕ and the + as it paints
+  #        them, so HandleMouseDown / HitNewTabButton / SlotAt all report from the rects the tabs were
+  #        drawn in rather than from a private copy of the layout -- and, through 7.32's frame stamp,
+  #        report nothing at all on a frame the host did not draw the strip in. That last case is real
+  #        for this widget: a window carrying a torn-out tab paints itself as a chip and no strip, and
+  #        used to answer tab hits from the layout of the strip it no longer has.
+  #        ClickableRegionTracker.Regions / PixelWidgetBase.RegisteredRegions are the additive half: a
+  #        widget can read back its own regions without the per-call copy GetRegisteredRegions makes,
+  #        which is what lets SlotAt walk the tab rects on every pointer move during a drag.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

@@ -37,11 +37,13 @@ public class TabBarHoverTests
         { }
     }
 
-    private static TabBar NewBar()
+    private static TabBar<RgbaImage> NewBar(Renderer<RgbaImage> renderer)
     {
         const string path = "stub.ttf";
-        return new TabBar(path, new FontFallbackResolver(path, []))
+        return new TabBar<RgbaImage>(renderer)
         {
+            FontPath = path,
+            FontFallback = new FontFallbackResolver(path, []),
             // Distinct flat colours so a plate can be identified by the pixel under it. Separator is
             // the ✕ plate, and is deliberately not a tone of either tab surface here.
             Colors = new TabBarColors
@@ -60,11 +62,11 @@ public class TabBarHoverTests
     [Fact]
     public void LiftsTheTabUnderThePointerAndNoOther()
     {
-        var bar = NewBar();
         var renderer = new StubRenderer(600, 40);
+        var bar = NewBar(renderer);
         // Tab 1 hovered, tab 0 active (so its own lift proves nothing), tab 2 idle.
         bar.Pointer = (MinTabW * 1.5f, Height * 0.5f);
-        bar.Render(renderer, contentLeft: 0f, viewportW: 600f, ["a", "b", "c"], activeIndex: 0);
+        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b", "c"], activeIndex: 0);
 
         TabPlate(renderer.Surface, 1).ShouldBe(Lifted);
         TabPlate(renderer.Surface, 2).ShouldBe(Idle);
@@ -73,10 +75,10 @@ public class TabBarHoverTests
     [Fact]
     public void LeavesEveryTabIdleWithNoPointer()
     {
-        var bar = NewBar();
         var renderer = new StubRenderer(600, 40);
+        var bar = NewBar(renderer);
         bar.Pointer = null;
-        bar.Render(renderer, contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 0);
+        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 0);
 
         TabPlate(renderer.Surface, 1).ShouldBe(Idle);
     }
@@ -86,10 +88,10 @@ public class TabBarHoverTests
     {
         // The host hands over the window-wide pointer, so most of the time it is over the page. A bar
         // that only compared x would keep a tab lit for the whole session.
-        var bar = NewBar();
         var renderer = new StubRenderer(600, 40);
+        var bar = NewBar(renderer);
         bar.Pointer = (MinTabW * 1.5f, Height + 12f);
-        bar.Render(renderer, contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 0);
+        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 0);
 
         TabPlate(renderer.Surface, 1).ShouldBe(Idle);
     }
@@ -100,28 +102,29 @@ public class TabBarHoverTests
         // The point of taking a position rather than an index: after a close, the tab under an
         // unmoved pointer is a different one, and the bar must re-resolve it in the same frame it
         // relays the strip out. A host-supplied index would still name the tab that has gone.
-        var bar = NewBar();
         var renderer = new StubRenderer(600, 40);
+        var bar = NewBar(renderer);
         bar.Pointer = (MinTabW * 2.5f, Height * 0.5f);   // over tab 2 of three
 
-        bar.Render(renderer, contentLeft: 0f, viewportW: 600f, ["a", "b", "c"], activeIndex: 0);
+        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b", "c"], activeIndex: 0);
         TabPlate(renderer.Surface, 2).ShouldBe(Lifted);
 
         // Tab 2 closes. Nothing is under the pointer now, and tab 1 must NOT have inherited the lift.
-        renderer = new StubRenderer(600, 40);
-        bar.Render(renderer, contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 0);
+        // Painted over the first frame, as a second frame really is — so this also says the strip
+        // repaints the plate rather than leaving the previous frame's lift standing.
+        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 0);
         TabPlate(renderer.Surface, 1).ShouldBe(Idle);
     }
 
     [Fact]
     public void PlatesTheCloseButtonUnderThePointer()
     {
-        var bar = NewBar();
         var renderer = new StubRenderer(600, 40);
+        var bar = NewBar(renderer);
         // Centre of tab 0's ✕: its right edge sits Pad*0.4 in from the tab's, and the box is CloseBox wide.
         var closeCentre = MinTabW - 10f * 0.4f - CloseBox * 0.5f;
         bar.Pointer = (closeCentre, Height * 0.5f);
-        bar.Render(renderer, contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 1);
+        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 1);
 
         PixelAt(renderer.Surface, (int)closeCentre, (int)(Height * 0.5f)).ShouldBe(Plate);
         // The tab itself is lifted, not plated — the ✕'s mark is a separate, smaller target.
@@ -131,10 +134,10 @@ public class TabBarHoverTests
     [Fact]
     public void DoesNotPlateTheCloseButtonOfAnUnhoveredTab()
     {
-        var bar = NewBar();
         var renderer = new StubRenderer(600, 40);
+        var bar = NewBar(renderer);
         bar.Pointer = (MinTabW * 0.5f, Height * 0.5f);   // over tab 0's body, not its ✕
-        bar.Render(renderer, contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 1);
+        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 1);
 
         var otherClose = MinTabW * 2 - 10f * 0.4f - CloseBox * 0.5f;
         PixelAt(renderer.Surface, (int)otherClose, (int)(Height * 0.5f)).ShouldNotBe(Plate);
@@ -145,11 +148,11 @@ public class TabBarHoverTests
     {
         // NewTabHovered predates Pointer and still works; a host setting neither used to get no hover
         // on the + at all.
-        var bar = NewBar();
-        bar.ShowNewTabButton = true;
         var renderer = new StubRenderer(600, 40);
+        var bar = NewBar(renderer);
+        bar.ShowNewTabButton = true;
         bar.Pointer = (MinTabW + Height * 0.5f, Height * 0.5f);
-        bar.Render(renderer, contentLeft: 0f, viewportW: 600f, ["a"], activeIndex: 0);
+        bar.Render(contentLeft: 0f, viewportW: 600f, ["a"], activeIndex: 0);
 
         // Just inside the button's left edge, clear of the + mark's arms at its centre.
         PixelAt(renderer.Surface, (int)MinTabW + 3, (int)(Height * 0.5f)).ShouldBe(Lifted);
