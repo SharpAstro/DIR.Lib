@@ -170,15 +170,27 @@ namespace DIR.Lib
         public virtual FontFallbackResolver? FontFallback { get => Ui.FontFallback; set => Ui.FontFallback = value; }
 
         /// <summary>
-        /// Clears clickable regions (and the inspector layout capture, if enabled). Call at the start
-        /// of each Render pass.
+        /// Clears clickable regions (and the inspector layout capture, if enabled) and stamps whatever is
+        /// registered next as belonging to the window's current frame. Call at the start of each Render
+        /// pass.
         /// </summary>
+        /// <remarks>
+        /// The stamp is what makes a widget stop answering when the host stops DRAWING it — see
+        /// <see cref="WindowUiSettings.FrameId"/>. It costs nothing to a host that never bumps the frame:
+        /// the id stays 0, so does the stamp, and every hit test matches as it always did.
+        /// </remarks>
         protected void BeginFrame()
         {
-            _tracker.BeginFrame();
+            _tracker.BeginFrame(Ui.FrameId);
             _selectableText.Clear();
             _capturedLayout?.Clear();
         }
+
+        /// <summary>
+        /// Whether the regions on hand are this frame's. False once the host has moved on to a frame this
+        /// widget did not draw in, which is precisely when its last frame's regions must stop answering.
+        /// </summary>
+        private bool RegionsAreCurrent => _tracker.Frame == Ui.FrameId;
 
         /// <summary>
         /// Registers a clickable region with an optional direct click handler.
@@ -683,13 +695,19 @@ namespace DIR.Lib
             => TextFit.ShrinkToWidth(Renderer, text, fontPath, FontFallback, preferred, maxWidth, minFontSize);
 
         /// <inheritdoc/>
-        public List<TextInputState> GetRegisteredTextInputs() => _tracker.GetRegisteredTextInputs();
+        /// <remarks>Empty on a frame this widget did not draw, so Tab never reaches a field that is not on
+        /// screen — the same rule <see cref="TextInputFocus.BlurIfUnpainted"/> applies to the focus itself.</remarks>
+        public List<TextInputState> GetRegisteredTextInputs()
+            => RegionsAreCurrent ? _tracker.GetRegisteredTextInputs() : [];
 
         /// <summary>
         /// Returns a snapshot of this widget's clickable regions from the last render pass.
         /// Surfaces the per-frame region set for the debug inspector (region bounds + role/label).
         /// </summary>
-        public ClickableRegion[] GetRegisteredRegions() => _tracker.GetRegisteredRegions();
+        /// <remarks>Empty on a frame this widget did not draw: the inspector's picture of the screen must
+        /// not include a widget the host stopped painting.</remarks>
+        public ClickableRegion[] GetRegisteredRegions()
+            => RegionsAreCurrent ? _tracker.GetRegisteredRegions() : [];
 
         /// <summary>
         /// Returns the arranged <see cref="Layout.ArrangedNode{T}"/> nodes this widget painted via the
@@ -699,18 +717,23 @@ namespace DIR.Lib
         /// (not just the clickable subset). Render-thread only, read inside the inspector pump.
         /// </summary>
         public IReadOnlyList<Layout.ArrangedNode<float>> GetCapturedLayout()
-            => _capturedLayout is { } captured ? captured : [];
+            => RegionsAreCurrent && _capturedLayout is { } captured ? captured : [];
 
         /// <inheritdoc/>
-        public HitResult? HitTest(float x, float y) => _tracker.HitTest(x, y);
+        /// <remarks>Null on a frame this widget did not draw — see <see cref="WindowUiSettings.FrameId"/>.</remarks>
+        public HitResult? HitTest(float x, float y) => RegionsAreCurrent ? _tracker.HitTest(x, y) : null;
 
         /// <summary>The cursor stated by the topmost region under the point, or null if none had a
         /// view — see <see cref="CursorKind"/> for why this is asked of the regions rather than
         /// computed from geometry by the host.</summary>
-        public CursorKind? HitTestCursor(float x, float y) => _tracker.HitTestCursor(x, y);
+        public CursorKind? HitTestCursor(float x, float y)
+            => RegionsAreCurrent ? _tracker.HitTestCursor(x, y) : null;
 
         /// <inheritdoc/>
-        public HitResult? HitTestAndDispatch(float x, float y, InputModifier modifiers = InputModifier.None) => _tracker.HitTestAndDispatch(x, y, modifiers);
+        /// <remarks>Dispatches nothing on a frame this widget did not draw, which is the case that matters
+        /// most: a stale region here does not merely report a hit, it RUNS the handler.</remarks>
+        public HitResult? HitTestAndDispatch(float x, float y, InputModifier modifiers = InputModifier.None)
+            => RegionsAreCurrent ? _tracker.HitTestAndDispatch(x, y, modifiers) : null;
 
         /// <summary>
         /// Handles an input event. Returns true if consumed.
