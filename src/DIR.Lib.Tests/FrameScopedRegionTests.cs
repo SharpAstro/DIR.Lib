@@ -139,6 +139,35 @@ public class FrameScopedRegionTests
         child.HitTest(50, 20).ShouldBeNull();
     }
 
+    [Fact]
+    public void AWidgetSaysWhetherItPaintedThisFrame()
+    {
+        // For the input a host resolves by GEOMETRY rather than by region — a wheel over a panel's
+        // column, the resize gutter beside it, the swallow that stops a click on chrome starting a drag
+        // on the content. Those predicates are the remaining way a widget the host stopped drawing goes
+        // on taking input, and none of them passes through a hit test that could decline it.
+        var w = Widget();
+        w.Ui.FrameId = 1;
+        w.Render();
+        w.DrewThisFrame.ShouldBeTrue();
+
+        w.Ui.FrameId = 2;
+        w.DrewThisFrame.ShouldBeFalse();
+
+        w.Render();
+        w.DrewThisFrame.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void AHostThatDoesNotCountFramesIsAlwaysDrawing()
+    {
+        // Same opt-in-by-arithmetic contract as everything else here: never bump the frame and the
+        // answer is the one a consumer written before this would have assumed.
+        var w = Widget();
+        w.Render();
+        w.DrewThisFrame.ShouldBeTrue();
+    }
+
     private sealed class FieldWidget(Renderer<RgbaImage> renderer, TextInputState input)
         : PixelWidgetBase<RgbaImage>(renderer)
     {

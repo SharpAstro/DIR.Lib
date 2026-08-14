@@ -193,6 +193,24 @@ namespace DIR.Lib
         private bool RegionsAreCurrent => _tracker.Frame == Ui.FrameId;
 
         /// <summary>
+        /// Whether this widget painted on the frame the window is currently on — so a host can ask "is
+        /// my overlay on screen" of the widget, instead of restating the several conditions that decide
+        /// whether it drew.
+        /// </summary>
+        /// <remarks>
+        /// The hit reads already decline a stale region set, so an ordinary click that reaches
+        /// <see cref="HitTest"/> needs nothing here. This is for the input a host resolves by GEOMETRY
+        /// rather than by region — a wheel over a panel's column, a resize gutter beside it, a swallow
+        /// so a click on chrome cannot start a drag on the content underneath. Those predicates are the
+        /// remaining way a widget the host stopped drawing goes on taking input.
+        /// <para>
+        /// Always true for a host that does not count frames, which is the same "unchanged unless you
+        /// opt in" contract <see cref="WindowUiSettings.FrameId"/> has everywhere else.
+        /// </para>
+        /// </remarks>
+        public bool DrewThisFrame => RegionsAreCurrent;
+
+        /// <summary>
         /// Registers a clickable region with an optional direct click handler.
         /// </summary>
         protected void RegisterClickable(float x, float y, float w, float h, HitResult result, Action<InputModifier>? onClick = null, CursorKind? cursor = null)
