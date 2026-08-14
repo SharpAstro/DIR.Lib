@@ -535,6 +535,18 @@ env:
   #        one of its tabs. Exposed SCALED like Height rather than as the base constants, because a
   #        copier working from those applies a scale of its own and nothing makes that the same number
   #        as TabBar.Scale.
+  # 7.32 - A widget is hit only on a frame it drew. WindowUiSettings.FrameId is bumped once per frame by
+  #        the host and stamped by BeginFrame; every read -- hit test, dispatch, cursor, Tab order, the
+  #        inspector's region and layout capture -- declines a set that is not the current frame's.
+  #        Registering as you paint already made a widget un-hittable WHERE it is not drawn; it said
+  #        nothing about WHEN, so a host that simply stopped calling a widget's render left the last
+  #        frame's regions standing, and a control no longer on screen went on taking clicks and RUNNING
+  #        their handlers -- which nothing inside the widget can notice, since from in there "not
+  #        rendered" and "not rendered yet" are the same thing. Costs nothing to a host that does not
+  #        count frames: the id stays 0, so does every stamp, and every comparison matches as before.
+  #        Also SearchInteraction.WrapsAround (default false, i.e. unchanged): a find list traverses one
+  #        document, where Down past the last hit means "start over", while a suggestion menu's end is
+  #        information rather than a wall to bounce off.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
