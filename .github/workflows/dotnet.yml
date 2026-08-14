@@ -483,6 +483,34 @@ env:
   #        TextInputRenderer gains HorizontalPadding (stated once, since measure and paint are now
   #        separate halves) and no-ops without a font, matching the layout text helpers: a headless render
   #        of a tree with a LABEL worked while the same tree with a FIELD threw.
+  # 7.29 - Non-Latin text, and per-window values stop being copied per widget. BREAKING in three places.
+  #        * IME composition. TextInputState carries the in-progress preedit (Composition /
+  #          CompositionCursor / CompositionLength / IsComposing); TextInputRenderer draws it inline,
+  #          underlined, and now RETURNS the caret rect so a host can answer SDL_SetTextInputArea. A field
+  #          handling only committed text cannot accept CJK at all: with an IME every keystroke before the
+  #          commit is composition and nothing else arrives.
+  #        * A field draws through the FALLBACK CHAIN. The layout painter splits TEXT LEAVES into coverage
+  #          runs, but a field's content is not a leaf, so TextInputRenderer takes the resolver and measures
+  #          the caret through the same chain. Without it a field holding correct CJK renders blank -- the
+  #          characters are there and the face has no glyphs. FontResolver.ResolveSystemScriptFonts()
+  #          resolves the platform's CJK/Indic faces (portable Noto names appended on EVERY platform, not
+  #          as a Linux else-branch).
+  #        * WindowUiSettings: DPI scale, fonts and the fallback chain live once per WINDOW and are SHARED
+  #          by reference (PixelWidgetBase.ShareUiContext), instead of each widget holding a copy kept in
+  #          agreement by an overridden setter naming every child. A widget belongs to one window; it does
+  #          not need its own copy of what the window knows. IPixelWidget gains Ui.
+  #        * DropdownMenuState is generic over what an entry MEANS (DropdownItem<T>), so selecting hands
+  #          back the entry rather than an index the caller maps through a switch that has to agree with
+  #          the label order. Entries carry IsEnabled + Tooltip: a disabled row greys, states its reason ON
+  #          the row, is skipped by the arrows, and swallows its click instead of falling through to the
+  #          backdrop (which would close the menu, making it behave like a working row). The custom entry
+  #          is gone as a special case -- an item carrying OnChoose IS it, retiring three Open parameters,
+  #          three properties and an index-past-the-end check repeated in nav, Enter and the painter.
+  #        * An open overlay claims the keyboard by BEING PAINTED (WindowUiSettings.KeyboardClaimant +
+  #          IKeyboardClaimant), and the host asks once. Every widget owning a dropdown previously needed
+  #          its own routing case in its own input switch; of four dropdowns one lacked it, and the only
+  #          symptom was arrow keys doing nothing. Paint order is z-order, so the topmost claims last and
+  #          wins; a claimant no longer displayed declines, so a stale claim needs no clearing.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

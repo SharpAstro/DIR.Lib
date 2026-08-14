@@ -54,13 +54,28 @@ public static class TextInputRenderer
     /// <param name="fontSize">Font size in pixels.</param>
     /// <param name="frameCount">Frame counter for cursor blink (blinks every 30 frames).</param>
     /// <param name="colors">Palette for THIS field, or null for the shared <see cref="Colors"/>.</param>
-    public static void Render<TSurface>(
+    /// <returns>
+    /// The caret's rect in surface pixels, or <c>default</c> when the field is not active or no font is
+    /// configured. A host feeds this to its platform's "where is the caret" call
+    /// (<c>SDL_SetTextInputArea</c>) so an input method can place its candidate window beside the text
+    /// instead of over it -- there is no other way for the platform to know, and without it a CJK IME
+    /// has nothing to anchor to.
+    /// </returns>
+    /// <param name="fallback">
+    /// Per-script fallback chain, or null to draw with <paramref name="fontFamily"/> alone.
+    /// <b>Without it a field can only display what its primary face covers</b>: the layout painter's
+    /// coverage-run splitting stops at the field's edge, because everything inside is drawn here rather
+    /// than as a text leaf. That is what made a field holding correct CJK text look empty -- the
+    /// characters were there, the face had no glyphs for them, and nothing said so.
+    /// </param>
+    public static RectInt Render<TSurface>(
         Renderer<TSurface> renderer,
         TextInputState state,
         int x, int y, int width, int height,
         string fontFamily, float fontSize,
         long frameCount = 0,
-        TextInputColors? colors = null)
+        TextInputColors? colors = null,
+        FontFallbackResolver? fallback = null)
     {
         colors ??= Colors;
         var bgColor = state.IsActive ? colors.BackgroundActive : colors.Background;
@@ -91,11 +106,20 @@ public static class TextInputRenderer
         // the guard covers the caret and the selection too -- their positions are glyph measurements.
         if (string.IsNullOrEmpty(fontFamily))
         {
-            return;
+            return default;
         }
 
-        var displayText = state.Text.Length > 0 ? state.Text : (state.IsActive ? "" : state.Placeholder);
-        var textColor = state.Text.Length > 0 ? colors.Text : colors.Placeholder;
+        // The preedit is drawn INSIDE the field at the caret, because that is where the characters will
+        // land once the IME commits. It is deliberately not part of state.Text: the input method owns
+        // those characters until it commits them, and merging them early would let a cancelled
+        // composition survive in the field.
+        var composing = state.IsActive && state.IsComposing;
+        var visibleText = composing
+            ? string.Concat(state.Text[..state.CursorPos], state.Composition, state.Text[state.CursorPos..])
+            : state.Text;
+
+        var displayText = visibleText.Length > 0 ? visibleText : (state.IsActive ? "" : state.Placeholder);
+        var textColor = visibleText.Length > 0 ? colors.Text : colors.Placeholder;
 
         if (displayText.Length > 0)
         {
@@ -103,46 +127,76 @@ public static class TextInputRenderer
                 new PointInt(textX + textW, textY + textH),
                 new PointInt(textX, textY));
 
-            renderer.DrawText(
-                displayText.AsSpan(),
-                fontFamily,
-                fontSize,
-                textColor,
-                layoutRect,
-                TextAlign.Near,
-                TextAlign.Center);
+            if (fallback is not null)
+            {
+                fallback.Draw(renderer, displayText, fontSize, textColor, layoutRect, TextAlign.Near, TextAlign.Center);
+            }
+            else
+            {
+                renderer.DrawText(
+                    displayText.AsSpan(),
+                    fontFamily,
+                    fontSize,
+                    textColor,
+                    layoutRect,
+                    TextAlign.Near,
+                    TextAlign.Center);
+            }
         }
 
-        // Selection highlight
-        if (state.IsActive && state.HasSelection)
+        // Measured through the SAME chain the text was drawn with, or the caret and selection would be
+        // positioned for a face that did not render it -- with a fallback in play the primary reports zero
+        // advance for a glyph it lacks, so every measurement past the first CJK character would be short.
+        int XOf(int chars) => textX + (int)(fallback is not null
+            ? fallback.Measure(renderer, visibleText[..chars], fontSize).Width
+            : renderer.MeasureText(visibleText[..chars].AsSpan(), fontFamily, fontSize).Width);
+
+        // Selection highlight. Suppressed while composing: the selection indices address state.Text,
+        // which is not what is on screen, so drawing it would highlight the wrong characters.
+        if (state.IsActive && state.HasSelection && !composing)
         {
-            var selStartText = state.Text[..state.SelectionStart];
-            var selEndText = state.Text[..state.SelectionEnd];
-            var selStartX = textX + (int)renderer.MeasureText(selStartText.AsSpan(), fontFamily, fontSize).Width;
-            var selEndX = textX + (int)renderer.MeasureText(selEndText.AsSpan(), fontFamily, fontSize).Width;
             var selY = y + (int)(height * 0.1f);
             var selH = (int)(height * 0.8f);
 
             renderer.FillRectangle(
-                new RectInt(new PointInt(selEndX, selY + selH), new PointInt(selStartX, selY)),
+                new RectInt(new PointInt(XOf(state.SelectionEnd), selY + selH), new PointInt(XOf(state.SelectionStart), selY)),
                 colors.Selection);
         }
 
-        // Cursor (blinking)
-        if (state.IsActive && (frameCount / 30) % 2 == 0)
+        if (!state.IsActive)
         {
-            // Measure text up to cursor position to find cursor X
-            var textBeforeCursor = state.Text.Length > 0 && state.CursorPos > 0
-                ? state.Text[..state.CursorPos]
-                : "";
-            var cursorX = textX + (int)renderer.MeasureText(textBeforeCursor.AsSpan(), fontFamily, fontSize).Width;
-            var cursorY = y + (int)(height * 0.15f);
-            var cursorH = (int)(height * 0.7f);
-
-            renderer.FillRectangle(
-                new RectInt(new PointInt(cursorX + 2, cursorY + cursorH), new PointInt(cursorX, cursorY)),
-                colors.Cursor);
+            return default;
         }
+
+        // Underline the composition, the near-universal convention for "the input method still owns
+        // this". Drawn in the text colour rather than a new palette entry, since it IS that text's own
+        // decoration and a separate colour would be one more thing every theme has to state.
+        if (composing)
+        {
+            var underlineY = y + (int)(height * 0.78f);
+            renderer.FillRectangle(
+                new RectInt(
+                    new PointInt(XOf(state.CursorPos + state.Composition.Length), underlineY + Math.Max(1, (int)(fontSize * 0.06f))),
+                    new PointInt(XOf(state.CursorPos), underlineY)),
+                textColor);
+        }
+
+        // While composing, the caret belongs to the IME's position inside the preedit, not to the
+        // field's own CursorPos.
+        var caretChars = composing ? state.CursorPos + state.CompositionCursor : state.CursorPos;
+        var caretX = XOf(caretChars);
+        var caretY = y + (int)(height * 0.15f);
+        var caretH = (int)(height * 0.7f);
+        var caretRect = new RectInt(new PointInt(caretX + 2, caretY + caretH), new PointInt(caretX, caretY));
+
+        // The caret stops blinking while composing: it is tracking the input method, and a blink there
+        // reads as the field being unresponsive rather than as a text cursor.
+        if (composing || (frameCount / 30) % 2 == 0)
+        {
+            renderer.FillRectangle(caretRect, colors.Cursor);
+        }
+
+        return caretRect;
     }
 
     /// <summary>

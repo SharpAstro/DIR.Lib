@@ -23,6 +23,13 @@ namespace DIR.Lib
 
         /// <summary>Returns all registered text inputs in order (for Tab cycling).</summary>
         List<TextInputState> GetRegisteredTextInputs();
+
+        /// <summary>
+        /// The per-window presentation values, and the frame's keyboard claimant. On the interface so a host
+        /// holding only <see cref="IPixelWidget"/> can ask who owns the keyboard without knowing which
+        /// concrete widget painted the overlay.
+        /// </summary>
+        WindowUiSettings Ui { get; }
     }
 
     /// <summary>
@@ -53,6 +60,39 @@ namespace DIR.Lib
         private List<Layout.ArrangedNode<float>>? _capturedLayout;
 
         protected Renderer<TSurface> Renderer { get; } = renderer;
+
+        /// <summary>
+        /// The per-window presentation values (DPI, fonts, fallback chain) this widget draws with. A
+        /// composite hands its OWN instance to the widgets it composes via <see cref="ShareUiContext"/>, so
+        /// they read one object rather than each holding a copy that has to be kept in agreement.
+        /// </summary>
+        public WindowUiSettings Ui { get; private set; } = new WindowUiSettings();
+
+        /// <summary>
+        /// Give <paramref name="children"/> this widget's context, so every per-window value -- the ones
+        /// that exist today and any added later -- reaches them by being read rather than by being pushed.
+        /// Call once at construction, after the children exist.
+        /// </summary>
+        /// <remarks>
+        /// Children are shared with EXPLICITLY rather than by walking a tree, because a widget drawing into
+        /// the same renderer is not necessarily part of the same font set: an embedded viewer that resolves
+        /// its own face must keep it, and simply not being handed the context is how it says so. That opt-out
+        /// used to be invisible -- a child was excluded by being absent from a propagation list, which reads
+        /// identically to having been forgotten.
+        /// <para>
+        /// A child's own settings are REPLACED, not merged: whatever it resolved during its construction is
+        /// discarded in favour of the window's. That is the point -- a viewer that resolved a system face
+        /// while standing alone should use the chrome's face once it is inside one. Merging would be worse
+        /// than useless here, since the last child to be shared with would decide the whole window's font.
+        /// </para>
+        /// </remarks>
+        protected void ShareUiContext(params ReadOnlySpan<PixelWidgetBase<TSurface>> children)
+        {
+            foreach (var child in children)
+            {
+                child.Ui = Ui;
+            }
+        }
 
         /// <summary>
         /// Optional signal bus for deferred inter-component communication.
@@ -92,7 +132,7 @@ namespace DIR.Lib
         /// the rule in full.
         /// </para>
         /// </summary>
-        public virtual float DpiScale { get; set; } = 1f;
+        public virtual float DpiScale { get => Ui.DpiScale; set => Ui.DpiScale = value; }
 
         /// <summary>
         /// The window's primary text font (an absolute path or a family name the
@@ -107,7 +147,7 @@ namespace DIR.Lib
         /// Virtual so a composite chrome widget can override the setter to push the font to the child widgets
         /// it hosts (one set-point at startup instead of per-frame pushes).
         /// </summary>
-        public virtual string FontPath { get; set; } = string.Empty;
+        public virtual string FontPath { get => Ui.FontPath; set => Ui.FontPath = value; }
 
         /// <summary>
         /// Optional emoji/symbol fallback font for glyphs the primary <see cref="FontPath"/> lacks (colour
@@ -115,7 +155,7 @@ namespace DIR.Lib
         /// propagated exactly like <see cref="FontPath"/>. DIR.Lib's own helpers do not consume it -- it rides
         /// here so a consumer's widgets share one owner for the whole per-window font set.
         /// </summary>
-        public virtual string? EmojiFontPath { get; set; }
+        public virtual string? EmojiFontPath { get => Ui.EmojiFontPath; set => Ui.EmojiFontPath = value; }
 
         /// <summary>
         /// Optional per-codepoint font fallback covering the whole font set — the general form of
@@ -127,7 +167,7 @@ namespace DIR.Lib
         ///
         /// <para>Null (the default) leaves drawing exactly as it was, including the emoji path.</para>
         /// </summary>
-        public virtual FontFallbackResolver? FontFallback { get; set; }
+        public virtual FontFallbackResolver? FontFallback { get => Ui.FontFallback; set => Ui.FontFallback = value; }
 
         /// <summary>
         /// Clears clickable regions (and the inspector layout capture, if enabled). Call at the start
@@ -156,11 +196,43 @@ namespace DIR.Lib
         protected void RenderTextInput(TextInputState state, int x, int y, int width, int height, string fontPath,
             float fontSize, TextInputColors? colors = null)
         {
-            TextInputRenderer.Render(Renderer, state, x, y, width, height, fontPath, fontSize, FrameCount, colors);
+            // The widget's own fallback chain goes in, so a field displays anything the app can display.
+            // Nothing else reaches inside a field: the layout painter splits TEXT LEAVES per coverage run,
+            // and a field's content is not a leaf.
+            var caret = TextInputRenderer.Render(Renderer, state, x, y, width, height, fontPath, fontSize,
+                FrameCount, colors, FontFallback);
+            if (state.IsActive)
+            {
+                _caretRect = caret;
+            }
             // A field is where text is edited, so the I-beam comes with it rather than being arranged for
             // separately by whatever happens to enclose it.
             RegisterClickable(x, y, width, height, new HitResult.TextInputHit(state), cursor: CursorKind.Text);
         }
+
+        private RectInt _caretRect;
+
+        /// <summary>
+        /// Where the focused field's caret was drawn this frame, or <c>default</c> if no active field was
+        /// painted. A host passes this to its platform's caret-location call (<c>SDL_SetTextInputArea</c>)
+        /// so an input method can put its candidate window beside the caret rather than over the text.
+        /// <para>
+        /// It is captured at PAINT time, from the same call that draws the caret, for the same reason a
+        /// click binds to the arranged rect: anything that recomputes the position separately can disagree
+        /// with what the user is looking at, and here that disagreement puts the candidate window in the
+        /// wrong place, which is invisible in every test that does not involve a real IME.
+        /// </para>
+        /// </summary>
+        /// <para>
+        /// Only meaningful while a field is actually focused, and deliberately NOT cleared per paint:
+        /// a widget's PaintLayout runs more than once a frame (chrome, then the active tab), so a reset
+        /// inside it would let whichever ran last wipe the caret the other just recorded. Staleness
+        /// cannot bite in practice because the only caller that matters asks while a field is focused,
+        /// and <see cref="TextInputFocus.BlurIfUnpainted"/> guarantees a focused field was painted this
+        /// frame -- so if there is a focus, this rect is from that frame.
+        /// </para>
+        /// </summary>
+        public RectInt CaretRect => _caretRect;
 
         /// <summary>
         /// Arranged-rect overload of
@@ -667,8 +739,8 @@ namespace DIR.Lib
         /// so that its clickable regions win hit testing (paint order = z-order).
         /// Registers a full-screen backdrop that dismisses the dropdown on click-outside.
         /// </summary>
-        protected void RenderDropdownMenu(
-            DropdownMenuState dropdown,
+        protected void RenderDropdownMenu<T>(
+            DropdownMenuState<T> dropdown,
             string fontPath,
             float fontSize,
             RGBAColor32 bgColor,
@@ -686,7 +758,7 @@ namespace DIR.Lib
 
             var rowH = fontSize * 1.8f;
             var padding = fontSize * 0.5f;
-            var totalItems = dropdown.Items.Length + (dropdown.HasCustomEntry ? 1 : 0);
+            var totalItems = dropdown.Items.Length;
 
             var x = dropdown.AnchorX;
             var y = dropdown.AnchorY;
@@ -700,6 +772,11 @@ namespace DIR.Lib
             var available = MathF.Max(rowH, viewportHeight - y);
             var clamp = maxHeight > 0f ? MathF.Min(maxHeight, available) : available;
             var dropdownH = MathF.Min(totalItems * rowH, clamp);
+
+            // Claimed as it paints: the menu is on screen, so it owns the arrows, Enter and Escape. A host
+            // asks Ui.KeyboardClaimant once, instead of every widget owning an overlay remembering to route
+            // keys to it from its own input switch.
+            Ui.KeyboardClaimant = dropdown;
 
             // Full-screen backdrop — closes dropdown on click-outside
             RegisterClickable(0, 0, viewportWidth, viewportHeight, new HitResult.ButtonHit("DropdownBackdrop"),
@@ -720,46 +797,69 @@ namespace DIR.Lib
             var scroll = dropdown.Scroll;
             scroll.SetExtent(new RectF32(x, y, w, dropdownH), rowH, totalItems, DpiScale);
 
-            // Slightly dimmed, blue-shifted text for the "Custom..." entry (the last atom when present).
-            var customColor = new RGBAColor32(
+            // Slightly dimmed, blue-shifted text for an ACTION entry (one that does something rather than
+            // selecting a value -- a "Custom…" row). It used to be a hard-coded last atom; it is now just an
+            // item carrying OnChoose, and this is the styling that always went with it.
+            var actionColor = new RGBAColor32(
                 (byte)((textColor.Red * 3 + 2) / 4),
                 (byte)((textColor.Green * 3 + 2) / 4),
                 (byte)Math.Min(255, textColor.Blue + 40),
                 textColor.Alpha);
 
+            // A disabled row is greyed by halving toward the background rather than by alpha: these rows are
+            // drawn over an opaque menu, so a translucent colour would read as a different shade per theme.
+            var disabledColor = new RGBAColor32(
+                (byte)((textColor.Red + bgColor.Red) / 2),
+                (byte)((textColor.Green + bgColor.Green) / 2),
+                (byte)((textColor.Blue + bgColor.Blue) / 2),
+                textColor.Alpha);
+
             foreach (var (index, rect) in scroll.VisibleRows())
             {
-                var isCustom = dropdown.HasCustomEntry && index == dropdown.Items.Length;
+                var item = dropdown.Items[index];
+                var enabled = item.IsEnabled;
 
-                if (index == dropdown.HighlightIndex)
+                // The highlight follows the keyboard, so it must never sit on a row Enter would refuse.
+                if (index == dropdown.HighlightIndex && enabled)
                 {
                     FillRect(rect.X, rect.Y, rect.Width, rowH, highlightColor);
                 }
 
-                var label = isCustom ? dropdown.CustomEntryLabel : dropdown.Items[index];
+                var label = item.Label;
+
+                // A disabled row is still DRAWN, dimmed. Hiding what is unavailable teaches nothing about how
+                // to make it available, and a menu whose entries come and go is harder to learn than one whose
+                // entries grey out.
+                var rowColor = !enabled ? disabledColor
+                    : item.OnChoose is not null ? actionColor
+                    : textColor;
                 DrawText(label.AsSpan(), fontPath,
                     rect.X + padding, rect.Y, rect.Width - padding * 2f, rowH,
-                    fontSize, isCustom ? customColor : textColor, TextAlign.Near, TextAlign.Center);
+                    fontSize, rowColor, TextAlign.Near, TextAlign.Center);
+
+                // The reason rides the same row, right-aligned: the answer to "why can't I pick this" belongs
+                // where the decision is made, not in a panel the user only reaches by making the choice that
+                // just failed.
+                if (!enabled && item.Tooltip is { Length: > 0 } reason)
+                {
+                    DrawText(reason.AsSpan(), fontPath,
+                        rect.X + padding, rect.Y, rect.Width - padding * 2f, rowH,
+                        fontSize * 0.8f, disabledColor, TextAlign.Far, TextAlign.Center);
+                }
 
                 var capturedIndex = index;
-                if (isCustom)
+                if (enabled)
                 {
                     RegisterClickable(rect.X, rect.Y, rect.Width, rowH, new HitResult.ListItemHit("Dropdown", capturedIndex),
-                        _ =>
-                        {
-                            dropdown.OnCustom?.Invoke();
-                            dropdown.Close();
-                        });
+                        _ => dropdown.TrySelect(capturedIndex));
                 }
                 else
                 {
-                    var capturedItem = dropdown.Items[index];
+                    // Registered but inert, so the click is SWALLOWED rather than falling through to the
+                    // full-screen backdrop behind it -- which would CLOSE the menu, making a disabled row
+                    // behave exactly like a working one. It also states the cursor.
                     RegisterClickable(rect.X, rect.Y, rect.Width, rowH, new HitResult.ListItemHit("Dropdown", capturedIndex),
-                        _ =>
-                        {
-                            dropdown.OnSelect?.Invoke(capturedIndex, capturedItem);
-                            dropdown.Close();
-                        });
+                        _ => { }, cursor: CursorKind.NotAllowed);
                 }
             }
 
@@ -785,7 +885,15 @@ namespace DIR.Lib
         /// once on the widget and have measure and paint both honour it.
         /// </summary>
         private PixelMeasureContext<TSurface> DefaultContext(string? fontPath, float? dpiScale)
-            => new(Renderer, fontPath ?? FontPath, dpiScale ?? DpiScale) { Fallback = FontFallback };
+            => new(Renderer, fontPath ?? FontPath, dpiScale ?? DpiScale)
+            {
+                Fallback = FontFallback,
+                // An explicitly-set face wins over the chain's emoji role (a caller naming one specifically
+                // should be obeyed); null falls through to the role, so a widget that sets only a chain
+                // still has an emoji face. In practice they agree here, because the chain is BUILT from
+                // this same path.
+                EmojiFontPath = EmojiFontPath,
+            };
 
         /// <summary>
         /// <see cref="ArrangeLayout(Layout.Node, RectF32, string?, float?)"/> with an explicit measure

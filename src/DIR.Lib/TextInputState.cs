@@ -222,6 +222,52 @@ public class TextInputState
     }
 
     /// <summary>
+    /// The IME's in-progress composition ("preedit"), or empty when not composing. This is the pinyin
+    /// or kana the user has typed but not yet turned into a character, and it is NOT part of
+    /// <see cref="Text"/>: it belongs to the input method until the IME commits it, at which point the
+    /// platform delivers it as ordinary text input.
+    /// </summary>
+    /// <remarks>
+    /// A field that ignores this can only ever accept Latin-style input, because with a CJK IME every
+    /// keystroke before the commit is composition and nothing else arrives. That is exactly how this
+    /// was missed: injecting text straight at the committed-text path exercises none of it, so the
+    /// field looked finished while Chinese input produced nothing at all on screen.
+    /// </remarks>
+    public string Composition { get; private set; } = "";
+
+    /// <summary>
+    /// Caret position WITHIN <see cref="Composition"/>, in characters, where further typing lands.
+    /// Meaningless while <see cref="Composition"/> is empty.
+    /// </summary>
+    public int CompositionCursor { get; private set; }
+
+    /// <summary>
+    /// How many characters of <see cref="Composition"/> the next keystroke replaces (the IME's own
+    /// selection inside the preedit). Zero for a plain insertion point.
+    /// </summary>
+    public int CompositionLength { get; private set; }
+
+    /// <summary>True while an input method is composing, so the caller should draw the preedit.</summary>
+    public bool IsComposing => Composition.Length > 0;
+
+    /// <summary>
+    /// Replaces the in-progress composition. Called from the platform's composition event; a
+    /// <paramref name="text"/> of empty ends composition (which is how every IME signals both a commit
+    /// and a cancel -- the committed characters arrive separately as ordinary text input).
+    /// </summary>
+    public void SetComposition(string? text, int cursor = 0, int length = 0)
+    {
+        Composition = text ?? "";
+        // Clamp rather than trust: the values cross a P/Invoke boundary as raw ints, and an out-of-range
+        // cursor would otherwise index past the string when the renderer measures the preedit caret.
+        CompositionCursor = Math.Clamp(cursor, 0, Composition.Length);
+        CompositionLength = Math.Clamp(length, 0, Composition.Length - CompositionCursor);
+    }
+
+    /// <summary>Drops any in-progress composition without touching <see cref="Text"/>.</summary>
+    public void ClearComposition() => SetComposition("");
+
+    /// <summary>
     /// Resets the field to empty, uncommitted state.
     /// </summary>
     public void Clear()
@@ -231,6 +277,7 @@ public class TextInputState
         SelectionAnchor = -1;
         IsCommitted = false;
         IsCancelled = false;
+        ClearComposition();
     }
 
     /// <summary>
@@ -255,6 +302,10 @@ public class TextInputState
     {
         IsActive = false;
         ClearSelection();
+        // A preedit belongs to the input method, and blurring the field abandons it. Leaving it behind
+        // would paint composition text in a field nobody is typing into, and it would still be there
+        // the next time the field is focused.
+        ClearComposition();
     }
 
     private void DeleteSelection()

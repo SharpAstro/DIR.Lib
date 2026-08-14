@@ -57,6 +57,25 @@ public sealed class PixelMeasureContext<TSurface>(Renderer<TSurface> renderer, s
     /// </summary>
     public FontFallbackResolver? Fallback { get; init; }
 
+    private readonly string? _emojiFontPath;
+
+    /// <summary>
+    /// The emoji face, for the callers that draw emoji through a dedicated path rather than by coverage.
+    /// <para>
+    /// <b>Derived from <see cref="Fallback"/> when one is set</b>, because a resolver built by
+    /// <see cref="FontFallbackResolver.FromRoles"/> ALREADY carries the emoji role and already resolves an
+    /// emoji codepoint to that face by coverage, exactly as it does any other script. Storing it a second
+    /// time would be the same fact in two places, free to disagree -- and the one that disagrees silently
+    /// is the one nothing draws from. Setting it explicitly still wins, for a consumer that has an emoji
+    /// face but no fallback chain at all.
+    /// </para>
+    /// </summary>
+    public string? EmojiFontPath
+    {
+        get => _emojiFontPath ?? Fallback?.EmojiFontPath;
+        init => _emojiFontPath = value;
+    }
+
     /// <summary>
     /// Device pixels per design unit of FONT size — the vertical scale, because an em is a height. On the
     /// isotropic path this is exactly the DPI scale, so <c>fontSize * FontScale</c> is the same number the

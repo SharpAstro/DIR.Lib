@@ -315,6 +315,69 @@ public static class FontResolver
             ?? ResolveDeclaredFamily(family, style);
     }
 
+    /// <summary>
+    /// The installed faces covering the scripts a Latin UI font does not: CJK first, then the Indic /
+    /// complex-script UI face, in the order a fallback chain should consult them. Only faces that actually
+    /// resolve on this machine are returned, so the list is usually one or two entries.
+    /// </summary>
+    /// <remarks>
+    /// This is knowledge about OPERATING SYSTEMS, not about any one app, which is why it lives beside
+    /// <see cref="ResolveSystemFont"/> rather than in a host: every consumer that draws user-supplied text
+    /// needs exactly this list, and each one working it out again would get a different, quietly incomplete
+    /// answer. Feed it to <see cref="FontFallbackResolver.FromRoles"/> as the script role.
+    /// <para>
+    /// Deliberately the OS's faces rather than bundled ones. A bundled Noto CJK face is ~17 MB each and a
+    /// full set is ~68 MB per published binary; anyone who can TYPE a script already has a face for it
+    /// installed. Bundle one only when a render has to be byte-identical across machines (a document
+    /// viewer), and pass it via <c>extra</c> so it is preferred over the platform's.
+    /// </para>
+    /// </remarks>
+    /// <param name="extra">Paths consulted BEFORE the platform faces — e.g. bundled script faces.</param>
+    public static IReadOnlyList<string> ResolveSystemScriptFonts(IEnumerable<string>? extra = null)
+    {
+        // The faces this platform ships, preferred because they match the rest of the UI's weight and are
+        // the ones the user's own system settings are tuned around.
+        string[] platform = OperatingSystem.IsWindows()
+            ? ["Microsoft YaHei", "SimSun", "Malgun Gothic", "Yu Gothic", "MS Gothic", "Nirmala UI"]
+            : OperatingSystem.IsMacOS()
+                ? ["PingFang SC", "Hiragino Sans", "Apple SD Gothic Neo", "Arial Unicode MS"]
+                : [];
+
+        // Then the portable open families, APPENDED on every platform rather than being the non-Windows,
+        // non-macOS branch. They are the default on Linux but are also widely installed on Windows and
+        // macOS, and as an else-branch a Windows box that happened to lack Microsoft YaHei but carried
+        // Noto Sans CJK would have resolved nothing at all -- a blank field on a machine that could plainly
+        // render the text. Unresolved names cost nothing, so breadth here is free.
+        string[] portable =
+        [
+            "Noto Sans CJK SC", "Noto Sans CJK JP", "Noto Sans CJK KR", "Noto Sans CJK TC",
+            "Source Han Sans", "WenQuanYi Zen Hei", "Noto Sans Devanagari", "Noto Sans Arabic",
+        ];
+
+        List<string> resolved = [];
+
+        if (extra is not null)
+        {
+            foreach (var path in extra)
+            {
+                if (!string.IsNullOrEmpty(path) && !resolved.Contains(path))
+                {
+                    resolved.Add(path);
+                }
+            }
+        }
+
+        foreach (var name in platform.Concat(portable))
+        {
+            if (ResolveInstalledFont(name) is { Length: > 0 } path && !resolved.Contains(path))
+            {
+                resolved.Add(path);
+            }
+        }
+
+        return resolved;
+    }
+
     // ---- Declared-name resolution (every installed face, by its own 'name' table) -----------
 
     /// <summary>

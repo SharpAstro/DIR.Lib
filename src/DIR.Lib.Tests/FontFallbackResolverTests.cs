@@ -186,4 +186,61 @@ public sealed class FontFallbackResolverTests
         r.TryResolveFont(ChessKing).ShouldBe(Font(DejaVu));
         r.TryResolveFont(Rocket).ShouldBe(Font(Emoji));
     }
+
+    // ---- The emoji role, and the context that derives from it -------------------------------------
+
+    /// <summary>
+    /// The emoji face is reachable BY COVERAGE, which is the reason a separate emoji path is redundant
+    /// once a chain exists: an emoji codepoint resolves to the emoji face exactly as any other script
+    /// resolves to its own.
+    /// </summary>
+    [Fact]
+    public void FromRoles_ResolvesAnEmojiCodepointToTheEmojiFace()
+    {
+        var r = FontFallbackResolver.FromRoles(Font(DejaVu), emojiFontPath: Font(Emoji));
+
+        r.TryResolveFont(Rocket).ShouldBe(Font(Emoji));
+        r.EmojiFontPath.ShouldBe(Font(Emoji));
+    }
+
+    /// <summary>
+    /// A context carrying a chain needs no emoji path of its own -- it reads the chain's role. Storing it
+    /// twice is the same fact in two places, and the copy that drifts is the one nothing draws from.
+    /// </summary>
+    [Fact]
+    public void MeasureContext_TakesTheEmojiFaceFromTheChainWhenNoneIsStated()
+    {
+        using var renderer = new RgbaImageRenderer(16, 16);
+        var ctx = new PixelMeasureContext<RgbaImage>(renderer, Font(DejaVu))
+        {
+            Fallback = FontFallbackResolver.FromRoles(Font(DejaVu), emojiFontPath: Font(Emoji)),
+        };
+
+        ctx.EmojiFontPath.ShouldBe(Font(Emoji));
+    }
+
+    /// <summary>An explicitly stated face wins: a caller naming one specifically is obeyed.</summary>
+    [Fact]
+    public void MeasureContext_PrefersAnExplicitEmojiFaceOverTheChainsRole()
+    {
+        using var renderer = new RgbaImageRenderer(16, 16);
+        var ctx = new PixelMeasureContext<RgbaImage>(renderer, Font(DejaVu))
+        {
+            Fallback = FontFallbackResolver.FromRoles(Font(DejaVu), emojiFontPath: Font(Emoji)),
+            EmojiFontPath = Font(Merida),
+        };
+
+        ctx.EmojiFontPath.ShouldBe(Font(Merida));
+    }
+
+    /// <summary>And with no chain at all it is simply what was stated, so the pre-chain consumers work.</summary>
+    [Fact]
+    public void MeasureContext_KeepsAnExplicitEmojiFaceWithNoChain()
+    {
+        using var renderer = new RgbaImageRenderer(16, 16);
+        var ctx = new PixelMeasureContext<RgbaImage>(renderer, Font(DejaVu)) { EmojiFontPath = Font(Emoji) };
+
+        ctx.EmojiFontPath.ShouldBe(Font(Emoji));
+        ctx.Fallback.ShouldBeNull();
+    }
 }

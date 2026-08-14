@@ -88,6 +88,18 @@ public static class TextInputInteraction
             return false;
         }
 
+        // While an input method is composing, the keyboard belongs to IT. Enter picks a candidate, Escape
+        // abandons the composition, Backspace edits the preedit -- all of which the IME handles and reports
+        // back as a composition update. Acting on them here as well would commit or cancel the FIELD on a
+        // keystroke the user aimed at the candidate list. Platforms differ on whether they even deliver
+        // these while composing, so the guard is what makes the behaviour the same everywhere rather than a
+        // property of the host. Swallowed, not ignored: they are consumed input, and composition ends on its
+        // own when the IME clears the preedit, so this cannot wedge the field.
+        if (activeInput.IsComposing)
+        {
+            return true;
+        }
+
         // Result-list navigation while a search box is the active field. The Up/Down protocol lives ONCE in
         // SearchInteraction.HandleNavKey -- arrows are not TextInputKeys, so they cannot ride OnKeyOverride,
         // and this method swallows all keys (see the final return), so the nav has to happen here before the
