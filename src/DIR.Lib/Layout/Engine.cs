@@ -568,9 +568,29 @@ public static class Engine
             // an icon has no glyph metrics to ask about, and on a cell surface a per-axis conversion is what
             // turns one design square into the cell it actually occupies.
             Content.Icon icon => new Size<T>(ctx.ToSurfaceX(icon.Size), ctx.ToSurfaceY(icon.Size)),
+            Content.TextInput field => MeasureTextInput(field, ctx),
             Content.Fill fill => new Size<T>(ctx.ToSurfaceX(fill.MinWidth), ctx.ToSurfaceY(fill.MinHeight)),
             _ => Size<T>.Zero,
         };
+
+    /// <summary>
+    /// A field's intrinsic size: room for its width sample BETWEEN the two insets the renderer leaves, one
+    /// line tall.
+    /// <para>
+    /// The sample is <see cref="Content.TextInput.WidthSample"/> or the placeholder, deliberately never the
+    /// live text -- see that property for why. Height is the measured line and nothing more, so the field is
+    /// exactly as tall as its text on a pixel surface and exactly one row on a cell one; a field wanting
+    /// breathing room takes it from its row's height, which is where every real call site sets it.
+    /// </para>
+    /// </summary>
+    private static Size<T> MeasureTextInput<T>(Content.TextInput field, IMeasureContext<T> ctx)
+        where T : INumber<T>
+    {
+        var sample = field.WidthSample ?? field.State.Placeholder;
+        var text = ctx.MeasureText(sample.AsSpan(), field.FontSize);
+        var insets = ctx.ToSurfaceX(TextInputRenderer.HorizontalPadding(field.FontSize) * 2f);
+        return new Size<T>(text.Width + insets, text.Height);
+    }
 
     private static Size<T> MeasureStack<T>(Node.Stack stack, Size<T> available, IMeasureContext<T> ctx)
         where T : INumber<T>

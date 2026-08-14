@@ -82,11 +82,69 @@ public abstract record Content
     }
 
     /// <summary>
-    /// An app-drawn escape hatch (chart, sky map, custom widget, text input). Carries only a minimum intrinsic
+    /// An editable single-line text field: the node IS the control.
+    /// <para>
+    /// A field can be expressed as a <see cref="Fill"/> plus a draw closure, and every consumer did exactly
+    /// that before this leaf existed. The cost was never the closure -- it was the IDENTITY. A
+    /// <see cref="Fill.Key"/> string is shared between the tree and a painter dictionary that nothing checks,
+    /// so a key with no entry is a silently blank field rather than an error, and the closure re-states the
+    /// font and size the tree already knows. <see cref="Fill"/> means "the app paints something arbitrary
+    /// here", which describes a chart exactly and a text box not at all: DIR.Lib already owns a field's
+    /// painting, its hit region, its focus semantics and its key handling.
+    /// </para>
+    /// <para>
+    /// A painter meeting this leaf therefore renders the field AND registers a
+    /// <see cref="HitResult.TextInputHit"/> over the arranged rect, which it cannot forget to do.
+    /// Click-to-focus, blur-on-outside-click, Tab cycling (whose order is derived from region paint order,
+    /// so it is the visual order automatically) and the I-beam cursor all follow from that one registration
+    /// with no per-field wiring.
+    /// </para>
+    /// <para>
+    /// <b>The node carries a reference to caller-owned mutable state.</b> That is the precedent
+    /// <see cref="Node.OnClick"/> already sets by carrying a delegate closing over live state, and the tree is
+    /// rebuilt per frame anyway. Ownership does not move: the consumer still owns the
+    /// <see cref="TextInputState"/> and its commit wiring. It is also what makes fields created per camera or
+    /// per OTA fall out for free -- they appear as hardware does, so they can never be statically declared
+    /// controls the way a form designer emits them, but they are an ordinary loop in a per-frame tree.
+    /// </para>
+    /// </summary>
+    /// <param name="State">The caller-owned field state: text, caret, selection and the commit callbacks.</param>
+    /// <param name="FontSize">Text size in design units, as <see cref="Text.FontSize"/>.</param>
+    public sealed record TextInput(TextInputState State, float FontSize = 14f) : Content
+    {
+        /// <summary>
+        /// Palette for THIS field, or null for the shared <see cref="TextInputRenderer.Colors"/> -- the same
+        /// per-call escape hatch <c>TextInputRenderer.Render</c> takes, for the field that genuinely differs
+        /// (one inlaid in a toolbar chip too short to afford a fill, a border and a selection at once).
+        /// </summary>
+        public TextInputColors? Colors { get; init; }
+
+        /// <summary>
+        /// Measure the field as if it held this text, the same reservation
+        /// <see cref="Text.WidthSample"/> makes and for a sharper reason: <b>a box that resizes while you
+        /// type is a bug</b>. So the intrinsic width comes from this sample, or from
+        /// <see cref="TextInputState.Placeholder"/> when it is null -- never from the live
+        /// <see cref="TextInputState.Text"/>, which would relayout the row on every keystroke.
+        /// <para>
+        /// Intrinsic sizing is the fallback rather than the normal case: a field almost always takes its
+        /// width from its row (<c>.Stretch()</c> inside a labelled row) and its height from the row's own
+        /// height, so the measured size only decides anything under <c>Auto</c>.
+        /// </para>
+        /// </summary>
+        public string? WidthSample { get; init; }
+    }
+
+    /// <summary>
+    /// An app-drawn escape hatch (chart, sky map, custom widget). Carries only a minimum intrinsic
     /// size in design units; pair with <c>Star</c> sizing to fill available space. The painter draws it via an
     /// app <c>drawFill</c> callback, which receives this instance back -- so when one tree contains several
-    /// <see cref="Fill"/> leaves (e.g. a panel with multiple inputs), set <see cref="Key"/> to route each to its
+    /// <see cref="Fill"/> leaves (e.g. a panel with several charts), set <see cref="Key"/> to route each to its
     /// own draw closure (e.g. <c>map[fill.Key]?.Invoke(rect)</c>) without a central switch.
+    /// <para>
+    /// A text field used to be listed here as an example and is no longer one: it has its own
+    /// <see cref="TextInput"/> leaf. This stays the escape hatch for genuinely bespoke content, which is a
+    /// narrower set than it looks -- reach for it when no surface could know how to draw the thing.
+    /// </para>
     /// </summary>
     public sealed record Fill(float MinWidth = 0f, float MinHeight = 0f, string? Key = null) : Content;
 }
