@@ -103,6 +103,23 @@ public abstract class SearchInteraction
     protected virtual bool CollapseResultsOnEscape => false;
 
     /// <summary>
+    /// Whether Down past the last result returns to the first (and Up past the first to the last).
+    /// Default false: the selection stops at either end.
+    /// </summary>
+    /// <remarks>
+    /// Which behaviour is right follows from what the list IS. A suggestion list is a menu — running off
+    /// the end of a menu and reappearing at the top is disorienting, and the end of the list is
+    /// information. A FIND result list is a traversal of one document, where the reader's question is
+    /// "show me the next one" and there is always a next one; that is why every find bar wraps, and why
+    /// a viewer whose find-next key wraps must wrap here too or the same list walks two different ways
+    /// depending on which key is pressed.
+    /// <para>Mutually exclusive with <see cref="AllowDeselectOnUp"/> in practice: deselecting is what Up
+    /// at the top means when there is no wrap, so a wrapping list sets one or the other. Setting both
+    /// gives wrap priority, since a list that wraps has no top to fall off.</para>
+    /// </remarks>
+    protected virtual bool WrapsAround => false;
+
+    /// <summary>
     /// Up/Down navigation over the result list, called by the host key router while <see cref="Input"/> is
     /// the active field (the single home of the arrow protocol). Returns true when the selection moved (the
     /// host then requests a redraw); false when there is nothing to navigate.
@@ -116,10 +133,24 @@ public abstract class SearchInteraction
         switch (key)
         {
             case InputKey.Down:
-                SelectedIndex = Math.Min(SelectedIndex + 1, ResultCount - 1);
+                // From -1 (nothing highlighted) a wrap still lands on 0, because -1 + 1 is 0 -- the modular
+                // step needs no special case for entering the list.
+                SelectedIndex = WrapsAround
+                    ? (SelectedIndex + 1) % ResultCount
+                    : Math.Min(SelectedIndex + 1, ResultCount - 1);
                 return true;
             case InputKey.Up:
-                if (SelectedIndex > 0)
+                if (WrapsAround)
+                {
+                    // -1 is "nothing highlighted", not a position before 0, so it is not a step away from
+                    // the last row and the modulo does not describe it: from there Up ENTERS the list at
+                    // the end, the mirror of Down entering it at the start. (Down needs no such case only
+                    // because -1 + 1 happens to be 0.)
+                    SelectedIndex = SelectedIndex < 0
+                        ? ResultCount - 1
+                        : (SelectedIndex - 1 + ResultCount) % ResultCount;
+                }
+                else if (SelectedIndex > 0)
                 {
                     SelectedIndex--;
                 }
