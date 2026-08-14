@@ -25,12 +25,31 @@ public sealed class TabBar
     /// <summary>Pixel height of the bar — the host reserves this much at the top of the content area.</summary>
     public float Height => BaseHeight * Scale;
 
-    private float Font => BaseFont * Scale;
-    private float Pad => BasePad * Scale;
+    /// <summary>
+    /// A tab's text size, inset and border thickness, already scaled — for a host that has to DRAW a tab
+    /// somewhere this bar does not.
+    /// </summary>
+    /// <remarks>
+    /// <para>Public for one real case: a torn-out tab carried as its own small window has to paint itself
+    /// as a tab, and it is not this bar that paints it. Without these it copies the numbers, which is what
+    /// a downstream consumer did — two literals and a comment naming the constants they came from — so a
+    /// change to the bar's type size silently stopped matching the thing pretending to be one of its
+    /// tabs.</para>
+    /// <para>Exposed SCALED, like <see cref="Height"/>, rather than as the base constants: a copier
+    /// otherwise has to multiply by a scale of its own, and nothing makes that the same number as
+    /// <see cref="Scale"/>. Asking the bar removes the second source.</para>
+    /// </remarks>
+    public float Font => BaseFont * Scale;
+
+    /// <inheritdoc cref="Font"/>
+    public float Pad => BasePad * Scale;
+
+    /// <inheritdoc cref="Font"/>
+    public int Border => Math.Max(1, (int)Scale);
+
     private float CloseBox => BaseCloseBox * Scale;
     private float MinTabW => BaseMinTabW * Scale;
     private float MaxTabW => BaseMaxTabW * Scale;
-    private int Border => Math.Max(1, (int)Scale);
 
     /// <summary>Palette, settable by the host like <see cref="Scale"/> — a theme can change while the bar
     /// is alive, so this is not init-only. Defaults reproduce the bar's original dark styling.</summary>
