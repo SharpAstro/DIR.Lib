@@ -14,7 +14,7 @@ public static class TextInputRenderer
     /// consumer that sets nothing is unchanged.
     /// </summary>
     /// <remarks>
-    /// Set it once when the theme MOVES, not per frame, the same contract <see cref="TabBar.Colors"/>
+    /// Set it once when the theme MOVES, not per frame, the same contract <see cref="TabBar{TSurface}.Colors"/>
     /// carries: <see cref="TextInputColors.FromPalette"/> derives eight colours, and doing that per
     /// draw would rebuild them for every field on screen every frame.
     /// <para>

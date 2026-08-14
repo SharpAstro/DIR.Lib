@@ -3,6 +3,64 @@
 One section per breaking release, newest first. Additive releases are not listed here; the release
 notes in `.github/workflows/dotnet.yml` cover every version.
 
+## 8.0 `TabBar` becomes a widget
+
+Affects anyone who constructs a `TabBar`, sets its `Scale`, or calls `Render`.
+
+### What changed
+
+`TabBar` is now `TabBar<TSurface> : PixelWidgetBase<TSurface>`. It takes its `Renderer<TSurface>` at
+construction, like every other widget; the font path and `FontFallbackResolver` it used to take as
+constructor arguments are now the widget's own `FontPath` / `FontFallback`; `Scale` is gone, replaced
+by the inherited `DpiScale`; and `Render` no longer takes a renderer.
+
+`TabClick`, `Colors`, `Height`, `Font`, `Pad`, `Border`, `ShowNewTabButton`, `NewTabActive`,
+`NewTabHovered`, `Pointer`, `HandleMouseDown`, `HitNewTabButton` and `SlotAt` are all unchanged in
+name and meaning.
+
+### Why
+
+Three per-window values — the font, the fallback chain, the display scale — were being pushed into
+the bar through three channels of its own, all of which the window already owns and already shares
+with every other widget through `WindowUiSettings`. A host with a `ShareUiContext` call now simply
+includes the bar in it, and a value added to the context later reaches it with no further change.
+
+The larger reason is that the bar was hit-testing against a private copy of its layout: a `_rects`
+list filled during the draw, read by `HandleMouseDown` and `SlotAt`. That is the shape where draw and
+hit drift apart. It now **registers** each tab, each ✕ and the + as it paints them, and those three
+methods report from the registered rects. Two properties come free with that. The ✕ is registered
+after the tab it sits in, so it wins the hit as an inner control should. And through 7.32's frame
+stamp the whole strip goes quiet on a frame the host did not draw it in — not academic here, because
+a window carrying a torn-out tab paints itself as a chip and no strip at all, and used to go on
+answering tab presses from the layout of a strip it no longer had.
+
+### Port recipe
+
+Before:
+
+```csharp
+_tabBar = new TabBar(fontPath, fallback);
+...
+_tabBar.Scale = UiScale;
+_tabBar.Render(renderer, contentLeft, stripRight, titles, activeIndex);
+```
+
+After:
+
+```csharp
+_tabBar = new TabBar<TSurface>(renderer);
+ShareUiContext(_tabBar, /* the window's other widgets */);   // font, fallback, DPI, frame id
+...
+_tabBar.Render(contentLeft, stripRight, titles, activeIndex);
+```
+
+A host that does not share a context sets the three values on the bar directly
+(`FontPath`, `FontFallback`, `DpiScale`) and everything else is as it was.
+
+**The host must bump `Ui.FrameId` once per frame** for the strip to go quiet when it is not drawn. A
+host that does not count frames keeps 7.x behaviour exactly: the id stays 0, so does every stamp, and
+every hit test matches as before.
+
 ## 7.11 `UiPalette` grows eight roles and becomes a `sealed record`
 
 Affects anyone who constructs a `UiPalette`, a `UiMetrics` pair into `UiTheme`, or stores one in a

@@ -710,6 +710,18 @@ namespace DIR.Lib
             => RegionsAreCurrent ? _tracker.GetRegisteredRegions() : [];
 
         /// <summary>
+        /// This widget's own regions from the frame it last painted, without the copy
+        /// <see cref="GetRegisteredRegions"/> makes — so a widget can answer a question about its layout
+        /// by READING what it registered rather than by deriving the geometry a second time.
+        /// </summary>
+        /// <remarks>
+        /// The alternative is a parallel cache filled in the draw loop, which is the exact shape that lets
+        /// draw and hit drift apart. Render-thread only, and empty on a frame this widget did not draw.
+        /// </remarks>
+        protected ReadOnlySpan<ClickableRegion> RegisteredRegions
+            => RegionsAreCurrent ? _tracker.Regions : default;
+
+        /// <summary>
         /// Returns the arranged <see cref="Layout.ArrangedNode{T}"/> nodes this widget painted via the
         /// layout DSL since the last <c>BeginFrame</c> (each carries its tree <see cref="Layout.ArrangedNode{T}.Depth"/>),
         /// or empty when <see cref="LayoutInspection"/> is disabled or the widget draws without the

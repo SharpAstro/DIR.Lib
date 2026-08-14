@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 namespace DIR.Lib
 {
@@ -110,6 +111,18 @@ namespace DIR.Lib
         /// "accessibility tree" (region bounds + <see cref="HitResult"/> role/label).
         /// </summary>
         public ClickableRegion[] GetRegisteredRegions() => _regions.ToArray();
+
+        /// <summary>
+        /// The same regions WITHOUT the copy, for a widget reading back its own layout on the render
+        /// thread — where the snapshot above is a per-call allocation on a path that can run per pointer
+        /// move (a tab drag asking which slot it is over).
+        /// </summary>
+        /// <remarks>
+        /// Render-thread only, and valid until the next <see cref="BeginFrame(long)"/>: it is a view of
+        /// the live list, so anything crossing a thread or outliving the frame wants
+        /// <see cref="GetRegisteredRegions"/> instead.
+        /// </remarks>
+        public ReadOnlySpan<ClickableRegion> Regions => CollectionsMarshal.AsSpan(_regions);
 
         /// <summary>
         /// Returns all <see cref="TextInputState"/> instances registered during the last render pass,
