@@ -13,9 +13,11 @@ namespace DIR.Lib.Tests;
 /// <remarks>
 /// Two properties come with that and are worth pinning, because the hand-rolled version had neither. The
 /// ✕ is registered after the tab it sits in, so it wins the hit the way an inner control should; and the
-/// whole strip goes quiet on a frame the host did not draw it in (<see cref="WindowUiSettings.FrameId"/>)
-/// — which for a tab bar is not academic, since a window carrying a torn-out tab paints itself as a chip
-/// and no strip at all.
+/// whole strip goes quiet on a frame the host did not draw it in (<see cref="WindowUiSettings.FrameId"/>).
+/// A tab bar meets that second one: a host that carries a torn-out tab as its own small window paints it
+/// as a chip and draws no strip, so what the bar holds for that window is the layout of a strip that is
+/// gone. Whether a press gets that far depends on the host's own guards — which is the reason to pin the
+/// bar's behaviour rather than to rely on them.
 /// </remarks>
 public class TabBarRegionTests
 {
@@ -130,10 +132,10 @@ public class TabBarRegionTests
     [Fact]
     public void AStripTheHostStoppedDrawingReportsNothing()
     {
-        // The real case: this window is now carrying a torn-out tab, so it paints itself as a chip and
-        // draws no strip. Every answer below would otherwise come from the layout of a bar that is no
-        // longer on screen — and HandleMouseDown's would name a tab by an index into a list that has
-        // since lost one.
+        // The case this exists for: the window is carrying a torn-out tab, so it paints itself as a chip
+        // and draws no strip. Every answer below would otherwise come from the layout of a bar that is
+        // no longer on screen — and HandleMouseDown's would name a tab by an index into a list that may
+        // since have lost one.
         var bar = NewBar(new StubRenderer(600, 40));
         bar.ShowNewTabButton = true;
         bar.Ui.FrameId = 1;

@@ -30,9 +30,10 @@ list filled during the draw, read by `HandleMouseDown` and `SlotAt`. That is the
 hit drift apart. It now **registers** each tab, each ✕ and the + as it paints them, and those three
 methods report from the registered rects. Two properties come free with that. The ✕ is registered
 after the tab it sits in, so it wins the hit as an inner control should. And through 7.32's frame
-stamp the whole strip goes quiet on a frame the host did not draw it in — not academic here, because
-a window carrying a torn-out tab paints itself as a chip and no strip at all, and used to go on
-answering tab presses from the layout of a strip it no longer had.
+stamp the whole strip goes quiet on a frame the host did not draw it in — which a tab bar does meet,
+since a host carrying a torn-out tab as its own small window paints it as a chip and draws no strip,
+leaving the bar holding the layout of a strip that is gone. Whether a press reaches it there was the
+host's guards to get right; now it is not.
 
 ### Port recipe
 
