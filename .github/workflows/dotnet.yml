@@ -561,6 +561,12 @@ env:
   #        ClickableRegionTracker.Regions / PixelWidgetBase.RegisteredRegions are the additive half: a
   #        widget can read back its own regions without the per-call copy GetRegisteredRegions makes,
   #        which is what lets SlotAt walk the tab rects on every pointer move during a drag.
+  #        PixelWidgetBase.DrewThisFrame is the other addition: the hit reads already decline a stale
+  #        region set, but a host resolves some input by GEOMETRY rather than by region -- a wheel over a
+  #        panel's column, a resize gutter beside it, a swallow that stops a click on chrome starting a
+  #        drag on the content underneath -- and those predicates are the remaining way a widget the host
+  #        stopped drawing goes on taking input. Now it can just ask the widget. True for a host that
+  #        does not count frames, like everything else in 7.32.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release
