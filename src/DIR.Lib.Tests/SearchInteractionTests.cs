@@ -24,6 +24,7 @@ public class SearchInteractionTests
         private readonly bool _autoSelect;
         private readonly bool _deselectUp;
         private readonly bool _collapseEsc;
+        private readonly bool _wrap;
 
         public int CommitCount;
         public string? LastCommitted;
@@ -33,17 +34,19 @@ public class SearchInteractionTests
         public int ResultsChangedCount;
 
         public TestSearch(TextInputState input, bool autoSelect = false, bool deselectUp = false,
-            bool collapseEsc = false, Action? releaseFocus = null, Action? redraw = null)
+            bool collapseEsc = false, Action? releaseFocus = null, Action? redraw = null, bool wrap = false)
             : base(input, requestRedraw: redraw ?? (() => { }), releaseFocus: releaseFocus)
         {
             _autoSelect = autoSelect;
             _deselectUp = deselectUp;
             _collapseEsc = collapseEsc;
+            _wrap = wrap;
         }
 
         protected override bool AutoSelectFirstResult => _autoSelect;
         protected override bool AllowDeselectOnUp => _deselectUp;
         protected override bool CollapseResultsOnEscape => _collapseEsc;
+        protected override bool WrapsAround => _wrap;
 
         protected override ImmutableArray<string> Query(string text)
             => text.Length < 2
@@ -72,10 +75,10 @@ public class SearchInteractionTests
     }
 
     private static TestSearch Make(out TextInputState input, bool autoSelect = false, bool deselectUp = false,
-        bool collapseEsc = false, Action? releaseFocus = null, Action? redraw = null)
+        bool collapseEsc = false, Action? releaseFocus = null, Action? redraw = null, bool wrap = false)
     {
         input = new TextInputState();
-        return new TestSearch(input, autoSelect, deselectUp, collapseEsc, releaseFocus, redraw);
+        return new TestSearch(input, autoSelect, deselectUp, collapseEsc, releaseFocus, redraw, wrap);
     }
 
     // ── Requery ──────────────────────────────────────────────────────────────
@@ -166,6 +169,67 @@ public class SearchInteractionTests
         input.OnTextChanged!.Invoke("M3");
         s.HandleNavKey(InputKey.Up).ShouldBeTrue();
         s.SelectedIndex.ShouldBe(-1);
+    }
+
+    // ── Wrap ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void NavDown_WrapsToTheFirstResult()
+    {
+        var s = Make(out var input, autoSelect: true, wrap: true);
+        input.OnTextChanged!.Invoke("M3");      // 3 results, highlight on 0
+        s.HandleNavKey(InputKey.Down);
+        s.HandleNavKey(InputKey.Down);
+        s.SelectedIndex.ShouldBe(2);            // the last one
+
+        s.HandleNavKey(InputKey.Down);
+        s.SelectedIndex.ShouldBe(0);
+    }
+
+    [Fact]
+    public void NavUp_WrapsToTheLastResult()
+    {
+        var s = Make(out var input, autoSelect: true, wrap: true);
+        input.OnTextChanged!.Invoke("M3");
+        s.SelectedIndex.ShouldBe(0);
+
+        // -1 % n is -1 in C#, so a bare modulo would leave the selection where it started.
+        s.HandleNavKey(InputKey.Up);
+        s.SelectedIndex.ShouldBe(2);
+    }
+
+    [Fact]
+    public void WrappingDown_FromNothingHighlighted_EntersAtTheFirstResult()
+    {
+        var s = Make(out var input, wrap: true);
+        input.OnTextChanged!.Invoke("M3");
+        s.SelectedIndex.ShouldBe(-1);           // no auto-select: nothing is highlighted yet
+
+        s.HandleNavKey(InputKey.Down);
+        s.SelectedIndex.ShouldBe(0);
+    }
+
+    [Fact]
+    public void WrappingUp_FromNothingHighlighted_EntersAtTheLastResult()
+    {
+        var s = Make(out var input, wrap: true);
+        input.OnTextChanged!.Invoke("M3");
+
+        // Symmetrical with Down, and the reason Up is worth having at all on a list nothing has entered:
+        // reaching the last result should not cost a walk through every one before it.
+        s.HandleNavKey(InputKey.Up);
+        s.SelectedIndex.ShouldBe(2);
+    }
+
+    [Fact]
+    public void WrapBeatsDeselectOnUp()
+    {
+        // A list that wraps has no top to fall off, so the deselect rule has nothing to describe.
+        var s = Make(out var input, autoSelect: true, deselectUp: true, wrap: true);
+        input.OnTextChanged!.Invoke("M3");
+
+        s.HandleNavKey(InputKey.Up);
+        s.SelectedIndex.ShouldBe(2);
     }
 
     [Fact]
