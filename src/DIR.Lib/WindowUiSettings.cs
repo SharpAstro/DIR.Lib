@@ -113,4 +113,33 @@ public sealed class WindowUiSettings
     /// </para>
     /// </remarks>
     public TextInputFocus Focus { get; } = new();
+
+    /// <summary>
+    /// Where the focused field's caret was last drawn, or <c>default</c> if no active field has been
+    /// painted. A host passes this to its platform's caret-location call (<c>SDL_SetTextInputArea</c>) so
+    /// an input method can put its candidate window beside the caret rather than over the text.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Set at PAINT time by <see cref="PixelWidgetBase{TSurface}.RenderTextInput"/>, from the same call
+    /// that draws the caret, for the same reason a click binds to the arranged rect: anything that
+    /// recomputes the position separately can disagree with what the user is looking at, and here that
+    /// disagreement puts the candidate window in the wrong place -- invisible in every test that does not
+    /// involve a real IME.
+    /// </para>
+    /// <para>
+    /// Per-window rather than per-widget because there is one caret, for the same reason there is one
+    /// <see cref="Focus"/>. Held per widget, a host had to know which widget painted the focused field in
+    /// order to ask the right one -- a question with no stable answer, since the field that has the
+    /// keyboard moves between them.
+    /// </para>
+    /// <para>
+    /// Deliberately NOT cleared per paint: a widget's PaintLayout runs more than once a frame (chrome,
+    /// then content), so a reset inside it would let whichever ran last wipe the caret the other just
+    /// recorded. Staleness cannot bite in practice, because the only caller that matters asks while a
+    /// field is focused and <see cref="TextInputFocus.BlurIfUnpainted"/> guarantees a focused field was
+    /// painted this frame -- so if there is a focus, this rect is from that frame.
+    /// </para>
+    /// </remarks>
+    public RectInt CaretRect { get; set; }
 }

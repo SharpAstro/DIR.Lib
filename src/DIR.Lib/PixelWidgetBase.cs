@@ -203,36 +203,22 @@ namespace DIR.Lib
                 FrameCount, colors, FontFallback);
             if (state.IsActive)
             {
-                _caretRect = caret;
+                Ui.CaretRect = caret;
             }
             // A field is where text is edited, so the I-beam comes with it rather than being arranged for
             // separately by whatever happens to enclose it.
             RegisterClickable(x, y, width, height, new HitResult.TextInputHit(state), cursor: CursorKind.Text);
         }
 
-        private RectInt _caretRect;
-
         /// <summary>
-        /// Where the focused field's caret was drawn this frame, or <c>default</c> if no active field was
-        /// painted. A host passes this to its platform's caret-location call (<c>SDL_SetTextInputArea</c>)
-        /// so an input method can put its candidate window beside the caret rather than over the text.
-        /// <para>
-        /// It is captured at PAINT time, from the same call that draws the caret, for the same reason a
-        /// click binds to the arranged rect: anything that recomputes the position separately can disagree
-        /// with what the user is looking at, and here that disagreement puts the candidate window in the
-        /// wrong place, which is invisible in every test that does not involve a real IME.
-        /// </para>
+        /// Where the focused field's caret was drawn, from <see cref="WindowUiSettings.CaretRect"/>.
         /// </summary>
-        /// <para>
-        /// Only meaningful while a field is actually focused, and deliberately NOT cleared per paint:
-        /// a widget's PaintLayout runs more than once a frame (chrome, then the active tab), so a reset
-        /// inside it would let whichever ran last wipe the caret the other just recorded. Staleness
-        /// cannot bite in practice because the only caller that matters asks while a field is focused,
-        /// and <see cref="TextInputFocus.BlurIfUnpainted"/> guarantees a focused field was painted this
-        /// frame -- so if there is a focus, this rect is from that frame.
-        /// </para>
-        /// </summary>
-        public RectInt CaretRect => _caretRect;
+        /// <remarks>
+        /// On the widget as a convenience for the common case where a host holds one; it is the WINDOW's
+        /// value, so a host whose fields sit in several widgets asks the context and does not have to know
+        /// which of them painted the focused one.
+        /// </remarks>
+        public RectInt CaretRect => Ui.CaretRect;
 
         /// <summary>
         /// Arranged-rect overload of
