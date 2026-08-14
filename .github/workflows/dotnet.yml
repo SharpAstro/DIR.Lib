@@ -458,6 +458,31 @@ env:
   #        backends: PushClip/PopClip are no longer virtual; a clipping backend overrides ApplyClip(rect)
   #        and ClearClip() instead, one absolute rect and no history, since the stack lives in the base.
   #        Renderer.ClipDepth reports the nesting, and RectInt gains Normalized() + Intersect().
+  # 7.28 - A text field is a DECLARATION: Layout.Builder.TextInput(state, fontSize) is the whole thing.
+  #        PixelWidgetBase.PaintLayout draws it, registers its TextInputHit over the arranged rect and
+  #        states CursorKind.Text, so click-to-focus, blur-on-outside-click, Tab order and the I-beam all
+  #        follow from one registration the painter cannot forget. It replaces a keyed Fill plus a painter
+  #        dictionary entry plus a dispatcher, whose real cost was the IDENTITY: a magic string shared
+  #        between a tree and a dictionary that nothing checks, so a typo was a silently blank field.
+  #        Console.Lib paints the same leaf on a terminal, which is what makes a field one declaration on
+  #        both surfaces. Intrinsic width comes from the placeholder or an explicit WidthSample, never the
+  #        live text, because a box that resizes while you type is a bug.
+  #        TextInputFocus owns which field has the keyboard. Focus IS global (one keyboard; WinForms has
+  #        the same singleton in Form.ActiveControl) -- what was wrong is that a settable pointer separates
+  #        the transition from its platform side effects, so any code assigning it left the app taking no
+  #        input while the IME stayed up. A host binds FocusChanged ONCE and nothing else knows the
+  #        platform calls exist. Blur gates on the OWNER's record, not the field's IsActive flag, so a
+  #        caller that cleared the flag by hand cannot make the blur a no-op. BlurIfUnpainted(painted)
+  #        drops focus a field kept after it stopped being drawn; the CALLER supplies what was painted,
+  #        because only a host knows what its frame is composed of.
+  #        TextInputInteraction moves here from a consumer's UI project, which is what makes it testable
+  #        at all. BREAKING: KeyContext's IPixelWidget ActiveTab becomes a lazy TabFields callback (that
+  #        interface was the one thing keeping a host-agnostic class from working on a terminal), the
+  #        Deactivate/SetActive callbacks become the focus owner, and HandleKey drops its activeInput
+  #        parameter for ctx.Focus.Current -- two ways to name the focused field is one too many.
+  #        TextInputRenderer gains HorizontalPadding (stated once, since measure and paint are now
+  #        separate halves) and no-ops without a font, matching the layout text helpers: a headless render
+  #        of a tree with a LABEL worked while the same tree with a FIELD threw.
   VERSION_REV: ${{ github.run_attempt }}
   VERSION_HASH: +${{ github.sha }}
   BUILD_CONF: Release

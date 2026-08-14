@@ -928,6 +928,20 @@ namespace DIR.Lib
                                     iconSide, iconSide),
                                 icon.Color);
                             break;
+                        case Layout.Content.TextInput field:
+                            // RenderTextInput both draws AND registers the TextInputHit + I-beam, which is
+                            // the entire point of the leaf: a field declared in the tree is focusable,
+                            // tab-reachable and clickable because the painter cannot paint it without
+                            // saying so. The font size crosses the same ctx.FontScale every text run does,
+                            // so a field and the label beside it are one size at any DPI.
+                            //
+                            // Registered here rather than above with node.Hit, so it lands AFTER any hit
+                            // the enclosing row carries and therefore wins the click -- a row-level
+                            // handler must not swallow a click meant to focus the field inside it.
+                            RenderTextInput(field.State,
+                                new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height),
+                                fp, field.FontSize * ctx.FontScale, field.Colors);
+                            break;
                         case Layout.Content.Fill fill:
                             drawFill?.Invoke(fill, new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height));
                             break;

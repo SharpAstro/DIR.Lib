@@ -52,7 +52,24 @@ public static class Builder
             Color = color ?? new RGBAColor32(0xff, 0xff, 0xff, 0xff),
         });
 
-    /// <summary>An app-drawn escape-hatch leaf (chart/sky map/text input). Pair with <c>Star</c> sizing to fill; set <paramref name="key"/> to route multiple fills.</summary>
+    /// <summary>
+    /// An editable text field -- <c>Builder.TextInput(state, fontSize)</c> is the whole declaration, and the
+    /// painter takes care of drawing it, registering its click region, its focus and its I-beam. See
+    /// <see cref="Content.TextInput"/> for why this is a leaf rather than a keyed <see cref="Fill"/>.
+    /// <para>
+    /// Size it at the call site like any other node (<c>.Stretch()</c> inside a labelled row is the common
+    /// case); <paramref name="widthSample"/> only decides anything under <c>Auto</c>.
+    /// </para>
+    /// </summary>
+    public static Node TextInput(TextInputState state, float fontSize = 14f,
+        TextInputColors? colors = null, string? widthSample = null)
+        => new Node.Leaf(new Content.TextInput(state, fontSize)
+        {
+            Colors = colors,
+            WidthSample = widthSample,
+        });
+
+    /// <summary>An app-drawn escape-hatch leaf (chart/sky map). Pair with <c>Star</c> sizing to fill; set <paramref name="key"/> to route multiple fills. A text field has its own <see cref="TextInput"/> factory.</summary>
     public static Node Fill(float minWidth = 0f, float minHeight = 0f, string? key = null)
         => new Node.Leaf(new Content.Fill(minWidth, minHeight, key));
 

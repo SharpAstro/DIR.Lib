@@ -29,6 +29,19 @@ public static class TextInputRenderer
     public static TextInputColors Colors { get; set; } = new TextInputColors();
 
     /// <summary>
+    /// The inset between the field's left/right edge and its text, in the units
+    /// <paramref name="fontSize"/> is given in.
+    /// <para>
+    /// Stated once and read by both halves, because <see cref="Layout.Content.TextInput"/> made the two
+    /// halves separate: the layout engine has to reserve room for the inset when it measures the field, and
+    /// <see cref="Render"/> has to leave exactly that much when it draws. A literal in each is the shape
+    /// where a later tweak to one silently mis-sizes the other -- the sample text fitting the box in the
+    /// measure pass and being clipped in the paint.
+    /// </para>
+    /// </summary>
+    public static float HorizontalPadding(float fontSize) => fontSize * 0.4f;
+
+    /// <summary>
     /// Renders a text input field at the specified position.
     /// </summary>
     /// <param name="renderer">Target renderer.</param>
@@ -64,11 +77,22 @@ public static class TextInputRenderer
             borderColor, 1);
 
         // Text or placeholder
-        var padding = (int)(fontSize * 0.4f);
+        var padding = (int)HorizontalPadding(fontSize);
         var textX = x + padding;
         var textY = y;
         var textW = width - padding * 2;
         var textH = height;
+
+        // No font: draw the box and stop, rather than throwing. This is the same contract the layout text
+        // helpers on PixelWidgetBase carry (an unconfigured widget draws no text), and it stopped being
+        // merely nice-to-have when Layout.Content.TextInput started routing fields through here: a headless
+        // render is how the layout tests check what was drawn, and a tree with a label in it would render
+        // while the same tree with a FIELD in it threw. Every path below either draws or measures glyphs, so
+        // the guard covers the caret and the selection too -- their positions are glyph measurements.
+        if (string.IsNullOrEmpty(fontFamily))
+        {
+            return;
+        }
 
         var displayText = state.Text.Length > 0 ? state.Text : (state.IsActive ? "" : state.Placeholder);
         var textColor = state.Text.Length > 0 ? colors.Text : colors.Placeholder;
