@@ -88,6 +88,24 @@ public abstract partial record Node
     /// parent-before-children, a container's background lands under its content (panels, rows, headers).</summary>
     public RGBAColor32? Background { get; init; }
 
+    /// <summary>
+    /// Fill painted instead of <see cref="Background"/> while the pointer is inside this node's arranged
+    /// rect. Null (default) is inert: a node without it paints as before, whatever the pointer is doing.
+    /// <para>
+    /// Resolved at PAINT time against the rect the node was actually arranged into, which is the whole
+    /// point of it living here: a consumer computing a control's rect a second time to hover-test it has
+    /// no way to stay in step with the engine, and drifts the moment padding, a spacer or a row count
+    /// changes. It is the same guarantee <see cref="Hit"/> already gets by being bound to that rect.
+    /// </para>
+    /// <para>
+    /// The pointer comes from the widget (<c>PixelWidgetBase.Pointer</c>), which the host sets — a host
+    /// that never sets one has no hover, and every node keeps its ordinary background. A host that does
+    /// must repaint on pointer motion, since motion is not otherwise a reason to draw a frame and the
+    /// highlight would sit lit behind a cursor that has left.
+    /// </para>
+    /// </summary>
+    public RGBAColor32? HoverBackground { get; init; }
+
     /// <summary>Corner radius in design units for this node's <see cref="Background"/> (and a
     /// <see cref="Content.Box"/> leaf's own fill). 0 (default) is a square corner and paints exactly as
     /// before, so this is inert until asked for.

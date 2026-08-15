@@ -64,6 +64,11 @@ public abstract partial record Node
     /// <summary>Paint a background across this node's whole arranged rect (under its children).</summary>
     public Node Bg(RGBAColor32 color) => this with { Background = color };
 
+    /// <summary>Paint <paramref name="color"/> instead of <see cref="Node.Bg"/> while the pointer is over
+    /// this node. See <see cref="Node.HoverBackground"/> — the host supplies the pointer and repaints on
+    /// motion; without one this is inert.</summary>
+    public Node BgHover(RGBAColor32 color) => this with { HoverBackground = color };
+
     /// <summary>Round the corners of this node's <see cref="Bg"/> (and a <see cref="Content.Box"/> leaf's
     /// own fill) by <paramref name="designUnits"/>. Chrome only -- arrange is unchanged, so a rounded node
     /// occupies exactly the rect a square one would. See <see cref="CornerRadius"/> for how each surface
