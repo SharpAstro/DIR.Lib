@@ -104,18 +104,11 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
     /// so a host that already sets this keeps working.</para></summary>
     public bool NewTabHovered { get; set; }
 
-    /// <summary>
-    /// Where the pointer is, in the coordinates <see cref="Render"/> is given, or null when it is
-    /// outside the window (or over something in front of the bar). Hovering the strip needs no other
-    /// call: the bar resolves which tab, and whether the ✕ inside it, while it lays the tabs out.
-    /// </summary>
-    /// <remarks>
-    /// A position rather than a hovered index, because the bar owns the tab widths — see
-    /// <see cref="ShowNewTabButton"/> for the same argument about the + button's placement. A host
-    /// asked to supply the index instead would have to hit-test against the PREVIOUS frame's
-    /// geometry, which lags visibly on the frame a tab opens, closes or is dragged past the pointer.
-    /// </remarks>
-    public (float X, float Y)? Pointer { get; set; }
+    // The bar's own Pointer is now PixelWidgetBase.Pointer: this was the first widget to need one, and
+    // the argument it was declared with — a position rather than a hovered index, because the widget owns
+    // the geometry and a host would have to hit-test last frame's — is the general one. Hovering the
+    // strip still needs no other call: the bar resolves which tab, and whether the ✕ inside it, while it
+    // lays the tabs out. Same type and semantics, so a host that sets it reads unchanged.
 
     /// <summary>
     /// Lays the strip out and paints it, registering each tab body, each ✕ and the + as it goes.

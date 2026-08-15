@@ -211,6 +211,30 @@ namespace DIR.Lib
         public bool DrewThisFrame => RegionsAreCurrent;
 
         /// <summary>
+        /// Where the pointer is, in this widget's coordinates, or null when it is outside the window (or
+        /// over something in front of this widget). Drives <see cref="Layout.Node.HoverBackground"/> and
+        /// the row highlight in <see cref="RenderDropdownMenu"/>.
+        /// <para>
+        /// A position rather than a hovered index or rect, for the reason <c>TabBar.Pointer</c> already
+        /// takes one: the widget owns the geometry it drew, so it is the only thing that can say what the
+        /// pointer is over — and it can only say so for the layout it is about to produce, not last
+        /// frame's. Null by default, which makes every consumer that never sets it behave exactly as
+        /// before.
+        /// </para>
+        /// <para>
+        /// A host that sets this must repaint on pointer MOTION. Motion is not otherwise a reason to draw
+        /// a frame, and a highlight resolved during paint cannot notice that the cursor has left if no
+        /// paint happens — it stays lit behind a pointer that is somewhere else entirely.
+        /// </para>
+        /// </summary>
+        public (float X, float Y)? Pointer { get; set; }
+
+        /// <summary>Whether <see cref="Pointer"/> is inside an arranged rect. Top/left inclusive and
+        /// bottom/right exclusive, so two rows sharing an edge never both claim it.</summary>
+        private bool PointerWithin(Rect<float> r) =>
+            Pointer is { } p && p.X >= r.X && p.X < r.X + r.Width && p.Y >= r.Y && p.Y < r.Y + r.Height;
+
+        /// <summary>
         /// Registers a clickable region with an optional direct click handler.
         /// </summary>
         protected void RegisterClickable(float x, float y, float w, float h, HitResult result, Action<InputModifier>? onClick = null, CursorKind? cursor = null)
@@ -858,8 +882,12 @@ namespace DIR.Lib
                 var item = dropdown.Items[index];
                 var enabled = item.IsEnabled;
 
-                // The highlight follows the keyboard, so it must never sit on a row Enter would refuse.
-                if (index == dropdown.HighlightIndex && enabled)
+                // The highlight follows the keyboard AND the pointer, and must never sit on a row Enter or
+                // a click would refuse. Hovering marks the row the pointer is over without moving
+                // HighlightIndex: that one is where the keyboard is, and a mouse crossing the list on its
+                // way somewhere else must not silently become what Enter takes.
+                var hovered = PointerWithin(new Rect<float>(rect.X, rect.Y, rect.Width, rowH));
+                if ((index == dropdown.HighlightIndex || hovered) && enabled)
                 {
                     FillRect(rect.X, rect.Y, rect.Width, rowH, highlightColor);
                 }
@@ -994,7 +1022,14 @@ namespace DIR.Lib
                 // through the context's axis-free mapping, the same one that resolved it at measure time.
                 var radius = ctx.ToSurface(node.CornerRadius);
 
-                if (node.Background is { } bg)
+                // Hover resolves HERE, against the rect the node was arranged into, so what lights up and
+                // what the pointer is over are the same rectangle by construction -- the guarantee the
+                // click region below already has. A node with no HoverBackground, or a host that sets no
+                // Pointer, paints exactly as it did before.
+                var nodeFill = node.HoverBackground is { } hover && PointerWithin(bounds)
+                    ? hover
+                    : node.Background;
+                if (nodeFill is { } bg)
                 {
                     FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, bg, radius);
                 }
