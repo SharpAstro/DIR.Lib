@@ -152,6 +152,26 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
     /// </summary>
     public TabSizing Sizing { get; set; } = TabSizing.Content;
 
+    /// <summary>
+    /// Whether tabs carry a ✕. Default true, which is what the strip has always drawn. False draws none
+    /// and, because the box is no longer reserved, makes every tab narrower by it — a strip whose tabs
+    /// cannot be closed should not hold a gap where the control would have been.
+    /// </summary>
+    /// <remarks>
+    /// Positive logic, like <see cref="CanReorderTabs"/> and unlike <see cref="ShowNewTabButton"/>: a
+    /// property that has to be read as "not not closable" is one more negation than a call site should
+    /// have to carry. <see cref="ShowNewTabButton"/> keeps its name because renaming a shipped property
+    /// costs consumers more than the inconsistency does.
+    /// </remarks>
+    public bool CanCloseTabs { get; set; } = true;
+
+    /// <summary>
+    /// Whether a drag may reorder the strip. Default true. False makes <see cref="SlotAt"/> report -1
+    /// for every position, which is the whole mechanism: the BAR never reorders anything, it only
+    /// nominates the slot a host would drop into, so declining to nominate one is how it says no.
+    /// </summary>
+    public bool CanReorderTabs { get; set; } = true;
+
     /// <summary>True while the strip runs down an edge rather than across one.</summary>
     private bool Vertical => Side is TabStripSide.Left or TabStripSide.Right;
 
@@ -272,8 +292,13 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
         }
 
         var flow = flowStart;
-        var closeSize = CloseBox;
         var uniform = Sizing == TabSizing.Uniform;
+
+        // Zero when the strip cannot close tabs, so the box is not reserved either — the width feeds
+        // the extent below, which is what makes a non-closable tab narrower rather than gapped. A
+        // uniform cell has no room for one whatever the flag says.
+        var closeSize = CanCloseTabs && !uniform ? CloseBox : 0f;
+        var trailingInset = closeSize > 0f ? closeSize + Pad * 0.5f : Pad;
         for (var i = 0; i < source.Count; i++)
         {
             var title = source.Label(i);
@@ -336,7 +361,7 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
             // content" a vertical strip defaults to — rotated text is a renderer capability, not a flag.
             var closeRight = (int)(rect.Right - Pad * 0.4f);
             var closeLeft = (int)(closeRight - closeSize);
-            var showClose = enabled && !uniform;
+            var showClose = enabled && closeSize > 0f;
 
             if (uniform)
             {
@@ -360,7 +385,7 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
                 }
 
                 // Label, truncated to leave room for the close button. Drawn with per-script fallback.
-                var labelRight = (int)(rect.Right - closeSize - Pad * 0.5f);
+                var labelRight = (int)(rect.Right - trailingInset);
                 var label = FitTitle(title, labelRight - labelLeft);
                 DrawText(label.AsSpan(), FontPath, labelLeft, rect.Y, labelRight - labelLeft,
                     rect.Height - (int)(2 * DpiScale), Font, ink, TextAlign.Near, TextAlign.Center);
@@ -592,7 +617,8 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
 
     /// <summary>Maps a coordinate on the FLOW axis — x on a horizontal strip, y on a vertical one — to
     /// the tab slot a dragged tab should occupy, using the midpoints of the tab regions the last
-    /// <c>Render</c> registered. Returns -1 if no tabs are laid out.</summary>
+    /// <c>Render</c> registered. Returns -1 if no tabs are laid out, or if
+    /// <see cref="CanReorderTabs"/> is false.</summary>
     /// <remarks>
     /// A drop target is not a hit — there is no region for the gap BETWEEN two tabs — so this is the one
     /// thing the bar computes from its layout rather than reporting from it. It still reads the registered
@@ -600,6 +626,11 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
     /// </remarks>
     public int SlotAt(float flow)
     {
+        if (!CanReorderTabs)
+        {
+            return -1;
+        }
+
         var vertical = Vertical;
         var slot = -1;
         foreach (var region in RegisteredRegions)
