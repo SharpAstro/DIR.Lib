@@ -181,6 +181,31 @@ public enum IconKind
     /// <summary><see cref="CaretUp"/> inverted: "this opens downward", or "this is already open".</summary>
     CaretDown,
 
+    /// <summary>
+    /// A cross of two bars: "add one". The mark on a new-tab button, and the increment half of a stepper.
+    /// <para>
+    /// Unlike most of this set it has a perfectly safe ASCII spelling, so it looks like the one kind that
+    /// did not need naming -- and it is the one where the pixel side gains the most. A typeset <c>+</c> is
+    /// drawn by whichever face the host resolved, at that face's stroke weight, sitting on the TEXT
+    /// baseline rather than centred in its box; two rectangles are crisp at 30 px, weight-matched to
+    /// whatever sits beside them, and centred on the rect they were arranged into. Every consumer that
+    /// wanted one had already reached that conclusion and was drawing its own two rectangles.
+    /// </para>
+    /// </summary>
+    Plus,
+
+    /// <summary>
+    /// One bar: "remove one", the decrement half of a stepper and the mark on an unpin or collapse control.
+    /// <para>
+    /// The pair is why both earn their place: a stepper is <c>[-] value [+]</c> and needs the two marks to
+    /// share a stroke weight and a centre line, which is exactly what two independently-drawn glyphs (or
+    /// two hand-rolled rectangle sets) drift apart on. This is also the ONE kind that cannot ink its full
+    /// square -- a horizontal bar has no height to give -- so it inks the full WIDTH and takes
+    /// <see cref="Plus"/>'s bar thickness verbatim, which is what makes the two line up.
+    /// </para>
+    /// </summary>
+    Minus,
+
     /// <summary>Three stacked bars: "lay these out as a list of rows".</summary>
     List,
 

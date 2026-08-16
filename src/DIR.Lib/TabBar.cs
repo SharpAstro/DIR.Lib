@@ -347,9 +347,12 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
     /// rather than where a second sizing pass believes they did.
     /// </summary>
     /// <remarks>
-    /// Its mark is two rectangles rather than a typeset "+", which is also why it is not a
-    /// <see cref="Layout.Content.Icon"/>: the icon vocabulary has no Plus, and adding one would owe a
-    /// cell-surface drawing for a control no cell surface has.
+    /// Its mark IS a <see cref="Layout.IconKind.Plus"/>, drawn straight rather than through a tree: the
+    /// button is one rect at a position the tree does not know, so a node here would buy nothing. What the
+    /// named kind buys is that the mark is no longer this file's private pair of rectangles -- the argument
+    /// against adding it was that no cell surface has a new-tab button, which was true and answered the
+    /// wrong question, since <see cref="Layout.IconKind.Minus"/> and it are a stepper's two halves and a
+    /// terminal has plenty of those.
     /// </remarks>
     private void RenderNewTabButton(float tabsEnd, bool vertical, float thickness, float crossStart,
         float flowStart, float flowEnd, float? pointerFlow)
@@ -377,15 +380,12 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
         var sep = TrailingEdge(rect, Border, vertical);
         FillRect(sep.X, sep.Y, sep.Width, sep.Height, Colors.Separator);
 
-        // Two bars rather than a "+" glyph: the mark has to be there on any face the host happens to be
+        // Rectangles rather than a "+" glyph: the mark has to be there on any face the host happens to be
         // using, and geometry stays crisp at 30 px where a typeset plus does not.
-        var cx = rect.X + rect.Width * 0.5f;
-        var cy = rect.Y + rect.Height * 0.5f;
-        var arm = 5f * DpiScale;
-        var t = Math.Max(1f, 1.6f * DpiScale);
+        var mark = 11f * DpiScale;
         var ink = NewTabActive || hovered ? Colors.ActiveText : Colors.InactiveText;
-        FillRect(cx - arm, cy - t * 0.5f, arm * 2f, t, ink);
-        FillRect(cx - t * 0.5f, cy - arm, t, arm * 2f, ink);
+        DrawLayoutIcon(Layout.IconKind.Plus, new RectF32(
+            rect.X + (rect.Width - mark) * 0.5f, rect.Y + (rect.Height - mark) * 0.5f, mark, mark), ink);
 
         RegisterClickable(rect.X, rect.Y, rect.Width, rect.Height,
             new HitResult.ButtonHit(TabBarRegions.NewTab), cursor: CursorKind.Pointer);

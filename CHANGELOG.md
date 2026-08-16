@@ -58,8 +58,8 @@ active.
 TabBar paints through it, so the strip exists ONCE: the widget builds the tree, arranges it and lets
 PaintLayout register the regions, and its 69 geometry tests pass unchanged. What stays imperative is
 the "+" button alone, which belongs to a tab BAR rather than to a tab strip -- a nav rail has none and
-a terminal tab bar has none -- and whose mark is two rectangles, since the icon vocabulary has no Plus
-and adding one would owe a cell-surface drawing for a control no cell surface has.
+a terminal tab bar has none. It is one rect at a position the tree does not know, so a node for it
+would buy nothing; its MARK is now IconKind.Plus (below) rather than this file's own rectangles.
 
 ITabStripSource is how the titles overload avoids materialising a TabItem list per frame: the builder
 never reads a tab's VALUE, only its label, glyph and enabled state.
@@ -104,6 +104,21 @@ SlotAt report -1 everywhere, which is the whole mechanism rather than a special 
 reorders anything itself, it nominates the slot a host would drop into, so declining to nominate one
 is how it says no. ShowNewTabButton keeps its older name despite the inconsistency, because renaming a
 shipped property costs a consumer more than the inconsistency does.
+
+IconKind gains Plus and Minus, as a PAIR. Plus alone was declined while the "+" was being migrated, on
+the grounds that no cell surface has a new-tab button, so the cell drawing it would owe had no
+consumer. True, and the wrong question: a stepper is [-] value [+], and a terminal has plenty of
+those. Both are built from rectangles like the rest of the set, and the plus is the kind where that
+buys the most despite having a perfectly safe ASCII spelling -- a typeset + is drawn by whichever face
+the host resolved, at that face's stroke weight, sitting on the TEXT baseline rather than centred in
+its box. Every consumer that wanted one had already reached that conclusion and was drawing its own
+two rectangles.
+
+Minus is the sole kind that cannot ink its full square, a horizontal bar having no height to give. It
+fills its full WIDTH and takes Plus's bar thickness and centre line verbatim, which is what makes the
+two line up in the stepper that justifies them: two independently-drawn marks are exactly what drift
+apart by a pixel of weight or baseline, and side by side that is the one difference a reader is
+guaranteed to catch.
 
 SOURCE-BREAKING for a named argument, which is the only reason to read this twice: Render's
 contentLeft / viewportW are now contentStart / viewportEnd, and SlotAt's x is now flow, because on a
