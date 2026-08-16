@@ -229,6 +229,65 @@ public class LayoutIconTests
         down(0, last).ShouldBeFalse("the bottom corners are outside a triangle pointing down");
     }
 
+    /// <summary>
+    /// The plus reaches all four edges, and its centre is inked -- the two things that separate it from the
+    /// caret (a triangle, so its top corners are empty) and from the grid (a gutter, so its centre is).
+    /// </summary>
+    [Fact]
+    public void ThePlusReachesAllFourEdges_AndIsSolidThroughItsCentre()
+    {
+        var (inked, _) = Paint(Layout.IconKind.Plus);
+        var mid = (int)Surface / 2;
+        var last = (int)Surface - 1;
+
+        inked(mid, 0).ShouldBeTrue("the vertical arm must reach the top edge");
+        inked(mid, last).ShouldBeTrue("...and the bottom");
+        inked(0, mid).ShouldBeTrue("the horizontal arm must reach the left edge");
+        inked(last, mid).ShouldBeTrue("...and the right");
+        inked(mid, mid).ShouldBeTrue("the arms cross at the centre");
+
+        // The corners are what make it a cross rather than a filled square.
+        inked(0, 0).ShouldBeFalse("a corner is outside both arms");
+        inked(last, last).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The minus is the plus's horizontal arm and nothing else -- same thickness, same centre line. That
+    /// shared geometry is the whole reason the two are one family: a stepper sets them side by side, where
+    /// a one-pixel difference in weight or baseline is the difference a reader is guaranteed to notice.
+    /// It is also the one kind that cannot ink its full square, so this pins WIDTH rather than both axes.
+    /// </summary>
+    [Fact]
+    public void TheMinusIsThePlusHorizontalArm_SameThicknessAndSameCentreLine()
+    {
+        var (plus, _) = Paint(Layout.IconKind.Plus);
+        var (minus, _) = Paint(Layout.IconKind.Minus);
+        var mid = (int)Surface / 2;
+        var last = (int)Surface - 1;
+
+        minus(0, mid).ShouldBeTrue("the bar must reach the left edge");
+        minus(last, mid).ShouldBeTrue("...and the right");
+        minus(mid, 0).ShouldBeFalse("a minus has no vertical arm");
+        minus(mid, last).ShouldBeFalse();
+
+        // Walk a column clear of the plus's vertical arm, so what is counted is the horizontal bar alone.
+        static int BarRows(Func<int, int, bool> inked, int column)
+        {
+            var rows = 0;
+            for (var y = 0; y < (int)Surface; y++)
+            {
+                if (inked(column, y))
+                {
+                    rows++;
+                }
+            }
+
+            return rows;
+        }
+
+        BarRows(minus, 2).ShouldBe(BarRows(plus, 2));
+    }
+
     [Fact]
     public void AnIconIsDrawnAtItsDeclaredSize_NotStretchedToItsCell()
     {

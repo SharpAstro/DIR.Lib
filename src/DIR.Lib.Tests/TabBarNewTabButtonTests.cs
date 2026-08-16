@@ -44,6 +44,47 @@ public class TabBarNewTabButtonTests
     // Every title here measures well under TabBar's minimum, so each tab is exactly MinTabW wide.
     private const float MinTabW = 92f;
 
+    /// <summary>
+    /// The mark is centred INSIDE the button and reaches neither its edges nor its neighbour. It became a
+    /// <see cref="Layout.IconKind.Plus"/> rather than this file's own pair of rectangles, and that swap
+    /// moved real arithmetic -- a centring error would leave the hit region, the plate and the tooltip all
+    /// correct, with the mark drawn somewhere else, which every other test here would pass.
+    /// <para>
+    /// It draws through the ONE renderer that can be asserted on, since the + has no shipping consumer to
+    /// look at: unlike the tabs, nothing about it is observable through a region.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void DrawsItsMarkCentredInsideTheButton_NotAtItsEdges()
+    {
+        var renderer = new StubRenderer(600, 40);
+        var bar = NewBar(renderer);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ["a", "b"], activeIndex: 0);
+
+        var pixels = renderer.Surface.Pixels;
+        var left = (int)(MinTabW * 2);
+        bool Inked(int x, int y) => pixels[(y * 600 + x) * 4 + 3] > 0;
+
+        // The plate fills the whole button, so ink alone proves nothing -- the MARK is what differs from
+        // its surroundings. Compare against the plate colour a corner of the same button carries.
+        var plate = pixels[((2 * 600) + left + 2) * 4 + 0];
+        bool IsMark(int x, int y) => pixels[(y * 600 + x) * 4 + 0] != plate;
+
+        var cx = left + (int)(Height / 2f);
+        var cy = (int)(Height / 2f);
+
+        IsMark(cx, cy).ShouldBeTrue("the arms cross at the button's centre");
+        IsMark(cx, cy - 4).ShouldBeTrue("the vertical arm runs above centre");
+        IsMark(cx - 4, cy).ShouldBeTrue("the horizontal arm runs left of centre");
+
+        // An 11-unit mark in a 30-unit button leaves ~9 units of clearance, so the button's own corners and
+        // the column just inside its edges are plate, not mark.
+        IsMark(left + 2, cy).ShouldBeFalse("the mark must not reach the button's left edge");
+        IsMark(left + (int)Height - 2, cy).ShouldBeFalse("...nor its right");
+        IsMark(cx, 1).ShouldBeFalse("...nor its top");
+        Inked(left + 1, 1).ShouldBeTrue("the plate itself is drawn, so 'no mark' is not 'nothing drawn'");
+    }
+
     [Fact]
     public void SitsImmediatelyAfterTheLastTab()
     {

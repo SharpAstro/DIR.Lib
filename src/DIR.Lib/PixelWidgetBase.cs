@@ -310,6 +310,12 @@ namespace DIR.Lib
         /// produced ink spanning 63% (a half-disc) to 100% (the grid) of it, a 1.6x spread that no amount of
         /// centring can hide. A new kind owes the same, and the LayoutIconTests measure it.
         /// <para>
+        /// <see cref="Layout.IconKind.Minus"/> is the sole exception and could not be otherwise: a horizontal
+        /// bar has no height to give. It fills its full WIDTH and borrows <see cref="Layout.IconKind.Plus"/>'s
+        /// bar thickness and centre line, so the pair still lines up where it matters -- beside each other in
+        /// a stepper.
+        /// </para>
+        /// <para>
         /// A kind with no drawing here paints nothing rather than throwing -- a blank button is visible on
         /// the first frame, which is the right way for a forgotten kind to announce itself.
         /// </para>
@@ -406,6 +412,27 @@ namespace DIR.Lib
                     DrawLine(acx + aw / 2f, acy + ah / 2f, acx, acy - ah / 2f, ink, stroke);
                     DrawLine(acx - aw * 0.3f, acy + ah * 0.16f, acx + aw * 0.3f, acy + ah * 0.16f, ink, stroke);
                     break;
+
+                case Layout.IconKind.Plus:
+                case Layout.IconKind.Minus:
+                {
+                    // Whole pixels, because a half-covered bar at chip size reads as a LIGHTER mark than its
+                    // neighbour rather than a thinner one -- and a stepper sets the two side by side, where
+                    // that is the one difference the eye is guaranteed to catch.
+                    var barT = MathF.Max(1f, MathF.Round(side * 0.14f));
+                    var px = rect.X + (rect.Width - side) / 2f;
+                    var py = rect.Y + (rect.Height - side) / 2f;
+
+                    // The arm across is drawn for both, identically, which is what makes the pair align: one
+                    // thickness, one centre line, neither re-derived by the other kind.
+                    FillRect(px, MathF.Round(py + (side - barT) / 2f), side, barT, ink);
+                    if (kind == Layout.IconKind.Plus)
+                    {
+                        FillRect(MathF.Round(px + (side - barT) / 2f), py, barT, side, ink);
+                    }
+
+                    break;
+                }
 
                 case Layout.IconKind.List:
                     var barW = unit * 5.2f;
