@@ -39,6 +39,18 @@ public record TabBarColors
     public RGBAColor32 CloseMark { get; init; } = new(0xc0, 0xc0, 0xc8, 0xff);
 
     /// <summary>
+    /// Label of a tab that cannot be selected (<see cref="TabItem{T}.IsEnabled"/> false). Default: dark
+    /// slate (#4a4a58) — the SEPARATOR weight rather than a third text tone, deliberately.
+    /// </summary>
+    /// <remarks>
+    /// A disabled tab is not de-emphasised text, it is an affordance that is not there, and WCAG exempts
+    /// inactive components from the contrast minimums for exactly that reason. Taking a text role instead
+    /// makes it read as merely quiet — indistinguishable from an idle tab, so the strip stops saying which
+    /// of its tabs will answer a click.
+    /// </remarks>
+    public RGBAColor32 DisabledText { get; init; } = new(0x4a, 0x4a, 0x58, 0xff);
+
+    /// <summary>
     /// Derives a bar palette from the shared chrome roles in <paramref name="palette"/>, so an app that
     /// already holds a <see cref="UiTheme"/> drives the bar from that one source instead of restating
     /// eight colours next to it.
@@ -67,5 +79,6 @@ public record TabBarColors
         ActiveText = palette.HeaderText,
         InactiveText = palette.DimText,
         CloseMark = palette.BodyText,
+        DisabledText = palette.SeparatorStrong,
     };
 }

@@ -9,6 +9,36 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.2
+
+A tab carries what it MEANS. TabItem<T> and the Render<T> / HandleMouseDown<T> pair hand a press back
+as TabClick<T> -- the value the tab selects -- instead of an index the host maps through a switch that
+has to agree with the title order while nothing checks it. Same argument DropdownItem<T> is built on,
+and it bites harder here: reordering a strip of bare titles silently selects the wrong page. The
+titles overload is untouched and lays out identically (pinned by comparing the painted surfaces), so
+this is purely additive.
+An item also carries an Icon, and it is a STRING rather than a Layout.Content.Icon named by meaning.
+That inverts the usual rule for a reason: the rule exists because a symbol character may not be
+covered by the bound font, and PixelWidgetBase.DrawText already resolves exactly that -- it splits a
+run by coverage through FontFallback and routes supplementary-plane codepoints to EmojiFontPath even
+without one. A mark built from rectangles could not draw a telescope or a ringed planet at all, so
+naming the meaning would make this whole class of tab icon inexpressible. Width for the glyph is a
+FIXED box, never measured: a pictograph's advance varies by face, so measuring would make tab width
+depend on which fallback happened to resolve.
+IsEnabled + Tooltip complete the item. A disabled tab is drawn greyed (TabBarColors.DisabledText, the
+SEPARATOR weight rather than a third text tone -- WCAG exempts inactive components from the contrast
+minimums, and a text role would read as merely quiet) and is inert: no press, no cursor, no ✕. It
+registers under its own region id, TabBarRegions.DisabledTabs, which is what makes every "a tab you
+can press" query exclude it with no second copy of the enabled test -- while keeping the region
+PRESENT, so SlotAt's position walk stays dense. Drop it instead and every tab after a disabled one
+answers a drag with its neighbour's slot.
+TabItem stores IsEnabled inverted so that `new TabItem<T>()` and `default` come out ENABLED: a record
+struct ignores a primary-constructor property initialiser, so the obvious `= true` reads correctly and
+manufactures a silently unselectable tab for anyone reaching the parameterless form.
+TabBar.HoveredIndex reports the tab under the pointer, resolved while the tabs are laid out. The bar
+deliberately does not draw the tooltip: it is painted OUTSIDE the strip, over whatever is adjacent,
+and a widget that clips to its own bounds cannot put it there.
+
 ## 8.1
 
 A widget can be told where the pointer is, and chrome lights under it. PixelWidgetBase.Pointer
