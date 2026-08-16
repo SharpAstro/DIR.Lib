@@ -44,6 +44,18 @@ rect form with cross origin 0 and Height for thickness -- pinned by rendering bo
 painted surfaces -- but Bottom and Right have to be told where the far edge is, a viewport dimension
 the bar does not know, so those need the rect.
 
+TabBarColors.HoverBackground (nullable, null = ActiveBackground, i.e. unchanged) lets a strip name a
+third plate tone. The default stays what it was and for the stated reason -- a hovered tab previews
+what clicking gives you, and a palette naming two chrome surfaces has no third tone to offer. But that
+reasoning stops holding for a strip that draws no accent: hover and active then render identically, so
+the strip cannot say which tab a click would take you to. A nav rail is exactly that case, its
+selected cell being a filled plate rather than a plate plus an accent.
+
+PixelWidgetBase.HitTestAndDispatch becomes virtual, so a COMPOSITE widget can extend dispatch to the
+widgets it paints. One that hosts children draws them into the same surface, but their regions live on
+THEIR trackers, so a host asking only the composite silently misses every control the children
+registered -- and the composite is the only thing that knows its own paint order.
+
 CanCloseTabs and CanReorderTabs (both default true, both positive logic) switch the two affordances
 off. Closing off draws no ✕ AND stops reserving the box, so tabs are narrower by it -- a strip whose
 tabs cannot be closed should not hold a gap where the control would have been. Reordering off makes

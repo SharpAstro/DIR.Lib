@@ -337,8 +337,10 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
             // surface — inventing one by blending would paint a colour the theme never chose. The
             // accent strip stays exclusive to the active tab, which is what keeps the two apart.
             var lifted = active || hovered;
-            FillRect(rect.X, rect.Y, rect.Width, rect.Height,
-                lifted ? Colors.ActiveBackground : Colors.InactiveBackground);
+            var plate = active ? Colors.ActiveBackground
+                      : hovered ? Colors.HoverBackground ?? Colors.ActiveBackground
+                                : Colors.InactiveBackground;
+            FillRect(rect.X, rect.Y, rect.Width, rect.Height, plate);
             if (active)
             {
                 var accent = OuterEdge(rect, Border * 2, vertical);
@@ -445,8 +447,10 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
             var rect = TabRect(flow, thickness, crossStart, thickness, vertical);   // square
             var hovered = NewTabHovered
                 || (hoverFlow is { } hf && hf >= flow && hf < flow + thickness);
-            FillRect(rect.X, rect.Y, rect.Width, rect.Height,
-                NewTabActive || hovered ? Colors.ActiveBackground : Colors.InactiveBackground);
+            var plate = NewTabActive ? Colors.ActiveBackground
+                      : hovered ? Colors.HoverBackground ?? Colors.ActiveBackground
+                                : Colors.InactiveBackground;
+            FillRect(rect.X, rect.Y, rect.Width, rect.Height, plate);
             if (NewTabActive)
             {
                 var accent = OuterEdge(rect, Border * 2, vertical);

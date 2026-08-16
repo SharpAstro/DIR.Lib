@@ -22,6 +22,25 @@ public record TabBarColors
     /// <summary>Fill of every other tab. Default: recessed slate (#1c1c26).</summary>
     public RGBAColor32 InactiveBackground { get; init; } = new(0x1c, 0x1c, 0x26, 0xff);
 
+    /// <summary>
+    /// Fill of an idle tab under the pointer. <b>Null (the default) means it takes
+    /// <see cref="ActiveBackground"/></b>, which is what the strip has always drawn.
+    /// </summary>
+    /// <remarks>
+    /// Defaulting to the active plate is deliberate and stays the default: a hovered tab previews what
+    /// clicking gives you, it is what the + already does, and a palette that names only two chrome
+    /// surfaces has no third tone to offer — inventing one by blending would paint a colour the theme
+    /// never chose.
+    /// <para>
+    /// It is nullable rather than absent because that reasoning stops holding for a strip whose theme
+    /// DOES name a third surface, and for one drawing no accent. Hover and active are then rendered
+    /// identically, so the strip cannot say which tab a click would actually take you to — and a nav
+    /// rail is exactly that case, since its selected cell is a filled plate rather than a plate plus an
+    /// accent. Set this and the three states are three tones again.
+    /// </para>
+    /// </remarks>
+    public RGBAColor32? HoverBackground { get; init; }
+
     /// <summary>Rule between tabs and along the bar's bottom edge. Default: mid slate (#3a3a48).</summary>
     public RGBAColor32 Separator { get; init; } = new(0x3a, 0x3a, 0x48, 0xff);
 

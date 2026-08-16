@@ -35,6 +35,13 @@ public class TabBarAffordanceTests
     }
 
     private static readonly RGBAColor32 Rule = new(0x99, 0x00, 0x99, 0xff);
+    private static readonly RGBAColor32 Idle = new(0x11, 0x22, 0x33, 0xff);
+    private static readonly RGBAColor32 Lifted = new(0x44, 0x55, 0x66, 0xff);
+    private static readonly RGBAColor32 Hovered = new(0x22, 0x77, 0x22, 0xff);
+
+    // Mid-height and left of the close box, so it reads the tab's own plate rather than the ✕'s.
+    private static RGBAColor32 TabPlate(RgbaImage image, int tab) =>
+        PixelAt(image, (int)(tab * MinTabW + MinTabW * 0.5f) - (int)CloseBox, (int)(Height * 0.5f));
 
     private static TabBar<RgbaImage> NewBar(Renderer<RgbaImage> renderer)
     {
@@ -133,6 +140,37 @@ public class TabBarAffordanceTests
         bar.HandleMouseDown(closeCentre, Height * 0.5f, items)
             .ShouldBe(new TabClick<Page>(0, Page.Home, Close: true));
         bar.SlotAt(MinTabW * 0.25f).ShouldBe(0);
+    }
+
+    [Fact]
+    public void AnIdleHoveredTabTakesTheActivePlateUnlessAHoverToneIsNamed()
+    {
+        // The default is deliberate -- a hovered tab previews what clicking gives you, and a palette
+        // naming two chrome surfaces has no third tone to offer. But a strip drawing no accent renders
+        // hover and active identically under it, so it cannot say which tab a click would take you to.
+        var items = ThreePages();
+
+        var sharedRenderer = new StubRenderer(600, 40);
+        var shared = NewBar(sharedRenderer);
+        shared.Colors = shared.Colors with { ActiveBackground = Lifted, InactiveBackground = Idle };
+        shared.Pointer = (MinTabW * 1.5f, Height * 0.5f);
+        shared.Render(contentStart: 0f, viewportEnd: 600f, items, Page.Home);
+        TabPlate(sharedRenderer.Surface, 1).ShouldBe(Lifted);
+
+        var tonedRenderer = new StubRenderer(600, 40);
+        var toned = NewBar(tonedRenderer);
+        toned.Colors = toned.Colors with
+        {
+            ActiveBackground = Lifted,
+            InactiveBackground = Idle,
+            HoverBackground = Hovered,
+        };
+        toned.Pointer = (MinTabW * 1.5f, Height * 0.5f);
+        toned.Render(contentStart: 0f, viewportEnd: 600f, items, Page.Home);
+
+        TabPlate(tonedRenderer.Surface, 1).ShouldBe(Hovered);   // hovered, idle
+        TabPlate(tonedRenderer.Surface, 0).ShouldBe(Lifted);    // active keeps its own plate
+        TabPlate(tonedRenderer.Surface, 2).ShouldBe(Idle);      // untouched
     }
 
     // RgbaImage exposes its buffer rather than a pixel accessor (see DrawLineTests.IsLit).
