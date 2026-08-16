@@ -44,6 +44,14 @@ rect form with cross origin 0 and Height for thickness -- pinned by rendering bo
 painted surfaces -- but Bottom and Right have to be told where the far edge is, a viewport dimension
 the bar does not know, so those need the rect.
 
+CanCloseTabs and CanReorderTabs (both default true, both positive logic) switch the two affordances
+off. Closing off draws no ✕ AND stops reserving the box, so tabs are narrower by it -- a strip whose
+tabs cannot be closed should not hold a gap where the control would have been. Reordering off makes
+SlotAt report -1 everywhere, which is the whole mechanism rather than a special case: the bar never
+reorders anything itself, it nominates the slot a host would drop into, so declining to nominate one
+is how it says no. ShowNewTabButton keeps its older name despite the inconsistency, because renaming a
+shipped property costs a consumer more than the inconsistency does.
+
 SOURCE-BREAKING for a named argument, which is the only reason to read this twice: Render's
 contentLeft / viewportW are now contentStart / viewportEnd, and SlotAt's x is now flow, because on a
 vertical strip the old names named the wrong axis. Positional callers are unaffected, and nothing in
