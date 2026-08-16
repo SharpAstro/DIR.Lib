@@ -55,8 +55,14 @@ something the reader cannot see. Decoration exists because a terminal's active p
 reader's own palette, and on a monochrome one the brackets are the only thing left saying which tab is
 active.
 
-TabBar does NOT paint through this yet; it still lays itself out imperatively. So the description
-exists twice until that lands, which is the state this release ships in.
+TabBar paints through it, so the strip exists ONCE: the widget builds the tree, arranges it and lets
+PaintLayout register the regions, and its 69 geometry tests pass unchanged. What stays imperative is
+the "+" button alone, which belongs to a tab BAR rather than to a tab strip -- a nav rail has none and
+a terminal tab bar has none -- and whose mark is two rectangles, since the icon vocabulary has no Plus
+and adding one would owe a cell-surface drawing for a control no cell surface has.
+
+ITabStripSource is how the titles overload avoids materialising a TabItem list per frame: the builder
+never reads a tab's VALUE, only its label, glyph and enabled state.
 
 CompositeWidget<TSurface> is the base for a widget that paints OTHER widgets into the same surface --
 an app chrome hosting a tab strip and a page. It declares its children once, in paint order, and every
