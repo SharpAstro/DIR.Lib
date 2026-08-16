@@ -66,7 +66,7 @@ public class TabBarHoverTests
         var bar = NewBar(renderer);
         // Tab 1 hovered, tab 0 active (so its own lift proves nothing), tab 2 idle.
         bar.Pointer = (MinTabW * 1.5f, Height * 0.5f);
-        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b", "c"], activeIndex: 0);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ["a", "b", "c"], activeIndex: 0);
 
         TabPlate(renderer.Surface, 1).ShouldBe(Lifted);
         TabPlate(renderer.Surface, 2).ShouldBe(Idle);
@@ -78,7 +78,7 @@ public class TabBarHoverTests
         var renderer = new StubRenderer(600, 40);
         var bar = NewBar(renderer);
         bar.Pointer = null;
-        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 0);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ["a", "b"], activeIndex: 0);
 
         TabPlate(renderer.Surface, 1).ShouldBe(Idle);
     }
@@ -91,7 +91,7 @@ public class TabBarHoverTests
         var renderer = new StubRenderer(600, 40);
         var bar = NewBar(renderer);
         bar.Pointer = (MinTabW * 1.5f, Height + 12f);
-        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 0);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ["a", "b"], activeIndex: 0);
 
         TabPlate(renderer.Surface, 1).ShouldBe(Idle);
     }
@@ -106,13 +106,13 @@ public class TabBarHoverTests
         var bar = NewBar(renderer);
         bar.Pointer = (MinTabW * 2.5f, Height * 0.5f);   // over tab 2 of three
 
-        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b", "c"], activeIndex: 0);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ["a", "b", "c"], activeIndex: 0);
         TabPlate(renderer.Surface, 2).ShouldBe(Lifted);
 
         // Tab 2 closes. Nothing is under the pointer now, and tab 1 must NOT have inherited the lift.
         // Painted over the first frame, as a second frame really is — so this also says the strip
         // repaints the plate rather than leaving the previous frame's lift standing.
-        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 0);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ["a", "b"], activeIndex: 0);
         TabPlate(renderer.Surface, 1).ShouldBe(Idle);
     }
 
@@ -124,7 +124,7 @@ public class TabBarHoverTests
         // Centre of tab 0's ✕: its right edge sits Pad*0.4 in from the tab's, and the box is CloseBox wide.
         var closeCentre = MinTabW - 10f * 0.4f - CloseBox * 0.5f;
         bar.Pointer = (closeCentre, Height * 0.5f);
-        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 1);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ["a", "b"], activeIndex: 1);
 
         PixelAt(renderer.Surface, (int)closeCentre, (int)(Height * 0.5f)).ShouldBe(Plate);
         // The tab itself is lifted, not plated — the ✕'s mark is a separate, smaller target.
@@ -137,7 +137,7 @@ public class TabBarHoverTests
         var renderer = new StubRenderer(600, 40);
         var bar = NewBar(renderer);
         bar.Pointer = (MinTabW * 0.5f, Height * 0.5f);   // over tab 0's body, not its ✕
-        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 1);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ["a", "b"], activeIndex: 1);
 
         var otherClose = MinTabW * 2 - 10f * 0.4f - CloseBox * 0.5f;
         PixelAt(renderer.Surface, (int)otherClose, (int)(Height * 0.5f)).ShouldNotBe(Plate);
@@ -152,7 +152,7 @@ public class TabBarHoverTests
         var bar = NewBar(renderer);
         bar.ShowNewTabButton = true;
         bar.Pointer = (MinTabW + Height * 0.5f, Height * 0.5f);
-        bar.Render(contentLeft: 0f, viewportW: 600f, ["a"], activeIndex: 0);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ["a"], activeIndex: 0);
 
         // Just inside the button's left edge, clear of the + mark's arms at its centre.
         PixelAt(renderer.Surface, (int)MinTabW + 3, (int)(Height * 0.5f)).ShouldBe(Lifted);

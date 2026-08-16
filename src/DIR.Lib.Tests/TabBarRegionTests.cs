@@ -51,7 +51,7 @@ public class TabBarRegionTests
     private static TabBar<RgbaImage> ThreeTabs()
     {
         var bar = NewBar(new StubRenderer(600, 40));
-        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b", "c"], activeIndex: 0);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ["a", "b", "c"], activeIndex: 0);
         return bar;
     }
 
@@ -106,7 +106,7 @@ public class TabBarRegionTests
     public void SlotAtIsMinusOneWithNoTabs()
     {
         var bar = NewBar(new StubRenderer(600, 40));
-        bar.Render(contentLeft: 0f, viewportW: 600f, [], activeIndex: -1);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, [], activeIndex: -1);
 
         bar.SlotAt(10f).ShouldBe(-1);
     }
@@ -118,7 +118,7 @@ public class TabBarRegionTests
         // drag drop a tab "into" the + and index one past the end of the session list.
         var bar = NewBar(new StubRenderer(600, 40));
         bar.ShowNewTabButton = true;
-        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 0);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ["a", "b"], activeIndex: 0);
 
         bar.SlotAt(999f).ShouldBe(1);
     }
@@ -139,7 +139,7 @@ public class TabBarRegionTests
         var bar = NewBar(new StubRenderer(600, 40));
         bar.ShowNewTabButton = true;
         bar.Ui.FrameId = 1;
-        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 0);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ["a", "b"], activeIndex: 0);
 
         bar.Ui.FrameId = 2;
 

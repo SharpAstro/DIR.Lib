@@ -86,7 +86,7 @@ public class TabBarItemTests
         // reordering the strip cannot silently select the wrong page.
         var items = ThreePages();
         var bar = NewBar(new StubRenderer(600, 40));
-        bar.Render(contentLeft: 0f, viewportW: 600f, items, Page.Home);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, items, Page.Home);
 
         bar.HandleMouseDown(TabCentre(1), Height * 0.5f, items)
             .ShouldBe(new TabClick<Page>(1, Page.Equipment, Close: false));
@@ -97,7 +97,7 @@ public class TabBarItemTests
     {
         var items = ThreePages();
         var bar = NewBar(new StubRenderer(600, 40));
-        bar.Render(contentLeft: 0f, viewportW: 600f, items, Page.Home);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, items, Page.Home);
 
         bar.HandleMouseDown(CloseCentre(2), Height * 0.5f, items)
             .ShouldBe(new TabClick<Page>(2, Page.Planner, Close: true));
@@ -110,7 +110,7 @@ public class TabBarItemTests
         // the only thing that distinguishes the active tab from a merely lifted one.
         var renderer = new StubRenderer(600, 40);
         var bar = NewBar(renderer);
-        bar.Render(contentLeft: 0f, viewportW: 600f, ThreePages(), Page.Planner);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ThreePages(), Page.Planner);
 
         AccentedTabs(renderer.Surface).ShouldBe([2]);
     }
@@ -121,7 +121,7 @@ public class TabBarItemTests
         // What a host showing something other than a tab needs — a new-tab page owning the window.
         var renderer = new StubRenderer(600, 40);
         var bar = NewBar(renderer);
-        bar.Render(contentLeft: 0f, viewportW: 600f, ThreePages(), Page.Nowhere);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ThreePages(), Page.Nowhere);
 
         AccentedTabs(renderer.Surface).ShouldBeEmpty();
     }
@@ -136,7 +136,7 @@ public class TabBarItemTests
             new("Planner", Page.Planner),
         };
         var bar = NewBar(new StubRenderer(600, 40));
-        bar.Render(contentLeft: 0f, viewportW: 600f, items, Page.Home);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, items, Page.Home);
 
         bar.HandleMouseDown(TabCentre(1), Height * 0.5f, items).ShouldBeNull();
         bar.HandleMouseDown(TabCentre(2), Height * 0.5f, items)
@@ -150,7 +150,7 @@ public class TabBarItemTests
         // not a ✕ that would be the one live control on it.
         var items = new TabItem<Page>[] { TabItem<Page>.Disabled("Equipment", Page.Equipment) };
         var bar = NewBar(new StubRenderer(600, 40));
-        bar.Render(contentLeft: 0f, viewportW: 600f, items, Page.Home);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, items, Page.Home);
 
         bar.HitTestCursor(TabCentre(0), Height * 0.5f).ShouldBeNull();
         bar.HandleMouseDown(CloseCentre(0), Height * 0.5f, items).ShouldBeNull();
@@ -168,7 +168,7 @@ public class TabBarItemTests
             new("Planner", Page.Planner),
         };
         var bar = NewBar(new StubRenderer(600, 40));
-        bar.Render(contentLeft: 0f, viewportW: 600f, items, Page.Equipment);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, items, Page.Equipment);
 
         bar.SlotAt(MinTabW * 0.25f).ShouldBe(0);
         bar.SlotAt(MinTabW * 1.75f).ShouldBe(2);
@@ -182,7 +182,7 @@ public class TabBarItemTests
         // lands outside the strip and the strip clips to itself.
         var bar = NewBar(new StubRenderer(600, 40));
         bar.Pointer = (TabCentre(1), Height * 0.5f);
-        bar.Render(contentLeft: 0f, viewportW: 600f, ThreePages(), Page.Home);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ThreePages(), Page.Home);
 
         bar.HoveredIndex.ShouldBe(1);
     }
@@ -200,7 +200,7 @@ public class TabBarItemTests
         var renderer = new StubRenderer(600, 40);
         var bar = NewBar(renderer);
         bar.Pointer = (TabCentre(1), Height * 0.5f);
-        bar.Render(contentLeft: 0f, viewportW: 600f, items, Page.Home);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, items, Page.Home);
 
         bar.HoveredIndex.ShouldBe(-1);
         TabPlate(renderer.Surface, 1).ShouldBe(Idle);
@@ -216,12 +216,12 @@ public class TabBarItemTests
 
         var plainRenderer = new StubRenderer(600, 40);
         var plain = NewBar(plainRenderer);
-        plain.Render(contentLeft: 0f, viewportW: 600f,
+        plain.Render(contentStart: 0f, viewportEnd: 600f,
             new TabItem<Page>[] { new(longTitle, Page.Equipment) }, Page.Equipment);
 
         var iconRenderer = new StubRenderer(600, 40);
         var withIcon = NewBar(iconRenderer);
-        withIcon.Render(contentLeft: 0f, viewportW: 600f,
+        withIcon.Render(contentStart: 0f, viewportEnd: 600f,
             new TabItem<Page>[] { new(longTitle, Page.Equipment) { Icon = "\U0001F52D" } }, Page.Equipment);
 
         double grew = FirstTabWidth(iconRenderer.Surface) - FirstTabWidth(plainRenderer.Surface);
@@ -235,10 +235,10 @@ public class TabBarItemTests
         // a source with no icons and nothing disabled takes every branch the old code took. Compared as
         // PIXELS — with text stubbed out, what is left on the surface is precisely the geometry.
         var titleRenderer = new StubRenderer(600, 40);
-        NewBar(titleRenderer).Render(contentLeft: 0f, viewportW: 600f, ["a", "b", "c"], activeIndex: 1);
+        NewBar(titleRenderer).Render(contentStart: 0f, viewportEnd: 600f, ["a", "b", "c"], activeIndex: 1);
 
         var itemRenderer = new StubRenderer(600, 40);
-        NewBar(itemRenderer).Render(contentLeft: 0f, viewportW: 600f,
+        NewBar(itemRenderer).Render(contentStart: 0f, viewportEnd: 600f,
             new TabItem<Page>[] { new("a", Page.Home), new("b", Page.Equipment), new("c", Page.Planner) },
             Page.Equipment);
 
@@ -251,7 +251,7 @@ public class TabBarItemTests
         // The strip can outlive its model by a frame when the host closes a tab between painting and
         // dispatching. Reporting nothing beats throwing out of an input handler.
         var bar = NewBar(new StubRenderer(600, 40));
-        bar.Render(contentLeft: 0f, viewportW: 600f, ThreePages(), Page.Home);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ThreePages(), Page.Home);
 
         bar.HandleMouseDown(TabCentre(2), Height * 0.5f,
             new TabItem<Page>[] { new("Home", Page.Home) }).ShouldBeNull();
