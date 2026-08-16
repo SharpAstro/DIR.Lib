@@ -49,7 +49,7 @@ public class TabBarNewTabButtonTests
     {
         var renderer = new StubRenderer(600, 40);
         var bar = NewBar(renderer);
-        bar.Render(contentLeft: 0f, viewportW: 600f, ["a", "b"], activeIndex: 0);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ["a", "b"], activeIndex: 0);
 
         var afterTabs = MinTabW * 2;
         bar.HitNewTabButton(afterTabs + 1f, Height / 2f).ShouldBeTrue();
@@ -66,7 +66,7 @@ public class TabBarNewTabButtonTests
         // measured from the window edge.
         var renderer = new StubRenderer(600, 40);
         var bar = NewBar(renderer);
-        bar.Render(contentLeft: 120f, viewportW: 600f, ["a"], activeIndex: 0);
+        bar.Render(contentStart: 120f, viewportEnd: 600f, ["a"], activeIndex: 0);
 
         bar.HitNewTabButton(120f + MinTabW + 1f, Height / 2f).ShouldBeTrue();
         bar.HitNewTabButton(MinTabW + 1f, Height / 2f).ShouldBeFalse();
@@ -77,7 +77,7 @@ public class TabBarNewTabButtonTests
     {
         var renderer = new StubRenderer(600, 40);
         var bar = NewBar(renderer);
-        bar.Render(contentLeft: 0f, viewportW: 600f, ["a"], activeIndex: 0);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ["a"], activeIndex: 0);
 
         var onButton = MinTabW + Height / 2f;
         bar.HandleMouseDown(onButton, Height / 2f).ShouldBeNull();   // tabs only — the host asks separately
@@ -89,7 +89,7 @@ public class TabBarNewTabButtonTests
     {
         var renderer = new StubRenderer(600, 40);
         var bar = NewBar(renderer);
-        bar.Render(contentLeft: 0f, viewportW: 600f, ["a"], activeIndex: 0);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ["a"], activeIndex: 0);
 
         bar.HitNewTabButton(MinTabW + 2f, Height + 4f).ShouldBeFalse();
     }
@@ -100,7 +100,7 @@ public class TabBarNewTabButtonTests
         var renderer = new StubRenderer(600, 40);
         var bar = NewBar(renderer);
         bar.ShowNewTabButton = false;
-        bar.Render(contentLeft: 0f, viewportW: 600f, ["a"], activeIndex: 0);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ["a"], activeIndex: 0);
 
         bar.HitNewTabButton(MinTabW + 2f, Height / 2f).ShouldBeFalse();
     }
@@ -112,7 +112,7 @@ public class TabBarNewTabButtonTests
         // Reporting a hit there would hand the host clicks on a control the clip has hidden.
         var renderer = new StubRenderer(200, 40);
         var bar = NewBar(renderer);
-        bar.Render(contentLeft: 0f, viewportW: 200f, ["a", "b"], activeIndex: 0);
+        bar.Render(contentStart: 0f, viewportEnd: 200f, ["a", "b"], activeIndex: 0);
 
         bar.HitNewTabButton(190f, Height / 2f).ShouldBeFalse();
         bar.HitNewTabButton(MinTabW * 2 + 1f, Height / 2f).ShouldBeFalse();
@@ -127,7 +127,7 @@ public class TabBarNewTabButtonTests
         var bar = NewBar(renderer);
         bar.NewTabActive = true;
         bar.Colors = new TabBarColors { ActiveAccent = new RGBAColor32(0xff, 0x00, 0x00, 0xff) };
-        bar.Render(contentLeft: 0f, viewportW: 600f, ["a"], activeIndex: 0);
+        bar.Render(contentStart: 0f, viewportEnd: 600f, ["a"], activeIndex: 0);
 
         // Top-left pixel of the button, where the 2 px accent strip is painted.
         PixelAt(renderer.Surface, (int)MinTabW + 2, 0).ShouldBe(new RGBAColor32(0xff, 0x00, 0x00, 0xff));

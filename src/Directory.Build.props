@@ -23,7 +23,7 @@
          hyphen several of them contain, which XML forbids inside a comment — but that only ever ruled
          out putting them in a csproj, nothing ever read them there, and they had reached 612 of that
          file's 674 lines.) -->
-    <VersionMajorMinor>8.2</VersionMajorMinor>
+    <VersionMajorMinor>8.3</VersionMajorMinor>
     <!-- Local builds get Major.Minor.0; CI passes -p:Version=Major.Minor.<run><attempt>+<sha>, and the
          condition lets it win. -->
     <VersionPrefix Condition="'$(VersionPrefix)' == ''">$(VersionMajorMinor).0</VersionPrefix>

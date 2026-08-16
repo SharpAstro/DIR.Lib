@@ -9,6 +9,46 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.3
+
+The strip attaches to any edge, and a nav rail is the same widget. TabStripSide { Top, Bottom, Left,
+Right } with orientation DERIVED from it rather than set beside it -- a separate Orientation property
+would let a caller state a vertical strip on the top edge, a combination with no meaning that the bar
+would then have to resolve by silently ignoring half of what it was told. The side decides three
+things at once, and they move together: the axis tabs advance along, the edge the active accent takes
+(the outer one, away from the content the strip heads) and the edge the bar rules against that content
+(the opposite one). One flag places the last two, so they can never land on the same edge -- which
+would read as a strip with no accent at all rather than as a bug.
+
+TabSizing { Content, Uniform } comes with it and is not really separable. Content is what the strip
+has always done: measured label plus the icon and close boxes, clamped. Uniform is a square cell of
+the strip's own thickness, and on a vertical strip that is closer to a correctness fix than a
+preference -- sizing by content there sets a tab's HEIGHT from the WIDTH of its label, and on an
+icon-only rail from a label that is never drawn. A uniform tab centres its icon and draws neither the
+label nor the ✕, having no room beside it; the label belongs in the host's tooltip. With no icon the
+label takes the centre instead, so a uniform strip is never blank.
+
+Rotated text is deliberately NOT part of this. A vertical strip defaults to UPRIGHT content, because
+rotation is a renderer capability rather than a flag: Renderer.DrawText has no angle, so it would mean
+a new primitive across every backend, meaningless on a cell surface, interacting with the SDF atlas
+and the fallback chain. Upright is also what the only known consumer wants, since its tabs are emoji
+and a rotated emoji is simply wrong.
+
+Internally the painter now works on a FLOW axis (the one tabs advance along) and a CROSS axis (the
+strip's thickness), with one helper mapping the pair back to x/y. That is what lets all four sides
+share a body instead of re-testing the side per drawn piece, and it is why a tab's CONTENT needs no
+side test at all: a vertical strip stacks tabs, but each tab still reads left to right.
+
+New Render overloads take the strip's whole RectF32. The two-float form remains and is exactly the
+rect form with cross origin 0 and Height for thickness -- pinned by rendering both and comparing the
+painted surfaces -- but Bottom and Right have to be told where the far edge is, a viewport dimension
+the bar does not know, so those need the rect.
+
+SOURCE-BREAKING for a named argument, which is the only reason to read this twice: Render's
+contentLeft / viewportW are now contentStart / viewportEnd, and SlotAt's x is now flow, because on a
+vertical strip the old names named the wrong axis. Positional callers are unaffected, and nothing in
+the org passed them by name.
+
 ## 8.2
 
 A tab carries what it MEANS. TabItem<T> and the Render<T> / HandleMouseDown<T> pair hand a press back

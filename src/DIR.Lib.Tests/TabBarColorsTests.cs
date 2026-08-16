@@ -51,7 +51,7 @@ public class TabBarColorsTests
         var renderer = new RgbaImageRenderer(400, 40);
         var bar = NewBar(renderer);
 
-        bar.Render(contentLeft: 0, viewportW: 400, ["One", "Two"], activeIndex: 0);
+        bar.Render(contentStart: 0, viewportEnd: 400, ["One", "Two"], activeIndex: 0);
 
         SampleEmptyBarArea(renderer).ShouldBe(new TabBarColors().BarBackground);
     }
@@ -64,7 +64,7 @@ public class TabBarColorsTests
         var paper = new RGBAColor32(0xf2, 0xf2, 0xf4, 0xff);   // a light-theme strip
         bar.Colors = new TabBarColors { BarBackground = paper };
 
-        bar.Render(contentLeft: 0, viewportW: 400, ["One", "Two"], activeIndex: 0);
+        bar.Render(contentStart: 0, viewportEnd: 400, ["One", "Two"], activeIndex: 0);
 
         SampleEmptyBarArea(renderer).ShouldBe(paper);
     }
@@ -149,7 +149,7 @@ public class TabBarColorsTests
         var bar = NewBar(renderer);
         bar.Colors = TabBarColors.FromPalette(LightChrome);
 
-        bar.Render(contentLeft: 0, viewportW: 400, ["One", "Two"], activeIndex: 0);
+        bar.Render(contentStart: 0, viewportEnd: 400, ["One", "Two"], activeIndex: 0);
 
         SampleEmptyBarArea(renderer).ShouldBe(LightChrome.PanelBg);
     }
