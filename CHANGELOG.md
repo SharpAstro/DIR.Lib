@@ -44,6 +44,20 @@ rect form with cross origin 0 and Height for thickness -- pinned by rendering bo
 painted surfaces -- but Bottom and Right have to be told where the far edge is, a viewport dimension
 the bar does not know, so those need the rect.
 
+TabStripTree.Build describes a tab strip as a Layout.Node tree -- one description a pixel surface
+paints through PaintLayout and a cell surface through Console.Lib's CellLayout. TabStripMetrics carries
+the numbers (pixels vs whole cells), and two policies carry the rest: TabStripOverflow { Clip, Drop }
+and TabLabelDecoration. Everything else -- where the accent goes, which edge is ruled, how a disabled
+tab reports, what a uniform cell holds -- is identical on both, which is the claim worth making.
+
+Drop is not cosmetic: a clipped tab leaves a region that is hit but not visible, so a press lands on
+something the reader cannot see. Decoration exists because a terminal's active plate is a bet on the
+reader's own palette, and on a monochrome one the brackets are the only thing left saying which tab is
+active.
+
+TabBar does NOT paint through this yet; it still lays itself out imperatively. So the description
+exists twice until that lands, which is the state this release ships in.
+
 CompositeWidget<TSurface> is the base for a widget that paints OTHER widgets into the same surface --
 an app chrome hosting a tab strip and a page. It declares its children once, in paint order, and every
 aggregate query derives from that: HitTest, HitTestAndDispatch, HitTestCursor, GetRegisteredTextInputs
