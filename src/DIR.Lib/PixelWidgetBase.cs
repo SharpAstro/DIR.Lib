@@ -784,9 +784,19 @@ namespace DIR.Lib
             => RegionsAreCurrent ? _tracker.HitTestCursor(x, y) : null;
 
         /// <inheritdoc/>
-        /// <remarks>Dispatches nothing on a frame this widget did not draw, which is the case that matters
-        /// most: a stale region here does not merely report a hit, it RUNS the handler.</remarks>
-        public HitResult? HitTestAndDispatch(float x, float y, InputModifier modifiers = InputModifier.None)
+        /// <remarks>
+        /// Dispatches nothing on a frame this widget did not draw, which is the case that matters most: a
+        /// stale region here does not merely report a hit, it RUNS the handler.
+        /// <para>
+        /// <b>Virtual so a COMPOSITE widget can extend dispatch to the widgets it paints.</b> One that
+        /// hosts children — a chrome with a tab strip in it — draws them into the same surface, but their
+        /// regions live on THEIR trackers, so a host asking only the composite silently misses every
+        /// control the children registered. Overriding is how the composite states its own paint order,
+        /// which is knowledge it alone has; a host reconstructing that order would keep a second copy of
+        /// it. Call <c>base</c> for this widget's own regions.
+        /// </para>
+        /// </remarks>
+        public virtual HitResult? HitTestAndDispatch(float x, float y, InputModifier modifiers = InputModifier.None)
             => RegionsAreCurrent ? _tracker.HitTestAndDispatch(x, y, modifiers) : null;
 
         /// <summary>
