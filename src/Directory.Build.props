@@ -18,10 +18,11 @@
          `dotnet pack` shipped the satellite a full major behind the library it ships with.
          The workflow READS this back (dotnet msbuild -getProperty:VersionMajorMinor) rather than
          restating it, so a release bump is this one line and CI cannot disagree with the packages it
-         builds. Add the matching changelog entry above the version's resolve step in
-         .github/workflows/dotnet.yml — that comment block is the de-facto release notes, and it stays
-         in the yml because several entries contain a double hyphen, which XML forbids inside a
-         comment. -->
+         builds. Add the matching entry to CHANGELOG.md at the repo root, in the same commit. (The
+         notes used to sit in a comment block in .github/workflows/dotnet.yml, justified by the double
+         hyphen several of them contain, which XML forbids inside a comment — but that only ever ruled
+         out putting them in a csproj, nothing ever read them there, and they had reached 612 of that
+         file's 674 lines.) -->
     <VersionMajorMinor>8.1</VersionMajorMinor>
     <!-- Local builds get Major.Minor.0; CI passes -p:Version=Major.Minor.<run><attempt>+<sha>, and the
          condition lets it win. -->
