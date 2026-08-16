@@ -739,7 +739,7 @@ namespace DIR.Lib
         /// <inheritdoc/>
         /// <remarks>Empty on a frame this widget did not draw, so Tab never reaches a field that is not on
         /// screen — the same rule <see cref="TextInputFocus.BlurIfUnpainted"/> applies to the focus itself.</remarks>
-        public List<TextInputState> GetRegisteredTextInputs()
+        public virtual List<TextInputState> GetRegisteredTextInputs()
             => RegionsAreCurrent ? _tracker.GetRegisteredTextInputs() : [];
 
         /// <summary>
@@ -775,12 +775,12 @@ namespace DIR.Lib
 
         /// <inheritdoc/>
         /// <remarks>Null on a frame this widget did not draw — see <see cref="WindowUiSettings.FrameId"/>.</remarks>
-        public HitResult? HitTest(float x, float y) => RegionsAreCurrent ? _tracker.HitTest(x, y) : null;
+        public virtual HitResult? HitTest(float x, float y) => RegionsAreCurrent ? _tracker.HitTest(x, y) : null;
 
         /// <summary>The cursor stated by the topmost region under the point, or null if none had a
         /// view — see <see cref="CursorKind"/> for why this is asked of the regions rather than
         /// computed from geometry by the host.</summary>
-        public CursorKind? HitTestCursor(float x, float y)
+        public virtual CursorKind? HitTestCursor(float x, float y)
             => RegionsAreCurrent ? _tracker.HitTestCursor(x, y) : null;
 
         /// <inheritdoc/>

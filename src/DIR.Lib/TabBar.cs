@@ -172,6 +172,19 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
     /// </summary>
     public bool CanReorderTabs { get; set; } = true;
 
+    /// <summary>
+    /// Size a <see cref="TabItem{T}.Icon"/> is drawn at, already scaled. Null (the default) means
+    /// <see cref="Font"/>, i.e. the size of the label beside it — right for a document tab, where a
+    /// glyph that overshoots the words it sits with reads as misaligned.
+    /// </summary>
+    /// <remarks>
+    /// A nav rail is the opposite case and is why this exists: its cell holds a mark and nothing else,
+    /// so sizing that mark to a label the cell never draws leaves it small in the middle of a large
+    /// square. Deriving it from the cell instead was the alternative, and it would bake a ratio the bar
+    /// has no basis to pick.
+    /// </remarks>
+    public float? IconSize { get; set; }
+
     /// <summary>True while the strip runs down an edge rather than across one.</summary>
     private bool Vertical => Side is TabStripSide.Left or TabStripSide.Right;
 
@@ -370,7 +383,8 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
                 // No room beside a centred mark for a label or a ✕. With no icon the label takes the
                 // centre instead, so a uniform strip is never blank.
                 var content = icon ?? FitTitle(title, rect.Width - Pad);
-                DrawText(content.AsSpan(), FontPath, rect.X, rect.Y, rect.Width, rect.Height, Font, ink,
+                var size = icon is not null ? IconSize ?? Font : Font;
+                DrawText(content.AsSpan(), FontPath, rect.X, rect.Y, rect.Width, rect.Height, size, ink,
                     TextAlign.Center, TextAlign.Center);
             }
             else
@@ -381,8 +395,8 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
                 var labelLeft = (int)(rect.X + Pad);
                 if (icon is not null)
                 {
-                    DrawText(icon.AsSpan(), FontPath, labelLeft, rect.Y, IconBox, rect.Height, Font, ink,
-                        TextAlign.Center, TextAlign.Center);
+                    DrawText(icon.AsSpan(), FontPath, labelLeft, rect.Y, IconBox, rect.Height,
+                        IconSize ?? Font, ink, TextAlign.Center, TextAlign.Center);
                     labelLeft += (int)iconW;
                 }
 

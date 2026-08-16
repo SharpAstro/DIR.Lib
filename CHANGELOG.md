@@ -44,6 +44,27 @@ rect form with cross origin 0 and Height for thickness -- pinned by rendering bo
 painted surfaces -- but Bottom and Right have to be told where the far edge is, a viewport dimension
 the bar does not know, so those need the rect.
 
+CompositeWidget<TSurface> is the base for a widget that paints OTHER widgets into the same surface --
+an app chrome hosting a tab strip and a page. It declares its children once, in paint order, and every
+aggregate query derives from that: HitTest, HitTestAndDispatch, HitTestCursor, GetRegisteredTextInputs
+and a new PaintedRegions. HitTest, HitTestCursor and GetRegisteredTextInputs became virtual to allow
+it.
+
+The problem is that a child's regions live on the CHILD. A composite draws its children into its own
+surface, so the frame looks whole, while hit tests, cursor queries, Tab cycling and region enumeration
+all read a per-widget tracker -- so anything asking only the composite misses every control its
+children registered. Nothing throws and the pixels are right; the controls simply stop answering.
+
+Without a base for it each host restates the composition per query and they drift. The case that
+forced this had ONE composite stating its child list five times, in three different orders, with one
+query missing a child outright and its cursor order inverted relative to its dispatch order. No test
+could have caught it, because every site is individually plausible.
+
+Z-order: the composite's own regions answer FIRST, then children front to back. A composite's own
+painting is almost always either a non-interactive background behind its children (asking first is
+harmless, it registers nothing) or chrome drawn OVER them, a status bar (asking first is required).
+Enumerations run in paint order instead, since they read the frame the way a person does.
+
 TabBarColors.HoverBackground (nullable, null = ActiveBackground, i.e. unchanged) lets a strip name a
 third plate tone. The default stays what it was and for the stated reason -- a hovered tab previews
 what clicking gives you, and a palette naming two chrome surfaces has no third tone to offer. But that
