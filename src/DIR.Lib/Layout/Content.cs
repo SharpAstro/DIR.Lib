@@ -39,11 +39,15 @@ public abstract record Content
         /// same reason <see cref="Color"/> and <see cref="HAlign"/> are: only the author knows which half
         /// carries the meaning. See <see cref="TextTrim"/>.
         /// <para>
-        /// Honoured by painters that ellipsize. Console.Lib's <c>CellLayout</c> does, because a cell surface
-        /// measures in whole characters and has to cut somewhere. The pixel painter currently does NOT
-        /// ellipsize — an overlong run is clipped by its rect — so this is inert there until it grows one
-        /// (<see cref="FontFallbackResolver.FitEllipsis"/> is the measure-driven primitive it would use, and
-        /// is End-only today).
+        /// Honoured by BOTH painters. Console.Lib's <c>CellLayout</c> cuts because a cell surface measures
+        /// in whole characters and has to; the pixel painter fits the run to its arranged rect through
+        /// <see cref="TextFit.ForWidth"/>, which also implements <see cref="TextTrim.Shrink"/> (scale the
+        /// run down) and <see cref="TextTrim.None"/> (let it overhang).
+        /// <para>
+        /// It is not cosmetic on either surface: <c>DrawText</c> starts at the rect edge and keeps going,
+        /// so an unfitted over-wide run draws straight over its neighbour on whichever sizes happen not to
+        /// fit.
+        /// </para>
         /// </para>
         /// </summary>
         public TextTrim Trim { get; init; } = TextTrim.End;
