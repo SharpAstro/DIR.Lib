@@ -73,4 +73,7 @@ This repo's OWN version has **one place to bump**: `VersionMajorMinor` in `src/D
 
 It covers both DIR.Lib and DIR.Lib.Shaping, because CI stamps a single `-p:Version` across them. No csproj declares its own `VersionPrefix` — a per-project one silently overrides the props file, which is how DIR.Lib.Shaping once sat at 6.8.0 while DIR.Lib shipped 7.5.0.
 
-Add the matching entry to the changelog comment block in `.github/workflows/dotnet.yml`.
+Add the matching entry to [CHANGELOG.md](CHANGELOG.md) at the repo root, in the same commit as the
+bump. Newest first, one `## Major.Minor` section each. (The notes used to live in a comment block in
+`.github/workflows/dotnet.yml`; nothing ever read them there, and they had grown to 612 of that
+file's 674 lines.)
