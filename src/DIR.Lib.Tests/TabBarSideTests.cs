@@ -225,6 +225,36 @@ public class TabBarSideTests
         byRect.Surface.Pixels.AsSpan().SequenceEqual(byFloats.Surface.Pixels).ShouldBeTrue();
     }
 
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(1.5f)]
+    [InlineData(2f)]
+    public void AUniformCellStaysSquareAtEveryDisplayScale(float dpiScale)
+    {
+        // The whole suite otherwise runs at 1x, where scaling twice is the identity -- so a strip whose
+        // metrics are ALREADY scaled and whose tree is then scaled again by the layout engine looks
+        // perfect here and ships 78x117 cells on a 1.5x display. That is exactly what happened, and it
+        // took running the app to see it.
+        var thickness = 30f * dpiScale;   // TabBar's own Height at this scale
+        var renderer = new StubRenderer(400, 600);
+        var bar = NewBar(renderer, TabStripSide.Left, TabSizing.Uniform);
+        bar.DpiScale = dpiScale;
+        bar.Render(new RectF32(0f, 0f, thickness, 600f), ThreePages(), Page.Home);
+
+        var items = ThreePages();
+        for (var i = 0; i < items.Length; i++)
+        {
+            // Centre of cell i on both axes: square cells stacked from the top.
+            var centre = (i + 0.5f) * thickness;
+            bar.HandleMouseDown(thickness * 0.5f, centre, items)
+                .ShouldBe(new TabClick<Page>(i, items[i].Value, Close: false),
+                    $"cell {i} should span [{i * thickness}, {(i + 1) * thickness}) at {dpiScale}x");
+        }
+
+        // And nothing is laid out past the strip's own thickness.
+        bar.HandleMouseDown(thickness * 1.5f, thickness * 0.5f, items).ShouldBeNull();
+    }
+
     // RgbaImage exposes its buffer rather than a pixel accessor (see DrawLineTests.IsLit).
     private static RGBAColor32 PixelAt(RgbaImage image, int x, int y)
     {
