@@ -37,8 +37,30 @@ public class DockLayout<T> where T : INumber<T>
     /// Allocates a strip of the given <paramref name="size"/> from the specified edge
     /// and returns its rectangle. The remaining space shrinks accordingly.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="size"/> is <b>clamped to what is left</b>, so a strip can consume the remainder but
+    /// never more. Requested extents are consumer-owned and routinely exceed the container once a window
+    /// gets small -- the same reason the layout engine clamps a split's first extent. Unclamped, an
+    /// over-large strip did two invisible things at once: it placed itself OUTSIDE the container (a Right
+    /// strip resolves its x as <c>Right - size</c>, which walks left past <c>X</c>) and it left the fill
+    /// rect with a NEGATIVE width. Neither reads as "does not fit" at the call site -- the strip paints
+    /// over its own siblings, and the widget under it becomes unclickable, which is how it presented: a
+    /// window narrow enough that an info panel overhung a split divider made that divider impossible to
+    /// grab, while everything still looked drawn.
+    /// </remarks>
     public Rect<T> Dock(DockStyle style, T size)
     {
+        // Never negative, never more than remains on the axis this strip consumes.
+        var axisAvail = style is DockStyle.Top or DockStyle.Bottom ? _remaining.Height : _remaining.Width;
+        if (size < T.Zero)
+        {
+            size = T.Zero;
+        }
+        else if (style is not DockStyle.Fill && size > axisAvail)
+        {
+            size = axisAvail > T.Zero ? axisAvail : T.Zero;
+        }
+
         _docks.Add((style, size));
 
         Rect<T> result;
@@ -76,13 +98,20 @@ public class DockLayout<T> where T : INumber<T>
     /// <summary>
     /// Replays the recorded dock sequence against a new root rectangle.
     /// </summary>
+    /// <remarks>Clamps exactly as <see cref="Dock"/> does. The recorded sizes fitted the ORIGINAL root, so
+    /// against a smaller one they can overrun; without the same clamp a replay would produce negative
+    /// remainders that the original arrangement never had.</remarks>
     public void Recompute(Rect<T> newRoot)
     {
         _remaining = newRoot;
         var count = _docks.Count;
         for (var i = 0; i < count; i++)
         {
-            var (style, size) = _docks[i];
+            var (style, recorded) = _docks[i];
+            var axisAvail = style is DockStyle.Top or DockStyle.Bottom ? _remaining.Height : _remaining.Width;
+            var size = recorded < T.Zero ? T.Zero
+                : style is not DockStyle.Fill && recorded > axisAvail ? (axisAvail > T.Zero ? axisAvail : T.Zero)
+                : recorded;
             switch (style)
             {
                 case DockStyle.Top:
