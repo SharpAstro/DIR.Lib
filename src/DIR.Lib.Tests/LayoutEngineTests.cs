@@ -254,6 +254,80 @@ public class LayoutEngineTests
         RectOf(arranged, fill).ShouldBe(new Rect<float>(0, 20, 100, 80));
     }
 
+    /// <summary>
+    /// A docked strip wider than what is left must consume the remainder, never overrun it.
+    /// </summary>
+    /// <remarks>
+    /// Both halves of the old behaviour were invisible at the call site and only one of them looks like a
+    /// size bug. A Right strip resolves its x as <c>Right - size</c>, so an over-large one walked LEFT past
+    /// the container origin and painted over its siblings; and the fill rect was handed the negative
+    /// leftover. Found via a viewer whose info panel overhung a split divider in a narrow window, which
+    /// made the divider impossible to grab while everything still looked drawn.
+    /// </remarks>
+    [Fact]
+    public void Dock_RightStripWiderThanTheContainer_ConsumesItWithoutOverrunning()
+    {
+        var panel = new Layout.Node.Leaf(new Layout.Content.Box(0, 0));
+        var fill = new Layout.Node.Leaf(new Layout.Content.Box(0, 0));
+        var dock = new Layout.Node.Dock([new Layout.DockChild(Layout.DockSide.Right, panel, Layout.Sizing.Fixed(450))], fill);
+
+        var arranged = Layout.Engine.Arrange(dock, new Rect<float>(459, 60, 274, 1794), new PixelCtx());
+
+        var panelRect = RectOf(arranged, panel);
+        var fillRect = RectOf(arranged, fill);
+
+        panelRect.X.ShouldBeGreaterThanOrEqualTo(459f);
+        panelRect.Right.ShouldBe(733f);
+        panelRect.Width.ShouldBe(274f);
+        fillRect.Width.ShouldBe(0f);
+    }
+
+    [Fact]
+    public void Dock_NoStripEverGetsANegativeExtent()
+    {
+        var a = new Layout.Node.Leaf(new Layout.Content.Box(0, 0));
+        var b = new Layout.Node.Leaf(new Layout.Content.Box(0, 0));
+        var fill = new Layout.Node.Leaf(new Layout.Content.Box(0, 0));
+        // Two strips that individually fit but together cannot: the second must take what the first left.
+        var dock = new Layout.Node.Dock(
+            [
+                new Layout.DockChild(Layout.DockSide.Right, a, Layout.Sizing.Fixed(80)),
+                new Layout.DockChild(Layout.DockSide.Right, b, Layout.Sizing.Fixed(80)),
+            ],
+            fill);
+
+        var arranged = Layout.Engine.Arrange(dock, new Rect<float>(0, 0, 100, 50), new PixelCtx());
+
+        RectOf(arranged, a).ShouldBe(new Rect<float>(20, 0, 80, 50));
+        RectOf(arranged, b).ShouldBe(new Rect<float>(0, 0, 20, 50));
+        RectOf(arranged, fill).Width.ShouldBe(0f);
+    }
+
+    [Fact]
+    public void Dock_TopStripTallerThanTheContainer_ConsumesItWithoutOverrunning()
+    {
+        var strip = new Layout.Node.Leaf(new Layout.Content.Box(0, 0));
+        var fill = new Layout.Node.Leaf(new Layout.Content.Box(0, 0));
+        var dock = new Layout.Node.Dock([new Layout.DockChild(Layout.DockSide.Top, strip, Layout.Sizing.Fixed(200))], fill);
+
+        var arranged = Layout.Engine.Arrange(dock, new Rect<float>(0, 0, 100, 40), new PixelCtx());
+
+        RectOf(arranged, strip).ShouldBe(new Rect<float>(0, 0, 100, 40));
+        RectOf(arranged, fill).Height.ShouldBe(0f);
+    }
+
+    [Fact]
+    public void DockLayout_RecomputeAgainstASmallerRootClampsToo()
+    {
+        // The recorded sizes fitted the original root; replayed against a smaller one they overrun.
+        var layout = new DockLayout<float>(new Rect<float>(0, 0, 400, 100));
+        layout.Dock(DockStyle.Right, 300f);
+
+        layout.Recompute(new Rect<float>(0, 0, 200, 100));
+
+        layout.Fill().Width.ShouldBe(0f);
+    }
+
     // --- grid ---
 
     [Fact]
