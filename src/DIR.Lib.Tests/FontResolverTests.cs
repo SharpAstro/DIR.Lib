@@ -6,6 +6,45 @@ namespace DIR.Lib.Tests;
 public sealed class FontResolverTests
 {
     [Fact]
+    public void ResolveEmojiFont_Returns_EmptyOrExistingFile()
+    {
+        var path = FontResolver.ResolveEmojiFont();
+        // A host with no colour-emoji face is a normal answer, not a failure -- CI runners often have
+        // none -- so the contract is "" or something that exists, never a path that does not.
+        if (path.Length > 0)
+        {
+            File.Exists(path).ShouldBeTrue(path);
+        }
+    }
+
+    /// <summary>
+    /// A caller's own asset outranks the platform's face.
+    /// </summary>
+    /// <remarks>
+    /// This is the whole reason the parameter exists: a bundled face is the only one whose COVERAGE the
+    /// caller knows, and a platform face that lacks a codepoint draws nothing rather than a placeholder.
+    /// Uses the monospace default as the stand-in asset simply because it is a file known to exist here.
+    /// </remarks>
+    [Fact]
+    public void ResolveEmojiFont_PrefersACallersOwnAssetOverThePlatformFace()
+    {
+        var stand_in = FontResolver.ResolveSystemFont();
+        Assert.SkipWhen(stand_in.Length == 0, "No system font on this host to stand in for a bundled asset.");
+
+        FontResolver.ResolveEmojiFont([stand_in]).ShouldBe(stand_in);
+    }
+
+    /// <summary>An entry that does not exist is skipped rather than returned.</summary>
+    [Fact]
+    public void ResolveEmojiFont_SkipsAnExtraThatIsNotOnDisk()
+    {
+        var missing = Path.Combine(Path.GetTempPath(), "dirlib-no-such-emoji-face.ttf");
+        File.Exists(missing).ShouldBeFalse();
+
+        FontResolver.ResolveEmojiFont([missing]).ShouldNotBe(missing);
+    }
+
+    [Fact]
     public void ResolveSystemFont_Returns_EmptyOrExistingFile()
     {
         var path = FontResolver.ResolveSystemFont();

@@ -9,6 +9,20 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.7
+
+`FontResolver.ResolveEmojiFont` resolves the platform's colour-emoji face, a third role beside the
+monospace default (`ResolveSystemFont`) and the per-script chain (`ResolveSystemScriptFonts`). Same shape
+as both: an `extra` list is consulted first so a caller can prefer its own bundled asset, and the result is
+an existing path or `""`, never a path that does not exist.
+
+It belongs here for the reason the other two roles do -- "where does this platform keep its emoji font" is
+a property of the platform, not of any one app. Held privately by a consumer it gets copied: TianWen kept
+these tables in its own UI layer and had grown a second copy in a second renderer.
+
+Pair it with `FontFallbackResolver.CanRender` before committing a UI to an emoji mark. An unavailable glyph
+draws NOTHING rather than a placeholder, so a control whose only mark is an emoji loses it silently.
+
 ## 8.6
 
 `IconBaker` scales a glyph to fit its mask instead of truncating it. The size passed to `Bake` is an em

@@ -21,7 +21,7 @@ public enum FontStyle
 /// Used by both pixel renderers (GPU/SDL) and TUI Sixel renderers — anywhere
 /// the caller needs an absolute TTF / OTF / TTC path on disk.
 ///
-/// Two entry points:
+/// Entry points, one per role the platform can answer for:
 /// <list type="bullet">
 /// <item><see cref="ResolveSystemFont"/> — returns a single platform-default
 ///   monospace path (Consolas → Courier on Windows, Menlo → Monaco on macOS,
@@ -33,6 +33,9 @@ public enum FontStyle
 ///   <c>C:\Windows\Fonts</c> will silently miss whatever the user side-loaded
 ///   (JetBrains Mono, Fira Code, etc.). macOS / Linux per-user dirs are
 ///   included too.</item>
+/// <item><see cref="ResolveSystemScriptFonts"/> — the per-script fallback chain
+///   (CJK, Devanagari, Arabic), for codepoints the primary face lacks.</item>
+/// <item><see cref="ResolveEmojiFont"/> — the platform's colour-emoji face.</item>
 /// </list>
 ///
 /// <see cref="ResolveSystemFont"/> returns "" (not null) when no candidate is
@@ -41,15 +44,28 @@ public enum FontStyle
 /// </summary>
 public static class FontResolver
 {
-    private static readonly string[] WindowsCandidates =
+    private static readonly string[] WindowsMonoCandidates =
         [@"C:\Windows\Fonts\consola.ttf", @"C:\Windows\Fonts\cour.ttf"];
 
-    private static readonly string[] MacOSCandidates =
+    private static readonly string[] MacOSMonoCandidates =
         ["/System/Library/Fonts/Menlo.ttc", "/System/Library/Fonts/Monaco.dfont"];
 
-    private static readonly string[] LinuxCandidates =
+    private static readonly string[] LinuxMonoCandidates =
         ["/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
          "/usr/share/fonts/TTF/DejaVuSansMono.ttf"];
+
+    // Colour-emoji faces by platform. Windows ships Segoe UI Emoji and macOS Apple Color Emoji; Linux
+    // distros disagree about the path, so the common Noto locations are all probed.
+    private static readonly string[] WindowsEmojiCandidates =
+        [@"C:\Windows\Fonts\seguiemj.ttf"];
+
+    private static readonly string[] MacOSEmojiCandidates =
+        ["/System/Library/Fonts/Apple Color Emoji.ttc"];
+
+    private static readonly string[] LinuxEmojiCandidates =
+        ["/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+         "/usr/share/fonts/noto/NotoColorEmoji.ttf",
+         "/usr/share/fonts/truetype/noto/NotoColorEmoji-Regular.ttf"];
 
     private static readonly string[] FontExtensions =
         [".ttf", ".otf", ".ttc", ".otc"];
@@ -62,11 +78,54 @@ public static class FontResolver
     /// </summary>
     public static string ResolveSystemFont()
     {
-        var candidates = OperatingSystem.IsWindows() ? WindowsCandidates
-                       : OperatingSystem.IsMacOS()   ? MacOSCandidates
-                                                     : LinuxCandidates;
+        var candidates = OperatingSystem.IsWindows() ? WindowsMonoCandidates
+                       : OperatingSystem.IsMacOS()   ? MacOSMonoCandidates
+                                                     : LinuxMonoCandidates;
         foreach (var path in candidates)
             if (File.Exists(path)) return path;
+        return "";
+    }
+
+    /// <summary>
+    /// The first colour-emoji face this platform ships that exists on disk, or "" when it ships none.
+    /// </summary>
+    /// <remarks>
+    /// <para>A THIRD platform role beside the monospace default and the script chain, and it belongs here
+    /// for the same reason those do: "where does this platform keep its emoji font" is a property of the
+    /// platform, not of any one app. Held privately by a consumer, it gets copied -- TianWen carried these
+    /// tables in its own UI layer and grew a second copy of them in a second renderer.</para>
+    /// <para>Every caller needs a non-emoji fallback regardless. An unavailable glyph does not draw a
+    /// placeholder, it draws NOTHING, so a control whose only mark is an emoji silently loses it rather
+    /// than degrading. Pair this with <see cref="FontFallbackResolver.CanRender(Rune)"/> to ask whether a
+    /// specific mark is actually drawable before committing to it.</para>
+    /// </remarks>
+    /// <param name="extra">
+    /// Paths consulted BEFORE the platform faces, highest priority first -- e.g. an app-bundled emoji
+    /// font, whose coverage is the only kind a caller can actually depend on. Mirrors
+    /// <see cref="ResolveSystemScriptFonts"/>, so a caller states its own asset without this class
+    /// knowing about that caller.
+    /// </param>
+    public static string ResolveEmojiFont(IEnumerable<string>? extra = null)
+    {
+        if (extra is not null)
+        {
+            foreach (var path in extra)
+            {
+                if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                {
+                    return path;
+                }
+            }
+        }
+
+        var candidates = OperatingSystem.IsWindows() ? WindowsEmojiCandidates
+                       : OperatingSystem.IsMacOS()   ? MacOSEmojiCandidates
+                                                     : LinuxEmojiCandidates;
+        foreach (var path in candidates)
+        {
+            if (File.Exists(path)) return path;
+        }
+
         return "";
     }
 
