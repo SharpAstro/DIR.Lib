@@ -1242,6 +1242,47 @@ namespace DIR.Lib
         }
 
         /// <summary>
+        /// Draws a baked glyph coverage mask (see <see cref="IconBaker"/>) as a tinted mark.
+        /// </summary>
+        /// <remarks>
+        /// <para>The one place a baked icon is painted, so every host gets the same result instead of
+        /// re-implementing the loop. The run's own coverage MODULATES the ink's alpha rather than replacing
+        /// it, which is what makes a baked mark dim exactly as the label beside it does -- the property a
+        /// colour-emoji glyph cannot have.</para>
+        /// <para>Row and column boundaries are SNAPPED to whole pixels rather than passed through as
+        /// floats, and that is load-bearing: <see cref="FillRect"/> truncates its rect to int, so a scaled
+        /// row of height 0.97 can round to zero height and vanish, leaving gaps through the mark. Snapping
+        /// each edge and taking the difference makes consecutive rows tile by construction, whatever the
+        /// scale.</para>
+        /// </remarks>
+        /// <param name="mask">The baked coverage, at whatever size it was baked.</param>
+        /// <param name="x">Left edge of the square to draw into, in surface pixels.</param>
+        /// <param name="y">Top edge of the square to draw into, in surface pixels.</param>
+        /// <param name="size">Edge of that square. The mask is scaled to it.</param>
+        /// <param name="ink">The colour to tint with; its alpha scales the whole mark.</param>
+        protected void DrawCoverageMask(in IconBaker.CoverageMask mask, float x, float y, float size,
+            RGBAColor32 ink)
+        {
+            if (mask.IsEmpty || size <= 0f || mask.Size <= 0)
+            {
+                return;
+            }
+
+            var scale = size / mask.Size;
+            foreach (var run in mask.Runs)
+            {
+                var x0 = MathF.Round(x + (run.X * scale));
+                var x1 = MathF.Round(x + ((run.X + run.Width) * scale));
+                var y0 = MathF.Round(y + (run.Y * scale));
+                var y1 = MathF.Round(y + ((run.Y + 1) * scale));
+
+                var alpha = (byte)(ink.Alpha * run.Alpha / 255);
+                FillRect(x0, y0, MathF.Max(1f, x1 - x0), MathF.Max(1f, y1 - y0),
+                    new RGBAColor32(ink.Red, ink.Green, ink.Blue, alpha));
+            }
+        }
+
+        /// <summary>
         /// Draws a line between two points with the given color and thickness.
         /// </summary>
         protected void DrawLine(float x0, float y0, float x1, float y1, RGBAColor32 color, int thickness = 1)
