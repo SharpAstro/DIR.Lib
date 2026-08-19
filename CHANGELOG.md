@@ -9,6 +9,61 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.5
+
+Icons can be baked from a font glyph. `IconBaker` turns a glyph into horizontal runs of constant
+coverage, and `PixelWidgetBase.DrawCoverageMask` paints one as a tinted mark.
+
+Three things that buys over drawing the glyph as text at runtime, each of which the text path costs.
+It works where the face is not installed -- an app bundling no emoji font resolves none on a typical
+Linux host, and a missing glyph draws NOTHING rather than a placeholder, so a button's only mark
+silently disappears. It is MONOCHROME, so it takes the ink colour and dims with the label beside it,
+which a COLRv1 colour glyph carrying its own palette structurally cannot. And it is identical
+everywhere, where the text path varies with whichever face the host happened to resolve.
+
+The baking is a LIBRARY API rather than only a build step, because a build-time bake cannot serve
+every case: a theme that turns the whole UI one colour (a night / dark-adaptation mode) wants its
+normally-full-colour emoji as tintable coverage, and which emoji those are is not known until the app
+draws them. Runtime callers should cache per (codepoint, size). `ManagedFontRasterizer` is pure
+managed, so the same font file and inputs give byte-identical output on any host -- which is what lets
+a build pipeline VERIFY a generated file rather than trust it.
+
+Runs rather than a bitmap, so drawing is a loop of rectangle fills and needs no new primitive on the
+renderer seam -- the same reason `IconKind`'s pixel painter is built from rectangles. A 20px mark is
+around 160 runs.
+
+Two details in `DrawCoverageMask` are load-bearing. A run's coverage MODULATES the ink's alpha rather
+than replacing it, which is what makes a baked mark dim exactly as its label does. And row and column
+edges are snapped to whole pixels rather than passed through as floats, because `FillRect` truncates
+its rect to int: a scaled row of height 0.97 rounds to nothing and leaves gaps through the mark.
+Snapping each edge and taking the difference makes consecutive rows tile by construction, at any
+scale.
+
+A test caught a real bug in the quantisation. The obvious `alpha * levels / 256` maps to
+`0..levels-1`, so the faintest bucket of every antialiased edge was discarded as uncovered and marks
+came out slightly thin, invisibly; at one level EVERY pixel landed in bucket 0 and the whole mark
+disappeared. The top bucket is also a full 255 rather than a bucket centre, which is not cosmetic --
+an interior pixel is fully covered, and 223 makes the whole mark read visibly greyer than the text
+beside it.
+
+**New tool: `DIR.Lib.IconBaker`**, consumed via `dnx DIR.Lib.IconBaker`. A thin wrapper that owns the
+generated-file format and the argument parsing while `IconBaker` owns the baking. It ships from this
+repo rather than from a consumer so that a second app with icons to bake takes it off the feed instead
+of vendoring a copy of the generator. Everything about WHICH glyphs is an argument.
+
+    bake-icons --font <path> --out <file.g.cs> --namespace <ns> --glyph Name=U+1F300
+               [--class BakedIcons] [--sizes 13,16,20] [--levels 4] [--access internal]
+
+Bake the DPI scales that matter, not round numbers. A run is a row of PIXELS, so scaling a mask either
+overlaps rows or opens gaps between them; `IconBaker.NearestSize` picks the closest bake so the
+residual scale stays near 1. The default ladder is one size per common DPI scale for a 13-unit mark,
+which keeps every one of them within about 2%; a ladder of pretty numbers left 1.75x resampling by 14%
+and 2.5x by 25%. Each extra size costs around 200 runs, so closing those gaps is nearly free.
+
+Baking redistributes GLYPH SHAPES, so point the tool at a face whose licence permits it (Noto is OFL).
+A proprietary system face is not a valid bake source, and a runtime emoji probe legitimately falling
+back to one does not make its outlines redistributable.
+
 ## 8.4
 
 BackgroundTaskTracker grows two shapes it could not hold. `Run` and `RunGuarded` fit work that is

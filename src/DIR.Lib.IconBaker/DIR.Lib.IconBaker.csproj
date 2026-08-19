@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Published NuGet tool: bakes glyphs into coverage-run tables as generated C#.
+
+    It is a THIN wrapper. All the baking is DIR.Lib's IconBaker, which lives in the library because the
+    same logic must also be callable at runtime (a theme that turns the whole UI one colour needs its
+    normally-full-colour emoji as tintable coverage, and which emoji those are is not known until the app
+    draws them). This project owns only the file format and the argument parsing.
+
+    It lives HERE rather than in a consumer so a second consumer does not copy it. Any app with icons to
+    bake gets it from the feed instead of vendoring the generator.
+
+    Run during development:  dotnet run, from this project directory.
+    Consume from NuGet:      dnx DIR.Lib.IconBaker
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- Packed on build so the repo's CI (build -c Release, then push of all *.nupkg) publishes it
+         alongside the library, with the same -p:Version stamp. -->
+    <PackAsTool>true</PackAsTool>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageId>DIR.Lib.IconBaker</PackageId>
+    <ToolCommandName>bake-icons</ToolCommandName>
+    <Description>Bakes font glyphs into coverage-run tables as generated C#, so an app can draw icons as tintable rectangles with no font installed at runtime. Wraps DIR.Lib's IconBaker.</Description>
+    <PackageTags>icons;fonts;glyph;codegen;ui;tool</PackageTags>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/SharpAstro/DIR.Lib.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DIR.Lib\DIR.Lib.csproj" />
+  </ItemGroup>
+
+</Project>
