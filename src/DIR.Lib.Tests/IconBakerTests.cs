@@ -48,7 +48,12 @@ public sealed class IconBakerTests
         foreach (var cp in (int[])[0x2588, 0x2593, 0x2592, 0x2591, 0x2502])
         {
             var probe = rasterizer.RasterizeGlyph(font!, Size, new Rune(cp));
-            if (probe.Width > 0 && probe.Height > 0 && (probe.Width > Size || probe.Height > Size))
+            // MinInkWidth guards the discriminator below: truncation leaves the non-overflowing axis
+            // untouched, so the test needs an axis wide enough that scaling provably narrows it. A
+            // two-pixel bar (U+2502) would fit at the smaller em at the same two pixels, and the bake
+            // would be indistinguishable from the truncated form for reasons of rounding alone.
+            const int MinInkWidth = 4;
+            if (probe.Width >= MinInkWidth && probe.Height > 0 && (probe.Width > Size || probe.Height > Size))
             {
                 overflowing = new Rune(cp);
                 rawWidth = probe.Width;
@@ -72,22 +77,23 @@ public sealed class IconBakerTests
         inkWidth.ShouldBeLessThanOrEqualTo(Size);
         inkHeight.ShouldBeLessThanOrEqualTo(Size);
 
-        // Two competing hypotheses, compared directly rather than through a tolerance: a UNIFORMLY SCALED
-        // glyph, and the TRUNCATED one the baker used to produce. Stating both is what makes this test
-        // discriminating -- a tolerance on the aspect alone is not, because the only glyphs a text face
-        // draws outside its em box are block elements, and truncating a rectangle yields a rectangle whose
-        // proportions are wrong by a mere ~13%, comfortably inside any tolerance loose enough to absorb
-        // one pixel of rounding on a 13-pixel mask.
-        var scale = (float)Size / Math.Max(rawWidth, rawHeight);
-        var scaledDelta = MathF.Abs(inkWidth - (rawWidth * scale)) + MathF.Abs(inkHeight - (rawHeight * scale));
-        var truncatedDelta = MathF.Abs(inkWidth - MathF.Min(rawWidth, Size))
-            + MathF.Abs(inkHeight - MathF.Min(rawHeight, Size));
+        // Assert against the TRUNCATED form, computed explicitly, rather than against a model of what a
+        // scaled raster ought to measure. An earlier version of this test did the latter -- comparing the
+        // baked aspect to raw * scale -- and it passed on Consolas and failed on DejaVu, because ink is
+        // rounded to whole pixels and a block element at a ~10 pixel em does not scale linearly. What the
+        // fix guarantees is not a predictable size; it is that the glyph was re-rasterised smaller instead
+        // of having rows dropped, and the truncated form is exactly what "rows dropped" produces.
+        var truncatedWidth = Math.Min(rawWidth, Size);
+        var truncatedHeight = Math.Min(rawHeight, Size);
 
-        scaledDelta.ShouldBeLessThan(
-            truncatedDelta,
-            $"baked ink {inkWidth}x{inkHeight} should match the scaled glyph "
-            + $"({rawWidth * scale:F1}x{rawHeight * scale:F1}), not the truncated one "
-            + $"({MathF.Min(rawWidth, Size)}x{MathF.Min(rawHeight, Size)})");
+        // Re-rasterising at a smaller em shrinks or holds every dimension; truncation passes the
+        // non-overflowing axis through untouched. So a fitted bake can never agree with the truncated
+        // one on BOTH axes, whatever the face.
+        inkWidth.ShouldBeLessThanOrEqualTo(truncatedWidth);
+        inkHeight.ShouldBeLessThanOrEqualTo(truncatedHeight);
+        (inkWidth < truncatedWidth || inkHeight < truncatedHeight).ShouldBeTrue(
+            $"baked ink {inkWidth}x{inkHeight} is exactly the truncated glyph "
+            + $"({truncatedWidth}x{truncatedHeight}), so the raster was cut rather than scaled");
     }
 
     [Fact]
