@@ -9,6 +9,66 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.4
+
+BackgroundTaskTracker grows two shapes it could not hold. `Run` and `RunGuarded` fit work that is
+started and forgotten; what did not fit was work that is SUPERSEDED, and work that returns a VALUE.
+Every consumer had hand-rolled both in a private field.
+
+`RunExclusive(key, ...)` is the first: starting work under a key cancels whatever was running under
+it. That is the right model when the old result is not merely unwanted but about to be WRONG -- a
+second file opened while the first is still loading, star detection restarted because the image was
+replaced. The token is linked to the caller's own, so shutdown cancels it too and no call site
+composes that itself. `IsRunning` and `Cancel` answer for a key, and `DrainAsync` now cancels keyed
+work before awaiting it, so a shutdown neither sits through a load nobody is waiting for nor
+abandons work still touching state.
+
+`RunExclusive<TResult>` plus `TryCollect<TResult>` is the second. The result is PULLED by the
+consumer rather than pushed into a callback, so it is adopted on whichever thread is entitled to
+adopt it -- for a UI that is the render thread, on the frame of its choosing. A callback would
+deliver it on the pool, which is exactly where a render-thread-owned field must not be written.
+`TryCollect` retires the slot whether or not there was a result: a run that cancelled or threw has
+nothing to hand over, and an occupied slot would wedge the key against its next use. Reference types
+only, because for a value type the "nothing to report" answer would be `Nullable<T>`, a different
+runtime type from the one the work produced, and `TryCollect` would stop recognising it. A
+superseded slot is cancelled but not DISPOSED until its task actually ends -- the outgoing work
+still holds the token, and disposing the source out from under it turns an orderly supersede into an
+`ObjectDisposedException`.
+
+`DockLayout<T>.Dock` clamps to what is left. It clamped nothing, so an over-large requested extent
+did two invisible things at once: a Right strip resolves its x as `Right - size`, so it walked LEFT
+past the container origin and painted over its own siblings, and the fill rect was handed the
+negative leftover. Neither half reads as "does not fit" at the call site, which is why it survived --
+everything still looks drawn. Measured in a FITS viewer whose info panel is a Right strip inside the
+second pane of a Split: at surface width 733 the panel arranged at x=283 w=450 inside a parent
+starting at 459, straight over the split divider, and the image pane came out w=-176. The divider
+painted, stated a resize cursor, and could not be pressed at all, which reads as a dead handle
+rather than as a layout overrun.
+
+`CompositeWidget<TSurface>` lets a widget that paints OTHER widgets state its children once, in
+paint order, with `HitTest`, `HitTestAndDispatch`, `HitTestCursor`, `GetRegisteredTextInputs` and the
+new `PaintedRegions` all derived from that one statement. A child's regions live on the CHILD, so a
+host asking only the composite missed every control its children registered: nothing throws, the
+pixels are right, and the controls simply stop answering.
+
+The tab strip becomes a Layout tree. `TabStripTree.Build` describes it as `Layout.Node`,
+`TabStripMetrics` carries what differs between surfaces (pixels vs whole cells), and two policies
+carry the rest -- `TabStripOverflow { Clip, Drop }` and `TabLabelDecoration`. Drop exists because a
+clipped tab leaves a region that is hit but not VISIBLE, so a press lands on something the reader
+cannot see; decoration exists because a terminal's active plate is a bet on the reader's palette, and
+on a monochrome one the brackets are all that says which tab is active. `TabBar` now paints that
+shared tree, its 69 geometry tests passing unchanged.
+
+`TabBarColors.HoverBackground` (nullable, null meaning `ActiveBackground`) adds a third plate tone,
+for the case the old reasoning did not survive: a strip drawing NO accent renders hover and active
+identically and stops being able to say which tab a click would take you to. `CanCloseTabs` and
+`CanReorderTabs` both default true; closing off also stops RESERVING the box, so tabs are narrower by
+it rather than holding a gap where the control would have been.
+
+`IconKind.Plus` and `IconKind.Minus`, because a stepper is `[-] value [+]` and a terminal has plenty
+of those. Both are built from rectangles: a typeset `+` is drawn by whichever face the host resolved,
+at that face's stroke weight, sitting on the text baseline rather than centred in its box.
+
 ## 8.3
 
 The strip attaches to any edge, and a nav rail is the same widget. TabStripSide { Top, Bottom, Left,
