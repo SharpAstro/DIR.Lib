@@ -39,6 +39,14 @@ public static class IconBaker
     /// </remarks>
     public const int DefaultAlphaLevels = 4;
 
+    /// <summary>How many times <see cref="Bake"/> may shrink its request to fit the mask square.</summary>
+    /// <remarks>
+    /// A backstop on the fit loop, not a tuning dial: each pass multiplies the request by the overflow
+    /// ratio, so it decreases monotonically and converges in one or two passes for a real face. The cap
+    /// only bounds a pathological one.
+    /// </remarks>
+    private const int MaxFitAttempts = 8;
+
     /// <summary>One horizontal span of constant coverage, in mask pixels.</summary>
     public readonly record struct CoverageRun(byte X, byte Y, byte Width, byte Alpha);
 
@@ -76,6 +84,28 @@ public static class IconBaker
             return new CoverageMask(size, ImmutableArray<CoverageRun>.Empty);
         }
 
+        // Shrink the request until the ink FITS, rather than centring an oversized bitmap and dropping
+        // whatever falls outside. The size is an em size and a glyph's ink may exceed its em box -- every
+        // emoji in Noto's COLRv1 face does, by about 15% -- so the centred-only form silently shaved one
+        // to two pixels off each edge of EVERY mark. That is unreadable as a fault on a mark whose
+        // extremes are thin (a sparkle loses a tip nobody can name) and obvious on one bounded by a
+        // curve: a circle acquires a flat top and bottom, which is how a baked globe gave it away.
+        var request = (float)size;
+        for (var attempt = 0; attempt < MaxFitAttempts && (bmp.Width > size || bmp.Height > size); attempt++)
+        {
+            // Scale by the worse-overflowing axis so both land inside, uniformly so the aspect holds.
+            // Re-measure rather than trust the arithmetic: ink is rounded to whole pixels, so a request
+            // that should just fit can still come back a pixel over.
+            request *= (float)size / Math.Max(bmp.Width, bmp.Height);
+            var fitted = rasterizer.RasterizeGlyph(fontPath, request, codepoint);
+            if (fitted.Width <= 0 || fitted.Height <= 0 || fitted.Rgba.Length == 0)
+            {
+                // Keep the last raster that had ink; the clamps below still bound what gets emitted.
+                break;
+            }
+            bmp = fitted;
+        }
+
         // Centre the glyph's INK in the square. The rasteriser reports an ink box plus bearings, and
         // bearing-relative placement puts each glyph where its own font metrics say -- correct for text,
         // wrong for an icon, where a row of unrelated marks has to look aligned to each other.
@@ -85,6 +115,9 @@ public static class IconBaker
 
         for (var row = 0; row < bmp.Height; row++)
         {
+            // Backstop only: the fit loop leaves both offsets non-negative, so this drops nothing for a
+            // face that converges. It stays because a font defeating the cap must still yield an in-bounds
+            // mask -- CoverageRun packs X/Y/Width into bytes over a size-square grid.
             var y = offY + row;
             if (y is < 0 || y >= size)
             {

@@ -18,6 +18,78 @@ public sealed class IconBakerTests
     // IsEmpty rather than an exception.
     private static string? TextFontPath => FontResolver.ResolveSystemFont() is { Length: > 0 } p ? p : null;
 
+    /// <summary>
+    /// A glyph whose ink exceeds its em box is SCALED to fit the mask, not centred and truncated.
+    /// </summary>
+    /// <remarks>
+    /// <para>The size passed to <see cref="IconBaker.Bake"/> is an em size, and nothing obliges a glyph to
+    /// keep its ink inside its em box. Every emoji in Noto's COLRv1 face overruns it by about 15%, and so
+    /// do the block elements used here; the baker used to centre that oversized raster and drop whatever
+    /// fell outside, shaving one to two pixels off each edge of every mark.</para>
+    /// <para>Asserting on the ASPECT is what makes this shape-independent. Truncation cuts one axis and
+    /// leaves the other, so it always changes the ink's proportions; scaling preserves them. The obvious
+    /// assertion -- that the ink stays inside the square -- is the one the sibling test already makes, and
+    /// clipping satisfies it trivially, which is exactly why that test never caught this.</para>
+    /// </remarks>
+    [Fact]
+    public void InkWiderThanTheEmBoxIsScaledToFitRatherThanTruncated()
+    {
+        var font = TextFontPath;
+        Assert.SkipWhen(font is null, "No system font on this host.");
+
+        using var rasterizer = new ManagedFontRasterizer();
+
+        // Find a glyph this face draws larger than its em box. Block elements are the reliable candidates
+        // in a text face -- a letter's ink sits well inside the em, so it can never exercise this path.
+        const int Size = 13;
+        Rune? overflowing = null;
+        var rawWidth = 0;
+        var rawHeight = 0;
+        foreach (var cp in (int[])[0x2588, 0x2593, 0x2592, 0x2591, 0x2502])
+        {
+            var probe = rasterizer.RasterizeGlyph(font!, Size, new Rune(cp));
+            if (probe.Width > 0 && probe.Height > 0 && (probe.Width > Size || probe.Height > Size))
+            {
+                overflowing = new Rune(cp);
+                rawWidth = probe.Width;
+                rawHeight = probe.Height;
+                break;
+            }
+        }
+
+        Assert.SkipWhen(overflowing is null, "This face keeps every probed glyph inside its em box.");
+
+        var mask = IconBaker.Bake(rasterizer, font!, overflowing!.Value, Size);
+        mask.Runs.ShouldNotBeEmpty();
+
+        var minX = mask.Runs.Min(r => (int)r.X);
+        var maxX = mask.Runs.Max(r => r.X + r.Width - 1);
+        var minY = mask.Runs.Min(r => (int)r.Y);
+        var maxY = mask.Runs.Max(r => (int)r.Y);
+        var inkWidth = maxX - minX + 1;
+        var inkHeight = maxY - minY + 1;
+
+        inkWidth.ShouldBeLessThanOrEqualTo(Size);
+        inkHeight.ShouldBeLessThanOrEqualTo(Size);
+
+        // Two competing hypotheses, compared directly rather than through a tolerance: a UNIFORMLY SCALED
+        // glyph, and the TRUNCATED one the baker used to produce. Stating both is what makes this test
+        // discriminating -- a tolerance on the aspect alone is not, because the only glyphs a text face
+        // draws outside its em box are block elements, and truncating a rectangle yields a rectangle whose
+        // proportions are wrong by a mere ~13%, comfortably inside any tolerance loose enough to absorb
+        // one pixel of rounding on a 13-pixel mask.
+        var scale = (float)Size / Math.Max(rawWidth, rawHeight);
+        var scaledDelta = MathF.Abs(inkWidth - (rawWidth * scale)) + MathF.Abs(inkHeight - (rawHeight * scale));
+        var truncatedDelta = MathF.Abs(inkWidth - MathF.Min(rawWidth, Size))
+            + MathF.Abs(inkHeight - MathF.Min(rawHeight, Size));
+
+        scaledDelta.ShouldBeLessThan(
+            truncatedDelta,
+            $"baked ink {inkWidth}x{inkHeight} should match the scaled glyph "
+            + $"({rawWidth * scale:F1}x{rawHeight * scale:F1}), not the truncated one "
+            + $"({MathF.Min(rawWidth, Size)}x{MathF.Min(rawHeight, Size)})");
+    }
+
     [Fact]
     public void ABakedGlyphCoversSomethingAndStaysInsideItsSquare()
     {

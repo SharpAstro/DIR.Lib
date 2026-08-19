@@ -9,6 +9,23 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.6
+
+`IconBaker` scales a glyph to fit its mask instead of truncating it. The size passed to `Bake` is an em
+size, and nothing obliges a glyph to keep its ink inside its em box: every emoji in Noto's COLRv1 face
+overruns it by about 15%, and so do the block elements in an ordinary text face. The baker centred that
+oversized raster in the square and dropped whatever fell outside, so every baked mark lost one to two
+pixels off each edge.
+
+The loss was invisible on marks whose extremes are thin -- a sparkle shed a tip nobody could name -- and
+obvious on one bounded by a curve, where a circle acquires a flat top and bottom. A baked globe is what
+gave it away. `Bake` now shrinks its request by the overflow ratio and re-measures until the ink fits,
+which converges in one or two passes; the bounds checks around the emit remain as a backstop for a face
+that defeats the attempt cap.
+
+Baked output therefore CHANGES for any glyph that was overflowing: marks get their full shape at slightly
+smaller ink. Re-bake and commit any generated tables.
+
 ## 8.5
 
 Icons can be baked from a font glyph. `IconBaker` turns a glyph into horizontal runs of constant
