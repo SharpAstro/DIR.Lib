@@ -9,6 +9,49 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.8
+
+`LayoutDamage` answers which rects differ between two painted frames, so a surface can repaint those
+instead of everything. The arranged layout tree is the pixel counterpart to Console.Lib's `CellBuffer`,
+which already paints by diffing -- a clock tick there emits ONE cell rather than repainting the row.
+The measurement that motivated it, from a consumer: repainting a whole window to change one number in
+a status bar costs 8% GPU on an Adreno X1-85 over a 4 Mpix pane, and without damage the only two
+states available are that and zero.
+
+Damage is the SYMMETRIC DIFFERENCE of the two frames' paint signatures, which gets three cases right
+that walking the current frame does not: a node that moved contributes both its old and new bounds,
+one that appeared contributes its new, and one that VANISHED contributes its old. That last is the
+tooltip case, and it is the one that bites -- a dismissed tooltip changes nothing in the current tree,
+so a forward-only diff reports no damage and leaves it painted forever.
+
+Two consequences fall out rather than being written: moving INSIDE a button yields a byte-identical
+tree so nothing repaints, while crossing its edge damages exactly two rects; and the redraw gate
+becomes derivable, since empty damage means do not render.
+
+`PaintSignature` deliberately excludes handlers. `Node` is a record carrying `OnClick`, records compare
+delegates by reference, and trees are rebuilt every frame with fresh lambdas -- so comparing nodes
+would report the whole UI damaged on every frame. Two nodes differing only in which lambda they would
+invoke are pixel-identical, and sizing, padding and alignment are excluded for the same reason: they
+decide the arrangement, and the arrangement is already present as `Bounds`. The background it carries
+is the RESOLVED one, because `HoverBackground` is chosen at paint time and a signature over declared
+properties alone reports no damage on a hover transition -- highlights would silently stop appearing.
+A `TextInput` leaf extracts its state by value (caret, selection anchor, the IME composition run that
+paints over the text, and the placeholder that paints in its place), since `TextInputState` is a
+mutable reference that record equality cannot see into. A `Fill` is opaque -- a painter callback owns
+those pixels -- so `Compute` takes a `fillChanged` predicate.
+
+Damage is deduplicated by rect: a node changing in place appears in BOTH halves of the symmetric
+difference at the same bounds, and emitting it twice scissors two passes over the same pixels, which
+for anything with transparency paints it twice rather than merely costing twice. Changed text is
+exactly that case, so it is the common one, not an edge.
+
+Layout capture is now UNCONDITIONAL, which is the one behaviour change here. It was gated on
+`LayoutInspection.Enabled` for "zero overhead in production", and that cannot stand once the tree is
+what damage diffs against. The cost is one list of structs per widget per frame, accepted deliberately
+against the 8% above. `LayoutInspection` survives as an obsolete no-op rather than being deleted,
+because removing a public type would mean a major bump and a re-pin across four repos for a field
+nothing reads; delete it at the next major.
+
 ## 8.7
 
 `FontResolver.ResolveEmojiFont` resolves the platform's colour-emoji face, a third role beside the
