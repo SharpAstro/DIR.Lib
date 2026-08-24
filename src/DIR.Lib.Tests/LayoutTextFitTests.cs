@@ -82,6 +82,29 @@ public class LayoutTextFitTests
     }
 
     [Fact]
+    public void Middle_KeepsBothEndsAndDropsTheMiddle()
+    {
+        // Symmetric by construction: 2k+1 characters must fit six, so k = 2 from each end.
+        // The case neither Start nor End covers -- a path needs its root AND its leaf.
+        Paint("abcdefghij", 10f, 30f, TextTrim.Middle).Text.ShouldBe("ab…ij");
+    }
+
+    [Fact]
+    public void Middle_OnARunThatFits_IsUntouched()
+    {
+        // Same free path as every other policy: one measurement, no cut.
+        Paint("abcdefghij", 10f, 100f, TextTrim.Middle).ShouldBe(("abcdefghij", 10f));
+    }
+
+    [Fact]
+    public void Middle_WithRoomForNothing_IsJustTheEllipsis()
+    {
+        // 5px fits one character, and one character cannot show two ends, so it shows neither
+        // rather than picking an end arbitrarily -- Start and End are the policies that pick.
+        Paint("abcdefghij", 10f, 5f, TextTrim.Middle).Text.ShouldBe("…");
+    }
+
+    [Fact]
     public void Shrink_KeepsEveryCharacterAndScalesDown()
     {
         // 10 chars must fit 30px: 10 * size * 0.5 <= 30 => size <= 6.

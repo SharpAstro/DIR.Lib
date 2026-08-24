@@ -9,6 +9,29 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.9
+
+`TextTrim.Middle` and `TextFit.TrimMiddleToWidth`: drop the MIDDLE of a run that does not fit,
+ellipsis in the middle, keeping both ends.
+
+The case neither `Start` nor `End` covers, and a path is the canonical one: the root says which
+volume or install this is (a Store package under `WindowsApps`, a dev build under `bin\Debug`) and
+the leaf says which file, while the dozen directories between them are what a reader skips.
+Start-trimming keeps the leaf and throws away the half identifying the install; end-trimming does the
+reverse. A diagnostic panel listing where an app is installed and where it searched for its models
+needs both ends of every line, which is where this came from -- it existed as a private helper inside
+a consumer, which is the same two-copies-of-a-rule mistake the slider primitives had to be walked
+back from.
+
+A cell surface honours it exactly as a pixel surface does, unlike `Shrink`: it is a character-count
+cut, not a scale, so there is nothing to degrade. Console.Lib's `CellLayout` implements the same cut.
+
+`TrimMiddleToWidth` binary-searches the kept-end length rather than walking down from the full run as
+the Start/End case does, because this policy is called from per-FRAME paint paths on runs that can be
+several times too wide; halving is O(log n) either way where the walk is O(n) when a run badly
+overflows. Measured width is not linear in character count on a proportional face, so the search is
+necessary and arithmetic would over- or under-shoot.
+
 ## 8.8
 
 `LayoutDamage` answers which rects differ between two painted frames, so a surface can repaint those

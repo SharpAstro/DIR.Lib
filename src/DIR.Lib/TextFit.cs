@@ -132,9 +132,10 @@ public static class TextFit
     /// no wider than <paramref name="maxWidth"/> at <paramref name="fontSize"/>.
     ///
     /// <para>The resolver-free counterpart to <see cref="FontFallbackResolver.FitEllipsis"/>, which this
-    /// delegates to when a resolver IS supplied — one implementation of the End case, so the fallback and
-    /// no-fallback paths cannot cut at different lengths. <see cref="TextTrim.Start"/> is handled here
-    /// because the resolver only ever grew the End form.</para>
+    /// delegates to when a resolver IS supplied -- one implementation of the End case, so the fallback and
+    /// no-fallback paths cannot cut at different lengths. <see cref="TextTrim.Start"/> and
+    /// <see cref="TextTrim.Middle"/> are handled here because the resolver only ever grew the End
+    /// form; Middle has its own <see cref="TrimMiddleToWidth"/> because its search shape differs.</para>
     /// </summary>
     public static string TrimToWidth<TSurface>(
         Renderer<TSurface> renderer, string text, string fontPath, FontFallbackResolver? fallback,
@@ -143,6 +144,11 @@ public static class TextFit
         if (maxWidth <= 0f) return "";
         if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(fontPath)) return text;
         if (Measure(renderer, text, fontPath, fallback, fontSize) <= maxWidth) return text;
+
+        if (trim is TextTrim.Middle)
+        {
+            return TrimMiddleToWidth(renderer, text, fontPath, fallback, fontSize, maxWidth);
+        }
 
         if (trim != TextTrim.Start && fallback is { } resolver)
         {
@@ -161,6 +167,52 @@ public static class TextFit
         }
 
         return "…";
+    }
+
+    /// <summary>
+    /// <paramref name="text"/> with its MIDDLE replaced by an ellipsis, keeping an equal number of
+    /// characters from each end, so it measures no wider than <paramref name="maxWidth"/>.
+    ///
+    /// <para>Binary search over the kept-end length rather than the descending walk the Start/End
+    /// case uses, because this one is called from per-FRAME paint paths on runs that can be several
+    /// times too wide (a 120-character install path in a narrow panel). The walk stops at the first
+    /// fit, which is cheap when a run barely overflows and O(n) measurements when it badly does;
+    /// halving is O(log n) either way. Measured width is not linear in the character count on a
+    /// proportional face, so trimming by ratio would over- or under-shoot -- hence a search and not
+    /// arithmetic.</para>
+    ///
+    /// <para>Symmetric by construction: both ends keep the same count. An asymmetric split would
+    /// need a rule for which end deserves the odd character, and no such rule generalises past the
+    /// one case that suggested it.</para>
+    /// </summary>
+    public static string TrimMiddleToWidth<TSurface>(
+        Renderer<TSurface> renderer, string text, string fontPath, FontFallbackResolver? fallback,
+        float fontSize, float maxWidth)
+    {
+        if (maxWidth <= 0f) return "";
+        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(fontPath)) return text;
+        if (Measure(renderer, text, fontPath, fallback, fontSize) <= maxWidth) return text;
+
+        const string Gap = "…";
+        var lo = 0;
+        var hi = text.Length / 2;
+        while (lo < hi)
+        {
+            var mid = (lo + hi + 1) / 2;
+            var candidate = string.Concat(text.AsSpan(0, mid), Gap, text.AsSpan(text.Length - mid));
+            if (Measure(renderer, candidate, fontPath, fallback, fontSize) <= maxWidth)
+            {
+                lo = mid;
+            }
+            else
+            {
+                hi = mid - 1;
+            }
+        }
+
+        return lo == 0
+            ? Gap
+            : string.Concat(text.AsSpan(0, lo), Gap, text.AsSpan(text.Length - lo));
     }
 
     /// <summary>

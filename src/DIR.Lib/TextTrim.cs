@@ -1,7 +1,7 @@
 namespace DIR.Lib;
 
 /// <summary>
-/// Which END of a text run a painter sacrifices when the run does not fit its arranged rect.
+/// Which PART of a text run a painter sacrifices when the run does not fit its arranged rect.
 /// <para>
 /// The choice belongs to the AUTHOR of the run, not to the painter, because only the author knows which
 /// half carries the meaning. A label reads left-to-right and keeps its head. A path does not: trimmed at
@@ -24,6 +24,25 @@ public enum TextTrim
     /// any run whose distinguishing part is at the end.
     /// </summary>
     Start,
+
+    /// <summary>
+    /// Drop the MIDDLE, ellipsis in the middle: <c>"C:\Users\se…\Program.cs"</c>. For a run whose two
+    /// ENDS both carry meaning and whose middle does not -- the case neither <see cref="Start"/> nor
+    /// <see cref="End"/> covers.
+    /// <para>
+    /// A path is the canonical one, and it is why <see cref="Start"/> is not already enough: the root
+    /// says WHICH volume or install this is (a Store package lives under <c>WindowsApps</c>, a dev
+    /// build under <c>bin\Debug</c>) and the leaf says which file, while the dozen directories
+    /// between them are the part a reader skips. Start-trimming keeps the leaf and throws away the
+    /// half that identifies the install; end-trimming does the reverse. A diagnostic panel listing
+    /// where an app is installed and where it searched for its models needs both ends of every line.
+    /// </para>
+    /// <para>
+    /// A CELL surface honours this exactly as a pixel surface does -- it is a character-count cut like
+    /// the other two, not a scale -- so unlike <see cref="Shrink"/> it needs no degradation.
+    /// </para>
+    /// </summary>
+    Middle,
 
     /// <summary>
     /// Keep every character and scale the run DOWN until it fits — <c>"a long label"</c> a little smaller
