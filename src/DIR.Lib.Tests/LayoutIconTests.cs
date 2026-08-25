@@ -1,3 +1,4 @@
+using System.Linq;
 using DIR.Lib;
 using Shouldly;
 
@@ -324,6 +325,116 @@ public class LayoutIconTests
         // rather than letting it overflow.
         InkedRows(8f).ShouldBeLessThan(InkedRows(16f));
     }
+
+    /// <summary>
+    /// A mark that states no size takes it from the text in the same container, so a caret in a chip is
+    /// sized by the chip's own label rather than by a number written out beside it.
+    /// <para>
+    /// Asserted on the ARRANGED rect rather than on the node, because the size has to survive the measure
+    /// pass to mean anything: it is the intrinsic extent an Auto child reports to its parent.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void AnUnsizedIconTakesItsSizeFromTheTextBesideIt()
+    {
+        var renderer = new RgbaImageRenderer(Surface, Surface);
+        var widget = new IconWidget(renderer);
+
+        // Beside a Star sibling, so the icon's Auto width is its intrinsic one -- the same shape as
+        // AnIconIsSquareAtItsDeclaredSize, and for the same reason.
+        var root = Layout.Builder.HStack(
+            Layout.Builder.Text("Two-Up", 20f, Ink),
+            Layout.Builder.Icon(Layout.IconKind.CaretUp, color: Ink)
+                .Clickable(new HitResult.ButtonHit("caret")),
+            Layout.Builder.Spacer().WStar());
+
+        var region = widget.Render(root, new RectF32(0, 0, Surface, Surface)).ShouldHaveSingleItem();
+
+        region.Width.ShouldBe(20f * Layout.Content.Icon.TextSizeRatio, 0.5f);
+        region.Height.ShouldBe(20f * Layout.Content.Icon.TextSizeRatio, 0.5f);
+    }
+
+    /// <summary>
+    /// The run may be nested: a padded label is a one-child stack, since padding insets a node's CHILDREN
+    /// and so cannot go on the leaf. A search that only looked at the icon's immediate siblings would miss
+    /// every row built that way and silently fall back to the default size.
+    /// </summary>
+    [Fact]
+    public void TheTextItMatchesMayBeNestedInsideTheContainer()
+    {
+        var nested = Layout.Builder.HStack(
+            Layout.Builder.HStack(Layout.Builder.Text("Rev C", 24f, Ink)).PadX(4f),
+            Layout.Builder.Icon(Layout.IconKind.CaretDown, color: Ink));
+
+        var icon = IconIn(nested);
+
+        icon.Size.ShouldBe(24f * Layout.Content.Icon.TextSizeRatio, 0.001f);
+        icon.MatchesText.ShouldBeTrue("the resolved size still records where it came from");
+    }
+
+    /// <summary>
+    /// A stated size is never second-guessed -- an icon-only button has no run to match and every existing
+    /// call site states one, so the resolution must be additive rather than an override.
+    /// </summary>
+    [Fact]
+    public void AStatedSizeWins_AndAnIconWithNoTextInScopeKeepsTheDefault()
+    {
+        IconIn(Layout.Builder.HStack(
+                Layout.Builder.Text("Two-Up", 20f, Ink),
+                Layout.Builder.Icon(Layout.IconKind.CaretUp, 9f, Ink)))
+            .Size.ShouldBe(9f);
+
+        // Nothing text-bearing anywhere in the container: the mark falls back rather than resolving to
+        // zero, which is what an icon-only row (a stepper, a toolbar button) actually is.
+        var lone = IconIn(Layout.Builder.HStack(
+            Layout.Builder.Icon(Layout.IconKind.Plus, color: Ink),
+            Layout.Builder.Spacer().WStar()));
+
+        lone.Size.ShouldBe(Layout.Content.Icon.DefaultSize);
+        lone.MatchesText.ShouldBeTrue("it asked to match text; there was none to match");
+    }
+
+    /// <summary>
+    /// A field counts as text: a caret beside an editable value is the same relationship as a caret beside
+    /// a label, and the two are interchangeable in one row (the zoom chip swaps between them).
+    /// </summary>
+    [Fact]
+    public void AnEditableFieldSizesTheMarkBesideIt()
+    {
+        var state = new TextInputState { Text = "175%" };
+        var row = Layout.Builder.HStack(
+            Layout.Builder.TextInput(state, 18f),
+            Layout.Builder.Icon(Layout.IconKind.CaretUp, color: Ink));
+
+        IconIn(row).Size.ShouldBe(18f * Layout.Content.Icon.TextSizeRatio, 0.001f);
+    }
+
+    /// <summary>The first icon of several is not the only one resolved -- a stepper is two marks in one row.</summary>
+    [Fact]
+    public void EveryUnsizedIconInTheContainerIsResolved()
+    {
+        var stepper = Layout.Builder.HStack(
+            Layout.Builder.Icon(Layout.IconKind.Minus, color: Ink),
+            Layout.Builder.Text("3", 16f, Ink),
+            Layout.Builder.Icon(Layout.IconKind.Plus, color: Ink));
+
+        var icons = ((Layout.Node.Stack)stepper).Children
+            .OfType<Layout.Node.Leaf>()
+            .Select(l => l.Content)
+            .OfType<Layout.Content.Icon>()
+            .ToList();
+
+        icons.Count.ShouldBe(2);
+        icons.ShouldAllBe(i => i.Size == 16f * Layout.Content.Icon.TextSizeRatio);
+    }
+
+    /// <summary>The first icon leaf in a container, for the assertions that read the tree rather than pixels.</summary>
+    private static Layout.Content.Icon IconIn(Layout.Node container)
+        => ((Layout.Node.Stack)container).Children
+            .OfType<Layout.Node.Leaf>()
+            .Select(leaf => leaf.Content)
+            .OfType<Layout.Content.Icon>()
+            .First();
 
     [Fact]
     public void AZeroSizedRectDrawsNothing_RatherThanDividingByIt()
