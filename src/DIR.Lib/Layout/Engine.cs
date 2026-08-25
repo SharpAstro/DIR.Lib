@@ -71,6 +71,10 @@ public static class Engine
             // A Dock or Split fills its bounds; both expect explicit bounds rather than shrink-to-content.
             Node.Dock => available,
             Node.Split => available,
+            // An Anchored measures to its CHILD, not to the space it floats in: nesting one inside a stack
+            // should reserve the panel, not the canvas. It still arranges its child at an offset inside
+            // whatever rect it is given, so at the top of an Overlay it floats over the full area.
+            Node.Anchored anchored => Measure(anchored.Child, available, ctx),
             _ => Size<T>.Zero,
         };
 
@@ -145,7 +149,50 @@ public static class Engine
             case Node.Split split:
                 ArrangeSplit(split, inner, ctx, output, childDepth);
                 break;
+            case Node.Anchored anchored:
+                ArrangeAnchored(anchored, inner, ctx, output, childDepth);
+                break;
         }
+    }
+
+    /// <summary>
+    /// Places a floating child at its measured size, pinned to an edge of <paramref name="inner"/> or free,
+    /// and clamped inside it.
+    /// </summary>
+    /// <remarks>
+    /// The clamp's upper bound is guarded with a Max against its own lower bound, because a child LARGER
+    /// than the rect it floats in inverts the range — and a clamp with a max below its min is either an
+    /// exception or, worse, a silent jump to the wrong edge. A panel wider than the space left for it is
+    /// ordinary: a window dragged narrow, or a sidebar opening under it.
+    /// </remarks>
+    private static void ArrangeAnchored<T>(Node.Anchored anchored, Rect<T> inner, IMeasureContext<T> ctx,
+        ImmutableArray<ArrangedNode<T>>.Builder output, int depth) where T : INumber<T>
+    {
+        var size = Measure(anchored.Child, new Size<T>(inner.Width, inner.Height), ctx);
+        var margin = ctx.ToSurface(anchored.Margin);
+        var along = ctx.ToSurface(anchored.OffsetAlong);
+        var across = ctx.ToSurface(anchored.OffsetAcross);
+
+        // A pinned side fixes one coordinate at the margin and keeps the offset on the other; free keeps
+        // both. Left/Right pin X and run the offset down; Top/Bottom pin Y and run it across.
+        var (x, y) = anchored.Side switch
+        {
+            DockSide.Left => (inner.X + margin, inner.Y + along),
+            DockSide.Right => (inner.X + inner.Width - margin - size.Width, inner.Y + along),
+            DockSide.Top => (inner.X + along, inner.Y + margin),
+            DockSide.Bottom => (inner.X + along, inner.Y + inner.Height - margin - size.Height),
+            _ => (inner.X + along, inner.Y + across),
+        };
+
+        if (anchored.Clamp)
+        {
+            var minX = inner.X + margin;
+            var minY = inner.Y + margin;
+            x = Min(Max(x, minX), Max(minX, inner.X + inner.Width - margin - size.Width));
+            y = Min(Max(y, minY), Max(minY, inner.Y + inner.Height - margin - size.Height));
+        }
+
+        ArrangeNode(anchored.Child, new Rect<T>(x, y, size.Width, size.Height), ctx, output, depth);
     }
 
     private static void ArrangeSplit<T>(Node.Split split, Rect<T> inner, IMeasureContext<T> ctx,

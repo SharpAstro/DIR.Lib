@@ -111,6 +111,16 @@ public static class Builder
     /// <summary><paramref name="layer"/> drawn first, <paramref name="top"/> on top (modal / dropdown / popup).</summary>
     public static Node Overlay(Node layer, Node top) => new Node.Overlay(layer, top);
 
+    /// <summary>
+    /// A floating child placed inside this node's rect at its own measured size — pinned to
+    /// <paramref name="side"/>, or free when that is null. Pair with <see cref="Overlay"/> to float a panel
+    /// over content. <paramref name="offsetAlong"/> is consumer-owned state a drag updates; see
+    /// <see cref="Node.Anchored"/> for why the pinning and the clamp belong to the engine.
+    /// </summary>
+    public static Node Anchored(Node child, DockSide? side = null,
+        float offsetAlong = 0f, float offsetAcross = 0f, float margin = 0f, bool clamp = true)
+        => new Node.Anchored(child, side, offsetAlong, offsetAcross, margin, clamp);
+
     /// <summary>Two resizable panes plus a draggable divider; <paramref name="firstExtent"/> is consumer-owned state. See <see cref="Node.Split"/>.</summary>
     public static Node Split(Node first, Node second, Axis axis = Axis.Horizontal,
         float firstExtent = 0f, float dividerThickness = 6f,

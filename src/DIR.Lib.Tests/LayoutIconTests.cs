@@ -530,6 +530,79 @@ public class LayoutIconTests
         TextInputRenderer.LeadingRoom(16f, false).ShouldBe(0f);
     }
 
+    /// <summary>
+    /// The pan mark reaches the box on BOTH axes -- four arms from a common centre -- and its corners are
+    /// empty, which is what separates it from Plus (whose arms are bars, not barbed) and from Grid.
+    /// </summary>
+    [Fact]
+    public void ThePanIconReachesEveryEdge_WithBarbedArmsAndEmptyCorners()
+    {
+        var (inked, _) = Paint(Layout.IconKind.Pan);
+        var mid = (int)Surface / 2;
+        var last = (int)Surface - 1;
+
+        inked(mid, 0).ShouldBeTrue("the up arm must reach the top edge");
+        inked(mid, last).ShouldBeTrue("...and the down arm the bottom");
+        inked(0, mid).ShouldBeTrue("...and the left arm the left edge");
+        inked(last, mid).ShouldBeTrue("...and the right arm the right");
+        inked(mid, mid).ShouldBeTrue("the shafts cross at the centre");
+
+        inked(0, 0).ShouldBeFalse("a corner is outside every arm");
+        inked(last, last).ShouldBeFalse();
+
+        // The arms are BARBED, not bars: a head is wider than the shaft it sits on, so a row just inside
+        // the tip carries more ink than one at the shaft's own width. This is what tells it from Plus.
+        static int RowInk(Func<int, int, bool> probe, int y)
+        {
+            var n = 0;
+            for (var x = 0; x < (int)Surface; x++)
+            {
+                if (probe(x, y)) n++;
+            }
+
+            return n;
+        }
+
+        RowInk(inked, 3).ShouldBeGreaterThan(RowInk(inked, mid / 2),
+            "the barb near the tip is wider than the shaft further in");
+    }
+
+    /// <summary>
+    /// The I-beam is a stem plus a serif at each end. Like Minus it cannot ink its full square -- it is
+    /// tall and narrow by definition -- so this pins the HEIGHT reaching the box, and the serifs, which are
+    /// what stop it reading as a separator.
+    /// </summary>
+    [Fact]
+    public void TheIBeamHasASerifAtEachEnd_AndReachesTopAndBottom()
+    {
+        var (inked, _) = Paint(Layout.IconKind.IBeam);
+        var mid = (int)Surface / 2;
+        var last = (int)Surface - 1;
+
+        inked(mid, 0).ShouldBeTrue("the stem must reach the top edge");
+        inked(mid, last).ShouldBeTrue("...and the bottom");
+
+        // A serif spans either side of the stem at both ends; the stem alone does not, halfway down.
+        static int RowInk(Func<int, int, bool> probe, int y)
+        {
+            var n = 0;
+            for (var x = 0; x < (int)Surface; x++)
+            {
+                if (probe(x, y)) n++;
+            }
+
+            return n;
+        }
+
+        var stemInk = RowInk(inked, mid);
+        RowInk(inked, 0).ShouldBeGreaterThan(stemInk, "the top serif is wider than the stem");
+        RowInk(inked, last).ShouldBeGreaterThan(stemInk, "so is the bottom one");
+
+        // Narrow: nothing reaches the left or right edge at the stem's own height.
+        inked(0, mid).ShouldBeFalse("an I-beam does not span its box across");
+        inked(last, mid).ShouldBeFalse();
+    }
+
     [Fact]
     public void AZeroSizedRectDrawsNothing_RatherThanDividingByIt()
     {

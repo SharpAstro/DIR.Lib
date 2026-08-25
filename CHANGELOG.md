@@ -9,6 +9,37 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.12
+
+`Node.Anchored` — one child placed at its own measured size somewhere inside a rect, rather than
+filling it or taking a share of it. A floating panel over a canvas: a tool palette, a HUD, a chip
+following a pointer. `Overlay(page, Anchored(palette, DockSide.Right, offsetAlong: y))`.
+
+Every consumer that floats a panel had written the same three things by hand: a switch turning a dock
+side into a coordinate, the reader's offset along that edge, and a clamp keeping the thing on screen
+when the window, a sidebar, or the panel itself moves. All three are arithmetic against a rect the
+arrange pass already holds, and the switch is where they drift — one consumer's version pinned the
+wrong coordinate for a side for as long as that side had existed. `offsetAlong` stays consumer-owned
+state a drag updates, exactly as `Split.FirstExtent` is.
+
+It measures to its CHILD, not to the space it floats in, so nesting one inside a stack reserves the
+panel rather than the canvas. The clamp's upper bound is guarded against its own lower bound, because
+a panel LARGER than the space left for it inverts the range — a window dragged narrow, or a sidebar
+opening under a wide palette — and a clamp whose max is below its min either throws or silently jumps
+to the wrong edge. `Clamp: false` is there for a child meant to overhang, such as a drag chip tracking
+a pointer past an edge.
+
+`IconKind.Pan` (four barbed arrows from a centre) and `IconKind.IBeam` (a stem with a serif at each
+end) join the family, both earning their place the way `Plus` did — a consumer was drawing its own for
+a tool palette. Both are stroked rather than filled: `Pan` reads by its arms reaching out, and a
+filled version is a blob with four bumps. `IBeam` is the second kind after `Minus` that cannot ink its
+full square, being tall and narrow by definition; its serifs are load-bearing, since a bare stem at
+chip size is a separator.
+
+`PixelWidgetBase`'s icon drawings move to `PixelWidgetBase.Icons.cs`. Nothing changed — they are the
+one block in that file which grows with a LIST rather than with the widget, and the set had reached a
+third of it without any of that being about being a widget.
+
 ## 8.11
 
 `IconKind.Search` -- a lens with a handle -- and `Content.TextInput.LeadingIcon`, which draws a mark

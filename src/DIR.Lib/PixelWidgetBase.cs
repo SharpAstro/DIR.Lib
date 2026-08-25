@@ -493,6 +493,53 @@ namespace DIR.Lib
                     RingSpans(rect, sysR, MathF.Max(1f, side * 0.075f), ink, rightHalfOnly: true);
                     break;
 
+                case Layout.IconKind.Pan:
+                {
+                    // Four arrows from a common centre: two crossed shafts, then a barbed head on each
+                    // end. Proportions relative to the mark's own side rather than absolute, so it is one
+                    // mark at a 13-unit chip and at a 34-unit tool button -- the arms reach the box on
+                    // both axes, which is the contract every kind owes.
+                    var panArm = side / 2f;
+                    var head = side * (2f / 9f);
+                    var shaft = panArm - head;
+                    var panPen = (int)MathF.Round(MathF.Max(1f, side * (1.6f / 18f)));
+                    var pcx = rect.X + rect.Width / 2f;
+                    var pcy = rect.Y + rect.Height / 2f;
+
+                    DrawLine(pcx - shaft, pcy, pcx + shaft, pcy, ink, panPen);
+                    DrawLine(pcx, pcy - shaft, pcx, pcy + shaft, ink, panPen);
+
+                    // Filled heads, because a chevron of two strokes loses its point first at chip size --
+                    // the same reason the carets are filled.
+                    Span<float> heads =
+                    [
+                        pcx + panArm, pcy, pcx + shaft, pcy - head, pcx + shaft, pcy + head,
+                        pcx - panArm, pcy, pcx - shaft, pcy - head, pcx - shaft, pcy + head,
+                        pcx, pcy + panArm, pcx - head, pcy + shaft, pcx + head, pcy + shaft,
+                        pcx, pcy - panArm, pcx - head, pcy - shaft, pcx + head, pcy - shaft,
+                    ];
+                    Renderer.DrawTriangles(heads, ink);
+                    break;
+                }
+
+                case Layout.IconKind.IBeam:
+                {
+                    // A stem with a serif at each end. Like Minus this cannot ink its full square -- an
+                    // I-beam is tall and narrow by definition -- so the height reaches the box and the
+                    // width is the serifs'. They are the whole mark: a bare stem at chip size is a
+                    // separator, which is the one neighbour it must not read as.
+                    var half = side / 2f;
+                    var serif = side * (2f / 9f);
+                    var stem = (int)MathF.Round(MathF.Max(1f, side * (1.6f / 18f)));
+                    var icx = rect.X + rect.Width / 2f;
+                    var icy = rect.Y + rect.Height / 2f;
+
+                    DrawLine(icx, icy - half, icx, icy + half, ink, stem);
+                    DrawLine(icx - serif, icy - half, icx + serif, icy - half, ink, stem);
+                    DrawLine(icx - serif, icy + half, icx + serif, icy + half, ink, stem);
+                    break;
+                }
+
                 case Layout.IconKind.Search:
                 {
                     // A ring up-left, a handle running out of it to the bottom-right corner. Both extremes
