@@ -9,6 +9,39 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.10
+
+An icon sizes itself to the text it sits beside. `Builder.Icon(kind, color: c)` -- no size -- puts the
+mark at `Content.Icon.TextSizeRatio` of the font size of the run in the same container, and records
+that on the node as `Content.Icon.MatchesText`. A stated size still wins, and a container with no text
+in it at all falls back to `Content.Icon.DefaultSize`, so this is additive: every existing call site
+is unchanged, and `Content.Icon.Size` is still one concrete number that every painter reads.
+
+A caret in a row next to a label is sized BY that label, and stating it separately is two copies of
+one decision. In a consumer with three such chips, all three passed the same hand-written expression,
+and the number had to be looked up from a neighbouring file to write the third -- a mark whose size
+drifts from its own text looks wrong and warns about nothing. The fallback made a poor default too:
+`DefaultSize` is a bare constant, so a tree authored in device pixels (a consumer that hands
+`RenderLayout` a `dpiScale` of 1 and pre-multiplies its own constants) got a mark that scaled with
+nothing. Derived from the sibling run the size is in whatever unit that run is, which is right under
+either convention without the library being told which one is in force.
+
+The ratio is an **x-height**, not a cap height: a kind inks the full square it declares where a glyph
+inks perhaps 80% of its em box, so a mark at cap height reads heavier than the letters beside it.
+0.54 is Noto Sans's x-height and also where those three chips had independently landed by hand.
+It is a constant rather than a question put to the bound font because the resolution happens while
+the tree is being built -- before any font is bound -- and because a cell surface has no x-height to
+report.
+
+Resolved in `Builder`'s container factories rather than in the engine or a painter, and that is the
+load-bearing part: arrange emits a FLAT pre-order list, so by the time a painter sees a node it has
+no parent and no siblings in reach. A size resolved during the walk would have to be resolved again
+by everything else that reads the tree. Resolved at construction it is simply a number in the node,
+which is also why `describe_layout` prints what will be drawn instead of a sentinel. It reaches an
+icon that is a direct child of the container holding the run; the run itself may be nested as deep as
+it likes, since the idioms that wrap one (a padded label is a one-child stack) would otherwise put it
+out of reach.
+
 ## 8.9
 
 `TextTrim.Middle` and `TextFit.TrimMiddleToWidth`: drop the MIDDLE of a run that does not fit,

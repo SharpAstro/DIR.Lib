@@ -78,11 +78,66 @@ public abstract record Content
     /// the size it asked for instead of growing to fill the button. That matters most beside a text run,
     /// where a mark scaled to its cell rather than to its declared size overshoots the word's cap height and
     /// reads as vertically misaligned even when the two are centred on the same row.
+    /// <para>
+    /// <b>Always a concrete number, whoever supplied it.</b> A caller that states no size gets one derived
+    /// from the text beside it -- see <see cref="MatchesText"/> -- so a painter reads this field and never
+    /// has to reconstruct a size of its own.
+    /// </para>
     /// </param>
-    public sealed record Icon(IconKind Kind, float Size = 14f) : Content
+    public sealed record Icon(IconKind Kind, float Size = Icon.DefaultSize) : Content
     {
+        /// <summary>
+        /// The size a mark falls back to when nothing in scope names one: no text to match, and no size
+        /// stated. Deliberately the same as <see cref="Text.FontSize"/>'s default, so a lone icon and a lone
+        /// run are the same size for the same reason -- neither was told anything.
+        /// </summary>
+        public const float DefaultSize = 14f;
+
+        /// <summary>
+        /// Fraction of a text run's em that a mark beside it takes, when its size comes from that run
+        /// (<see cref="MatchesText"/>).
+        /// <para>
+        /// It is an <b>x-height</b>, not a cap height. A kind inks the FULL square it declares where a glyph
+        /// inks perhaps 80% of its em box, so a mark sized to cap height (~0.71 em on a humanist sans) reads
+        /// distinctly heavier than the letters beside it; sized to the x-height it matches the visual weight
+        /// of the lowercase body, which is what the eye reads as "the same size as that word". 0.54 is
+        /// Noto Sans's x-height (0.536 em), and it is also where three chips in one consumer's window had
+        /// independently converged by hand, at 7 units against a 13-unit label.
+        /// </para>
+        /// <para>
+        /// A constant rather than a question put to the bound font, for two reasons that both have to hold:
+        /// the size is resolved while the tree is being BUILT, before any font is bound or any measure
+        /// context exists, and a cell surface has no x-height to report at all. The cost is that a face with
+        /// an unusually small or large x-height is matched to the typical one rather than to itself.
+        /// </para>
+        /// </summary>
+        public const float TextSizeRatio = 0.54f;
+
         /// <summary>Ink colour (default white), the same convention as <see cref="Text.Color"/>.</summary>
         public RGBAColor32 Color { get; init; } = new(0xff, 0xff, 0xff, 0xff);
+
+        /// <summary>
+        /// The caller stated no size, so <see cref="Size"/> was derived from a text run in the same
+        /// container rather than declared -- <see cref="Builder.Icon"/> sets this, and the container
+        /// factories (<see cref="Builder.HStack"/> and friends) do the deriving.
+        /// <para>
+        /// <b>Why the size cannot be the caller's to state.</b> A caret in a row next to a label is sized BY
+        /// that label; every consumer call site was passing the same expression, spelled out a second time,
+        /// and the two copies drift in silence -- nothing warns, and the mark simply looks wrong beside its
+        /// own text. Worse, the fallback is unusable as a default: <see cref="DefaultSize"/> is a bare
+        /// constant, so a consumer whose tree is authored in device pixels and takes the default gets a mark
+        /// that does not scale with anything. Derived from the sibling run, the size is expressed in
+        /// whatever unit that run is, so it is right under either convention without being told which.
+        /// </para>
+        /// <para>
+        /// It records INTENT and stays set after resolution: <see cref="Size"/> is the resolved value either
+        /// way, and this says where it came from -- which is what a layout dump needs in order to explain a
+        /// mark nobody sized. The resolution reaches an icon that is a DIRECT child of the container holding
+        /// the run (the run itself may be nested as deep as it likes); an icon wrapped in a container of its
+        /// own is out of scope of the search and keeps <see cref="DefaultSize"/>, so state a size there.
+        /// </para>
+        /// </summary>
+        public bool MatchesText { get; init; }
     }
 
     /// <summary>
