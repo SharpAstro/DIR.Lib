@@ -436,6 +436,100 @@ public class LayoutIconTests
             .OfType<Layout.Content.Icon>()
             .First();
 
+    /// <summary>
+    /// The magnifier is a RING with a handle running out of it to the opposite corner, and the ring is what
+    /// separates it from every filled kind: its middle is empty. Both extremes touch the bounding box -- the
+    /// ring's arc up-left and the handle's tip down-right -- which is the contract each kind owes, and the
+    /// only one in the family that meets it on a diagonal.
+    /// </summary>
+    [Fact]
+    public void TheSearchIconIsAHollowLensWithAHandleToTheOppositeCorner()
+    {
+        var (inked, _) = Paint(Layout.IconKind.Search);
+        var last = (int)Surface - 1;
+
+        // The lens is hollow. Its centre sits up-left of the icon's centre, which is where the ring is
+        // seated so the handle has room to reach the corner.
+        inked(11, 11).ShouldBeFalse("the lens must be empty inside, or it is a dot and not a lens");
+
+        // ...and it IS a ring, so walking right along the lens's own centre row crosses ink, a gap, ink.
+        var runs = 0;
+        var wasInk = false;
+        for (var x = 0; x < (int)Surface; x++)
+        {
+            var isInk = inked(x, 11);
+            if (isInk && !wasInk)
+            {
+                runs++;
+            }
+
+            wasInk = isInk;
+        }
+
+        runs.ShouldBe(2, "left limb, hollow middle, right limb");
+
+        // The handle reaches the bottom-right corner. One pixel in, for the reason the Auto test gives:
+        // the stroke's far edge lands on the rasteriser's rounding boundary.
+        inked(last - 1, last - 1).ShouldBeTrue("the handle must reach the bottom-right corner");
+
+        // The opposite corner is empty -- nothing in this mark is square, and that is what separates it
+        // from Grid and Plus.
+        inked(last, 0).ShouldBeFalse("the top-right corner is outside both the lens and the handle");
+        inked(0, last).ShouldBeFalse("so is the bottom-left");
+    }
+
+    /// <summary>
+    /// A field's leading mark is drawn INSIDE its box, and the box is unchanged by it: background and border
+    /// still span the whole rect, so the mark reads as belonging to the field rather than sitting beside it.
+    /// <para>
+    /// Asserted on the pixels along the field's own edge, because that is the part a sibling-icon layout
+    /// would get wrong -- there the box would start after the mark and leave the leading columns bare.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void AFieldsLeadingMarkIsInsideItsBox_WhichStillSpansTheWholeRect()
+    {
+        var renderer = new RgbaImageRenderer(64, 32);
+        var widget = new IconWidget(renderer);
+        var state = new TextInputState { Text = "road" };
+
+        widget.Render(
+            Layout.Builder.TextInput(state, 16f, leadingIcon: Layout.IconKind.Search).Stretch(),
+            new RectF32(0, 0, 64, 32));
+
+        var pixels = renderer.Surface.Pixels;
+        bool Painted(int x, int y) => pixels[(y * 64 + x) * 4 + 3] > 0;
+
+        // The field's own border runs along the very first column and row of the rect. A mark placed as a
+        // sibling instead of inside would leave these bare.
+        Painted(0, 16).ShouldBeTrue("the field's border must still start at the rect's left edge");
+        Painted(32, 0).ShouldBeTrue("...and along its top");
+    }
+
+    /// <summary>
+    /// The room the mark needs is reserved by the MEASURE pass and left by the PAINT, and both read it from
+    /// the same place. A field with a mark measures exactly one <c>LeadingRoom</c> wider than the same field
+    /// without one -- which is the property that stops the sample text fitting the box while measuring and
+    /// being clipped while painting.
+    /// </summary>
+    [Fact]
+    public void ALeadingMarkWidensTheMeasuredFieldByExactlyTheRoomItReserves()
+    {
+        var renderer = new RgbaImageRenderer(8, 8);
+        var ctx = new PixelMeasureContext<RgbaImage>(renderer, fontPath: string.Empty, dpiScale: 1f);
+        var state = new TextInputState { Placeholder = "Search pages and text" };
+        var available = new Layout.Size<float>(1000f, 1000f);
+
+        var plain = Layout.Engine.Measure(Layout.Builder.TextInput(state, 16f), available, ctx);
+        var marked = Layout.Engine.Measure(
+            Layout.Builder.TextInput(state, 16f, leadingIcon: Layout.IconKind.Search), available, ctx);
+
+        (marked.Width - plain.Width).ShouldBe(TextInputRenderer.LeadingRoom(16f, true), 0.001f);
+
+        // ...and a field with no mark is untouched, so this is additive rather than a new inset for everyone.
+        TextInputRenderer.LeadingRoom(16f, false).ShouldBe(0f);
+    }
+
     [Fact]
     public void AZeroSizedRectDrawsNothing_RatherThanDividingByIt()
     {

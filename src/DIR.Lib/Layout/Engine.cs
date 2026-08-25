@@ -588,7 +588,9 @@ public static class Engine
     {
         var sample = field.WidthSample ?? field.State.Placeholder;
         var text = ctx.MeasureText(sample.AsSpan(), field.FontSize);
-        var insets = ctx.ToSurfaceX(TextInputRenderer.HorizontalPadding(field.FontSize) * 2f);
+        var insets = ctx.ToSurfaceX(
+            TextInputRenderer.HorizontalPadding(field.FontSize) * 2f
+            + TextInputRenderer.LeadingRoom(field.FontSize, field.LeadingIcon is not null));
         return new Size<T>(text.Width + insets, text.Height);
     }
 

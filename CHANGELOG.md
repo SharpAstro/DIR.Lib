@@ -9,6 +9,39 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.11
+
+`IconKind.Search` -- a lens with a handle -- and `Content.TextInput.LeadingIcon`, which draws a mark
+inside a field at its leading edge with the text starting after it.
+
+The kind earns its place the way `Plus` did, by consumers already drawing their own: one had
+hand-rolled a lens from an ellipse and a line for a marquee-zoom tool and wanted a second for the
+field its search bar is built around. On a cell surface the shape is one of the few pictograms a
+terminal font is genuinely relied on to carry (U+1F50D, with U+2315 for a narrow cell).
+
+It is the one kind whose weight comes from a **pen** rather than from its coverage, because a filled
+blob at chip size is a dot with a stalk and the ring is the whole reading. It is also the only mark in
+the family that meets its bounding box on a diagonal -- the ring's arc up-left, the handle's tip
+down-right. That cost a fix on the way in: the handle's far end has to be offset by the full extent on
+each axis, not along the diagonal, or it reaches only 0.71 of the way and the mark sits in the middle
+of a square of nothing.
+
+`LeadingIcon` belongs to the FIELD rather than being a sibling in the row, because a field paints its
+own background and border: a mark placed beside it lands outside the box and reads as a button next to
+an input. Inside, the box still spans the whole rect and only the text is inset, so `textX`/`textW` are
+the only two things that move -- the caret, the selection, the preedit and the hit region all follow
+from them already.
+
+The room it needs is stated once, as `TextInputRenderer.LeadingRoom`, for exactly the reason
+`HorizontalPadding` is: the measure pass has to reserve it and the paint has to leave it, and a literal
+in each is the shape where a later tweak to one silently mis-sizes the other. The mark takes
+`Content.Icon.TextSizeRatio` of the font size -- the same fraction 8.10 gave an unsized icon beside a
+run, since this is that relationship with the run inside the same box rather than next to it. A field
+with no mark reserves nothing and paints byte-identically to before.
+
+The painter draws the mark, not the renderer: `TextInputRenderer` is static and has no icon drawing,
+so it only leaves the room and the widget that owns `DrawLayoutIcon` fills it.
+
 ## 8.10
 
 An icon sizes itself to the text it sits beside. `Builder.Icon(kind, color: c)` -- no size -- puts the
