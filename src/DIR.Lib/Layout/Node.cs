@@ -198,6 +198,49 @@ public abstract partial record Node
         HitResult? DividerHit = null,
         RGBAColor32? DividerColor = null) : Node;
 
+    /// <summary>
+    /// One child placed at its own measured size somewhere INSIDE this node's rect, rather than filling it
+    /// or taking a share of it — a floating panel over a canvas: a tool palette, a HUD, a chip following a
+    /// pointer. Pair it with <see cref="Overlay"/> to put one over content:
+    /// <c>Overlay(page, Anchored(palette, DockSide.Right, offsetAlong: y))</c>.
+    /// <para>
+    /// <b>Why the engine and not the caller.</b> Every consumer that floats a panel writes the same three
+    /// things by hand: a switch turning a dock side into a coordinate, the reader's offset along that edge,
+    /// and a clamp keeping the thing on screen when the window, the sidebar or the panel itself moves. All
+    /// three are arithmetic against a rect the arrange pass already holds, and the switch is where they
+    /// drift — a consumer's version pinned the wrong coordinate for one of four sides for as long as that
+    /// side existed. Stated here, a floating panel says WHERE it floats and nothing about pixels.
+    /// </para>
+    /// </summary>
+    /// <param name="Side">
+    /// The edge the child is pinned to, or null to float free — free meaning both
+    /// <paramref name="OffsetAlong"/> and <paramref name="OffsetAcross"/> decide the position, where a
+    /// pinned child takes its pinned coordinate from the edge and keeps only the offset along it.
+    /// </param>
+    /// <param name="OffsetAlong">
+    /// Design units along the pinned edge (down a left/right edge, across a top/bottom one), and the
+    /// horizontal position when <paramref name="Side"/> is null. <b>Consumer-owned state</b>, exactly as
+    /// <see cref="Split.FirstExtent"/> is: the engine only arranges what it is given, so a drag updates
+    /// this and the next arrange reflects it.
+    /// </param>
+    /// <param name="OffsetAcross">The vertical position when <paramref name="Side"/> is null; ignored for a
+    /// pinned child, whose across-coordinate IS the edge.</param>
+    /// <param name="Margin">Design units kept between the child and the edge it is pinned to, and the
+    /// inset its clamp respects on every side.</param>
+    /// <param name="Clamp">
+    /// Keep the child inside this node's rect (the default). What makes a panel survive a window resize or
+    /// a sidebar opening under it, rather than being left stranded off-screen — a consumer doing this by
+    /// hand re-clamps every frame for exactly that reason. Set false for a child that is deliberately
+    /// allowed to overhang, such as a drag chip tracking a pointer past an edge.
+    /// </param>
+    public sealed record Anchored(
+        Node Child,
+        DockSide? Side = null,
+        float OffsetAlong = 0f,
+        float OffsetAcross = 0f,
+        float Margin = 0f,
+        bool Clamp = true) : Node;
+
     /// <summary>A terminal paintable piece.</summary>
     public sealed record Leaf(Content Content) : Node;
 }

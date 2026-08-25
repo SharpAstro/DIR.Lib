@@ -325,4 +325,23 @@ public enum IconKind
     /// </para>
     /// </summary>
     Search,
+
+    /// <summary>
+    /// Four arrows from a common centre: "drag to move this", the pan tool every canvas app has.
+    /// <para>
+    /// Stroked rather than filled, like <see cref="Search"/> and unlike the carets: the mark reads by its
+    /// arms reaching out, and a filled version is a blob with four bumps.
+    /// </para>
+    /// </summary>
+    Pan,
+    /// <summary>
+    /// An I-beam: "this selects text". The text cursor, and a tool button's mark for the same.
+    /// <para>
+    /// It is a mark, not the platform cursor — <see cref="CursorKind.Text"/> is what a surface applies to
+    /// the POINTER, and a tool palette needs the same idea as ink inside a button. The serifs are
+    /// load-bearing: a bare vertical bar at chip size is a separator, which is the neighbour it must not be
+    /// mistaken for.
+    /// </para>
+    /// </summary>
+    IBeam,
 }
