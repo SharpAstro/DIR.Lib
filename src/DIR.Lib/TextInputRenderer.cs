@@ -51,17 +51,34 @@ public static class TextInputRenderer
     /// has to reserve this room and <see cref="Render"/> has to leave exactly it, and a literal in each is
     /// the shape where a later tweak to one silently mis-sizes the other.
     /// <para>
-    /// The mark takes <see cref="Layout.Content.Icon.TextSizeRatio"/> of the font size — the same fraction
-    /// an unsized <see cref="Layout.Content.Icon"/> beside a run takes, because this is that relationship
-    /// with the run inside the same box rather than next to it. The gap is a little under the side padding,
-    /// so the mark sits closer to the text it labels than to the field's own edge.
+    /// The gap is a little under the side padding, so the mark sits closer to the text it labels than to
+    /// the field's own edge.
     /// </para>
     /// </remarks>
     public static float LeadingRoom(float fontSize, bool hasLeadingIcon)
-        => hasLeadingIcon ? fontSize * (Layout.Content.Icon.TextSizeRatio + 0.3f) : 0f;
+        => hasLeadingIcon ? fontSize * (LeadingIconRatio + 0.28f) : 0f;
+
+    /// <summary>
+    /// Fraction of the font size the leading mark takes: a <b>cap height</b>, where an unsized
+    /// <see cref="Layout.Content.Icon"/> beside a run takes an x-height
+    /// (<see cref="Layout.Content.Icon.TextSizeRatio"/>).
+    /// <para>
+    /// The two are deliberately different, because the two marks do different jobs. A caret next to a label
+    /// MODIFIES that label — it is punctuation on the end of a phrase, and matching the lowercase body is
+    /// what makes it read as part of it. A field's leading mark is a PEER of the text: it is the first thing
+    /// looked at, it has to carry from across a window, and it is what says the box is a query box at all.
+    /// At an x-height it measures correct and reads as a speck, which is what trying the smaller ratio here
+    /// first showed.
+    /// </para>
+    /// <para>
+    /// Cap height is safe here where it would not be for a filled caret, because the kinds that make sense
+    /// as a field affordance are outlined — a ring weighs far less than a solid triangle of the same box.
+    /// </para>
+    /// </summary>
+    public const float LeadingIconRatio = 0.72f;
 
     /// <summary>The mark's own size inside the room <see cref="LeadingRoom"/> reserves.</summary>
-    public static float LeadingIconSize(float fontSize) => fontSize * Layout.Content.Icon.TextSizeRatio;
+    public static float LeadingIconSize(float fontSize) => fontSize * LeadingIconRatio;
 
     /// <summary>
     /// Renders a text input field at the specified position.
