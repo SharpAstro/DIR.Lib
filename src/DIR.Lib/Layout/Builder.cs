@@ -70,11 +70,12 @@ public static class Builder
     /// </para>
     /// </summary>
     public static Node TextInput(TextInputState state, float fontSize = 14f,
-        TextInputColors? colors = null, string? widthSample = null)
+        TextInputColors? colors = null, string? widthSample = null, IconKind? leadingIcon = null)
         => new Node.Leaf(new Content.TextInput(state, fontSize)
         {
             Colors = colors,
             WidthSample = widthSample,
+            LeadingIcon = leadingIcon,
         });
 
     /// <summary>An app-drawn escape-hatch leaf (chart/sky map). Pair with <c>Star</c> sizing to fill; set <paramref name="key"/> to route multiple fills. A text field has its own <see cref="TextInput"/> factory.</summary>

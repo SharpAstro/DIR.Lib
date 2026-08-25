@@ -251,13 +251,13 @@ namespace DIR.Lib
         /// Registers a text input field — renders it and registers the clickable region.
         /// </summary>
         protected void RenderTextInput(TextInputState state, int x, int y, int width, int height, string fontPath,
-            float fontSize, TextInputColors? colors = null)
+            float fontSize, TextInputColors? colors = null, float leadingRoom = 0f)
         {
             // The widget's own fallback chain goes in, so a field displays anything the app can display.
             // Nothing else reaches inside a field: the layout painter splits TEXT LEAVES per coverage run,
             // and a field's content is not a leaf.
             var caret = TextInputRenderer.Render(Renderer, state, x, y, width, height, fontPath, fontSize,
-                FrameCount, colors, FontFallback);
+                FrameCount, colors, FontFallback, leadingRoom);
             if (state.IsActive)
             {
                 Ui.CaretRect = caret;
@@ -285,11 +285,11 @@ namespace DIR.Lib
         /// integer-grid (RectInt) internally -- so call sites stop repeating the four-way (int) cast.
         /// </summary>
         protected void RenderTextInput(TextInputState state, RectF32 rect, string fontPath, float fontSize,
-            TextInputColors? colors = null) =>
+            TextInputColors? colors = null, float leadingRoom = 0f) =>
             RenderTextInput(state,
                 (int)MathF.Round(rect.X), (int)MathF.Round(rect.Y),
                 (int)MathF.Round(rect.Width), (int)MathF.Round(rect.Height),
-                fontPath, fontSize, colors);
+                fontPath, fontSize, colors, leadingRoom);
 
         // -------------------------------------------------------------------------------------------------
         // TrackSlider -- the one horizontal press/drag/release track (WB / wavelet / scrub / ...).
@@ -492,6 +492,44 @@ namespace DIR.Lib
                     DiscSpans(rect, sysR, ink, leftHalfOnly: true);
                     RingSpans(rect, sysR, MathF.Max(1f, side * 0.075f), ink, rightHalfOnly: true);
                     break;
+
+                case Layout.IconKind.Search:
+                {
+                    // A ring up-left, a handle running out of it to the bottom-right corner. Both extremes
+                    // are on the bounding box -- the ring's top-left arc and the handle's tip -- so the mark
+                    // fills its declared square along the diagonal, which is the contract every kind here
+                    // owes even though this one is the only diagonal in the family.
+                    var lensPen = MathF.Max(1f, side * 0.105f);
+                    // Radius measured to the ring's OUTER edge, then pulled in by half a pen, because
+                    // RingSpans centres the stroke on the radius it is given: asking for the full 0.34
+                    // would put the outer half of the pen past the box.
+                    var lensR = side * 0.34f - lensPen / 2f;
+                    // The lens sits up-left of centre by exactly the room the handle needs, so the handle
+                    // can reach the corner without the two fighting over the middle.
+                    var off = side * 0.5f - (lensR + lensPen / 2f);
+                    var lens = new RectF32(rect.X + (rect.Width - side) / 2f - off,
+                        rect.Y + (rect.Height - side) / 2f - off, side, side);
+                    RingSpans(lens, lensR, lensPen, ink);
+
+                    // From the ring's outer edge on the 45-degree diagonal out to the box's own corner. The
+                    // far end is offset by `far` on EACH axis rather than along the diagonal: a point at
+                    // radius `far` from the centre reaches only 0.71 of it per axis, which stops the handle
+                    // well short and leaves the mark sitting in the middle of a square of nothing.
+                    //
+                    // Started ON the ring rather than clear of it, because a gap there reads as two marks
+                    // at chip size where an overlap just looks like a joint.
+                    var diag = MathF.Sqrt(0.5f);
+                    var lcx = lens.X + lens.Width / 2f;
+                    var lcy = lens.Y + lens.Height / 2f;
+                    var hx0 = lcx + diag * lensR;
+                    var hy0 = lcy + diag * lensR;
+                    // Half a pen short of the edge, since a stroke is centred on its endpoint.
+                    var far = side / 2f - lensPen / 2f;
+                    var cx3 = rect.X + rect.Width / 2f;
+                    var cy3 = rect.Y + rect.Height / 2f;
+                    DrawLine(hx0, hy0, cx3 + far, cy3 + far, ink, (int)MathF.Round(lensPen));
+                    break;
+                }
             }
         }
 
@@ -1160,9 +1198,27 @@ namespace DIR.Lib
                             // Registered here rather than above with node.Hit, so it lands AFTER any hit
                             // the enclosing row carries and therefore wins the click -- a row-level
                             // handler must not swallow a click meant to focus the field inside it.
+                            var fieldPx = field.FontSize * ctx.FontScale;
+                            var lead = TextInputRenderer.LeadingRoom(fieldPx, field.LeadingIcon is not null);
                             RenderTextInput(field.State,
                                 new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height),
-                                fp, field.FontSize * ctx.FontScale, field.Colors);
+                                fp, fieldPx, field.Colors, lead);
+                            // Drawn HERE rather than inside TextInputRenderer, which is static and has no
+                            // icon drawing of its own: the renderer only has to leave the room, and the
+                            // widget that owns DrawLayoutIcon fills it. Seated at the field's side padding,
+                            // vertically centred, and in the field's own text colour, so it belongs to the
+                            // box rather than sitting on it.
+                            if (field.LeadingIcon is { } leadingKind)
+                            {
+                                var markSide = TextInputRenderer.LeadingIconSize(fieldPx);
+                                DrawLayoutIcon(leadingKind,
+                                    new RectF32(
+                                        bounds.X + TextInputRenderer.HorizontalPadding(fieldPx),
+                                        bounds.Y + (bounds.Height - markSide) / 2f,
+                                        markSide, markSide),
+                                    (field.Colors ?? TextInputRenderer.Colors).Placeholder);
+                            }
+
                             break;
                         case Layout.Content.Fill fill:
                             drawFill?.Invoke(fill, new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height));

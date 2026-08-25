@@ -191,6 +191,26 @@ public abstract record Content
         /// </para>
         /// </summary>
         public string? WidthSample { get; init; }
+
+        /// <summary>
+        /// A mark drawn INSIDE the field at its leading edge, with the text starting after it — the
+        /// affordance that says what a box is for before anything has been typed in it. Null (the default)
+        /// is a plain field, measured and painted exactly as before.
+        /// <para>
+        /// Inside rather than beside, which is the whole reason it belongs to the field: the field paints
+        /// its own background and border, so a mark placed as a sibling in the row lands outside the box
+        /// and reads as a button next to an input. Putting it here also means the room it needs is
+        /// reserved by the MEASURE pass and left by the PAINT — see
+        /// <see cref="TextInputRenderer.LeadingRoom"/>, which is the one place that number lives, for the
+        /// same reason <see cref="TextInputRenderer.HorizontalPadding"/> is.
+        /// </para>
+        /// <para>
+        /// A <see cref="TextInputState.Placeholder"/> says the same thing in words and is not a substitute: it is gone the
+        /// moment the field has content, and this is exactly when a reader glancing back at a bar full of
+        /// results needs to know which box was the query.
+        /// </para>
+        /// </summary>
+        public IconKind? LeadingIcon { get; init; }
     }
 
     /// <summary>
@@ -289,4 +309,20 @@ public enum IconKind
 
     /// <summary>A crescent: "dark, whatever the desktop says".</summary>
     ThemeDark,
+
+    /// <summary>
+    /// A lens with a handle: "search", or "this box is where you type a query".
+    /// <para>
+    /// It earns its place the way <see cref="Plus"/> did — by consumers already drawing their own. One had
+    /// hand-rolled a lens from an ellipse and a line for a marquee-zoom tool, and wanted a second for the
+    /// field its search bar is built around; on a cell surface the shape is one of the few pictograms a
+    /// terminal font is genuinely relied on to carry (U+1F50D, with U+2315 as the narrow-cell fallback).
+    /// </para>
+    /// <para>
+    /// Outlined rather than filled, unlike the carets: a filled blob at chip size is a dot with a stalk,
+    /// and the ring is the whole reading. That makes it the one kind whose weight comes from a pen rather
+    /// than from its coverage, so it thickens with size instead of staying a hairline.
+    /// </para>
+    /// </summary>
+    Search,
 }

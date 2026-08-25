@@ -42,6 +42,28 @@ public static class TextInputRenderer
     public static float HorizontalPadding(float fontSize) => fontSize * 0.4f;
 
     /// <summary>
+    /// The extra leading inset a field needs when it carries a
+    /// <see cref="Layout.Content.TextInput.LeadingIcon"/>: the mark itself, plus the gap between it and the
+    /// text. Zero without one, so a plain field measures and paints byte-identically to before.
+    /// </summary>
+    /// <remarks>
+    /// Here, beside <see cref="HorizontalPadding"/>, and for the same reason that one is: the measure pass
+    /// has to reserve this room and <see cref="Render"/> has to leave exactly it, and a literal in each is
+    /// the shape where a later tweak to one silently mis-sizes the other.
+    /// <para>
+    /// The mark takes <see cref="Layout.Content.Icon.TextSizeRatio"/> of the font size — the same fraction
+    /// an unsized <see cref="Layout.Content.Icon"/> beside a run takes, because this is that relationship
+    /// with the run inside the same box rather than next to it. The gap is a little under the side padding,
+    /// so the mark sits closer to the text it labels than to the field's own edge.
+    /// </para>
+    /// </remarks>
+    public static float LeadingRoom(float fontSize, bool hasLeadingIcon)
+        => hasLeadingIcon ? fontSize * (Layout.Content.Icon.TextSizeRatio + 0.3f) : 0f;
+
+    /// <summary>The mark's own size inside the room <see cref="LeadingRoom"/> reserves.</summary>
+    public static float LeadingIconSize(float fontSize) => fontSize * Layout.Content.Icon.TextSizeRatio;
+
+    /// <summary>
     /// Renders a text input field at the specified position.
     /// </summary>
     /// <param name="renderer">Target renderer.</param>
@@ -75,7 +97,8 @@ public static class TextInputRenderer
         string fontFamily, float fontSize,
         long frameCount = 0,
         TextInputColors? colors = null,
-        FontFallbackResolver? fallback = null)
+        FontFallbackResolver? fallback = null,
+        float leadingRoom = 0f)
     {
         colors ??= Colors;
         var bgColor = state.IsActive ? colors.BackgroundActive : colors.Background;
@@ -91,11 +114,15 @@ public static class TextInputRenderer
             new RectInt(new PointInt(x + width, y + height), new PointInt(x, y)),
             borderColor, 1);
 
-        // Text or placeholder
+        // Text or placeholder. The leading room is taken out of the TEXT, not out of the box: background
+        // and border above already span the full rect, so a leading mark sits inside the field rather than
+        // pushing it along. Everything below -- caret, selection, preedit, the XOf measurements -- is
+        // expressed against textX/textW, so insetting those two is the whole change.
         var padding = (int)HorizontalPadding(fontSize);
-        var textX = x + padding;
+        var lead = (int)MathF.Round(leadingRoom);
+        var textX = x + padding + lead;
         var textY = y;
-        var textW = width - padding * 2;
+        var textW = width - padding * 2 - lead;
         var textH = height;
 
         // No font: draw the box and stop, rather than throwing. This is the same contract the layout text
