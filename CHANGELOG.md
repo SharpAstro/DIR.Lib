@@ -34,10 +34,17 @@ from them already.
 
 The room it needs is stated once, as `TextInputRenderer.LeadingRoom`, for exactly the reason
 `HorizontalPadding` is: the measure pass has to reserve it and the paint has to leave it, and a literal
-in each is the shape where a later tweak to one silently mis-sizes the other. The mark takes
-`Content.Icon.TextSizeRatio` of the font size -- the same fraction 8.10 gave an unsized icon beside a
-run, since this is that relationship with the run inside the same box rather than next to it. A field
-with no mark reserves nothing and paints byte-identically to before.
+in each is the shape where a later tweak to one silently mis-sizes the other. A field with no mark
+reserves nothing and paints byte-identically to before.
+
+The mark takes a **cap height** (`TextInputRenderer.LeadingIconRatio`), not the x-height 8.10 gave an
+unsized icon beside a run, and the difference is the point: a caret next to a label MODIFIES that
+label -- it is punctuation on a phrase, and matching the lowercase body is what makes it read as part
+of it -- where a field's leading mark is a PEER of the text, the first thing looked at and the thing
+that says the box is a query box at all. Built at the x-height first, on the reasoning that one ratio
+is tidier; at that size it measures correct and reads as a speck. Cap height is safe here where it
+would not be for a filled caret, because the kinds that make sense as a field affordance are outlined,
+and a ring weighs far less than a solid triangle of the same box.
 
 The painter draws the mark, not the renderer: `TextInputRenderer` is static and has no icon drawing,
 so it only leaves the room and the widget that owns `DrawLayoutIcon` fills it.
