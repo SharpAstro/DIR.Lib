@@ -70,24 +70,26 @@ public sealed class GlyphBox : Box
 
     public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style)
     {
-        // DrawText computes baseline = rectTop + (lineHeight + maxAscent
-        // − maxDescent) / 2 where maxAscent/maxDescent are the per-rune
-        // values DrawText itself derives from the rasterizer (lineHeight
-        // = fontSize * 1.3 is the renderer's per-line padding). Our ctor
-        // computes _height = maxAscent and _depth = maxDescent from the
-        // SAME rasterizer + fontSize, so they match DrawText's internal
-        // values 1:1. Solving for rectTop such that DrawText's baseline
-        // equals the caller's baselineY:
-        //     baselineY = rectTop + (lineHeight + _height − _depth) / 2
-        //   ⇒ rectTop  = baselineY − (lineHeight + _height − _depth) / 2
-        // This makes "y" (descender pulls _depth up) and "+" (no descender
-        // → _depth ≈ 0) land at the SAME baselineY in an HBox — a
-        // descender-having glyph no longer renders _depth pixels above
-        // where the caller asked, which was the bug producing the
-        // visible misalignment in x²+y², e^ip, matrix cells, etc.
-        const float DrawTextLineHeightFactor = 1.3f;
-        var lineHeight = _fontSize * DrawTextLineHeightFactor;
-        var rectTop = baselineY - (lineHeight + _height - _depth) / 2f;
+        // Math layout knows the baseline it wants, so it solves for the rect that puts DrawText's
+        // baseline exactly there:
+        //     baselineY = rectTop + BaselineWithinLine(...)
+        //   ⇒ rectTop  = baselineY − BaselineWithinLine(...)
+        //
+        // Both the factor and the formula come from the renderer rather than being restated here. They
+        // used to be restated, and that is precisely what broke: DrawText's baseline stopped being
+        // derived from the run's own ink and this inversion went on compensating for ink it no longer
+        // used, silently lifting every math glyph.
+        //
+        // The metrics must be the FACE's, matching what DrawText now uses -- NOT _height/_depth. Those
+        // stay ink-derived because math layout stacks boxes by their real extents (a fraction bar and a
+        // script sit off the ink, not off the em box); they are the right numbers for LAYOUT and the
+        // wrong ones for PLACEMENT. Falling back to them keeps a face with no hhea working, exactly as
+        // DrawText does.
+        var lineHeight = TextBaseline.LineHeight(_fontSize);
+        var (ascent, descent) = BoxStyle.SharedRasterizer.GetVerticalMetrics(style.FontPath, _fontSize) is { } fm
+            ? (fm.Ascent, fm.Descent)
+            : (_height, _depth);
+        var rectTop = baselineY - TextBaseline.WithinLine(lineHeight, ascent, descent);
 
         var rect = new RectInt(
             new PointInt((int)MathF.Ceiling(penX + _width), (int)MathF.Ceiling(rectTop + lineHeight)),

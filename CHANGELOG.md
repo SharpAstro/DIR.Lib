@@ -9,6 +9,45 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.13
+
+**BEHAVIOUR CHANGE: text sits on the FACE's baseline, not on its own ink.** Every vertically-centred run
+moves slightly, and runs that used to disagree now line up.
+
+`DrawText` placed the baseline by centring the measured bounds of the run it was given -- so the baseline
+depended on the text. A run of "a" landed at one height, "b" lower because its ascender inflated the box,
+"g" higher because its descender did. Nothing looks wrong in one label. It is only when several are drawn
+independently at the same size that the row stair-steps: a chess board's file letters a-h step at b, d and
+g, and a toolbar steps wherever one caption happens to contain a descender.
+
+`ManagedFontRasterizer.GetVerticalMetrics(fontPath, fontSize)` is new: the face's own hhea ascender and
+descender scaled to the size, with descent returned as a positive DEPTH rather than hhea's negative
+offset. Null for a face that declares no hhea, and every caller falls back to the run's ink there, because
+that is the only information left and an invented ratio would be a worse answer that is harder to notice.
+
+`TextBaseline` is new and is where the formula now lives -- `LineHeightFactor`, `LineHeight(fontSize)` and
+`WithinLine(lineHeight, ascent, descent)`. It existed in four places before: `RgbaImageRenderer`,
+VkRenderer and WebGlRenderer each wrote it out (the last with the comment "identical formula across
+RgbaImageRenderer / VkRenderer / here"), and `MathLayout.GlyphBox` carried a fourth copy INVERTED, solving
+for the rect that puts a glyph's baseline where math layout asked for it.
+
+That fourth copy is why this is not a one-line change. GlyphBox reconstructed DrawText's formula from a
+comment, and its own remarks say it exists to fix this very bug for math -- by compensating at the call
+site instead of at the source. Fixing the source made the compensation double-count and lifted every math
+glyph, which looked exactly like "the maths baselines changed, bless them" and was not. GlyphBox now
+inverts the shared formula with the same face metrics. Its `_height`/`_depth` stay ink-derived on purpose:
+math layout STACKS by real extents (a fraction bar and a script sit off the ink, not off the em box), so
+those are the right numbers for layout and the wrong ones for placement.
+
+Seventeen of the thirty-two math baselines went back to matching byte-for-byte once the inversion was
+fixed, which is the evidence that it is right. The other fifteen moved by at most ONE pixel, top edges
+unchanged, from `MathF.Floor` on the rect top landing the other side of a boundary -- pre-existing
+quantisation, not misplacement. Those were re-blessed.
+
+For WebGl this also brings the rastered text into agreement with `CanvasTextLayer`, the selectable DOM
+overlay drawn over it, which has always centred by CSS line box -- i.e. by font metrics, the
+content-independent way.
+
 ## 8.12
 
 `Node.Anchored` — one child placed at its own measured size somewhere inside a rect, rather than

@@ -139,6 +139,31 @@ public sealed class ManagedFontRasterizer : IDisposable
     }
 
     /// <summary>
+    /// The FACE's own vertical metrics at <paramref name="fontSize"/>, in pixels: how far this font says
+    /// its glyphs rise above and fall below the baseline, independent of which glyphs a caller happens to
+    /// be drawing. <c>Descent</c> is a positive DEPTH, not hhea's negative offset.
+    /// </summary>
+    /// <remarks>
+    /// <para>This exists so a renderer can place a baseline WITHOUT measuring the run. Deriving it from the
+    /// run's own ink -- the tallest ascender and deepest descender actually present -- makes the baseline
+    /// depend on the text, and independently drawn labels of the SAME font and size then fail to share one:
+    /// "a" lands at one height, "b" lower because its ascender inflates the box, "g" higher because its
+    /// descender does. A row of chess file letters a-h visibly stair-steps at b, d and g.</para>
+    /// <para>hhea rather than OS/2: it is the table every SFNT face carries and the one classically meant
+    /// for line layout. Null when the face declares none -- a caller then has nothing better than the run's
+    /// own extents, and should fall back to them rather than invent a ratio.</para>
+    /// </remarks>
+    public (float Ascent, float Descent, float LineGap)? GetVerticalMetrics(string fontPath, float fontSize)
+    {
+        var font = GetOrLoad(fontPath);
+        if (font.Hhea is not { } hhea || font.UnitsPerEm == 0) return null;
+
+        var scale = fontSize / font.UnitsPerEm;
+        // hhea states the descender as a negative offset FROM the baseline; every caller wants a depth.
+        return (hhea.Ascender * scale, -hhea.Descender * scale, hhea.LineGap * scale);
+    }
+
+    /// <summary>
     /// Global OpenType MATH metrics (axis height, fraction/radical rule thickness, etc.)
     /// for a font, paired with the font's UnitsPerEm so callers can convert the
     /// FUnit values to pixels via <c>fUnits * fontSize / unitsPerEm</c>. Returns
