@@ -341,8 +341,19 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
             };
             var penY = startY + lineIdx * lineHeight;
 
-            // Place baseline so visual bounds are centered in line
-            var baseline = penY + (lineHeight + maxAscent - maxDescent) / 2f;
+            // Seat the baseline on the FACE's metrics, not on this run's ink. Centring the measured
+            // bounds -- what this did -- moves the baseline with the text: a run of "a" sits at one
+            // height, "b" lower (its ascender inflates the box) and "g" higher (its descender does), so
+            // labels drawn independently at the same size cannot share a baseline. Chess's file letters
+            // a-h stair-stepped at b, d and g for exactly this reason.
+            //
+            // Fall back to the ink when the face declares no hhea: it is the only information left, and
+            // an invented ratio would be a worse answer that is harder to notice.
+            var faceMetrics = _rasterizer.GetVerticalMetrics(fontFamily, fontSize);
+            var (baseAscent, baseDescent) = faceMetrics is { } fm
+                ? (fm.Ascent, fm.Descent)
+                : (maxAscent, (float)maxDescent);
+            var baseline = penY + TextBaseline.WithinLine(lineHeight, baseAscent, baseDescent);
 
             foreach (var sg in _shaped)
             {
