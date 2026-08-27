@@ -60,7 +60,7 @@ CI runs tests in Release config after building, before publishing NuGet packages
 ## Test Structure
 
 - **Framework:** xunit v3 + Shouldly assertions
-- **Visual regression tests** (`RenderAcceptanceTests.cs`, `MathLayoutBaselineTests.cs`, `MathStretchyTests.cs`, `DrawLineTests.cs`, `DrawPolylineTests.cs`): compare rendered output against baseline BMP files in `Baselines/`. Set `DIR_LIB_UPDATE_BASELINES=1` to regenerate.
+- **Visual regression tests** (`RenderAcceptanceTests.cs`, `MathLayoutBaselineTests.cs`, `MathStretchyTests.cs`, `DrawLineTests.cs`, `DrawPolylineTests.cs`): compare rendered output against baseline PNG files in `Baselines/`. Set `DIR_LIB_UPDATE_BASELINES=1` to regenerate.
 - **Markdown / LaTeX spike tests** (`MarkdownBlockSpikeTests.cs`, `MarkdownInlineSpikeTests.cs`, `MhchemTests.cs`): exercise the grammar visitors directly.
 - **Test fonts** are in `src/DIR.Lib.Tests/Fonts/` — each fixture font has a specific purpose (e.g., Merida is chess-only, subset fonts test PDF embedding scenarios).
 - The tests project declares `SharpAstro.Png` directly because the visual tests emit / decode PNG artifacts — DIR.Lib itself no longer pulls codec packages transitively.
