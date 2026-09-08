@@ -27,6 +27,14 @@ platform can tell them apart, so the fact has to travel on the event. Init-only 
 positional parameter: consumers match this record as `KeyDown(var key, var mods)` in dozens of places and
 a third element would break all of them. A host with no repeat information leaves it false.
 
+**`InputEvent.KeyUp`**, the other half of the press, for a binding whose meaning is "while held" rather
+than "on press": hold to pause a running comparison, hold to reveal an alternate reading, hold to nudge.
+Without it a consumer can only infer a release from a timer or from repeats stopping, and both are wrong
+the moment the window loses focus mid-hold. A separate record rather than a flag on `KeyDown`, because
+every existing consumer matches `KeyDown` to mean "a press happened" and a release arriving through that
+type would fire all of them a second time. A host with no release information sends none, and any
+consumer that does not match it is unaffected.
+
 ## 8.13
 
 **BEHAVIOUR CHANGE: text sits on the FACE's baseline, not on its own ink.** Every vertically-centred run

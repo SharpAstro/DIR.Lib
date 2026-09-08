@@ -1,4 +1,4 @@
-namespace DIR.Lib;
+﻿namespace DIR.Lib;
 
 /// <summary>
 /// Platform-agnostic mouse button identifiers.
@@ -54,6 +54,27 @@ public abstract record InputEvent
         /// </summary>
         public bool Repeat { get; init; }
     }
+
+    /// <summary>
+    /// A key being RELEASED. The other half of <see cref="KeyDown"/>, for an action that lasts exactly as
+    /// long as the key is held.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Most bindings need only the press: a toggle, a step, a command. This exists for the ones whose
+    /// meaning is "while held" rather than "on press": hold to pause a running comparison, hold to
+    /// reveal an alternate reading, hold to nudge continuously. Without it a consumer can only guess a
+    /// release from a timer or from the absence of a repeat, and both are wrong the moment the window
+    /// loses focus mid-hold.
+    /// </para>
+    /// <para>
+    /// It is a separate record rather than a flag on <see cref="KeyDown"/> because every existing consumer
+    /// matches <c>KeyDown</c> to mean "a press happened", and a release arriving through that same type
+    /// would fire all of them a second time. A host that has no release information simply never sends
+    /// one, and every consumer that does not match it is unaffected.
+    /// </para>
+    /// </remarks>
+    public sealed record KeyUp(InputKey Key, InputModifier Modifiers = default) : InputEvent;
 
     /// <summary>Character input (from IME or text composition).</summary>
     public sealed record TextInput(string Text) : InputEvent;
