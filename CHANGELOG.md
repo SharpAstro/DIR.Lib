@@ -9,6 +9,24 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.14
+
+**A selection no longer hides the text it selects.** `TextInputRenderer` drew the run and then filled the
+selection rectangle on top of it, so at the default alpha of 180 the selected characters kept 29.6% of
+their contrast: a field that opens with its contents selected read as an empty box with a coloured block
+in it. The fill now goes down BEFORE the glyphs, which is the conventional order and costs nothing.
+Measured on the test fixture as mean ink contrast against its own local background: 125.3 unselected,
+106.5 with the highlight underneath, 37.1 with it over the top. No highlight colour can fix the old
+order, since the ink is beneath it. Pinned by
+`LayoutTextInputTests.SelectedText_KeepsItsContrast_BecauseTheHighlightIsPaintedUnderTheGlyphs`.
+
+**`InputEvent.KeyDown.Repeat`**, so a host can say whether an event is the OS auto-repeating a key that is
+still held rather than a fresh press. A TOGGLE bound to a key must ignore repeats, or holding the key
+flips it at the repeat rate; a STEP wants every one of them, which is what auto-repeat is for. Only the
+platform can tell them apart, so the fact has to travel on the event. Init-only rather than a third
+positional parameter: consumers match this record as `KeyDown(var key, var mods)` in dozens of places and
+a third element would break all of them. A host with no repeat information leaves it false.
+
 ## 8.13
 
 **BEHAVIOUR CHANGE: text sits on the FACE's baseline, not on its own ink.** Every vertically-centred run

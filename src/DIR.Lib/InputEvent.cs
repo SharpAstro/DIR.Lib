@@ -33,7 +33,27 @@ public enum PinchSource
 public abstract record InputEvent
 {
     /// <summary>Key press event.</summary>
-    public sealed record KeyDown(InputKey Key, InputModifier Modifiers = default) : InputEvent;
+    public sealed record KeyDown(InputKey Key, InputModifier Modifiers = default) : InputEvent
+    {
+        /// <summary>
+        /// True when this is the OS auto-repeating a key that is still held, rather than a fresh press.
+        /// <para>
+        /// A TOGGLE has to ignore repeats: held down, it flips at the repeat rate, which reads as the
+        /// action starting and stopping several times a second rather than as one press. A STEP wants
+        /// every one of them, since repeating a step is what auto-repeat is for. Only the host can tell
+        /// the two events apart, which is why the fact travels on the event rather than being inferred
+        /// by a consumer holding its own key-down set.
+        /// </para>
+        /// <para>
+        /// An init-only property rather than a third positional parameter, for the reason
+        /// <see cref="Pinch"/> states: consumers match this record as <c>KeyDown(var key, var mods)</c> in
+        /// dozens of places, and a third element would break every one. A host with no repeat information
+        /// (a synthetic press, a console loop) leaves it false, which is the truthful answer for a press
+        /// it generated once.
+        /// </para>
+        /// </summary>
+        public bool Repeat { get; init; }
+    }
 
     /// <summary>Character input (from IME or text composition).</summary>
     public sealed record TextInput(string Text) : InputEvent;

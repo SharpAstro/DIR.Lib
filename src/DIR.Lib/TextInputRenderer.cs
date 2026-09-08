@@ -165,6 +165,25 @@ public static class TextInputRenderer
         var displayText = visibleText.Length > 0 ? visibleText : (state.IsActive ? "" : state.Placeholder);
         var textColor = visibleText.Length > 0 ? colors.Text : colors.Placeholder;
 
+        // Selection highlight, painted BEFORE the glyphs. Painted after them it is a fill OVER the run,
+        // and at alpha 180 the selected characters simply vanish; a field that opens with its contents
+        // selected (the sky atlas F3 box, whose OpenSearch does Activate then SelectAll) then reads as an
+        // empty box with a coloured block in it. No highlight colour can fix that, because the ink is
+        // underneath it. Suppressed while composing: the selection indices address state.Text, which is
+        // not what is on screen, so it would highlight the wrong characters.
+        //
+        // XOf is declared below and captures only values assigned above this point, which is what makes
+        // calling it here legal and correct.
+        if (state.IsActive && state.HasSelection && !composing)
+        {
+            var selY = y + (int)(height * 0.1f);
+            var selH = (int)(height * 0.8f);
+
+            renderer.FillRectangle(
+                new RectInt(new PointInt(XOf(state.SelectionEnd), selY + selH), new PointInt(XOf(state.SelectionStart), selY)),
+                colors.Selection);
+        }
+
         if (displayText.Length > 0)
         {
             var layoutRect = new RectInt(
@@ -194,18 +213,6 @@ public static class TextInputRenderer
         int XOf(int chars) => textX + (int)(fallback is not null
             ? fallback.Measure(renderer, visibleText[..chars], fontSize).Width
             : renderer.MeasureText(visibleText[..chars].AsSpan(), fontFamily, fontSize).Width);
-
-        // Selection highlight. Suppressed while composing: the selection indices address state.Text,
-        // which is not what is on screen, so drawing it would highlight the wrong characters.
-        if (state.IsActive && state.HasSelection && !composing)
-        {
-            var selY = y + (int)(height * 0.1f);
-            var selH = (int)(height * 0.8f);
-
-            renderer.FillRectangle(
-                new RectInt(new PointInt(XOf(state.SelectionEnd), selY + selH), new PointInt(XOf(state.SelectionStart), selY)),
-                colors.Selection);
-        }
 
         if (!state.IsActive)
         {

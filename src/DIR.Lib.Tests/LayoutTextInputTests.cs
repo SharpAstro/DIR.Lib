@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using DIR.Lib;
 using Shouldly;
@@ -27,10 +29,10 @@ public class LayoutTextInputTests
 
     private sealed class TestWidget(Renderer<RgbaImage> renderer) : PixelWidgetBase<RgbaImage>(renderer)
     {
-        public ClickableRegion[] Render(Layout.Node root, RectF32 bounds, float dpiScale = 1f)
+        public ClickableRegion[] Render(Layout.Node root, RectF32 bounds, float dpiScale = 1f, string fontPath = "font.ttf")
         {
             BeginFrame();
-            RenderLayout(root, bounds, fontPath: "font.ttf", dpiScale: dpiScale);
+            RenderLayout(root, bounds, fontPath: fontPath, dpiScale: dpiScale);
             return GetRegisteredRegions();
         }
 
@@ -212,5 +214,103 @@ public class LayoutTextInputTests
         var inputs = Widget().TextInputsAfter(Layout.Builder.VStack(rows), new RectF32(0f, 0f, 200f, 80f));
 
         inputs.ShouldBe(states);
+    }
+    // ---- The selection highlight sits UNDER the glyphs ----
+
+    private static string Fixture(string name) => Path.Combine(AppContext.BaseDirectory, "Fonts", name);
+
+    /// <summary>
+    /// One field rendered with a real face, so glyph ink actually lands on the surface. The caret is
+    /// suppressed by frame count (it blinks off on the second 30-frame half), because it is drawn in its
+    /// own colour and would otherwise count as ink at whichever column the cursor happens to sit.
+    /// </summary>
+    private static RgbaImageRenderer RenderField(TextInputState state)
+    {
+        var renderer = new RgbaImageRenderer(220, 44);
+        renderer.Surface.Clear(new RGBAColor32(0, 0, 0, 255));
+        var widget = new TestWidget(renderer) { FrameCount = 30 };
+        widget.Render(
+            Layout.Builder.TextInput(state, 20f).Stretch(),
+            new RectF32(0f, 0f, 220f, 44f),
+            fontPath: Fixture("DejaVuSans.ttf"));
+        return renderer;
+    }
+
+    private static double Lum(RgbaImageRenderer r, int x, int y)
+    {
+        var i = ((y * r.Surface.Width) + x) * 4;
+        var p = r.Surface.Pixels;
+        return (0.299 * p[i]) + (0.587 * p[i + 1]) + (0.114 * p[i + 2]);
+    }
+
+    /// <summary>
+    /// Selected text has to stay readable, and that is a statement about paint ORDER. The highlight is a
+    /// translucent fill (alpha 180 by default), so painted on TOP of the run it leaves a fixed 29% of the
+    /// glyph's contrast: on screen, a coloured block with no text in it. Reported 2026-09-07 against the
+    /// sky atlas F3 box, whose OpenSearch selects the whole query, so every open showed it.
+    /// <para>
+    /// Measured on this fixture with the default palette, as mean ink contrast against its own local
+    /// background: 125.3 unselected, 106.5 with the highlight underneath (85% of it), 37.1 with the
+    /// highlight over the top (29.6%, the alpha residual exactly, and no colour choice can raise it). The
+    /// bound is 60%, which only the right order reaches; seen to fail at 37.1 with the fill moved back
+    /// after the run.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void SelectedText_KeepsItsContrast_BecauseTheHighlightIsPaintedUnderTheGlyphs()
+    {
+        const string Text = "C30";
+
+        var plainState = new TextInputState { Text = Text };
+        plainState.Activate();
+
+        var selectedState = new TextInputState { Text = Text };
+        selectedState.Activate();
+        selectedState.SelectAll();
+
+        var plain = RenderField(plainState);
+        var selected = RenderField(selectedState);
+
+        // Ink is where the unselected field drew away from its own background, sampled to the right of
+        // the text: inside the box, past the last glyph, and outside any selection.
+        var plainBg = Lum(plain, 200, 22);
+        var ink = new List<(int X, int Y)>();
+        for (var y = 6; y < 38; y++)
+        {
+            for (var x = 6; x < 190; x++)
+            {
+                if (Math.Abs(Lum(plain, x, y) - plainBg) > 20d)
+                {
+                    ink.Add((x, y));
+                }
+            }
+        }
+
+        ink.Count.ShouldBeGreaterThan(40, "the fixture has to draw real glyphs for this to measure anything");
+
+        // The selected render's local background is the highlight itself, taken as the most common
+        // luminance over the ink's bounding box rather than guessed from a pixel that might be a glyph.
+        var x0 = ink.Min(p => p.X);
+        var x1 = ink.Max(p => p.X);
+        var y0 = ink.Min(p => p.Y);
+        var y1 = ink.Max(p => p.Y);
+        var histogram = new Dictionary<int, int>();
+        for (var y = y0; y <= y1; y++)
+        {
+            for (var x = x0; x <= x1; x++)
+            {
+                var bucket = (int)Math.Round(Lum(selected, x, y));
+                histogram[bucket] = histogram.GetValueOrDefault(bucket) + 1;
+            }
+        }
+
+        var selectedBg = histogram.OrderByDescending(kv => kv.Value).First().Key;
+        var plainContrast = ink.Average(p => Math.Abs(Lum(plain, p.X, p.Y) - plainBg));
+        var selectedContrast = ink.Average(p => Math.Abs(Lum(selected, p.X, p.Y) - selectedBg));
+
+        selectedContrast.ShouldBeGreaterThan(
+            plainContrast * 0.6d,
+            $"selected ink contrast {selectedContrast:F1} against unselected {plainContrast:F1} "
+            + $"(highlight background {selectedBg}, field background {plainBg:F1})");
     }
 }
