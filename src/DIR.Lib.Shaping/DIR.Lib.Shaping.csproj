@@ -9,6 +9,7 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageID>DIR.Lib.Shaping</PackageID>
     <Description>Pure-managed OpenType text-shaping adapter for DIR.Lib: an ITextShaper backed by SharpAstro.Fonts.Shaping (script itemization, GSUB/GPOS, Arabic joining, RTL). Optional satellite — DIR.Lib core stays shaping-free.</Description>
+    <PackageTags>opentype shaping gsub gpos arabic rtl text layout aot</PackageTags>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/SharpAstro/DIR.Lib.git</RepositoryUrl>

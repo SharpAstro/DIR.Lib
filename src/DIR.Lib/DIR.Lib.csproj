@@ -9,6 +9,8 @@
     <IsAotCompatible>true</IsAotCompatible>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageID>DIR.Lib</PackageID>
+    <Description>Device-Independent input and Rendering library for .NET: surface-neutral drawing primitives, an immutable layout DSL, a widget toolkit, font rasterization (bitmap + SDF) and font fallback, shared by GPU (SDL3 + Vulkan), terminal and browser (WebGL2 / Blazor WebAssembly) front ends. Pure managed, AOT compatible, no native dependencies.</Description>
+    <PackageTags>rendering layout widgets ui text font rasterizer sdf aot cross-platform</PackageTags>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/SharpAstro/DIR.Lib.git</RepositoryUrl>
