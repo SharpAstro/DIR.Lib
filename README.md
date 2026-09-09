@@ -14,6 +14,8 @@
 - **`GlyphBitmap`** / **`SdfGlyphBitmap`** — raw RGBA glyph bitmap with bearing/advance info; SDF variant for scalable text on the GPU side
 - **`ManagedFontRasterizer`** — pure-managed glyph rasterizer backed by `SharpAstro.Fonts.OpenTypeFont`; supports COLRv1 color glyphs, grayscale, and PDF subset fonts. AOT-compatible, no GC pinning, no native bindings.
 - **`FontResolver`** — resolves platform-default monospace fonts and enumerates installed font files across system + per-user font directories (incl. Windows 11 `%LOCALAPPDATA%\Microsoft\Windows\Fonts`)
+- **`FontFallbackResolver`** — splits a string into runs that each draw with a face that covers them; with faces declared by role (`FromRoles`), a codepoint whose Unicode default presentation is emoji is taken from the emoji face even where the primary covers it
+- **`EmojiPresentation`** — the UTS #51 `Emoji_Presentation` property (`IsDefaultFor`), over a table generated from the Unicode Character Database by `tools/gen-emoji-presentation`
 
 ## Input Handling
 

@@ -44,6 +44,8 @@ CI runs tests in Release config after building, before publishing NuGet packages
 - `DockLayout<T>` — generic dock layout engine using `INumber<T>`
 - `ManagedFontRasterizer` — pure-managed glyph rasterizer (AOT-compatible) backed by `SharpAstro.Fonts.OpenTypeFont`; supports COLRv1 color glyphs, grayscale, and PDF subset fonts
 - `FontResolver` — platform-default monospace lookup + cross-platform installed-font enumeration (including Win11 per-user font dir)
+- `FontFallbackResolver` — coverage-driven font runs for UI text. Faces declared by role (`FromRoles`) also get Unicode's default presentation applied: a pictograph goes to the emoji face even where the primary covers it (U+2615 is the case that found it), while text-default marks (✓ ★ ⚠ ❄, arrows) stay on the primary
+- `EmojiPresentation` — the `Emoji_Presentation` property behind that. **The data half is GENERATED**: `dotnet run` in `tools/gen-emoji-presentation` rewrites `src/DIR.Lib/EmojiPresentation.Data.g.cs` from unicode.org's `emoji-data.txt`. Re-run it per Unicode release; never hand-edit the table
 - `BoxRasterizer.RenderToRgba` (in `DIR.Lib.MathLayout`) — math-layout entry point; returns a raw `RgbaImage` so the caller picks the encoder (PNG / sixel / half-block / …)
 
 **Key design constraints:**
