@@ -92,7 +92,12 @@ public abstract record InputEvent
     /// <summary>Mouse wheel scroll at pixel coordinates. Positive delta = scroll up.</summary>
     public sealed record Scroll(float Delta, float X, float Y, InputModifier Modifiers = default) : InputEvent;
 
-    /// <summary>Touch pinch gesture. Scale is absolute from pinch start (1.0 = start, &gt;1 = spread, &lt;1 = squeeze).
+    /// <summary>Touch pinch gesture. Scale is the factor for THIS event, not the cumulative one since the
+    /// gesture began (1 = unchanged, &gt;1 = spread, &lt;1 = squeeze): the raiser re-bases its reference
+    /// distance after every dispatch, so a consumer multiplies it straight onto the current zoom.
+    /// <b>Reading it as absolute leaves the whole gesture stuck at its first event's factor</b>, which is
+    /// what this summary used to say -- so it is stated here rather than left to the raiser, since a
+    /// consumer holds only this type.
     /// X/Y are the anchor point in pixel coordinates: the finger midpoint for a touchscreen, or the mouse
     /// cursor for a touchpad (see <see cref="Source"/>). Kept as an init-only property rather than a
     /// positional parameter so existing <c>(Scale, X, Y)</c> deconstructions keep compiling.</summary>
