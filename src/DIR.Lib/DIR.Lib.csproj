@@ -99,13 +99,6 @@
     <AdditionalFiles Include="grammars\markdown-block.lalr.yaml" Link="markdown-block.lalr.yaml" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Microsoft.SourceLink.GitHub">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-  </ItemGroup>
-
   <!--
     DIR.Lib.SourceGenerators emits a SignalDirectory (name->factory map over the assembly's *Signal
     types) for a DIR.Lib.SignalBus consumer's live UI inspector, with no runtime reflection. It is
