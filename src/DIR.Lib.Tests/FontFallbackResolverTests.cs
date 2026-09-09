@@ -243,4 +243,82 @@ public sealed class FontFallbackResolverTests
         ctx.EmojiFontPath.ShouldBe(Font(Emoji));
         ctx.Fallback.ShouldBeNull();
     }
+
+    // ---- Unicode default presentation (UTS #51) ----
+
+    private static readonly Rune Coffee = new(0x2615);      // Emoji_Presentation=Yes, and DejaVu HAS it
+    private static readonly Rune CheckMark = new(0x2713);   // Emoji_Presentation=No, DejaVu's to draw
+    private static readonly Rune BlackStar = new(0x2605);   // likewise, and a neighbour of U+2B50
+
+    /// <summary>A resolver whose faces are declared by ROLE, which is what turns the rule on.</summary>
+    private static FontFallbackResolver Roles(string primary, string emoji)
+        => FontFallbackResolver.FromRoles(Font(primary), emojiFontPath: Font(emoji));
+
+    /// <summary>
+    /// The case the rule exists for. BOTH faces cover U+2615, so coverage order alone hands it to the
+    /// primary and draws DejaVu's small monochrome cup where every browser draws the colour emoji.
+    /// Unicode already recorded which of the two the codepoint is FOR, and that is what decides here.
+    /// </summary>
+    [Fact]
+    public void TryResolveFont_PrefersTheEmojiFaceWhereEmojiIsTheDefaultPresentation()
+    {
+        var r = Roles(DejaVu, Emoji);
+
+        r.TryResolveFont(Coffee).ShouldBe(Font(Emoji));
+
+        // Not a coverage claim: the primary can draw it perfectly well, it is simply not what it is for.
+        Resolver(DejaVu).CanRender(Coffee).ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// The half that makes the rule safe to apply everywhere: the marks a UI already draws from its text
+    /// face are text-default in Unicode and do not move, even though they sit in the same blocks.
+    /// </summary>
+    [Fact]
+    public void TryResolveFont_LeavesTextDefaultMarksOnThePrimary()
+    {
+        var r = Roles(DejaVu, Emoji);
+
+        r.TryResolveFont(CheckMark).ShouldBe(Font(DejaVu));
+        r.TryResolveFont(BlackStar).ShouldBe(Font(DejaVu));
+        r.TryResolveFont(LatinA).ShouldBe(Font(DejaVu));
+    }
+
+    /// <summary>
+    /// The preference is tied to the DECLARED role. A bare fallback list says nothing about what its
+    /// faces are for, so an existing caller keeps exactly the coverage-order answer it had.
+    /// </summary>
+    [Fact]
+    public void TryResolveFont_WithNoDeclaredEmojiRole_KeepsCoverageOrder()
+    {
+        var r = Resolver(DejaVu, Emoji);
+        r.TryResolveFont(Coffee).ShouldBe(Font(DejaVu));
+    }
+
+    /// <summary>Presentation can never LOSE a glyph: a declared face that lacks the rune is skipped.</summary>
+    [Fact]
+    public void TryResolveFont_FallsBackToThePrimaryWhenTheEmojiFaceLacksTheRune()
+    {
+        var r = Roles(DejaVu, Merida);      // chess pieces only; no coffee cup anywhere in it
+        r.TryResolveFont(Coffee).ShouldBe(Font(DejaVu));
+    }
+
+    /// <summary>
+    /// PrimaryCoversAll gates the run-splitting machinery, so it has to answer the same question
+    /// TryResolveFont does. Saying "the primary covers everything" for a line holding a rune that
+    /// resolves elsewhere draws the whole line in one face and silently undoes the rule.
+    /// </summary>
+    [Fact]
+    public void PrimaryCoversAll_IsFalseWhenARuneWantsTheEmojiFace()
+    {
+        var r = Roles(DejaVu, Emoji);
+
+        r.PrimaryCoversAll("Support development").ShouldBeTrue();
+        r.PrimaryCoversAll("☕ Support development").ShouldBeFalse();
+
+        var runs = r.CoverageRuns("☕ Support");
+        runs.Count.ShouldBe(2);
+        runs[0].ShouldBe(("☕", Font(Emoji)));
+        runs[1].ShouldBe((" Support", Font(DejaVu)));
+    }
 }

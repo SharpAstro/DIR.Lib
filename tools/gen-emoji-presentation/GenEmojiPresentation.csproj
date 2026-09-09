@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Regenerates src/DIR.Lib/EmojiPresentation.Data.g.cs from the Unicode Character Database.
+
+    It is a REPO tool, not a shipped one: unlike DIR.Lib.IconBaker (which a consumer runs against its
+    own fonts, so it is packed and published), this answers a question with exactly one right answer
+    per Unicode release. Nobody downstream needs to ask it, so it stays out of src/ and out of the
+    solution, and the table it writes is committed.
+
+    Run it from THIS directory (a `dotnet run` with a project switch cannot be written here: XML
+    forbids a double hyphen inside a comment), roughly once a year when Unicode publishes:
+      dotnet run
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RootNamespace>GenEmojiPresentation</RootNamespace>
+  </PropertyGroup>
+
+</Project>

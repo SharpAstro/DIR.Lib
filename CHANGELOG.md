@@ -9,6 +9,39 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.15
+
+**A pictograph is drawn from the emoji face even where the text face covers it.** `FontFallbackResolver`
+asked one question, "who covers this codepoint", and answered it in role order, so a text face that
+happens to carry a pictograph outline won by position. U+2615 HOT BEVERAGE is the case that found it:
+DejaVu Sans has a real 428-byte glyph for it, so a coffee cup beside a label came out as a small
+monochrome cup while every browser draws the colour emoji, and the app's own emoji face was never
+consulted. Unicode already records which of the two a codepoint is FOR (`Emoji_Presentation`, UTS #51),
+and `TryResolveFont` asks that first now: a rune whose default presentation is emoji resolves to the
+declared `EmojiFontPath` where that face covers it, and to the primary otherwise. `PrimaryCoversAll`
+answers the same question, or the fast path would draw the line in one face and undo it.
+
+Narrow in three deliberate ways. It applies only to a resolver built by `FromRoles`, since a bare
+fallback list declares no roles and an existing caller's answers are byte-identical. It can never lose a
+glyph: a declared face that lacks the rune is skipped. And the property itself is narrow, which is the
+point -- the marks a UI already draws are text-default and do not move (U+2713 and U+2714 check marks,
+U+2605 star, U+26A0 warning sign, U+2744 snowflake, the arrows and triangles), while what flips is the
+set always meant to be a pictograph (U+2615, U+2705, U+274C, U+26C5, U+2B50, and essentially everything
+above U+1F000). Measured over the 73 distinct non-ASCII codepoints in one consumer's four UI projects:
+exactly ONE changes face (the coffee cup), and seventeen more are emoji by default but absent from the
+text face, so they already came from the emoji face and are unaffected.
+
+**`EmojiPresentation`** is that Unicode property, public: `IsDefaultFor(Rune)` / `IsDefaultFor(int)` over
+a table generated from the Unicode Character Database by `tools/gen-emoji-presentation` (81 merged ranges
+over 1219 codepoints, emoji-data 17.0). Generated rather than hand-written because a missing range is
+invisible -- it leaves a pictograph drawn from the text face, which reads as a font choice rather than a
+bug -- and because the set grows with every Unicode release. Explicit presentation selectors (U+FE0F /
+U+FE0E) are still not honoured: those are a property of a SEQUENCE, and this asks about one codepoint.
+
+Pinned by `EmojiPresentationTests` (the table's shape, the binary search against a linear scan over every
+codepoint it could claim, and both halves of the line) plus five `FontFallbackResolverTests`, two of which
+fail with the rule removed while the twenty older ones stay green.
+
 ## 8.14
 
 **A selection no longer hides the text it selects.** `TextInputRenderer` drew the run and then filled the

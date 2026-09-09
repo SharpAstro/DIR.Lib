@@ -13,6 +13,11 @@ namespace DIR.Lib;
 /// candidate's cmap via <see cref="OpenTypeFont.GetGlyphId(uint)"/>; faces are loaded lazily, so a
 /// large CJK font isn't touched unless a codepoint actually needs it.
 ///
+/// <para>Coverage is not the whole rule. A rune whose Unicode DEFAULT PRESENTATION is emoji
+/// (<see cref="EmojiPresentation"/>) is drawn from the declared <see cref="EmojiFontPath"/> even where
+/// the primary covers it, because a text face carrying a pictograph outline is not a reason to prefer
+/// it -- see <see cref="TryResolveFont"/>.</para>
+///
 /// <para>Renderer-agnostic: <see cref="CoverageRuns"/> is pure; the <see cref="Measure"/>/
 /// <see cref="Draw"/>/<see cref="FitEllipsis"/> helpers are generic over the backend's
 /// <see cref="Renderer{TSurface}"/>. Caches are concurrent; intended for render-thread UI text.</para>
@@ -51,6 +56,9 @@ public sealed class FontFallbackResolver
     /// symbol face ahead of them a caret would be drawn from a multi-megabyte CJK font. Roles
     /// are <em>declared</em> here because they cannot be detected — a font full of symbols is
     /// metadata-identical to a text font, and only its cmap tells the truth.</para>
+    /// <para>Declaring the emoji role does one thing beyond ordering: a rune whose default
+    /// presentation is emoji is taken from that face ahead of the primary. That is why the role
+    /// matters even when the primary covers every glyph the app draws.</para>
     /// </summary>
     /// <param name="primaryFontPath">The UI's text face.</param>
     /// <param name="symbolFontPath">Face carrying arrows, geometric shapes, ballot boxes, …</param>
@@ -83,7 +91,10 @@ public sealed class FontFallbackResolver
     /// <summary>The declared symbol face, if one was given to <see cref="FromRoles"/> and exists.</summary>
     public string? SymbolFontPath { get; private init; }
 
-    /// <summary>The declared emoji face, if one was given to <see cref="FromRoles"/> and exists.</summary>
+    /// <summary>
+    /// The declared emoji face, if one was given to <see cref="FromRoles"/> and exists. Codepoints
+    /// whose default presentation is emoji resolve here in preference to the primary.
+    /// </summary>
     public string? EmojiFontPath { get; private init; }
 
     /// <summary>True if at least one fallback font is available (else this is a pass-through).</summary>
@@ -117,7 +128,20 @@ public sealed class FontFallbackResolver
         if (_fontByCodepoint.TryGetValue(rune.Value, out var cached)) return cached;
 
         string? chosen = null;
-        if (Covers(_primaryFontPath, rune))
+        // Unicode's DEFAULT PRESENTATION beats coverage order, and this is the one place where asking
+        // "who covers it" gives the wrong answer confidently: a text face and an emoji face can BOTH
+        // carry a pictograph, so the primary wins by position and the colour face is never consulted.
+        // U+2615 is the case that found it -- DejaVu Sans has a real outline for it, so a coffee cup
+        // drawn beside a label came out as a small monochrome glyph while every browser drew the emoji.
+        // Only the declared emoji ROLE gets this (a resolver built from a bare fallback list has none),
+        // and only where that face actually covers the rune, so it can never lose a glyph.
+        if (EmojiFontPath is { } emojiFont
+            && EmojiPresentation.IsDefaultFor(rune)
+            && Covers(emojiFont, rune))
+        {
+            chosen = emojiFont;
+        }
+        else if (Covers(_primaryFontPath, rune))
         {
             chosen = _primaryFontPath;
         }
@@ -160,10 +184,15 @@ public sealed class FontFallbackResolver
     public bool PrimaryCoversAll(ReadOnlySpan<char> text)
     {
         // With no fallbacks the primary is the only font there is, so it "covers" by definition —
-        // the same pass-through CoverageRuns applies.
+        // the same pass-through CoverageRuns applies. The ASCII shortcut survives the presentation rule
+        // below because no ASCII codepoint has Emoji_Presentation=Yes (the lowest is U+231A).
         if (_fallbackPaths.Count == 0 || IsPlainAscii(text)) return true;
+
+        // Asks the SAME question CoverageRuns will, rather than coverage alone: a rune the primary
+        // covers can still resolve to the emoji face by default presentation, and answering "no split
+        // needed" for it would draw the whole line in the primary and quietly undo that.
         foreach (var rune in text.EnumerateRunes())
-            if (!Covers(_primaryFontPath, rune)) return false;
+            if (TryResolveFont(rune) != _primaryFontPath) return false;
         return true;
     }
 
