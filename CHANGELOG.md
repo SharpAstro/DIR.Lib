@@ -9,6 +9,32 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.16
+
+`FloatingPalette` — a floating, grip-dragged, collapsible palette of toggle rows, as a `Layout.Node`
+tree plus the pure rules around it (`FloatingPaletteState`, `PaletteItem`, `PaletteColors`).
+
+Hoisted out of two independent implementations of the same panel — a PDF viewer's tool palette and an
+astronomy app's sky-map layer panel — which had already diverged on exactly the parts that are easy
+to get wrong. Those are what this pins:
+
+- **The clamp reconciliation.** `Anchored` clamps a panel into its rect, so the consumer-owned
+  `offsetAlong` and the drawn position diverge wherever the clamp bites, and that stays invisible
+  until the panel's HEIGHT changes: collapse it, the clamp stops binding, and the title bar jumps to
+  the stale offset. `FloatingPaletteState.NoteArranged` writes the drawn offset back every frame,
+  which is the only thing that keeps the two from disagreeing.
+- **A collapsed panel recedes far less than an expanded one** (0.85 against 0.40). Rolled up, the
+  title bar IS the panel, so the expanded floor fades the only thing left of it.
+- **A collapsed bar still carries state** — `LAYERS 7/10`, not just a name.
+- **A grip drag has nothing but successive presses and the last pointer position to work with**, so
+  `PressGrip` times its own double-click. A host that dispatches a widget's clickable regions from
+  the mouse-DOWN hands those callbacks the modifiers and nothing else: no position, no click count.
+- **An unavailable row is drawn and dimmed, never dropped.** A row that comes and goes moves every
+  row under it, and an absent row says nothing about why the thing is unavailable.
+
+Drawing stays the consumer's: `Build` returns a tree and touches no surface, so a palette's geometry
+and its click bindings are testable with a stub measure context and no GPU.
+
 ## 8.15
 
 **A pictograph is drawn from the emoji face even where the text face covers it.** `FontFallbackResolver`
