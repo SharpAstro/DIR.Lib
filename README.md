@@ -16,6 +16,7 @@
 - **`FontResolver`** — resolves platform-default monospace fonts and enumerates installed font files across system + per-user font directories (incl. Windows 11 `%LOCALAPPDATA%\Microsoft\Windows\Fonts`)
 - **`FontFallbackResolver`** — splits a string into runs that each draw with a face that covers them; with faces declared by role (`FromRoles`), a codepoint whose Unicode default presentation is emoji is taken from the emoji face even where the primary covers it
 - **`EmojiPresentation`** — the UTS #51 `Emoji_Presentation` property (`IsDefaultFor`), over a table generated from the Unicode Character Database by `tools/gen-emoji-presentation`
+- **`FloatingPalette`** — a floating, grip-dragged, collapsible palette of toggle rows, as a `Layout.Node` tree plus the pure state and colour rules around it (`FloatingPaletteState`, `PaletteItem`, `PaletteColors`); `Build` returns the tree and touches no surface
 
 ## Input Handling
 
