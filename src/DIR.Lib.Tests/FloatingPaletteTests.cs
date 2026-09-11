@@ -348,18 +348,55 @@ public class FloatingPaletteTests
     }
 
     [Fact]
-    public void PinningOnReleaseDropsTheAcrossOffsetTheEdgeNowOwns()
+    public void PinningOnReleaseTakesTheOffsetDownTheNewEdgeRatherThanTheOneItHadWhileFloating()
     {
+        // The offsets mean different AXES on either side of this change: floating, along is X; pinned
+        // to a side, along is Y. A panel dragged from the right edge to the left arrives with an along
+        // of ~900 (an X), and carrying that number over reads it as 900 DOWN the left edge — so the
+        // panel docks correctly, gets clamped back to the top, and the drop looks ignored. Seen in a
+        // real consumer, which is why both offsets are re-derived from the rect and never carried.
         var content = new RectF32(0f, 0f, 900f, 600f);
-        var state = new FloatingPaletteState { Side = null, OffsetAlong = 4f, OffsetAcross = 300f };
+        var state = new FloatingPaletteState { Side = null, OffsetAlong = 880f, OffsetAcross = 300f };
 
         state.SnapOnRelease(new RectF32(4f, 300f, 40f, 200f), content, 26f, 8f).ShouldBeTrue();
         state.Side.ShouldBe(Layout.DockSide.Left);
+        state.OffsetAlong.ShouldBe(300f, 0.001f);   // where it was dropped DOWN the edge, not the 880
         state.OffsetAcross.ShouldBe(0f);
 
-        // And released in open space it comes off the edge again.
-        state.SnapOnRelease(new RectF32(400f, 300f, 40f, 200f), content, 26f, 8f).ShouldBeTrue();
+        // And released in open space it comes off the edge again, with both offsets back to a position.
+        state.SnapOnRelease(new RectF32(400f, 250f, 40f, 200f), content, 26f, 8f).ShouldBeTrue();
         state.Side.ShouldBeNull();
+        state.OffsetAlong.ShouldBe(400f, 0.001f);
+        state.OffsetAcross.ShouldBe(250f, 0.001f);
+    }
+
+    [Fact]
+    public void ReleasingOnTheSameEdgeStillUpdatesWhereAlongItSits()
+    {
+        // Returns false because the SIDE did not change, but the offset must still follow the drop --
+        // a "nothing changed" early return here would pin a panel to its edge and never let it slide.
+        var content = new RectF32(0f, 0f, 900f, 600f);
+        var state = new FloatingPaletteState { Side = Layout.DockSide.Left, OffsetAlong = 40f };
+
+        state.SnapOnRelease(new RectF32(4f, 320f, 40f, 200f), content, 26f, 8f).ShouldBeFalse();
+        state.Side.ShouldBe(Layout.DockSide.Left);
+        state.OffsetAlong.ShouldBe(320f, 0.001f);
+    }
+
+    [Fact]
+    public void UnpinningLeavesThePanelExactlyWhereItIsDrawn()
+    {
+        // The mirror of the above, and the same axis conversion: a panel pinned to the left edge has an
+        // along measured DOWN it, and lifting it off has to turn that back into a position. Seeding the
+        // drag from the stored offsets instead makes the panel jump the moment the grip is pressed.
+        var content = new RectF32(50f, 20f, 900f, 600f);
+        var state = new FloatingPaletteState { Side = Layout.DockSide.Left, OffsetAlong = 300f };
+
+        state.Unpin(new RectF32(60f, 320f, 40f, 200f), content);
+
+        state.Side.ShouldBeNull();
+        state.OffsetAlong.ShouldBe(10f, 0.001f);
+        state.OffsetAcross.ShouldBe(300f, 0.001f);
     }
 
     [Fact]

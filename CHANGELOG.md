@@ -9,6 +9,25 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.19
+
+**A palette dropped on a different edge now keeps where along that edge it was dropped.** 8.18's
+`SnapOnRelease` carried `OffsetAlong` across the change, and the offsets mean different axes on either
+side of it: floating, along is X; pinned to a side, along is Y. So a palette dragged from the right
+edge to the left arrived with an along of ~900 — an X — which was then read as 900 pixels DOWN the
+left edge, clamped back to the top, and the drop looked ignored.
+
+Both offsets are re-derived from the panel's own rect now, which is the one thing that means the same
+before and after. `SnapOnRelease` takes a `dpiScale` for it, and still reports whether the SIDE
+changed — but it updates the offset either way, so a panel released further down the edge it was
+already on slides there rather than staying put.
+
+`Unpin(panelRect, contentRect, dpiScale)` is the mirror, for the grip press that lifts a panel off its
+edge before a drag: same conversion, the other way. Seeding a drag from the stored offsets instead
+makes the panel jump the moment the grip is pressed.
+
+Found by driving a consumer's palette through its debug inspector rather than by reading the code:
+it docked to the right edge and lost its position along it, which no unit test at the time asked about.
 ## 8.18
 
 `FloatingPalette` learns the two things a palette the reader can re-dock needs, which were the named

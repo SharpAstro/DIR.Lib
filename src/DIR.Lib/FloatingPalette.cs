@@ -231,21 +231,38 @@ namespace DIR.Lib
         /// <param name="contentRect">The rect it floats in, surface units.</param>
         /// <param name="snap">How close to an edge still counts, surface units.</param>
         /// <param name="margin">The inset a pinned panel keeps, surface units.</param>
-        public bool SnapOnRelease(RectF32 panelRect, RectF32 contentRect, float snap, float margin)
+        /// <param name="dpiScale">Design-to-surface scale, so the offsets land in design units.</param>
+        public bool SnapOnRelease(RectF32 panelRect, RectF32 contentRect, float snap, float margin,
+            float dpiScale = 1f)
         {
             var side = FloatingPalette.SnapSideFor(panelRect, contentRect, snap, margin);
-            if (side == Side)
-            {
-                return false;
-            }
-
+            var changed = side != Side;
             Side = side;
-            if (side is not null)
-            {
-                OffsetAcross = 0f;
-            }
 
-            return true;
+            // ALWAYS re-derived, never carried across, because the offsets mean different axes on
+            // either side of the change: floating, along is X; pinned to a side, along is Y. Carrying
+            // the number over hands a panel released at the left edge its old X as a distance DOWN
+            // that edge, so it docks correctly and then jumps to the top -- which reads as the drop
+            // having been ignored. The panel's own rect is the only thing that means the same in both.
+            (OffsetAlong, OffsetAcross) =
+                FloatingPalette.DrawnOffsets(panelRect, contentRect, side, dpiScale);
+            return changed;
+        }
+
+        /// <summary>
+        /// Lifts the panel off whatever edge it was on, keeping it exactly where it is drawn — what a
+        /// grip press does before a drag, so the pointer picks the panel up rather than teleporting it.
+        /// </summary>
+        /// <remarks>
+        /// The mirror of <see cref="SnapOnRelease"/>, and it exists for the same reason: a pinned
+        /// panel's <see cref="OffsetAlong"/> is measured down its edge, and free of every edge it is
+        /// measured across. Re-deriving both from the rect is the only conversion that holds.
+        /// </remarks>
+        public void Unpin(RectF32 panelRect, RectF32 contentRect, float dpiScale = 1f)
+        {
+            Side = null;
+            (OffsetAlong, OffsetAcross) =
+                FloatingPalette.DrawnOffsets(panelRect, contentRect, null, dpiScale);
         }
 
         /// <summary>Tells the palette where the pointer is, so hover can hold the fade open.</summary>
