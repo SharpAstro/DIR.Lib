@@ -9,6 +9,31 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.18
+
+`FloatingPalette` learns the two things a palette the reader can re-dock needs, which were the named
+omissions when it landed: **which edge it is on**, and **a placement that can be stored**.
+
+- `FloatingPaletteState.Side` is now state rather than a `Build` argument, because a drag CHANGES it.
+  Null means the panel floats free of every edge, which is the state a drag passes through.
+- `SnapOnRelease` takes the edge a panel was released near, over the pure `SnapSideFor`. Left and
+  right are tested ahead of top, so a panel released into a corner pins to the side, where a tall
+  strip belongs.
+- `DragTo(x, y, scale)` and `PressGrip(x, y)` move in both axes. Pinned, only the along-edge component
+  applies — the edge owns the other one; free, the pair is simply the position.
+- `NoteArranged(panelRect, contentRect, scale)` reconciles both offsets, and `DrawnOffsets` is the
+  pure rule under it. Which coordinate is "along" depends on the side, and the obvious form — one
+  ternary on "is it horizontal" — is right for the pinned states and wrong for floating, where along
+  is X and across is Y. A consumer that wrote it that way had a panel that could only travel the
+  diagonal.
+- `PalettePlacement` is the whole placement as one storable value, with an invariant-culture round
+  trip. An unrecognised side is REFUSED rather than read as "floating": reading it as a float would
+  strand the panel at a pair of coordinates that meant something else.
+- `AllowCollapse` turns the grip's double-click off, for a palette with nothing worth collapsing — a
+  strip of icon buttons IS its own title bar, so the gesture would only be a way to lose it.
+
+Existing callers are unaffected: every new parameter is an overload or a defaulted property, and a
+`Build` that names its `side` still wins over the state.
 ## 8.17
 
 Takes SharpAstro.Fonts 1.12, where a font can no longer take the process down with it.
