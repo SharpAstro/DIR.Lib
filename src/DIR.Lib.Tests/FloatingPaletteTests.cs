@@ -2,7 +2,9 @@ using DIR.Lib;
 using Shouldly;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Threading;
 
 namespace DIR.Lib.Tests;
 
@@ -264,6 +266,171 @@ public class FloatingPaletteTests
                 Walk(anchored.Child, visit);
                 break;
         }
+    }
+
+    [Fact]
+    public void APanelReleasedNearAnEdgeTakesThatEdge()
+    {
+        var content = new RectF32(0f, 0f, 900f, 600f);
+
+        FloatingPalette.SnapSideFor(new RectF32(4f, 300f, 40f, 200f), content, 26f, 8f)
+            .ShouldBe(Layout.DockSide.Left);
+        FloatingPalette.SnapSideFor(new RectF32(880f, 300f, 40f, 200f), content, 26f, 8f)
+            .ShouldBe(Layout.DockSide.Right);
+        FloatingPalette.SnapSideFor(new RectF32(400f, 6f, 40f, 200f), content, 26f, 8f)
+            .ShouldBe(Layout.DockSide.Top);
+        FloatingPalette.SnapSideFor(new RectF32(400f, 300f, 40f, 200f), content, 26f, 8f)
+            .ShouldBeNull();
+    }
+
+    [Fact]
+    public void ReleasedIntoACornerAPanelPinsToTheSideRatherThanTheTop()
+    {
+        // A tall strip belongs against a side; the order the edges are tested in is what decides it,
+        // and both tests pass in a corner.
+        FloatingPalette.SnapSideFor(
+                new RectF32(4f, 4f, 40f, 200f), new RectF32(0f, 0f, 900f, 600f), 26f, 8f)
+            .ShouldBe(Layout.DockSide.Left);
+    }
+
+    [Fact]
+    public void AFreeFloatingPanelKeepsBothOffsetsWhereAPinnedOneKeepsJustTheOne()
+    {
+        // The clever form -- one ternary on "is it horizontal" -- is right for the pinned states and
+        // wrong for floating, where along is X and across is Y. A panel that took Y for both could only
+        // ever travel the diagonal.
+        var panel = new RectF32(150f, 70f, 40f, 200f);
+        var content = new RectF32(50f, 20f, 900f, 600f);
+
+        FloatingPalette.DrawnOffsets(panel, content, null, 1f).ShouldBe((100f, 50f));
+        FloatingPalette.DrawnOffsets(panel, content, Layout.DockSide.Left, 1f).ShouldBe((50f, 0f));
+        FloatingPalette.DrawnOffsets(panel, content, Layout.DockSide.Top, 1f).ShouldBe((100f, 0f));
+    }
+
+    [Fact]
+    public void APinnedPanelSlidesAlongItsEdgeWhileAFreeOneFollowsThePointer()
+    {
+        var pinned = new FloatingPaletteState { Side = Layout.DockSide.Left, OffsetAlong = 10f };
+        pinned.PressGrip(200f, 300f);
+        pinned.DragTo(260f, 340f, 1f).ShouldBeTrue();
+        pinned.OffsetAlong.ShouldBe(50f, 0.001f);    // the 40 of Y, never the 60 of X
+        pinned.OffsetAcross.ShouldBe(0f);
+
+        var free = new FloatingPaletteState { Side = null, OffsetAlong = 10f, OffsetAcross = 5f };
+        free.PressGrip(200f, 300f);
+        free.DragTo(260f, 340f, 1f).ShouldBeTrue();
+        free.OffsetAlong.ShouldBe(70f, 0.001f);
+        free.OffsetAcross.ShouldBe(45f, 0.001f);
+    }
+
+    [Fact]
+    public void ATopPinnedPanelRunsAcrossAndSlidesWithTheXAxis()
+    {
+        var state = new FloatingPaletteState { Side = Layout.DockSide.Top, OffsetAlong = 10f };
+        state.IsHorizontal.ShouldBeTrue();
+
+        state.PressGrip(200f, 300f);
+        state.DragTo(260f, 340f, 1f);
+        state.OffsetAlong.ShouldBe(70f, 0.001f);
+    }
+
+    [Fact]
+    public void WhereCollapseIsNotAllowedASecondQuickPressStartsADragInstead()
+    {
+        var state = new FloatingPaletteState { AllowCollapse = false };
+
+        state.PressGrip(0f, 100f).ShouldBeFalse();
+        state.ReleaseGrip();
+        state.PressGrip(0f, 100f).ShouldBeFalse();
+
+        state.Collapsed.ShouldBeFalse();
+        state.IsDragging.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void PinningOnReleaseDropsTheAcrossOffsetTheEdgeNowOwns()
+    {
+        var content = new RectF32(0f, 0f, 900f, 600f);
+        var state = new FloatingPaletteState { Side = null, OffsetAlong = 4f, OffsetAcross = 300f };
+
+        state.SnapOnRelease(new RectF32(4f, 300f, 40f, 200f), content, 26f, 8f).ShouldBeTrue();
+        state.Side.ShouldBe(Layout.DockSide.Left);
+        state.OffsetAcross.ShouldBe(0f);
+
+        // And released in open space it comes off the edge again.
+        state.SnapOnRelease(new RectF32(400f, 300f, 40f, 200f), content, 26f, 8f).ShouldBeTrue();
+        state.Side.ShouldBeNull();
+    }
+
+    [Fact]
+    public void APlacementSurvivesBeingStoredAndReadBack()
+    {
+        PalettePlacement[] originals =
+        [
+            new(Layout.DockSide.Left, 12.5f, 0f),
+            new(null, 12.5f, -3.25f),
+            new(Layout.DockSide.Top, 0f, 0f),
+            new(Layout.DockSide.Bottom, 900f, 0f),
+        ];
+
+        foreach (var original in originals)
+        {
+            PalettePlacement.TryParse(original.ToString(), out var read).ShouldBeTrue();
+            read.ShouldBe(original);
+        }
+    }
+
+    [Fact]
+    public void APlacementIsWrittenAndReadInTheInvariantCulture()
+    {
+        // On its own thread, so a culture set for this assertion cannot leak into a test running beside
+        // it. A settings file written where the separator is a comma has to be readable where it is a
+        // point, which is the whole reason the format states its culture.
+        string? written = null;
+        var read = default(PalettePlacement);
+        var parsed = false;
+
+        var thread = new Thread(() =>
+        {
+            written = new PalettePlacement(Layout.DockSide.Right, 12.5f, 0f).ToString();
+            parsed = PalettePlacement.TryParse(written, out read);
+        })
+        {
+            CurrentCulture = new CultureInfo("de-DE"),
+        };
+        thread.Start();
+        thread.Join();
+
+        written.ShouldBe("right:12.5:0");
+        parsed.ShouldBeTrue();
+        read.Along.ShouldBe(12.5f);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("left:12.5")]
+    [InlineData("sideways:1:2")]
+    [InlineData("left:x:2")]
+    public void ADamagedPlacementIsRefusedRatherThanReadAsFloating(string? text)
+    {
+        // The refusal matters more than it looks: reading an unrecognised side as "floating" would
+        // strand the panel at a pair of coordinates that meant something else entirely.
+        PalettePlacement.TryParse(text, out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TheStatesPlacementIsTheWholeOfWhatAConsumerHasToStore()
+    {
+        var state = new FloatingPaletteState { Side = Layout.DockSide.Top, OffsetAlong = 42f };
+        var stored = state.Placement.ToString();
+
+        PalettePlacement.TryParse(stored, out var read).ShouldBeTrue();
+        var restored = new FloatingPaletteState { Placement = read };
+
+        restored.Side.ShouldBe(Layout.DockSide.Top);
+        restored.OffsetAlong.ShouldBe(42f);
+        restored.OffsetAcross.ShouldBe(0f);
     }
 
     private sealed class UnitContext : Layout.IMeasureContext<float>

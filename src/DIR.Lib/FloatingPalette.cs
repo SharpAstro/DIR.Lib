@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 
 namespace DIR.Lib
 {
@@ -30,6 +31,70 @@ namespace DIR.Lib
         string? KeyHint = null,
         bool IsAvailable = true);
 
+    /// <summary>
+    /// Where a palette sits, in a form a consumer can store and hand back: the edge it is pinned to
+    /// (null while it floats free) and its two offsets, in DESIGN units.
+    /// </summary>
+    /// <remarks>
+    /// <para>The round trip lives here rather than in each consumer because the two halves have to agree
+    /// on what <see cref="Across"/> means, and that depends on <see cref="Side"/>: pinned, it is zero and
+    /// the edge supplies the missing coordinate; floating, the pair IS the position. A consumer writing
+    /// its own format gets one of those two cases right and meets the other a release later.</para>
+    /// <para>Invariant-culture on purpose: a settings file written where the decimal separator is a comma
+    /// has to be readable where it is a point.</para>
+    /// </remarks>
+    public readonly record struct PalettePlacement(Layout.DockSide? Side, float Along, float Across)
+    {
+        /// <summary>The placement as one token, for a settings file: <c>side:along:across</c>.</summary>
+        public override string ToString()
+            => string.Create(CultureInfo.InvariantCulture, $"{Token(Side)}:{Along}:{Across}");
+
+        /// <summary>
+        /// Reads back what <see cref="ToString"/> wrote. False leaves the caller on its own default,
+        /// which is the right answer for a missing or damaged setting -- note that an unrecognised side
+        /// is a REFUSAL rather than "floating", since reading it as a float would strand the panel at
+        /// coordinates that meant something else.
+        /// </summary>
+        public static bool TryParse(string? text, out PalettePlacement placement)
+        {
+            placement = default;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            var parts = text.Split(':');
+            if (parts.Length != 3
+                || parts[0] is not ("left" or "right" or "top" or "bottom" or "float")
+                || !float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var along)
+                || !float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var across))
+            {
+                return false;
+            }
+
+            Layout.DockSide? side = parts[0] switch
+            {
+                "left" => Layout.DockSide.Left,
+                "right" => Layout.DockSide.Right,
+                "top" => Layout.DockSide.Top,
+                "bottom" => Layout.DockSide.Bottom,
+                _ => null,
+            };
+
+            placement = new PalettePlacement(side, along, across);
+            return true;
+        }
+
+        private static string Token(Layout.DockSide? side) => side switch
+        {
+            Layout.DockSide.Left => "left",
+            Layout.DockSide.Right => "right",
+            Layout.DockSide.Top => "top",
+            Layout.DockSide.Bottom => "bottom",
+            _ => "float",
+        };
+    }
+
     /// <summary>Colours for a <see cref="FloatingPalette"/>. Every one is pre-fade; the palette applies
     /// the idle fade itself.</summary>
     public readonly record struct PaletteColors(
@@ -58,6 +123,43 @@ namespace DIR.Lib
         /// </summary>
         public float OffsetAlong { get; set; }
 
+        /// <summary>
+        /// Distance ACROSS the pinned edge, design units. Meaningful only while <see cref="Side"/> is
+        /// null: pinned, the edge supplies this coordinate and the value is held at zero.
+        /// </summary>
+        public float OffsetAcross { get; set; }
+
+        /// <summary>
+        /// The edge the panel is pinned to, or null while it floats free of all of them.
+        ///
+        /// <para>State rather than a <see cref="FloatingPalette.Build"/> argument because a drag CHANGES
+        /// it: a panel released near an edge takes that edge (see <see cref="SnapOnRelease"/>). A
+        /// consumer that does not want docking simply never calls that and leaves this where it was
+        /// set.</para>
+        /// </summary>
+        public Layout.DockSide? Side { get; set; } = Layout.DockSide.Right;
+
+        /// <summary>
+        /// Whether a double press on the grip rolls the panel up. False for a palette with nothing worth
+        /// collapsing -- a strip of icon buttons IS its own title bar -- where the gesture would only be
+        /// a way to lose the thing.
+        /// </summary>
+        public bool AllowCollapse { get; set; } = true;
+
+        /// <summary>Whether the panel runs across rather than down, which a top- or bottom-pinned one
+        /// does. A consumer laying out a strip needs this to choose its stacking axis.</summary>
+        public bool IsHorizontal => FloatingPalette.IsHorizontal(Side);
+
+        /// <summary>
+        /// The whole placement as one value, for storing and restoring. Setting it moves the panel
+        /// outright, which is what a consumer does once at construction.
+        /// </summary>
+        public PalettePlacement Placement
+        {
+            get => new(Side, OffsetAlong, OffsetAcross);
+            set => (Side, OffsetAlong, OffsetAcross) = (value.Side, value.Along, value.Across);
+        }
+
         /// <summary>Whether the panel is rolled up to its title bar.</summary>
         public bool Collapsed { get; set; }
 
@@ -71,7 +173,7 @@ namespace DIR.Lib
         /// <summary>True while a grip drag is in flight.</summary>
         public bool IsDragging => _drag is not null;
 
-        private (float PointerY, float Offset)? _drag;
+        private (float PointerX, float PointerY, float Along, float Across)? _drag;
         private long _engagedAt = Stopwatch.GetTimestamp();
         private long _lastGripPressAt;
         private bool _pointerOver;
@@ -93,6 +195,57 @@ namespace DIR.Lib
         {
             PanelRect = panelRect;
             OffsetAlong = FloatingPalette.DrawnOffset(panelRect.Y, contentTop, dpiScale);
+        }
+
+        /// <summary>
+        /// The same reconciliation for a palette that can dock to ANY edge, or float free of all of
+        /// them: it needs the whole rect the panel floats in, because which coordinate is "along"
+        /// depends on <see cref="Side"/> and a free-floating panel has both.
+        /// </summary>
+        /// <remarks>
+        /// Prefer this over the <c>contentTop</c> overload wherever the side can change. Written the
+        /// clever way first in a consumer -- one ternary on "is it horizontal" -- which is right for
+        /// the three pinned states and wrong for floating, where along is X and across is Y, so a
+        /// free-floating panel took its Y for both and could only travel the diagonal.
+        /// </remarks>
+        public void NoteArranged(RectF32 panelRect, RectF32 contentRect, float dpiScale)
+        {
+            PanelRect = panelRect;
+            (OffsetAlong, OffsetAcross) =
+                FloatingPalette.DrawnOffsets(panelRect, contentRect, Side, dpiScale);
+        }
+
+        /// <summary>
+        /// Takes the edge the panel was released near, if any, and returns whether
+        /// <see cref="Side"/> changed. Call it from the pointer-up that ends a grip drag.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Measure the panel where it now IS, not where it was last drawn.</b> A consumer that
+        /// tested its own last-arranged rect here settled the panel where the previous frame had put it
+        /// rather than where the button came up — felt as the thing resisting, and then not landing
+        /// under the cursor once the resistance is overcome. Pass the rect implied by the live drag.</para>
+        /// <para>Left and right are tested before top so a panel released into a corner pins to the
+        /// side, which is where a tall strip belongs.</para>
+        /// </remarks>
+        /// <param name="panelRect">Where the panel is now, surface units.</param>
+        /// <param name="contentRect">The rect it floats in, surface units.</param>
+        /// <param name="snap">How close to an edge still counts, surface units.</param>
+        /// <param name="margin">The inset a pinned panel keeps, surface units.</param>
+        public bool SnapOnRelease(RectF32 panelRect, RectF32 contentRect, float snap, float margin)
+        {
+            var side = FloatingPalette.SnapSideFor(panelRect, contentRect, snap, margin);
+            if (side == Side)
+            {
+                return false;
+            }
+
+            Side = side;
+            if (side is not null)
+            {
+                OffsetAcross = 0f;
+            }
+
+            return true;
         }
 
         /// <summary>Tells the palette where the pointer is, so hover can hold the fade open.</summary>
@@ -138,14 +291,21 @@ namespace DIR.Lib
         /// position, no click count -- so successive presses are the only signal available. The pointer
         /// position comes from <see cref="NotePointer"/> for the same reason.</para>
         /// </summary>
-        public bool PressGrip(float pointerY)
+        public bool PressGrip(float pointerY) => PressGrip(0f, pointerY);
+
+        /// <summary>
+        /// A press on the grip, for a palette that can move in both axes. The second of a quick pair
+        /// COLLAPSES the panel where <see cref="AllowCollapse"/> permits it; anything else begins a drag.
+        /// Returns true when the press toggled <see cref="Collapsed"/>.
+        /// </summary>
+        public bool PressGrip(float pointerX, float pointerY)
         {
             var now = Stopwatch.GetTimestamp();
             var sinceLast = (float)Stopwatch.GetElapsedTime(_lastGripPressAt).TotalSeconds;
             _lastGripPressAt = now;
             _engagedAt = now;
 
-            if (FloatingPalette.IsDoubleClick(sinceLast))
+            if (AllowCollapse && FloatingPalette.IsDoubleClick(sinceLast))
             {
                 // The first press of the pair already armed a drag and its release disarmed it; the only
                 // thing to undo is the drag THIS press would otherwise start.
@@ -154,7 +314,7 @@ namespace DIR.Lib
                 return true;
             }
 
-            _drag = (pointerY, OffsetAlong);
+            _drag = (pointerX, pointerY, OffsetAlong, OffsetAcross);
             return false;
         }
 
@@ -169,6 +329,20 @@ namespace DIR.Lib
         /// </para>
         /// </summary>
         public bool DragTo(float pointerY, float dpiScale)
+            => DragTo(_drag?.PointerX ?? 0f, pointerY, dpiScale);
+
+        /// <summary>
+        /// Slides the panel with the pointer in both axes. While <see cref="Side"/> is set only the
+        /// along-edge component moves — the edge owns the other one — so a pinned panel slides along
+        /// its edge and a free one follows the pointer outright.
+        /// </summary>
+        /// <remarks>
+        /// Design units, so the pointer delta is divided by the DPI scale; without that the panel runs
+        /// away from the pointer at exactly the scale factor. Deliberately unclamped, for the reason on
+        /// the single-axis overload: <c>Anchored</c> clamps the arranged panel and
+        /// <see cref="NoteArranged(RectF32, RectF32, float)"/> feeds that answer straight back.
+        /// </remarks>
+        public bool DragTo(float pointerX, float pointerY, float dpiScale)
         {
             if (_drag is not { } drag)
             {
@@ -176,7 +350,21 @@ namespace DIR.Lib
             }
 
             var scale = dpiScale <= 0f ? 1f : dpiScale;
-            OffsetAlong = drag.Offset + (pointerY - drag.PointerY) / scale;
+            var dx = (pointerX - drag.PointerX) / scale;
+            var dy = (pointerY - drag.PointerY) / scale;
+
+            if (Side is { } side)
+            {
+                OffsetAlong = drag.Along + (FloatingPalette.IsHorizontal(side) ? dx : dy);
+                OffsetAcross = 0f;
+            }
+            else
+            {
+                // Free of every edge, along is X and across is Y — the pair is simply the position.
+                OffsetAlong = drag.Along + dx;
+                OffsetAcross = drag.Across + dy;
+            }
+
             _engagedAt = Stopwatch.GetTimestamp();
             return true;
         }
@@ -264,6 +452,68 @@ namespace DIR.Lib
         public static float DrawnOffset(float panelTop, float contentTop, float dpiScale)
             => dpiScale <= 0f ? panelTop - contentTop : (panelTop - contentTop) / dpiScale;
 
+        /// <summary>Released this close to an edge, a panel takes that edge. Design units.</summary>
+        public const float SnapDistance = 26f;
+
+        /// <summary>Whether a panel pinned to <paramref name="side"/> runs across rather than down.</summary>
+        /// <remarks>
+        /// A strip is stacked along the edge it sits on: vertical against a side, horizontal under the
+        /// top. Floating free it runs the long way, down, which is what it was before it was dragged off
+        /// an edge and the shape a column of rows wants.
+        /// </remarks>
+        public static bool IsHorizontal(Layout.DockSide? side)
+            => side is Layout.DockSide.Top or Layout.DockSide.Bottom;
+
+        /// <summary>
+        /// Both offsets that reproduce where a panel was ACTUALLY drawn, in design units. Which
+        /// coordinate is which depends on the edge: pinned, one of them is the edge's own and is
+        /// reported as zero; floating, the pair is the position.
+        /// </summary>
+        public static (float Along, float Across) DrawnOffsets(
+            RectF32 panelRect, RectF32 contentRect, Layout.DockSide? side, float dpiScale)
+        {
+            var scale = dpiScale <= 0f ? 1f : dpiScale;
+            var x = (panelRect.X - contentRect.X) / scale;
+            var y = (panelRect.Y - contentRect.Y) / scale;
+            return side switch
+            {
+                Layout.DockSide.Left or Layout.DockSide.Right => (y, 0f),
+                Layout.DockSide.Top or Layout.DockSide.Bottom => (x, 0f),
+                _ => (x, y),
+            };
+        }
+
+        /// <summary>
+        /// The edge a panel at <paramref name="panelRect"/> should take, or null to float free. Pure, so
+        /// the snap is testable without a pointer.
+        /// </summary>
+        /// <remarks>
+        /// Left and right are tested ahead of top, so a panel released into a corner pins to the side.
+        /// Both distances are measured against the panel's own edges rather than its origin, which is
+        /// what makes the right-hand test symmetric with the left-hand one for a panel of any width.
+        /// </remarks>
+        public static Layout.DockSide? SnapSideFor(
+            RectF32 panelRect, RectF32 contentRect, float snap, float margin)
+        {
+            var reach = snap + margin;
+            if (panelRect.X - contentRect.X <= reach)
+            {
+                return Layout.DockSide.Left;
+            }
+
+            if (contentRect.X + contentRect.Width - (panelRect.X + panelRect.Width) <= reach)
+            {
+                return Layout.DockSide.Right;
+            }
+
+            if (panelRect.Y - contentRect.Y <= reach)
+            {
+                return Layout.DockSide.Top;
+            }
+
+            return null;
+        }
+
         /// <summary>
         /// Builds the palette, floated against <paramref name="side"/> of whatever rect it is arranged
         /// into. Arrange it against the content area: the clamp is the engine's, so a resize or a
@@ -282,7 +532,7 @@ namespace DIR.Lib
         /// Route it to <see cref="FloatingPaletteState.PressGrip"/>.
         /// </param>
         /// <param name="panelWidth">Panel width, design units.</param>
-        /// <param name="side">Edge to pin to.</param>
+        /// <param name="side">Edge to pin to, or null to take the state's own <see cref="FloatingPaletteState.Side"/> — which is what a palette the reader can re-dock needs.</param>
         public static Layout.Node Build(
             FloatingPaletteState state,
             string title,
@@ -293,7 +543,7 @@ namespace DIR.Lib
             Action<string> onItem,
             Action onGripPress,
             float panelWidth = 124f,
-            Layout.DockSide side = Layout.DockSide.Right)
+            Layout.DockSide? side = null)
         {
             ArgumentNullException.ThrowIfNull(state);
             ArgumentNullException.ThrowIfNull(onItem);
@@ -370,7 +620,12 @@ namespace DIR.Lib
                 .Pad(5f)
                 .WithGap(2f);
 
-            return Layout.Builder.Anchored(panel, side, offsetAlong: state.OffsetAlong, margin: Margin);
+            // A side named here wins, for a consumer that pins its panel and never lets it move; passing
+            // nothing takes the state's own, which is what a dockable palette needs since a drag CHANGES
+            // which edge it is on.
+            var pinned = side ?? state.Side;
+            return Layout.Builder.Anchored(panel, pinned, offsetAlong: state.OffsetAlong,
+                offsetAcross: pinned is null ? state.OffsetAcross : 0f, margin: Margin);
         }
     }
 }
