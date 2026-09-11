@@ -24,12 +24,17 @@
          base glyph rather than the next one. 1.11 stops an embedded PDF subset whose ONLY
          cmap is Mac Roman (1,0) from falling through to the char-code-as-glyph-id guess.
          Both are wrong-to-right, so a caller rendering text through this sees output
-         MOVE where it was previously incorrect. -->
-    <PackageVersion Include="SharpAstro.Fonts" Version="1.11.*" />
+         MOVE where it was previously incorrect. 1.12 bounds the hinting interpreter's
+         CALL nesting at 128 frames, which is a CRASH fix rather than a rendering one:
+         a font is free to define a hint function that calls itself, one in the wild
+         does, and the resulting .NET stack overflow cannot be caught, so nothing above
+         this could ever have defended against it. Such a glyph now falls back to its
+         unhinted outline, which is what FreeType does with the same input. -->
+    <PackageVersion Include="SharpAstro.Fonts" Version="1.12.*" />
     <!-- The pure-managed shaping engine, consumed by the DIR.Lib.Shaping satellite (the
          ITextShaper adapter). Same Fonts.Lib CI cadence as SharpAstro.Fonts — one
          -p:Version covers the whole repo, so the two always ship the same number. -->
-    <PackageVersion Include="SharpAstro.Fonts.Shaping" Version="1.11.*" />
+    <PackageVersion Include="SharpAstro.Fonts.Shaping" Version="1.12.*" />
     <!-- LALR.CC drives the markdown + LaTeX grammars baked into the
          DIR.Lib.Markdown subsystem. Source generator runs build-time;
          the runtime LALR.CC assembly is referenced for the Parser /

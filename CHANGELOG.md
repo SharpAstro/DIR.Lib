@@ -9,6 +9,22 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.17
+
+Takes SharpAstro.Fonts 1.12, where a font can no longer take the process down with it.
+
+TrueType's `CALL` and `LOOPCALL` run a function body by recursing the hinting interpreter, and nothing
+bounded the nesting. A font is free to define a function that calls itself, and one embedded in a PDF
+does: it recursed about 600 frames deep and exhausted the machine stack. 1.12 caps the nesting at 128
+frames and abandons the glyph program when it is exceeded, so the glyph falls back to its unhinted
+outline — which is what FreeType does with the same input.
+
+This is a crash fix, not a rendering difference a caller gets to weigh up. A .NET stack overflow is
+not a catchable exception: the process died with no exception and no stack trace, so no amount of
+defensive catching above the interpreter could have helped. It is reachable from any hinted
+rasterization of such a face, which for a library whose callers render fonts embedded in arbitrary
+documents means it is reachable from untrusted input.
+
 ## 8.16
 
 `FloatingPalette` — a floating, grip-dragged, collapsible palette of toggle rows, as a `Layout.Node`
