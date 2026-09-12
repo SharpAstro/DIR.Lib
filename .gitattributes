@@ -1,0 +1,16 @@
+# Store every text file as LF in the repo AND check it out as LF, whatever the platform or
+# core.autocrlf says (it is on at the Git-for-Windows system level, which is what put CRLF in
+# the worktree here). text=auto leaves git's binary detection alone; eol=lf is the checkout half.
+#
+# This is a policy declaration and not a conversion: every blob in this repo is ALREADY lf
+# (`git ls-files --eol` reads i/lf for all 216 text files), so nothing is renormalised and no
+# commit changes. What it ends is the worktree being half one thing and half the other — 137
+# files checked out CRLF against 52 LF — which is invisible until a tool reads the bytes and
+# then costs an afternoon.
+* text=auto eol=lf
+
+# The test fonts and the visual baselines are binary and are rewritten wholesale, never
+# line-edited. Git already detects all of them; declaring it means a new one is covered on the
+# day it lands rather than on the day the detection happens to agree.
+src/DIR.Lib.Tests/Fonts/* -text
+src/DIR.Lib.Tests/Baselines/*.png -text
