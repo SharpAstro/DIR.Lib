@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Immutable;
 using System.Numerics;
 
@@ -105,6 +105,23 @@ public abstract partial record Node
     /// </para>
     /// </summary>
     public RGBAColor32? HoverBackground { get; init; }
+
+    /// <summary>
+    /// Background to paint instead of <see cref="Background"/> while the KEYBOARD cursor is on this
+    /// node — the same idea as <see cref="HoverBackground"/>, for the other pointing device.
+    /// <para>
+    /// The cursor is a position in a list the tree has already declared: it is on this node when
+    /// <see cref="Hit"/> is a <see cref="HitResult.ListItemHit"/> whose list and index the widget's
+    /// <c>PixelWidgetBase.ListCursor</c> names. So a row states where it is once, as the click binding
+    /// it already needs, and is navigable by that alone.
+    /// </para>
+    /// <para>
+    /// <b>A row that is not clickable cannot be reached.</b> It registers no region, so the cursor
+    /// steps over it without anything saying so — which is the whole of what a caller would otherwise
+    /// write as a "can this row be acted on" predicate beside the list, and keep in step by hand.
+    /// </para>
+    /// </summary>
+    public RGBAColor32? FocusBackground { get; init; }
 
     /// <summary>Corner radius in design units for this node's <see cref="Background"/> (and a
     /// <see cref="Content.Box"/> leaf's own fill). 0 (default) is a square corner and paints exactly as
