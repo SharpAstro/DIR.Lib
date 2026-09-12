@@ -77,6 +77,21 @@ public class LayoutListCursorTests
         return Layout.Builder.VStack(rows).Stretch();
     }
 
+    /// <summary>
+    /// Rows that DECLARE themselves -- so the cursor reaches them, and a debug inspector can name them
+    /// -- while carrying no handler, because their host takes the action somewhere else.
+    /// </summary>
+    private static Layout.Node RowsWithNoHandler(int count)
+    {
+        var rows = new Layout.Node[count];
+        for (var i = 0; i < rows.Length; i++)
+        {
+            rows[i] = Layout.Builder.Spacer().RowH(10f).Bg(Rest).BgFocus(Focus)
+                .Clickable(new HitResult.ListItemHit("views", i));
+        }
+        return Layout.Builder.VStack(rows).Stretch();
+    }
+
     private static int RowCentre(int index) => 10 * index + 5;
 
     [Fact]
@@ -225,6 +240,31 @@ public class LayoutListCursorTests
 
         chosen.ShouldBe([0]);
         widget.ListCursor.Index.ShouldBe(0);
+    }
+
+    [Fact]
+    public void ADeclaredRowWithNoHandlerIsReachedButNotActivated()
+    {
+        // A row may register its region and still carry no handler, because its host takes the action
+        // somewhere else. TianWen's FITS viewer file list is the case: every row registers, so the
+        // cursor and the debug inspector can both see it, but OnClick stays null because the press has
+        // to reach the scroll controller underneath -- selection fires on the tap RELEASE, and an
+        // OnClick here would open whichever row a touch drag happened to start on.
+        //
+        // The arrows still reach such a row, which is right: it is a row. What must not happen is
+        // reporting that it was ACTED on, because the host then never reaches its own Enter binding and
+        // the key is swallowed with nothing to show for it -- silently, there being no handler to
+        // notice it was missing.
+        var (widget, _) = Fixture();
+        widget.ListCursor.Open("views", 1);
+        widget.Render(RowsWithNoHandler(3), new RectF32(0, 0, 100, 30));
+
+        widget.MoveListCursor(1).ShouldBeTrue("a handler-less row is still a row the arrows reach");
+        widget.ListCursor.Index.ShouldBe(2);
+
+        widget.ActivateListCursor().ShouldBeFalse("nothing ran, so nothing was activated");
+        widget.HandleListKey(InputKey.Enter)
+            .ShouldBeFalse("so a forwarding host can fall through to its own binding");
     }
 
     [Fact]
