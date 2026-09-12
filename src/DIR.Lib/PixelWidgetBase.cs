@@ -300,7 +300,8 @@ namespace DIR.Lib
 
         /// <summary>
         /// Invokes the cursor's row exactly as a click on it would, handler and all. False when the
-        /// cursor is in no list or that row was not painted.
+        /// cursor is in no list, when that row was not painted, or when it carries no handler, so the
+        /// answer is whether the row was ACTED on and never merely whether it was found.
         /// </summary>
         /// <remarks>
         /// With no row under the cursor yet it acts on the FIRST row of the list, so Enter works before
@@ -315,7 +316,19 @@ namespace DIR.Lib
             foreach (var region in RegisteredRegions)
             {
                 if (!ListCursor.IsOn(region.Result)) continue;
-                region.OnClick?.Invoke(modifier);
+                // A row can declare itself and still carry no handler: it registers so the cursor can
+                // reach it and a debug inspector can name it, while its host takes the action on the
+                // pointer RELEASE somewhere else (a list whose press must reach a scroll controller, or
+                // a touch drag would act on whichever row it started on). This used to answer true
+                // there, reporting an activation that had not happened, and a host forwarding the key
+                // saw it claimed and never reached its own binding. Silently, there being no handler to
+                // notice it was missing.
+                if (region.OnClick is not { } onClick)
+                {
+                    return false;
+                }
+
+                onClick(modifier);
                 return true;
             }
             return false;
@@ -323,7 +336,9 @@ namespace DIR.Lib
 
         /// <summary>
         /// The whole keyboard contract of a declared list: Up and Down move, Enter acts. False for
-        /// anything else, so a host forwards a key and lets what it does not claim through.
+        /// anything else, so a host forwards a key and lets what it does not claim through, and false
+        /// for Enter over a row that carries no handler, which is the same rule: nothing was acted on,
+        /// so the key is still the host's to answer.
         /// </summary>
         /// <remarks>
         /// Escape is deliberately NOT here. Closing is the widget's own business — a menu dismisses, a
