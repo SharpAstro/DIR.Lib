@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace DIR.Lib.Layout;
 
@@ -68,6 +68,11 @@ public abstract partial record Node
     /// this node. See <see cref="Node.HoverBackground"/> — the host supplies the pointer and repaints on
     /// motion; without one this is inert.</summary>
     public Node BgHover(RGBAColor32 color) => this with { HoverBackground = color };
+
+    /// <summary>Paint <paramref name="color"/> instead of <see cref="Node.Bg"/> while the keyboard
+    /// cursor is on this node. See <see cref="Node.FocusBackground"/> — it resolves against this node's
+    /// <see cref="Node.Hit"/>, so a row needs no state of its own to be navigable.</summary>
+    public Node BgFocus(RGBAColor32 color) => this with { FocusBackground = color };
 
     /// <summary>Round the corners of this node's <see cref="Bg"/> (and a <see cref="Content.Box"/> leaf's
     /// own fill) by <paramref name="designUnits"/>. Chrome only -- arrange is unchanged, so a rounded node

@@ -9,6 +9,33 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.20
+
+**A list a layout tree declares is now navigable from the keyboard, with no state beside it.** A row
+that says `.Clickable(new HitResult.ListItemHit("views", i), …)` — the binding it needs for the mouse
+anyway — is row `i` of the list `views`, and that one statement is enough for the arrows to reach it,
+for Enter to act on it, and for `.BgFocus(colour)` to light it.
+
+`PixelWidgetBase.ListCursor` is the keyboard's counterpart of `Pointer`, and resolves the same way:
+against the regions the last paint registered, so what the arrows reach and what a click reaches
+cannot be two different lists. `MoveListCursor`, `ActivateListCursor` and `HandleListKey` (Up, Down,
+Enter) are the whole of it; `Layout.Node.FocusBackground` is resolved in the painter beside the hover
+fill it mirrors, against the rect the engine arranged.
+
+**The reachability predicate disappears.** A row a reader cannot act on is not clickable, so it
+registers no region and the cursor steps over it — nothing beside the list has to say so, and nothing
+can drift out of step with it. That predicate, written by hand next to every list, is what leaves a
+card looking drawn and not responding: the highlight is parked on a row nothing will act on.
+
+A step goes to the NEAREST painted row in its direction rather than to index-plus-one, because the
+indices are the list's and a list that omits its unreachable rows has gaps exactly where a step must
+not stop. An index of -1 means the reader has not moved yet: it paints nothing, the first arrow lands
+on the first row, and Enter before any arrow acts on the first row.
+
+Escape is deliberately not included — closing is the widget's own business, and a shared answer would
+be wrong for most of them. Inert for every existing consumer: a widget that never opens a cursor has
+one in no list, so nothing matches and every node keeps its ordinary background.
+
 ## 8.19
 
 **A palette dropped on a different edge now keeps where along that edge it was dropped.** 8.18's

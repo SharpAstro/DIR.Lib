@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Runtime.InteropServices;
@@ -236,6 +236,107 @@ namespace DIR.Lib
         /// bottom/right exclusive, so two rows sharing an edge never both claim it.</summary>
         private bool PointerWithin(Rect<float> r) =>
             Pointer is { } p && p.X >= r.X && p.X < r.X + r.Width && p.Y >= r.Y && p.Y < r.Y + r.Height;
+
+        /// <summary>
+        /// Where the KEYBOARD is inside a list this widget declared — the counterpart of
+        /// <see cref="Pointer"/>, and resolved the same way: against the regions the last paint
+        /// registered, so the rows the arrows reach and the rows a click reaches are one list.
+        /// </summary>
+        /// <remarks>
+        /// Drives <see cref="Layout.Node.FocusBackground"/>, and is moved by
+        /// <see cref="MoveListCursor"/> / <see cref="HandleListKey"/>. A widget that never opens it is
+        /// unaffected: the cursor is in no list, nothing matches, and every node keeps its ordinary
+        /// background.
+        /// </remarks>
+        public ListCursor ListCursor { get; } = new();
+
+        /// <summary>
+        /// Moves the cursor <paramref name="delta"/> rows through the list it is in, over the rows this
+        /// widget actually painted. False when it is in no list, when nothing of that list was painted,
+        /// or when there is no row that way — in which case the cursor stays where it was, because
+        /// stopping at the end reads as an end and moving to nothing reads as a broken control.
+        /// </summary>
+        /// <remarks>
+        /// From <see cref="ListCursor.Index"/> of -1 — a list the reader has not moved in yet — this
+        /// lands on the first row for a forward step and the last for a backward one.
+        /// </remarks>
+        public bool MoveListCursor(int delta)
+        {
+            if (delta == 0 || !ListCursor.IsOpen) return false;
+
+            var moved = false;
+            var direction = Math.Sign(delta);
+            for (var step = 0; step < Math.Abs(delta); step++)
+            {
+                if (!TryStepListCursor(direction)) break;
+                moved = true;
+            }
+            return moved;
+        }
+
+        /// <summary>
+        /// One row along, to the NEAREST painted row in that direction. Nearest rather than "index
+        /// plus one", because the indices are the list's and need not be dense — a list that leaves
+        /// out the rows a reader cannot act on has gaps exactly where a step must not stop.
+        /// </summary>
+        private bool TryStepListCursor(int direction)
+        {
+            var from = ListCursor.Index;
+            var best = -1;
+            foreach (var region in RegisteredRegions)
+            {
+                if (region.Result is not HitResult.ListItemHit item || !ListCursor.Owns(item)) continue;
+                // Beyond where we are, in the direction of travel. From -1 — a list the reader has not
+                // moved in — every row qualifies, so this lands on the first or the last.
+                if (from >= 0 && (direction > 0 ? item.Index <= from : item.Index >= from)) continue;
+                if (best >= 0 && (direction > 0 ? item.Index >= best : item.Index <= best)) continue;
+                best = item.Index;
+            }
+
+            if (best < 0) return false;
+            ListCursor.MoveTo(best);
+            return true;
+        }
+
+        /// <summary>
+        /// Invokes the cursor's row exactly as a click on it would, handler and all. False when the
+        /// cursor is in no list or that row was not painted.
+        /// </summary>
+        /// <remarks>
+        /// With no row under the cursor yet it acts on the FIRST row of the list, so Enter works before
+        /// the reader has pressed an arrow — otherwise a card that deliberately opens unlit would need
+        /// a press of Down to do anything at all.
+        /// </remarks>
+        public bool ActivateListCursor(InputModifier modifier = InputModifier.None)
+        {
+            if (!ListCursor.IsOpen) return false;
+            if (ListCursor.Index < 0 && !MoveListCursor(1)) return false;
+
+            foreach (var region in RegisteredRegions)
+            {
+                if (!ListCursor.IsOn(region.Result)) continue;
+                region.OnClick?.Invoke(modifier);
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// The whole keyboard contract of a declared list: Up and Down move, Enter acts. False for
+        /// anything else, so a host forwards a key and lets what it does not claim through.
+        /// </summary>
+        /// <remarks>
+        /// Escape is deliberately NOT here. Closing is the widget's own business — a menu dismisses, a
+        /// panel may commit, a nested list may only step out one level — and a shared answer would be
+        /// wrong for most of them.
+        /// </remarks>
+        public bool HandleListKey(InputKey key, InputModifier modifier = InputModifier.None) => key switch
+        {
+            InputKey.Up => MoveListCursor(-1),
+            InputKey.Down => MoveListCursor(1),
+            InputKey.Enter => ActivateListCursor(modifier),
+            _ => false,
+        };
 
         /// <summary>
         /// Registers a clickable region with an optional direct click handler.
@@ -744,8 +845,10 @@ namespace DIR.Lib
                 // what the pointer is over are the same rectangle by construction -- the guarantee the
                 // click region below already has. A node with no HoverBackground, or a host that sets no
                 // Pointer, paints exactly as it did before.
-                var nodeFill = node.HoverBackground is { } hover && PointerWithin(bounds)
-                    ? hover
+                var nodeFill = node.HoverBackground is { } hover && PointerWithin(bounds) ? hover
+                    // And the keyboard's own position, resolved against the node's HIT rather than
+                    // against a rect -- the row already says which list and index it is.
+                    : node.FocusBackground is { } focus && ListCursor.IsOn(node.Hit) ? focus
                     : node.Background;
                 if (nodeFill is { } bg)
                 {
