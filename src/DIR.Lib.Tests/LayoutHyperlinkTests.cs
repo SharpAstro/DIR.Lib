@@ -46,7 +46,7 @@ public class LayoutHyperlinkTests
         public SelectableTextRegion[] Render(Layout.Node root, RectF32 bounds)
         {
             BeginFrame();
-            RenderLayout(root, bounds, fontPath: "stub.ttf", dpiScale: 1f);
+            RenderLayout(root, bounds, fontPath: "stub.ttf", scale: DesignScale.One);
             return SelectableTextRegions.ToArray();
         }
 

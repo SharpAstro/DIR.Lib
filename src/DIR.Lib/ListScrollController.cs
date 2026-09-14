@@ -57,7 +57,7 @@ public enum ScrollAxis
 ///
 /// <para>
 /// Because the unit is atoms (not pixels and not row indices), the same offset value is meaningful
-/// across a GUI (where an atom is <c>rowHeight * dpiScale</c> px) and a TUI (where an atom is one
+/// across a GUI (where an atom is a row height in surface units) and a TUI (where an atom is one
 /// cell row) — which is what dissolves the pixels-vs-rows mismatch that made a shared scroll-offset
 /// field a latent cross-host bug. <see cref="AtomOffset"/> is the snapped integer accessor for
 /// persistence and legacy state fields.
@@ -93,7 +93,7 @@ public sealed class ListScrollController
     private RectF32 _viewport;
     private float _atomExtentPx = 1f;
     private int _totalAtoms;
-    private float _dpiScale = 1f;
+    private DesignScale _scale = DesignScale.One;
     private bool _positioned;
 
     // Position — a single fractional-atom offset, always clamped to [0, MaxOffset].
@@ -212,7 +212,7 @@ public sealed class ListScrollController
 
     private float ViewportExtentPx => Axis == ScrollAxis.Vertical ? _viewport.Height : _viewport.Width;
     private float MainStart => Axis == ScrollAxis.Vertical ? _viewport.Y : _viewport.X;
-    private float ScrollBarWidthPx => ScrollBarBaseWidthPx * _dpiScale;
+    private float ScrollBarWidthPx => _scale.ToSurface(ScrollBarBaseWidthPx);
     private bool HasScrollBar => Mode != ScrollBarMode.None && MaxOffset > 0f;
 
     private static float MainCoord(ScrollAxis axis, float x, float y) => axis == ScrollAxis.Vertical ? y : x;
@@ -223,12 +223,12 @@ public sealed class ListScrollController
     /// pinned to the tail, follows the new end — but never raises the event (the caller is already
     /// rendering this frame).
     /// </summary>
-    public void SetExtent(RectF32 viewport, float atomExtentPx, int totalAtoms, float dpiScale)
+    public void SetExtent(RectF32 viewport, float atomExtentPx, int totalAtoms, DesignScale scale)
     {
         _viewport = viewport;
         _atomExtentPx = atomExtentPx > 0f ? atomExtentPx : 1f;
         _totalAtoms = Math.Max(0, totalAtoms);
-        _dpiScale = dpiScale > 0f ? dpiScale : 1f;
+        _scale = scale.OrOne();
 
         if (!_positioned)
         {
@@ -281,7 +281,7 @@ public sealed class ListScrollController
                 {
                     return true;
                 }
-                _gesture.Arm(dx, dy, mods, _dpiScale);
+                _gesture.Arm(dx, dy, mods, _scale);
                 _offsetAtDragStart = _offset;
                 return true;
 
@@ -468,7 +468,7 @@ public sealed class ListScrollController
         var trackStart = MainStart;
         var trackExtent = ViewportExtentPx;
         var visible = VisibleAtoms;
-        var thumbExtent = MathF.Max(MinThumbPx * _dpiScale, trackExtent * visible / Math.Max(1, _totalAtoms));
+        var thumbExtent = MathF.Max(_scale.ToSurface(MinThumbPx), trackExtent * visible / Math.Max(1, _totalAtoms));
         var trackUsable = MathF.Max(1f, trackExtent - thumbExtent);
         var maxOffset = MaxOffset;
         var thumbStart = maxOffset > 0f ? trackStart + trackUsable * (_offset / maxOffset) : trackStart;

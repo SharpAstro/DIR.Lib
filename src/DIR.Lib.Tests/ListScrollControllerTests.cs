@@ -15,7 +15,7 @@ public class ListScrollControllerTests
         ScrollAnchor anchor = ScrollAnchor.Top, ScrollBarMode mode = ScrollBarMode.Interactive, bool snap = false)
     {
         var c = new ListScrollController { Anchor = anchor, Mode = mode, SnapToAtom = snap };
-        c.SetExtent(new RectF32(0f, 0f, w, h), atomPx, total, 1f);
+        c.SetExtent(new RectF32(0f, 0f, w, h), atomPx, total, DesignScale.One);
         return c;
     }
 
@@ -40,7 +40,7 @@ public class ListScrollControllerTests
         {
             var rowH = 25.2f; // a fractional extent that makes N*rowH/rowH prone to the 1-ulp shortfall
             var c = new ListScrollController();
-            c.SetExtent(new RectF32(0f, 0f, 100f, n * rowH), rowH, n, 1f);
+            c.SetExtent(new RectF32(0f, 0f, 100f, n * rowH), rowH, n, DesignScale.One);
             c.VisibleAtoms.ShouldBe(n);
             c.MaxOffset.ShouldBe(0f);
         }
@@ -175,7 +175,7 @@ public class ListScrollControllerTests
         c.Offset.ShouldBe(20f); // resting at the tail, showing the newest atoms
         c.FirstVisibleAtom.ShouldBe(20);
 
-        c.SetExtent(new RectF32(0f, 0f, 100f, 100f), 10f, 40, 1f); // 10 new atoms appended
+        c.SetExtent(new RectF32(0f, 0f, 100f, 100f), 10f, 40, DesignScale.One); // 10 new atoms appended
         c.Offset.ShouldBe(30f); // followed the tail (still pinned)
     }
 
@@ -186,7 +186,7 @@ public class ListScrollControllerTests
         c.HandleInput(new InputEvent.Scroll(1f, 50f, 50f)); // scroll up into history → offset 17
         c.Offset.ShouldBe(17f);
 
-        c.SetExtent(new RectF32(0f, 0f, 100f, 100f), 10f, 40, 1f); // appends
+        c.SetExtent(new RectF32(0f, 0f, 100f, 100f), 10f, 40, DesignScale.One); // appends
         c.Offset.ShouldBe(17f); // pin released — position held, does NOT jump to the new tail
     }
 
@@ -200,9 +200,9 @@ public class ListScrollControllerTests
         // The list clears + refills (a session restart resetting its log): once the content fits
         // (MaxOffset 0) there is no history position to hold, so the tail pin re-establishes and
         // the refilled list tail-follows again.
-        c.SetExtent(new RectF32(0f, 0f, 100f, 100f), 10f, 0, 1f);  // cleared
+        c.SetExtent(new RectF32(0f, 0f, 100f, 100f), 10f, 0, DesignScale.One);  // cleared
         c.Offset.ShouldBe(0f);
-        c.SetExtent(new RectF32(0f, 0f, 100f, 100f), 10f, 25, 1f); // refilled past the viewport
+        c.SetExtent(new RectF32(0f, 0f, 100f, 100f), 10f, 25, DesignScale.One); // refilled past the viewport
         c.Offset.ShouldBe(15f); // pinned at the new tail
     }
 
@@ -244,13 +244,13 @@ public class ListScrollControllerTests
     public void HorizontalAxis_ScrollsAndTapsAlongX()
     {
         var c = new ListScrollController { Axis = ScrollAxis.Horizontal };
-        c.SetExtent(new RectF32(0f, 0f, 100f, 50f), 10f, 30, 1f);
+        c.SetExtent(new RectF32(0f, 0f, 100f, 50f), 10f, 30, DesignScale.One);
         c.VisibleAtoms.ShouldBe(10);
         c.HandleInput(new InputEvent.Scroll(-1f, 50f, 25f));
         c.Offset.ShouldBe(3f);
 
         var c2 = new ListScrollController { Axis = ScrollAxis.Horizontal, Mode = ScrollBarMode.None };
-        c2.SetExtent(new RectF32(0f, 0f, 100f, 50f), 10f, 30, 1f);
+        c2.SetExtent(new RectF32(0f, 0f, 100f, 50f), 10f, 30, DesignScale.One);
         c2.HandleInput(new InputEvent.MouseDown(25f, 25f));
         c2.HandleInput(new InputEvent.MouseUp(25f, 25f));
         c2.TakeAtomTap().ShouldBe(2); // atom under x=25
@@ -283,7 +283,7 @@ public class ListScrollControllerTests
         var count = 0;
         c.Changed += () => count++;
 
-        c.SetExtent(new RectF32(0f, 0f, 100f, 100f), 10f, 30, 1f); // geometry only
+        c.SetExtent(new RectF32(0f, 0f, 100f, 100f), 10f, 30, DesignScale.One); // geometry only
         count.ShouldBe(0);
 
         c.HandleInput(new InputEvent.Scroll(-1f, 50f, 50f));
@@ -341,7 +341,7 @@ public class ListScrollControllerTests
     public void VisibleRows_Horizontal_PlacesAtomsAlongX()
     {
         var c = new ListScrollController { Axis = ScrollAxis.Horizontal, SnapToAtom = true };
-        c.SetExtent(new RectF32(0f, 0f, 100f, 50f), 10f, 30, 1f); // 10 visible, content height 44
+        c.SetExtent(new RectF32(0f, 0f, 100f, 50f), 10f, 30, DesignScale.One); // 10 visible, content height 44
         var rows = new List<(int Index, RectF32 Rect)>();
         foreach (var r in c.VisibleRows()) rows.Add(r);
 

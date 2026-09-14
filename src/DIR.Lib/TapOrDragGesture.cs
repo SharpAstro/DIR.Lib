@@ -65,7 +65,7 @@ public struct TapOrDragGesture
     private GestureState _state;
     private float _downX;
     private float _downY;
-    private float _slopSq; // (slopPx * dpiScale)^2, resolved once at Arm time
+    private float _slopSq; // the slop radius in SURFACE units, squared, resolved once at Arm time
     private InputModifier _downModifiers;
 
     /// <summary>Current lifecycle state.</summary>
@@ -85,16 +85,22 @@ public struct TapOrDragGesture
 
     /// <summary>
     /// Arm a press at <paramref name="x"/>/<paramref name="y"/>. The slop radius is
-    /// <paramref name="slopPx"/> scaled by <paramref name="dpiScale"/>, resolved once here so a
-    /// later monitor/DPI change cannot retroactively reinterpret an in-flight gesture.
+    /// <paramref name="slopDesignUnits"/> mapped through <paramref name="scale"/>, resolved once here
+    /// so a later monitor/DPI change cannot retroactively reinterpret an in-flight gesture.
+    /// <para>A slop radius is axis-free — it is a distance in any direction — so it takes the scale's
+    /// axis-free mapping rather than picking one of the two.</para>
     /// </summary>
-    public void Arm(float x, float y, InputModifier modifiers = InputModifier.None, float dpiScale = 1f, float slopPx = DefaultSlopPx)
+    /// <param name="scale">Design→surface mapping, normally a measure context's
+    /// <see cref="PixelMeasureContext{TSurface}.Scale"/>. The default (an all-zero struct) reads as
+    /// <see cref="DesignScale.One"/>, which is what an unscaled caller means.</param>
+    public void Arm(float x, float y, InputModifier modifiers = InputModifier.None,
+        DesignScale scale = default, float slopDesignUnits = DefaultSlopPx)
     {
         _state = GestureState.Armed;
         _downX = x;
         _downY = y;
         _downModifiers = modifiers;
-        var slop = slopPx * dpiScale;
+        var slop = scale.OrOne().ToSurface(slopDesignUnits);
         _slopSq = slop * slop;
     }
 

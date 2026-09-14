@@ -63,7 +63,7 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
     private const float BaseIconBox = 18f;   // width reserved for a TabItem's glyph, when it has one
 
     /// <summary>Pixel height of the bar — the host reserves this much at the top of the content area.</summary>
-    public float Height => BaseHeight * DpiScale;
+    public float Height => Scale.ToSurface(BaseHeight);
 
     /// <summary>
     /// A tab's text size, inset and border thickness, already scaled — for a host that has to DRAW a tab
@@ -77,20 +77,20 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
     /// tabs.</para>
     /// <para>Exposed SCALED, like <see cref="Height"/>, rather than as the base constants: a copier
     /// otherwise has to multiply by a scale of its own, and nothing makes that the same number as
-    /// <see cref="PixelWidgetBase{TSurface}.DpiScale"/>. Asking the bar removes the second source.</para>
+    /// <see cref="PixelWidgetBase{TSurface}.Scale"/>. Asking the bar removes the second source.</para>
     /// </remarks>
-    public float Font => BaseFont * DpiScale;
+    public float Font => Scale.ToSurface(BaseFont);
 
     /// <inheritdoc cref="Font"/>
-    public float Pad => BasePad * DpiScale;
+    public float Pad => Scale.ToSurface(BasePad);
 
     /// <inheritdoc cref="Font"/>
-    public int Border => Math.Max(1, (int)DpiScale);
+    public int Border => Math.Max(1, (int)Scale.ToSurface(1f));
 
-    private float CloseBox => BaseCloseBox * DpiScale;
-    private float MinTabW => BaseMinTabW * DpiScale;
-    private float MaxTabW => BaseMaxTabW * DpiScale;
-    private float IconBox => BaseIconBox * DpiScale;
+    private float CloseBox => Scale.ToSurface(BaseCloseBox);
+    private float MinTabW => Scale.ToSurface(BaseMinTabW);
+    private float MaxTabW => Scale.ToSurface(BaseMaxTabW);
+    private float IconBox => Scale.ToSurface(BaseIconBox);
 
     /// <summary>Palette, settable by the host like every other presentation value — a theme can change
     /// while the bar is alive, so this is not init-only. Defaults reproduce the bar's original dark
@@ -330,12 +330,12 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
 
         PushClip(bounds.X, bounds.Y, bounds.Width, bounds.Height);
 
-        // dpiScale 1 is the device-px escape hatch, and it is REQUIRED here: every metric above is already
-        // scaled (Font is BaseFont * DpiScale, the thickness comes from a device-px rect), so letting the
+        // The unit scale is the device-px escape hatch, and it is REQUIRED here: every metric above is
+        // already mapped (Font is Scale.ToSurface(BaseFont), the thickness comes from a device-px rect), so letting the
         // engine scale design units again multiplies twice. At 1.5x that turned a 78px square cell into
-        // 78x117 -- and no test could have caught it, because they all run at DpiScale 1 where squaring
+        // 78x117 -- and no test could have caught it, because they all run at unit scale where squaring
         // the scale is the identity.
-        RenderLayout(strip.Root, bounds, dpiScale: 1f);
+        RenderLayout(strip.Root, bounds, scale: DesignScale.One);
         RenderNewTabButton(strip.TabsEnd, vertical, thickness, crossStart, flowStart, flowEnd, pointerFlow);
         PopClip();
     }
@@ -382,7 +382,7 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
 
         // Rectangles rather than a "+" glyph: the mark has to be there on any face the host happens to be
         // using, and geometry stays crisp at 30 px where a typeset plus does not.
-        var mark = 11f * DpiScale;
+        var mark = Scale.ToSurface(11f);
         var ink = NewTabActive || hovered ? Colors.ActiveText : Colors.InactiveText;
         DrawLayoutIcon(Layout.IconKind.Plus, new RectF32(
             rect.X + (rect.Width - mark) * 0.5f, rect.Y + (rect.Height - mark) * 0.5f, mark, mark), ink);

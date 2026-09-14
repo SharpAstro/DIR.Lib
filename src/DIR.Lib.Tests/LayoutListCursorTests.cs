@@ -43,7 +43,7 @@ public class LayoutListCursorTests
         public void Render(Layout.Node root, RectF32 bounds)
         {
             BeginFrame();
-            RenderLayout(root, bounds, fontPath: "stub.ttf", dpiScale: 1f);
+            RenderLayout(root, bounds, fontPath: "stub.ttf", scale: DesignScale.One);
         }
     }
 

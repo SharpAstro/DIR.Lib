@@ -44,7 +44,7 @@ public class LayoutHoverTests
         {
             Pointer = pointer;
             BeginFrame();
-            RenderLayout(root, bounds, fontPath: "stub.ttf", dpiScale: 1f);
+            RenderLayout(root, bounds, fontPath: "stub.ttf", scale: DesignScale.One);
         }
     }
 

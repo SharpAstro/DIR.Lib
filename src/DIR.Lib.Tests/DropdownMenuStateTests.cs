@@ -22,7 +22,7 @@ public class DropdownMenuStateTests
         var d = new DropdownMenuState<string>();
         d.Open(0f, 0f, 100f, Items(itemCount));
         // Stand in for the per-frame RenderDropdownMenu geometry refresh.
-        d.Scroll.SetExtent(new RectF32(0f, 0f, 100f, viewportH), atomPx, itemCount, 1f);
+        d.Scroll.SetExtent(new RectF32(0f, 0f, 100f, viewportH), atomPx, itemCount, DesignScale.One);
         return d;
     }
 
@@ -105,7 +105,7 @@ public class DropdownMenuStateTests
         var d = new DropdownMenuState<string>();
         var items = Items(12).Add(DropdownItem<string>.Action("Custom...", () => chosen = true));
         d.Open(0f, 0f, 100f, items);
-        d.Scroll.SetExtent(new RectF32(0f, 0f, 100f, 100f), 10f, 13, 1f); // 12 items + the action row
+        d.Scroll.SetExtent(new RectF32(0f, 0f, 100f, 100f), 10f, 13, DesignScale.One); // 12 items + the action row
 
         for (var i = 0; i < 13; i++) d.HandleKeyDown(InputKey.Down);
         d.HighlightIndex.ShouldBe(12);

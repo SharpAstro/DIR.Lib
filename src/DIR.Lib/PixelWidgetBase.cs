@@ -117,10 +117,10 @@ namespace DIR.Lib
         /// belongs to exactly one window/renderer, so the host sets this at startup and on resize (SDL
         /// <c>DisplayScale</c>, web <c>devicePixelRatio</c>; a terminal stays at 1). Layout helpers
         /// (<see cref="RenderLayout"/> / <see cref="ArrangeLayout"/> / <see cref="PaintLayout"/>) and
-        /// pixel controls (<see cref="DrawTrackSlider(float,float,float,float,float,RGBAColor32,RectF32,HitResult,TrackSliderChrome,float?)"/>)
-        /// default to it when their <c>dpiScale</c> argument is omitted, and input handlers can read it
+        /// pixel controls (<see cref="DrawTrackSlider(float,float,float,float,float,RGBAColor32,RectF32,HitResult,TrackSliderChrome,DesignScale?)"/>)
+        /// are built from it when their <c>scale</c> argument is omitted, and input handlers can read it
         /// directly (input events carry no DPI). Pass an explicit value only to override -- e.g.
-        /// <c>dpiScale: 1f</c> for a tree whose sizes are already device pixels.
+        /// <c>scale: DesignScale.One</c> for a tree whose sizes are already surface units.
         /// Virtual so a composite chrome widget can override the setter to propagate the new scale to the
         /// child widgets it hosts (one set-point at startup/resize instead of per-frame pushes).
         /// <para>
@@ -136,6 +136,18 @@ namespace DIR.Lib
         /// </para>
         /// </summary>
         public virtual float DpiScale { get => Ui.DpiScale; set => Ui.DpiScale = value; }
+
+        /// <summary>
+        /// The design→surface mapping this widget hands to the pieces that need one — the scroll
+        /// controller, the gesture recognizer, the tab bar's metrics, the palette's offsets.
+        /// <para><see cref="DpiScale"/> remains the host's set-point, because a window really does have a
+        /// single DPI. What changed in 9.0 is what components EXCHANGE: they used to take that float and
+        /// keep a copy, which is a second home for a number this already owns, and the copy is free to
+        /// drift the moment a display changes. A <see cref="DesignScale"/> also carries both axes, so a
+        /// caller can no longer multiply by "the" scale and be right only because the unit happened to be
+        /// square.</para>
+        /// </summary>
+        public DesignScale Scale => new(Ui.DpiScale);
 
         /// <summary>
         /// The window's primary text font (an absolute path or a family name the
@@ -412,7 +424,7 @@ namespace DIR.Lib
         //
         // A horizontal track (unfilled bar + played/value fill + a draggable handle) plus a cursor-X ->
         // fraction mapping against a captured hit-band rect. Generic: the track + handle colours arrive as a
-        // TrackSliderChrome, the accent fill + fraction + geometry + hit payload per call, and dpiScale scales
+        // TrackSliderChrome, the accent fill + fraction + geometry + hit payload per call, and the scale maps
         // the bar/handle thickness (the only DPI-dependent bit). Consumers pass their own chrome so no widget
         // re-triplicates the bar/fill/handle/clamp math or the drag arithmetic.
         // -------------------------------------------------------------------------------------------------
@@ -424,16 +436,18 @@ namespace DIR.Lib
         /// <paramref name="handleY"/>. <paramref name="hitBand"/> is the full press/drag region (its X/Width
         /// drive the cursor-X -> value mapping in <see cref="TrackFrac"/>; the caller also stores it in the
         /// slider's track-rect field for that drag). <paramref name="chrome"/> supplies the unfilled-track +
-        /// handle colours; <paramref name="fillColor"/> is the per-slider accent; <paramref name="dpiScale"/>
+        /// handle colours; <paramref name="fillColor"/> is the per-slider accent; <paramref name="scale"/>
         /// scales the bar/handle thickness.
         /// </summary>
         protected void DrawTrackSlider(float trackX, float trackW, float barCenterY, float handleY,
             float handleH, float frac, RGBAColor32 fillColor, RectF32 hitBand, HitResult hit,
-            TrackSliderChrome chrome, float? dpiScale = null)
+            TrackSliderChrome chrome, DesignScale? scale = null)
         {
-            var scale = dpiScale ?? DpiScale;
-            var barH = MathF.Max(4f, 6f * scale);
-            var handleW = MathF.Max(4f, 6f * scale);
+            var s = (scale ?? Scale).OrOne();
+            // A bar thickness runs across the track and a handle width along it, but both are the same
+            // 6 design units and neither is axis-specific -- the axis-free mapping is what they mean.
+            var barH = MathF.Max(4f, s.ToSurface(6f));
+            var handleW = MathF.Max(4f, s.ToSurface(6f));
 
             var barY = barCenterY - barH / 2f;
             FillRect(trackX, barY, trackW, barH, chrome.TrackBackground);
@@ -457,9 +471,9 @@ namespace DIR.Lib
         /// handle spans a shorter content row.
         /// </summary>
         protected void DrawTrackSlider(float trackX, float trackW, float handleY, float handleH, float frac,
-            RGBAColor32 fillColor, RectF32 hitBand, HitResult hit, TrackSliderChrome chrome, float? dpiScale = null) =>
+            RGBAColor32 fillColor, RectF32 hitBand, HitResult hit, TrackSliderChrome chrome, DesignScale? scale = null) =>
             DrawTrackSlider(trackX, trackW, handleY + handleH / 2f, handleY, handleH, frac,
-                fillColor, hitBand, hit, chrome, dpiScale);
+                fillColor, hitBand, hit, chrome, scale);
 
         /// <summary>
         /// Maps a cursor X onto a fraction in [0, 1] across <paramref name="track"/> (the captured hit-band).
@@ -692,7 +706,7 @@ namespace DIR.Lib
             // rows past the fold: keyboard Up/Down scrolls via DropdownMenuState.HandleKeyDown->EnsureVisible,
             // a wheel forwarded to HandleScrollInput scrolls too, and the scrollbar draws as the indicator.
             var scroll = dropdown.Scroll;
-            scroll.SetExtent(new RectF32(x, y, w, dropdownH), rowH, totalItems, DpiScale);
+            scroll.SetExtent(new RectF32(x, y, w, dropdownH), rowH, totalItems, Scale);
 
             // Slightly dimmed, blue-shifted text for an ACTION entry (one that does something rather than
             // selecting a value -- a "Custom…" row). It used to be a hard-coded last atom; it is now just an
@@ -773,20 +787,20 @@ namespace DIR.Lib
         /// Arranges a declarative <see cref="Layout.Node"/> tree into <paramref name="bounds"/> using this
         /// widget's renderer as the text-width oracle. Returns the flat pre-order arranged tree (also handy
         /// for inspection / custom hit-testing). <paramref name="fontPath"/> defaults to the widget's
-        /// <see cref="FontPath"/> and <paramref name="dpiScale"/> to its <see cref="DpiScale"/>; pass an
-        /// explicit value only to override (e.g. <c>dpiScale: 1f</c> for a tree whose sizes are already
+        /// <see cref="FontPath"/> and <paramref name="scale"/> to its <see cref="Scale"/>; pass an
+        /// explicit value only to override (e.g. <c>scale: DesignScale.One</c> for a tree whose sizes are already
         /// device pixels).
         /// </summary>
-        protected ImmutableArray<Layout.ArrangedNode<float>> ArrangeLayout(Layout.Node root, RectF32 bounds, string? fontPath = null, float? dpiScale = null)
-            => ArrangeLayout(root, bounds, DefaultContext(fontPath, dpiScale));
+        protected ImmutableArray<Layout.ArrangedNode<float>> ArrangeLayout(Layout.Node root, RectF32 bounds, string? fontPath = null, DesignScale? scale = null)
+            => ArrangeLayout(root, bounds, DefaultContext(fontPath, scale));
 
         /// <summary>
         /// The measure context the scalar overloads use: the widget's font, DPI scale and
         /// <see cref="FontFallback"/>. Threading the resolver through here is what lets a consumer set it
         /// once on the widget and have measure and paint both honour it.
         /// </summary>
-        private PixelMeasureContext<TSurface> DefaultContext(string? fontPath, float? dpiScale)
-            => new(Renderer, fontPath ?? FontPath, dpiScale ?? DpiScale)
+        private PixelMeasureContext<TSurface> DefaultContext(string? fontPath, DesignScale? scale)
+            => new(Renderer, fontPath ?? FontPath, (scale ?? Scale).X, (scale ?? Scale).Y)
             {
                 Fallback = FontFallback,
                 // An explicitly-set face wins over the chain's emoji role (a caller naming one specifically
@@ -814,9 +828,9 @@ namespace DIR.Lib
         /// <paramref name="drawFill"/> handles <see cref="Layout.Content.Fill"/> escape-hatch leaves
         /// (charts, sky map, custom widgets).
         /// </summary>
-        protected void PaintLayout(ImmutableArray<Layout.ArrangedNode<float>> arranged, string? fontPath = null, float? dpiScale = null,
+        protected void PaintLayout(ImmutableArray<Layout.ArrangedNode<float>> arranged, string? fontPath = null, DesignScale? scale = null,
             Action<Layout.Content.Fill, RectF32>? drawFill = null)
-            => PaintLayout(arranged, DefaultContext(fontPath, dpiScale), drawFill);
+            => PaintLayout(arranged, DefaultContext(fontPath, scale), drawFill);
 
         /// <summary>
         /// <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, string?, float?, Action{Layout.Content.Fill, RectF32}?)"/>
@@ -995,11 +1009,11 @@ namespace DIR.Lib
         /// <summary>
         /// Convenience: <see cref="ArrangeLayout"/> + <see cref="PaintLayout"/> in one call.
         /// <paramref name="fontPath"/> defaults to the widget's <see cref="FontPath"/> and
-        /// <paramref name="dpiScale"/> to its <see cref="DpiScale"/>.
+        /// <paramref name="scale"/> to its <see cref="Scale"/>.
         /// </summary>
         protected ImmutableArray<Layout.ArrangedNode<float>> RenderLayout(Layout.Node root, RectF32 bounds, string? fontPath = null,
-            float? dpiScale = null, Action<Layout.Content.Fill, RectF32>? drawFill = null)
-            => RenderLayout(root, bounds, DefaultContext(fontPath, dpiScale), drawFill);
+            DesignScale? scale = null, Action<Layout.Content.Fill, RectF32>? drawFill = null)
+            => RenderLayout(root, bounds, DefaultContext(fontPath, scale), drawFill);
 
         /// <summary>
         /// <see cref="RenderLayout(Layout.Node, RectF32, string?, float?, Action{Layout.Content.Fill, RectF32}?)"/>

@@ -36,7 +36,7 @@ public class TextInputInteractionTests
 
             BeginFrame();
             RenderLayout(Layout.Builder.VStack([.. rows]), new RectF32(0f, 0f, 100f, 10f * fields.Length),
-                fontPath: string.Empty, dpiScale: 1f);
+                fontPath: string.Empty, scale: DesignScale.One);
         }
     }
 

@@ -24,7 +24,7 @@ public class TapOrDragGestureTests
     public void MoveWithinSlop_ReleaseIsStillTap()
     {
         var g = new TapOrDragGesture();
-        g.Arm(10f, 10f, slopPx: 4f);
+        g.Arm(10f, 10f, slopDesignUnits: 4f);
         g.Update(12f, 11f).ShouldBeFalse(); // (2,1) → dist^2 = 5 < 16, still armed
         g.IsArmed.ShouldBeTrue();
         g.Release(12f, 11f).ShouldBe(GestureOutcome.Tap);
@@ -34,7 +34,7 @@ public class TapOrDragGestureTests
     public void MovePastSlop_LatchesDrag()
     {
         var g = new TapOrDragGesture();
-        g.Arm(10f, 10f, slopPx: 4f);
+        g.Arm(10f, 10f, slopDesignUnits: 4f);
         g.Update(20f, 10f).ShouldBeTrue(); // 10px > 4px slop
         g.IsDragging.ShouldBeTrue();
         g.Release(20f, 10f).ShouldBe(GestureOutcome.Drag);
@@ -45,7 +45,7 @@ public class TapOrDragGestureTests
     {
         // The latch: once past the slop radius, returning near the press point does not demote to a tap.
         var g = new TapOrDragGesture();
-        g.Arm(10f, 10f, slopPx: 4f);
+        g.Arm(10f, 10f, slopDesignUnits: 4f);
         g.Update(30f, 10f).ShouldBeTrue();
         g.Update(11f, 10f).ShouldBeTrue(); // back near the start, but already dragging
         g.Release(11f, 10f).ShouldBe(GestureOutcome.Drag);
@@ -56,7 +56,7 @@ public class TapOrDragGestureTests
     {
         // A host that only calls Arm + Release (never Update) still classifies a far release as a drag.
         var g = new TapOrDragGesture();
-        g.Arm(10f, 10f, slopPx: 4f);
+        g.Arm(10f, 10f, slopDesignUnits: 4f);
         g.Release(40f, 40f).ShouldBe(GestureOutcome.Drag);
     }
 
@@ -64,7 +64,7 @@ public class TapOrDragGestureTests
     public void DpiScale_WidensSlopRadius()
     {
         var g = new TapOrDragGesture();
-        g.Arm(0f, 0f, dpiScale: 2f, slopPx: 4f); // effective slop = 8px
+        g.Arm(0f, 0f, scale: new DesignScale(2f), slopDesignUnits: 4f); // effective slop = 8px
         g.Update(7f, 0f).ShouldBeFalse();          // within 8
         g.Update(9f, 0f).ShouldBeTrue();           // past 8
     }

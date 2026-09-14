@@ -128,4 +128,14 @@ public sealed class PixelMeasureContext<TSurface>(Renderer<TSurface> renderer, s
     public float ToSurfaceX(float designUnits) => designUnits * scaleX;
 
     public float ToSurfaceY(float designUnits) => designUnits * scaleY;
+
+    /// <summary>
+    /// This context's design→surface mapping on its own, for the pieces that need it but cannot hold a
+    /// context: the scroll controller, the gesture recognizer, the tab bar's metrics, the palette's
+    /// offsets — all non-generic, none of which can name <typeparamref name="TSurface"/>.
+    /// <para>Handing them THIS is the point of it. They used to take a bare <c>float dpiScale</c> and
+    /// keep a copy, which is a second source for a number this context already owns — and the copy is
+    /// free to disagree the moment a display changes.</para>
+    /// </summary>
+    public DesignScale Scale => new(scaleX, scaleY);
 }

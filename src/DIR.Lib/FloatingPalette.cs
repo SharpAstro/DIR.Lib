@@ -190,11 +190,11 @@ namespace DIR.Lib
         /// </summary>
         /// <param name="panelRect">The panel's arranged rect, surface units.</param>
         /// <param name="contentTop">Top of the rect it was arranged into, surface units.</param>
-        /// <param name="dpiScale">Design-to-surface scale, so the offset goes back in design units.</param>
-        public void NoteArranged(RectF32 panelRect, float contentTop, float dpiScale)
+        /// <param name="scale">Design-to-surface mapping, so the offset goes back in design units.</param>
+        public void NoteArranged(RectF32 panelRect, float contentTop, DesignScale scale)
         {
             PanelRect = panelRect;
-            OffsetAlong = FloatingPalette.DrawnOffset(panelRect.Y, contentTop, dpiScale);
+            OffsetAlong = FloatingPalette.DrawnOffset(panelRect.Y, contentTop, scale);
         }
 
         /// <summary>
@@ -208,11 +208,11 @@ namespace DIR.Lib
         /// the three pinned states and wrong for floating, where along is X and across is Y, so a
         /// free-floating panel took its Y for both and could only travel the diagonal.
         /// </remarks>
-        public void NoteArranged(RectF32 panelRect, RectF32 contentRect, float dpiScale)
+        public void NoteArranged(RectF32 panelRect, RectF32 contentRect, DesignScale scale)
         {
             PanelRect = panelRect;
             (OffsetAlong, OffsetAcross) =
-                FloatingPalette.DrawnOffsets(panelRect, contentRect, Side, dpiScale);
+                FloatingPalette.DrawnOffsets(panelRect, contentRect, Side, scale);
         }
 
         /// <summary>
@@ -231,9 +231,9 @@ namespace DIR.Lib
         /// <param name="contentRect">The rect it floats in, surface units.</param>
         /// <param name="snap">How close to an edge still counts, surface units.</param>
         /// <param name="margin">The inset a pinned panel keeps, surface units.</param>
-        /// <param name="dpiScale">Design-to-surface scale, so the offsets land in design units.</param>
+        /// <param name="scale">Design-to-surface mapping, so the offsets land in design units.</param>
         public bool SnapOnRelease(RectF32 panelRect, RectF32 contentRect, float snap, float margin,
-            float dpiScale = 1f)
+            DesignScale scale = default)
         {
             var side = FloatingPalette.SnapSideFor(panelRect, contentRect, snap, margin);
             var changed = side != Side;
@@ -245,7 +245,7 @@ namespace DIR.Lib
             // that edge, so it docks correctly and then jumps to the top -- which reads as the drop
             // having been ignored. The panel's own rect is the only thing that means the same in both.
             (OffsetAlong, OffsetAcross) =
-                FloatingPalette.DrawnOffsets(panelRect, contentRect, side, dpiScale);
+                FloatingPalette.DrawnOffsets(panelRect, contentRect, side, scale);
             return changed;
         }
 
@@ -258,11 +258,11 @@ namespace DIR.Lib
         /// panel's <see cref="OffsetAlong"/> is measured down its edge, and free of every edge it is
         /// measured across. Re-deriving both from the rect is the only conversion that holds.
         /// </remarks>
-        public void Unpin(RectF32 panelRect, RectF32 contentRect, float dpiScale = 1f)
+        public void Unpin(RectF32 panelRect, RectF32 contentRect, DesignScale scale = default)
         {
             Side = null;
             (OffsetAlong, OffsetAcross) =
-                FloatingPalette.DrawnOffsets(panelRect, contentRect, null, dpiScale);
+                FloatingPalette.DrawnOffsets(panelRect, contentRect, null, scale);
         }
 
         /// <summary>Tells the palette where the pointer is, so hover can hold the fade open.</summary>
@@ -345,8 +345,8 @@ namespace DIR.Lib
         /// <see cref="NoteArranged"/> feeds that answer straight back.
         /// </para>
         /// </summary>
-        public bool DragTo(float pointerY, float dpiScale)
-            => DragTo(_drag?.PointerX ?? 0f, pointerY, dpiScale);
+        public bool DragTo(float pointerY, DesignScale scale)
+            => DragTo(_drag?.PointerX ?? 0f, pointerY, scale);
 
         /// <summary>
         /// Slides the panel with the pointer in both axes. While <see cref="Side"/> is set only the
@@ -359,16 +359,18 @@ namespace DIR.Lib
         /// the single-axis overload: <c>Anchored</c> clamps the arranged panel and
         /// <see cref="NoteArranged(RectF32, RectF32, float)"/> feeds that answer straight back.
         /// </remarks>
-        public bool DragTo(float pointerX, float pointerY, float dpiScale)
+        public bool DragTo(float pointerX, float pointerY, DesignScale scale)
         {
             if (_drag is not { } drag)
             {
                 return false;
             }
 
-            var scale = dpiScale <= 0f ? 1f : dpiScale;
-            var dx = (pointerX - drag.PointerX) / scale;
-            var dy = (pointerY - drag.PointerY) / scale;
+            // A drag delta is stored in DESIGN units so it survives the display it was made on, and the
+            // two axes are converted separately -- which a single scalar could not have expressed.
+            var s = scale.OrOne();
+            var dx = s.ToDesignX(pointerX - drag.PointerX);
+            var dy = s.ToDesignY(pointerY - drag.PointerY);
 
             if (Side is { } side)
             {
@@ -466,8 +468,8 @@ namespace DIR.Lib
         /// top of the rect it floats in, in design units. See
         /// <see cref="FloatingPaletteState.NoteArranged"/> for why a consumer owes this every frame.
         /// </summary>
-        public static float DrawnOffset(float panelTop, float contentTop, float dpiScale)
-            => dpiScale <= 0f ? panelTop - contentTop : (panelTop - contentTop) / dpiScale;
+        public static float DrawnOffset(float panelTop, float contentTop, DesignScale scale)
+            => scale.OrOne().ToDesignY(panelTop - contentTop);
 
         /// <summary>Released this close to an edge, a panel takes that edge. Design units.</summary>
         public const float SnapDistance = 26f;
@@ -487,11 +489,11 @@ namespace DIR.Lib
         /// reported as zero; floating, the pair is the position.
         /// </summary>
         public static (float Along, float Across) DrawnOffsets(
-            RectF32 panelRect, RectF32 contentRect, Layout.DockSide? side, float dpiScale)
+            RectF32 panelRect, RectF32 contentRect, Layout.DockSide? side, DesignScale scale)
         {
-            var scale = dpiScale <= 0f ? 1f : dpiScale;
-            var x = (panelRect.X - contentRect.X) / scale;
-            var y = (panelRect.Y - contentRect.Y) / scale;
+            var s = scale.OrOne();
+            var x = s.ToDesignX(panelRect.X - contentRect.X);
+            var y = s.ToDesignY(panelRect.Y - contentRect.Y);
             return side switch
             {
                 Layout.DockSide.Left or Layout.DockSide.Right => (y, 0f),

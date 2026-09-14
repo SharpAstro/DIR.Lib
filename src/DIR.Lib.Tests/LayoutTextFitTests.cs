@@ -41,7 +41,7 @@ public class LayoutTextFitTests
         public void Render(Layout.Node root, RectF32 bounds)
         {
             BeginFrame();
-            RenderLayout(root, bounds, Font, dpiScale: 1f);
+            RenderLayout(root, bounds, Font, scale: DesignScale.One);
         }
 
         public new float FitFontSize(ReadOnlySpan<char> text, float preferred, float maxWidth,

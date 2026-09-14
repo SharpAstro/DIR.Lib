@@ -3,6 +3,63 @@
 One section per breaking release, newest first. Additive releases are not listed here; the release
 notes in `.github/workflows/dotnet.yml` cover every version.
 
+## 9.0 the pre-layout scale travels as `DesignScale`, not a bare float
+
+Affects anyone calling `ListScrollController.SetExtent`, `TapOrDragGesture.Arm`,
+`FloatingPalette`'s offset methods, or the `dpiScale:` argument of `RenderLayout` / `ArrangeLayout` /
+`PaintLayout` / `DrawTrackSlider`.
+
+### What changed
+
+A new `readonly record struct DesignScale(float X, float Y)` — surface units per design unit, per
+axis — replaces the `float dpiScale` those APIs took. `PixelMeasureContext` hands out its own mapping
+as `.Scale`, and `PixelWidgetBase` exposes `Scale`.
+
+**`WindowUiSettings.DpiScale` and `PixelWidgetBase.DpiScale` are unchanged.** A host still sets one
+number, and `PixelWidgetBase.DpiScale` is still virtual so a composite can propagate it. Only what
+components pass to *each other* changed.
+
+`TapOrDragGesture.Arm`'s `slopPx` parameter is renamed `slopDesignUnits`, because it is scaled and so
+was never pixels. `PixelMeasureContext`'s own `dpiScale:` constructor parameter is unchanged — it is
+the isotropic convenience, and it is the set-point, not the currency.
+
+### Why
+
+Each of those components kept a private copy of a number the measure context already owned. Two homes
+for one value is a drift waiting for a display change, and nothing would have reported it — the chrome
+would simply have been sized against one scale while the text it sits behind was measured against
+another.
+
+The pair, rather than a float, is the second half. A single scalar asserts that a design unit is
+square, which is true on a pixel surface and false on a terminal (a cell is roughly 8 units across and
+16 down). With one number a caller is right on one axis by construction and on the other only by luck.
+
+### Port recipe
+
+Before:
+
+```csharp
+scroll.SetExtent(viewport, rowH, count, DpiScale);
+gesture.Arm(x, y, mods, DpiScale, slopPx: 6f);
+palette.DragTo(pointerY, DpiScale);
+RenderLayout(root, bounds, dpiScale: 1f);
+```
+
+After:
+
+```csharp
+scroll.SetExtent(viewport, rowH, count, Scale);
+gesture.Arm(x, y, mods, Scale, slopDesignUnits: 6f);
+palette.DragTo(pointerY, Scale);
+RenderLayout(root, bounds, scale: DesignScale.One);
+```
+
+Inside a widget, `Scale` is the inherited property. Anywhere else, take it from the measure context
+you are already using (`ctx.Scale`) rather than building one from a scale of your own — building one
+is what re-creates the second source this removes. `new DesignScale(1.5f)` is the isotropic
+constructor when you genuinely have only a number; `DesignScale.One` is the unscaled case, and it is
+what an omitted optional argument means.
+
 ## 8.0 `TabBar` becomes a widget
 
 Affects anyone who constructs a `TabBar`, sets its `Scale`, or calls `Render`.

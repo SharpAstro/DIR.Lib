@@ -34,7 +34,7 @@ public class LayoutPainterTests
         public void Render(Layout.Node root, RectF32 bounds)
         {
             BeginFrame();
-            RenderLayout(root, bounds, dpiScale: 1f);
+            RenderLayout(root, bounds, scale: DesignScale.One);
         }
     }
 
@@ -43,7 +43,7 @@ public class LayoutPainterTests
         public ClickableRegion[] Render(Layout.Node root, RectF32 bounds)
         {
             BeginFrame();
-            RenderLayout(root, bounds, fontPath: string.Empty, dpiScale: 1f);
+            RenderLayout(root, bounds, fontPath: string.Empty, scale: DesignScale.One);
             return GetRegisteredRegions();
         }
 
@@ -71,7 +71,7 @@ public class LayoutPainterTests
 
         /// <summary>Arranges without painting, so a test can compare geometry alone.</summary>
         public System.Collections.Immutable.ImmutableArray<Layout.ArrangedNode<float>> Arrange(Layout.Node root, RectF32 bounds)
-            => ArrangeLayout(root, bounds, fontPath: string.Empty, dpiScale: 1f);
+            => ArrangeLayout(root, bounds, fontPath: string.Empty, scale: DesignScale.One);
 
         public HitResult? DispatchAt(float x, float y) => HitTestAndDispatch(x, y);
     }
@@ -168,7 +168,7 @@ public class LayoutPainterTests
         using var renderer = new RgbaImageRenderer(200, 200);
         var widget = new TestWidget(renderer) { DpiScale = 2f };
 
-        // The device-px escape hatch: an explicit dpiScale: 1f wins over the property, so a tree
+        // The device-px escape hatch: an explicit scale: DesignScale.One wins over the property, so a tree
         // holding already-scaled pixel sizes is not scaled twice.
         var row = HitRow("A", 10);
         var regions = widget.Render(new Layout.Node.Stack([row]), new RectF32(0, 0, 200, 200));

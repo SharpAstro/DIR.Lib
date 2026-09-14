@@ -32,14 +32,14 @@ public class LayoutTextInputTests
         public ClickableRegion[] Render(Layout.Node root, RectF32 bounds, float dpiScale = 1f, string fontPath = "font.ttf")
         {
             BeginFrame();
-            RenderLayout(root, bounds, fontPath: fontPath, dpiScale: dpiScale);
+            RenderLayout(root, bounds, fontPath: fontPath, scale: new DesignScale(dpiScale));
             return GetRegisteredRegions();
         }
 
         public System.Collections.Generic.List<TextInputState> TextInputsAfter(Layout.Node root, RectF32 bounds)
         {
             BeginFrame();
-            RenderLayout(root, bounds, fontPath: "font.ttf", dpiScale: 1f);
+            RenderLayout(root, bounds, fontPath: "font.ttf", scale: DesignScale.One);
             return GetRegisteredTextInputs();
         }
 

@@ -9,7 +9,11 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
-## 8.22
+## 9.0
+
+Two halves of one idea: the content transform reaches the last backend that ignored it, and the
+scalar the pre-layout scale used to travel as is retired. Breaking — see
+[MIGRATION.md](MIGRATION.md).
 
 **`RgbaImageRenderer` applies `ContentTransform`** — the software backend was the last one that stored
 it and drew as if it had not. A caller keeps drawing in content coordinates and the finished image
@@ -30,6 +34,25 @@ to design units before layout resolves them. Refusing says so at the point of th
 
 **Nothing changes for anyone not using it.** The identity path is byte-for-byte what it was, which is
 asserted rather than assumed, and a renderer that is never handed a transform never takes a new branch.
+
+**The scalar `dpiScale` is retired as the currency between components.** `ListScrollController`,
+`TapOrDragGesture`, `TabBar` and `FloatingPalette` each took a bare float and kept a copy of a number
+the measure context already owned — a second home, free to drift the moment a display changed. They
+now exchange a `DesignScale`, which the context hands out (`PixelMeasureContext.Scale`) and
+`PixelWidgetBase` exposes as `Scale`.
+
+It carries **two axes**, and that is the point rather than a detail. A single scalar silently asserts
+that a design unit is square. It is on a pixel surface and it is not on a terminal, where a cell is
+about 8 units across and 16 down — so a caller multiplying by "the" scale was right only when the unit
+happened to be square. The same assumption is what the post-layout ordering rule warns about from the
+other end.
+
+**The host's set-point is deliberately still a float.** A window really does have one DPI, so
+`WindowUiSettings.DpiScale` and `PixelWidgetBase.DpiScale` stay exactly as they were, the latter still
+virtual so a composite can propagate. What was retired is the scalar as the thing components pass to
+each other, which is where the drift lived — not the number a host sets.
+
+`TapOrDragGesture.Arm`'s `slopPx` is now `slopDesignUnits`, because it was never pixels: it is scaled.
 
 ## 8.21
 

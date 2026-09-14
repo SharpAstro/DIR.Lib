@@ -20,7 +20,7 @@ public class LayoutIconTests
         public ClickableRegion[] Render(Layout.Node root, RectF32 bounds)
         {
             BeginFrame();
-            RenderLayout(root, bounds, fontPath: string.Empty, dpiScale: 1f);
+            RenderLayout(root, bounds, fontPath: string.Empty, scale: DesignScale.One);
             return GetRegisteredRegions();
         }
     }

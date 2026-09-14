@@ -133,14 +133,14 @@ public class FloatingPaletteTests
         var state = new FloatingPaletteState { OffsetAlong = 10f };
         state.PressGrip(100f);
 
-        state.DragTo(250f, dpiScale: 1.5f).ShouldBeTrue();
+        state.DragTo(250f, scale: new DesignScale(1.5f)).ShouldBeTrue();
 
         // 150 surface pixels at 1.5x is 100 design units; without the divide the panel runs away from
         // the pointer at exactly the scale factor.
         state.OffsetAlong.ShouldBe(110f, 0.001f);
 
         state.ReleaseGrip().ShouldBeTrue();
-        state.DragTo(400f, 1.5f).ShouldBeFalse("a move after the release is not the palette's");
+        state.DragTo(400f, new DesignScale(1.5f)).ShouldBeFalse("a move after the release is not the palette's");
     }
 
     [Fact]
@@ -151,9 +151,9 @@ public class FloatingPaletteTests
         var state = new FloatingPaletteState { OffsetAlong = 0f };
         state.PressGrip(0f);
 
-        state.DragTo(50f, 1f);
+        state.DragTo(50f, DesignScale.One);
         state.OffsetAlong = 999f; // as if an arrange had clamped and written back
-        state.DragTo(80f, 1f);
+        state.DragTo(80f, DesignScale.One);
 
         state.OffsetAlong.ShouldBe(80f, 0.001f);
     }
@@ -173,7 +173,7 @@ public class FloatingPaletteTests
         var expandedTop = PanelTop(state, items, bounds);
         expandedTop.ShouldBeLessThan(180f, "the clamp should have pulled it back");
 
-        state.NoteArranged(new RectF32(0f, expandedTop, 124f, 100f), bounds.Y, dpiScale: 1f);
+        state.NoteArranged(new RectF32(0f, expandedTop, 124f, 100f), bounds.Y, scale: DesignScale.One);
         state.Collapsed = true;
 
         PanelTop(state, items, bounds).ShouldBe(expandedTop, 0.01f);
@@ -207,7 +207,7 @@ public class FloatingPaletteTests
     public void HoverHoldsTheFadeOpenAndLeavingReleasesIt()
     {
         var state = new FloatingPaletteState();
-        state.NoteArranged(new RectF32(100f, 100f, 120f, 200f), 0f, 1f);
+        state.NoteArranged(new RectF32(100f, 100f, 120f, 200f), 0f, DesignScale.One);
 
         state.NotePointer(150f, 150f);
         state.IsEngaged.ShouldBeTrue();
@@ -302,9 +302,9 @@ public class FloatingPaletteTests
         var panel = new RectF32(150f, 70f, 40f, 200f);
         var content = new RectF32(50f, 20f, 900f, 600f);
 
-        FloatingPalette.DrawnOffsets(panel, content, null, 1f).ShouldBe((100f, 50f));
-        FloatingPalette.DrawnOffsets(panel, content, Layout.DockSide.Left, 1f).ShouldBe((50f, 0f));
-        FloatingPalette.DrawnOffsets(panel, content, Layout.DockSide.Top, 1f).ShouldBe((100f, 0f));
+        FloatingPalette.DrawnOffsets(panel, content, null, DesignScale.One).ShouldBe((100f, 50f));
+        FloatingPalette.DrawnOffsets(panel, content, Layout.DockSide.Left, DesignScale.One).ShouldBe((50f, 0f));
+        FloatingPalette.DrawnOffsets(panel, content, Layout.DockSide.Top, DesignScale.One).ShouldBe((100f, 0f));
     }
 
     [Fact]
@@ -312,13 +312,13 @@ public class FloatingPaletteTests
     {
         var pinned = new FloatingPaletteState { Side = Layout.DockSide.Left, OffsetAlong = 10f };
         pinned.PressGrip(200f, 300f);
-        pinned.DragTo(260f, 340f, 1f).ShouldBeTrue();
+        pinned.DragTo(260f, 340f, DesignScale.One).ShouldBeTrue();
         pinned.OffsetAlong.ShouldBe(50f, 0.001f);    // the 40 of Y, never the 60 of X
         pinned.OffsetAcross.ShouldBe(0f);
 
         var free = new FloatingPaletteState { Side = null, OffsetAlong = 10f, OffsetAcross = 5f };
         free.PressGrip(200f, 300f);
-        free.DragTo(260f, 340f, 1f).ShouldBeTrue();
+        free.DragTo(260f, 340f, DesignScale.One).ShouldBeTrue();
         free.OffsetAlong.ShouldBe(70f, 0.001f);
         free.OffsetAcross.ShouldBe(45f, 0.001f);
     }
@@ -330,7 +330,7 @@ public class FloatingPaletteTests
         state.IsHorizontal.ShouldBeTrue();
 
         state.PressGrip(200f, 300f);
-        state.DragTo(260f, 340f, 1f);
+        state.DragTo(260f, 340f, DesignScale.One);
         state.OffsetAlong.ShouldBe(70f, 0.001f);
     }
 
