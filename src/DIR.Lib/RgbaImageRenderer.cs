@@ -456,9 +456,17 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
                 for (var sx = 0; sx < w; sx++)
                 {
                     var alpha = src[(sy * w + sx) * 4 + 3];
-                    if (alpha == 0) continue;
+                    if (alpha == 0)
+                    {
+                        continue;
+                    }
+
                     var a = (byte)((alpha * color.Alpha + 127) / 255);
-                    if (a == 0) continue;
+                    if (a == 0)
+                    {
+                        continue;
+                    }
+
                     Surface.BlendPixelAt(dstX + sx, dstY + sy,
                         new RGBAColor32(color.Red, color.Green, color.Blue, a));
                 }

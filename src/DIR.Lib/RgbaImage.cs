@@ -112,7 +112,11 @@ public sealed class RgbaImage
     /// </summary>
     public (int X0, int Y0, int X1, int Y1) MapRect(int x0, int y0, int x1, int y1)
     {
-        if (!_mapped) return (x0, y0, x1, y1);
+        if (!_mapped)
+        {
+            return (x0, y0, x1, y1);
+        }
+
         var (ax, ay) = MapCorner(x0, y0);
         var (bx, by) = MapCorner(x1, y1);
         return (Math.Min(ax, bx), Math.Min(ay, by), Math.Max(ax, bx), Math.Max(ay, by));
@@ -126,7 +130,11 @@ public sealed class RgbaImage
     /// </summary>
     public (int X, int Y) MapPixel(int x, int y)
     {
-        if (!_mapped) return (x, y);
+        if (!_mapped)
+        {
+            return (x, y);
+        }
+
         var (mx, my, _, _) = MapRect(x, y, x + 1, y + 1);
         return (mx, my);
     }
@@ -174,7 +182,10 @@ public sealed class RgbaImage
     {
         // A quarter turn takes an axis-aligned rect to an axis-aligned rect, so the whole fill below
         // is unchanged -- only the four numbers bounding it move.
-        if (_mapped) (x0, y0, x1, y1) = MapRect(x0, y0, x1, y1);
+        if (_mapped)
+        {
+            (x0, y0, x1, y1) = MapRect(x0, y0, x1, y1);
+        }
 
         // Clamp to the clip region, which IS the image unless one was set.
         if (x0 < _clipX0) x0 = _clipX0;
@@ -317,7 +328,11 @@ public sealed class RgbaImage
                 {
                     var si = (sy * srcW + sx) * 4;
                     var sa = src[si + 3];
-                    if (sa == 0) continue;
+                    if (sa == 0)
+                    {
+                        continue;
+                    }
+
                     BlendPixelAt(dstX + sx, dstY + sy,
                         new RGBAColor32(src[si], src[si + 1], src[si + 2], sa));
                 }
@@ -363,7 +378,11 @@ public sealed class RgbaImage
     /// </summary>
     public void BlendPixelAt(int x, int y, RGBAColor32 color)
     {
-        if (_mapped) (x, y) = MapPixel(x, y);
+        if (_mapped)
+        {
+            (x, y) = MapPixel(x, y);
+        }
+
         if (x < _clipX0 || x >= _clipX1 || y < _clipY0 || y >= _clipY1) return;
         var i = (y * Width + x) * 4;
         BlendPixel(Pixels, i, color.Red, color.Green, color.Blue, color.Alpha);
