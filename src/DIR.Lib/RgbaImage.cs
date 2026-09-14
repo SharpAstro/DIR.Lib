@@ -14,6 +14,19 @@ public sealed class RgbaImage
     // only changes what those four numbers are.
     private int _clipX0, _clipY0, _clipX1, _clipY1;
 
+    // The content→device transform, decomposed to exact integers. A GPU backend folds this into its
+    // projection and every vertex follows it for free; there is no projection here, so the mapping has
+    // to happen where the pixels are written -- which is affordable only because the transform is
+    // CONSTRAINED. A quarter turn maps an axis-aligned rect to an axis-aligned rect, so a rectangle
+    // fill stays one rectangle fill, and a glyph blit stays a pixel permutation: no resampling, no
+    // holes, and no second buffer.
+    //
+    // Held as quarter-turns plus an integer offset rather than as a matrix, so the map is exact --
+    // every content pixel lands on exactly one device pixel, and text stays on the pixel grid.
+    private int _rot;      // clockwise quarter turns, 0..3
+    private int _tx, _ty;  // integer translation, applied after the rotation
+    private bool _mapped;  // false = identity: every write below takes exactly its original path
+
     public RgbaImage(int width, int height)
     {
         Width = width;
@@ -37,10 +50,85 @@ public sealed class RgbaImage
     /// </summary>
     public void SetClip(int x0, int y0, int x1, int y1)
     {
+        // Mapped like any other rect: the caller clips in content space, the pixels it guards are in
+        // device space. A clip left unmapped would trim the wrong edge of a rotated frame.
+        (x0, y0, x1, y1) = MapRect(x0, y0, x1, y1);
         _clipX0 = Math.Clamp(Math.Min(x0, x1), 0, Width);
         _clipY0 = Math.Clamp(Math.Min(y0, y1), 0, Height);
         _clipX1 = Math.Clamp(Math.Max(x0, x1), 0, Width);
         _clipY1 = Math.Clamp(Math.Max(y0, y1), 0, Height);
+    }
+
+    /// <summary>
+    /// Whether writes are being remapped — false for the identity, where every primitive takes the
+    /// same path it always did. Read by the one text path that writes <see cref="Pixels"/> directly
+    /// and therefore has to map for itself.
+    /// </summary>
+    public bool IsContentMapped => _mapped;
+
+    /// <summary>
+    /// Sets the content→device transform every subsequent write is mapped through, so a caller can
+    /// keep drawing in content coordinates while the finished image comes out rotated — the software
+    /// equivalent of folding the transform into a GPU projection. Text turns with everything else,
+    /// because a glyph's pixels are mapped individually rather than its box being moved.
+    /// <para><b>Scale must be 1.</b> This is the POST-layout application, and a post-layout scale is
+    /// the one component that cannot be done here without resampling: it would have to invent pixels a
+    /// rotation never does. A transform that should reflow — DPI, zoom — belongs in the measure
+    /// context, applied to design units before layout resolves them. That ordering rule is why this
+    /// refuses rather than quietly blurring.</para>
+    /// </summary>
+    /// <exception cref="NotSupportedException">The transform carries a scale other than 1.</exception>
+    public void SetContentTransform(ContentTransform transform)
+    {
+        if (Math.Abs(transform.Scale - 1f) > 1e-6f)
+        {
+            throw new NotSupportedException(
+                $"RgbaImage can apply a rotation and a translation, but not a scale of {transform.Scale}. " +
+                "A scale is a reflowing transform and belongs in the measure context, applied to design " +
+                "units before layout resolves them — not to the finished pixels.");
+        }
+
+        _rot = (int)transform.Rotation & 3;
+        _tx = (int)MathF.Round(transform.Tx);
+        _ty = (int)MathF.Round(transform.Ty);
+        _mapped = _rot != 0 || _tx != 0 || _ty != 0;
+    }
+
+    // Content coordinate -> device coordinate, straight off ContentTransform.ToMatrix3x2() with
+    // cos/sin reduced to the {-1, 0, 1} a quarter turn allows:
+    //   dx = x*cos - y*sin + Tx,  dy = x*sin + y*cos + Ty.
+    private (int X, int Y) MapCorner(int x, int y) => _rot switch
+    {
+        1 => (_tx - y, _ty + x),   // 90° clockwise
+        2 => (_tx - x, _ty - y),   // 180°
+        3 => (_tx + y, _ty - x),   // 270° clockwise
+        _ => (_tx + x, _ty + y),
+    };
+
+    /// <summary>
+    /// Maps a half-open content rect to the device rect it covers. Both corners are mapped and then
+    /// re-sorted, which is what keeps the interval half-open under a reflection: content [x0, x1)
+    /// under a 180° turn is (Tx−x1, Tx−x0], and taking min/max turns that back into [Tx−x1, Tx−x0).
+    /// </summary>
+    public (int X0, int Y0, int X1, int Y1) MapRect(int x0, int y0, int x1, int y1)
+    {
+        if (!_mapped) return (x0, y0, x1, y1);
+        var (ax, ay) = MapCorner(x0, y0);
+        var (bx, by) = MapCorner(x1, y1);
+        return (Math.Min(ax, bx), Math.Min(ay, by), Math.Max(ax, bx), Math.Max(ay, by));
+    }
+
+    /// <summary>
+    /// Maps one content PIXEL to the device pixel it becomes. Distinct from <see cref="MapRect"/> by
+    /// exactly the off-by-one that makes rotation look right: a pixel is the box [x, x+1), so under a
+    /// 180° turn pixel x becomes device pixel Tx−x−1, not Tx−x. Mapping the box and taking its lower
+    /// corner gets that right for all four turns without four special cases.
+    /// </summary>
+    public (int X, int Y) MapPixel(int x, int y)
+    {
+        if (!_mapped) return (x, y);
+        var (mx, my, _, _) = MapRect(x, y, x + 1, y + 1);
+        return (mx, my);
     }
 
     /// <summary>Opens the clip back up to the whole image.</summary>
@@ -84,6 +172,10 @@ public sealed class RgbaImage
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void FillRect(int x0, int y0, int x1, int y1, RGBAColor32 color)
     {
+        // A quarter turn takes an axis-aligned rect to an axis-aligned rect, so the whole fill below
+        // is unchanged -- only the four numbers bounding it move.
+        if (_mapped) (x0, y0, x1, y1) = MapRect(x0, y0, x1, y1);
+
         // Clamp to the clip region, which IS the image unless one was set.
         if (x0 < _clipX0) x0 = _clipX0;
         if (y0 < _clipY0) y0 = _clipY0;
@@ -214,6 +306,25 @@ public sealed class RgbaImage
         var pixels = Pixels;
         var w = Width;
 
+        // Under a turn the destination is no longer row-contiguous, so each source pixel is placed
+        // individually. That is what rotates the IMAGE rather than just moving its box -- a glyph comes
+        // out turned, which is the whole point of applying the transform down here.
+        if (_mapped)
+        {
+            for (var sy = 0; sy < srcH; sy++)
+            {
+                for (var sx = 0; sx < srcW; sx++)
+                {
+                    var si = (sy * srcW + sx) * 4;
+                    var sa = src[si + 3];
+                    if (sa == 0) continue;
+                    BlendPixelAt(dstX + sx, dstY + sy,
+                        new RGBAColor32(src[si], src[si + 1], src[si + 2], sa));
+                }
+            }
+            return;
+        }
+
         for (var sy = 0; sy < srcH; sy++)
         {
             var dy = dstY + sy;
@@ -252,6 +363,7 @@ public sealed class RgbaImage
     /// </summary>
     public void BlendPixelAt(int x, int y, RGBAColor32 color)
     {
+        if (_mapped) (x, y) = MapPixel(x, y);
         if (x < _clipX0 || x >= _clipX1 || y < _clipY0 || y >= _clipY1) return;
         var i = (y * Width + x) * 4;
         BlendPixel(Pixels, i, color.Red, color.Green, color.Blue, color.Alpha);

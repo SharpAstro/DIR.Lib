@@ -30,6 +30,27 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
     public override void Resize(uint width, uint height) => Surface.Resize((int)width, (int)height);
 
     /// <summary>
+    /// The content→device transform, applied by mapping the writes themselves — a software backend has
+    /// no projection to fold it into. Rotation and translation only: a post-layout scale would have to
+    /// resample, and a reflowing transform belongs in the measure context instead (see
+    /// <see cref="RgbaImage.SetContentTransform"/>, which refuses one rather than quietly blurring).
+    /// <para>With this the terminal and image front-ends can make the same across-the-table turn the
+    /// GPU backends already do, text included — a glyph's pixels are mapped one at a time, so the
+    /// glyph itself turns rather than its box being moved.</para>
+    /// </summary>
+    public override ContentTransform ContentTransform
+    {
+        get => base.ContentTransform;
+        set
+        {
+            // Surface first: it validates, so a refused transform leaves the property unchanged too
+            // rather than recording a rotation the pixels are not getting.
+            Surface.SetContentTransform(value);
+            base.ContentTransform = value;
+        }
+    }
+
+    /// <summary>
     /// Software scissor. The base declares clipping optional -- a backend may ignore it, since on a
     /// GPU it is an optimization -- but a renderer that ignores it is no use for testing a widget that
     /// relies on it: content the real surface trims would spill across the picture, and the test would
@@ -423,6 +444,28 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
         var src = glyph.Rgba;
         var w = glyph.Width;
         var h = glyph.Height;
+
+        // Writing Pixels directly is what makes this the fast text path, and it is also why it is the
+        // one place a content transform does not reach by itself. Under a turn, hand the glyph to the
+        // image a pixel at a time so each one is mapped -- slower, but only when something is actually
+        // rotated, and it is what turns the glyph rather than just relocating it.
+        if (Surface.IsContentMapped)
+        {
+            for (var sy = 0; sy < h; sy++)
+            {
+                for (var sx = 0; sx < w; sx++)
+                {
+                    var alpha = src[(sy * w + sx) * 4 + 3];
+                    if (alpha == 0) continue;
+                    var a = (byte)((alpha * color.Alpha + 127) / 255);
+                    if (a == 0) continue;
+                    Surface.BlendPixelAt(dstX + sx, dstY + sy,
+                        new RGBAColor32(color.Red, color.Green, color.Blue, a));
+                }
+            }
+            return;
+        }
+
         var pixels = Surface.Pixels;
         var surfW = Surface.Width;
         // Against the CLIP, not the surface: this writes Pixels directly rather than going through the

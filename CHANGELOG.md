@@ -9,6 +9,39 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 8.22
+
+**`RgbaImageRenderer` applies `ContentTransform`** — the software backend was the last one that stored
+it and drew as if it had not. A caller keeps drawing in content coordinates and the finished image
+comes out turned, text included: a glyph's pixels are mapped individually, so the glyph itself rotates
+rather than its box being relocated.
+
+There is no projection to fold the transform into here, so the mapping happens where pixels are
+written — which is affordable only because the transform is constrained. A quarter turn takes an
+axis-aligned rect to an axis-aligned rect, so a rectangle fill is still one rectangle fill, and a blit
+is a permutation of the buffer: no resampling, no holes, no second buffer. `RgbaImage` gained
+`SetContentTransform`, `MapRect`, `MapPixel` and `IsContentMapped` for the paths that write `Pixels`
+directly.
+
+**A scale other than 1 is refused, not resampled** (`NotSupportedException`). This is the post-layout
+application, and a scale is the one component that cannot be applied to finished pixels without
+inventing some. A transform that should reflow — DPI, zoom — belongs in the measure context, applied
+to design units before layout resolves them. Refusing says so at the point of the mistake.
+
+**Nothing changes for anyone not using it.** The identity path is byte-for-byte what it was, which is
+asserted rather than assumed, and a renderer that is never handed a transform never takes a new branch.
+
+## 8.21
+
+**`ActivateListCursor` answers whether the row was ACTED on, not whether it was found.** It had
+returned true whenever it located the cursor's region, handler or not — the same answer for "I acted
+on this row" and "I found it". That breaks `HandleListKey`'s contract, where false is what lets a key
+through to the host, so Enter over a handler-less row was swallowed silently, there being no handler
+to notice it went missing. Such rows are legitimate: one registers so the cursor can reach it and an
+inspector can name it, while its host acts on the pointer release elsewhere. The arrows are untouched.
+
+*(This entry was written after the fact — 8.21 shipped without one.)*
+
 ## 8.20
 
 **A list a layout tree declares is now navigable from the keyboard, with no state beside it.** A row
