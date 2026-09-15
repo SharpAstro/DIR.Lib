@@ -27,6 +27,7 @@
 - **`MouseButton`** -- Left / Middle / Right, plus `None` for a pointer moving with nothing held
 - **`KeyChord`** -- a key plus its modifiers, and the precedence rule on it: `BeatsFocusedField` is true for Ctrl, Alt and the function keys, false for a bare letter. Stated once so a router and a test read the same fact, instead of each host special-casing its own global key by name
 - **`PointerPress`** / **`PointerMove`** / **`DragCapture`** -- a press with its position, button, modifiers and click count; the capture a press handler returns to own every move and the release until the button comes up
+- **`InputRouter`**: the dispatcher, so a host stops writing one. It takes an `InputEvent` and hands it to the regions, fields, shortcuts, captures and scroll controllers the last paint declared, in one fixed order: an open popover reads a key first, then any painted node's declared `Shortcut` if `KeyChord.BeatsFocusedField` lets it through, then the focused field, then the host's own `Unhandled`. A press places the caret or arms a drag, a wheel finds the innermost list under the pointer, and `AfterPaint` blurs a field that left the screen, answers a `focusOnOpen` request and expires a stale tooltip. `CursorAt(x, y)` and `Tooltip` are what a host paints from
 - **`IWidget`** — shared interface with `HandleInput` for both pixel and terminal widgets
 
 Platform bridges (in downstream packages):
@@ -36,7 +37,7 @@ Platform bridges (in downstream packages):
 
 ## Widget System
 
-- **`IPixelWidget`** — extends IWidget with pixel-coordinate hit testing and click dispatch
+- **`IPixelWidget`** — extends IWidget with pixel-coordinate hit testing and click dispatch, plus what a router reads back from the last paint: `CollectPaintedRegions` / `CollectPaintedNodes` (a composite folds its children's in), `Pointer`, `ScrollTargetAt`, `HitTestCursor` and `CaretIndexAt`
 - **`PixelWidgetBase<TSurface>`** -- base class for pixel widgets: clickable regions, text input, buttons, dropdowns, drawing helpers. `MeasureLayout` / `MeasureContext` are the measure seam (a box is the MEASUREMENT of its content, through the same context arrange and paint share); `ScrollTargetAt(x, y)` answers which declared list a wheel belongs to; `DimTowards(color, background)` is the one grey a disabled thing is painted in
 - **`PixelLayout`** + **`PixelDockStyle`** — dock-based layout engine (Top/Bottom/Left/Right/Fill)
 - **`DockLayout<T>`** — generic dock layout using `INumber<T>` (the integer / pixel layouts above are built on this)

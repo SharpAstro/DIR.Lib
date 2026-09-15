@@ -267,6 +267,73 @@ synthesized members take their arity from the primary constructor and a trailing
 caller compiled against the shorter one, nor a positional pattern, which resolves by arity. `AnchoredTo`
 is a new method rather than another optional parameter on `Anchored` for the same reason.
 
+### Wave 3: the router
+
+**`InputRouter` is the dispatcher the three earlier waves exist to make possible.** The library could
+already place a caret under a pointer, select the word under a second click, cycle Tab in paint order,
+walk a list with the arrows and close a popover on Escape. None of it ran unless a host wrote the routing
+that reached it, so every surface wrote its own and they disagreed: one carried `if (key == F3) return
+false;` with a comment calling F3 global, beside a hand-written Ctrl+letter map that was not guarded at
+all, beside a bare `F` that meant a rating-filter cycle on one panel and a typed letter on another. The
+routing is the same on every surface. Only the platform binding is not, and that stays with the host:
+`FocusChanged`, the clipboard delegates, a call to `AfterPaint` once the frame is drawn, and `Unhandled`
+for the keys an active tab genuinely owns.
+
+`new InputRouter(ui, tracker, requestRedraw)`, with `Widgets` (the frame's widgets, in paint order),
+`Unhandled`, `GetClipboardText` / `SetClipboardText`, `ActiveSearch`, an `OpenUrl` event and a
+`ShortcutFired` event; `Handle(evt)`, `AfterPaint()`, `CursorAt(x, y)` and `Tooltip`. The order is fixed,
+and every branch of it is pinned by a test of its own:
+
+- **A press** walks the regions top-most first. A field is focused with its caret placed where the press
+  landed, and the gesture is taken, so dragging out of it extends the selection; a link raises `OpenUrl`;
+  a node with `OnPress` is handed the press and may return a `DragCapture`, or decline and fall through
+  to its click; anything else runs its click. A press that is not on a field then blurs the focused one,
+  AFTER the dispatch, so a button reading the field beside it still reads what the reader saw.
+- **A move** goes to a gesture in flight, carrying the button and the modifiers the PRESS was armed with.
+  Otherwise it states the pointer on every widget and asks for a redraw only where a hover background or
+  a tooltip actually changed, motion being no reason to draw a frame by itself.
+- **A wheel** goes to the innermost list under the pointer that declared `.WithScroll(controller)`. This
+  is the seventeen "is the pointer over my rect" handlers, across eleven files in one consumer, becoming
+  none.
+- **A key** goes to an open popover first, then to a painted node's declared `Shortcut`, then to the
+  focused field, then to the host. A match focuses a field (seeded and selected), activates a node, or
+  toggles a popover.
+- **`AfterPaint`** blurs a focused field that is no longer painted, answers the first `focusOnOpen`
+  request from a field that has not had one since it last appeared (and never off a field being typed
+  in), and expires a tooltip whose region has gone. The hover delay those tooltips were missing is
+  `TooltipDelay`, measured on a settable `Clock`, a delay being the one thing here that cannot be driven
+  by feeding the router events.
+
+**The precedence rule is the whole point, and both directions are pinned separately.** A shortcut reaches
+its node ahead of a focused field exactly when `KeyChord.BeatsFocusedField` says it may. Wrong one way,
+Ctrl+F cannot reach a search box while another field has the keyboard; wrong the other, a bare letter
+typed into a field fires the application binding for that letter instead of appearing in the box. One
+test can only see one of those, so there are two, and each was watched failing with the guard removed.
+
+**A shortcut is matched against the PAINTED tree**, so a binding on a panel that is not on screen is
+inert with nobody saying so. One thing underneath it had to be corrected for that to be true:
+`PaintLayout` retained the whole ARRANGED array, and a closed popover is measured and arranged and never
+drawn, so its rows were in the retained set. The capture now happens past the closed-popover skip.
+`GetCapturedLayout` therefore means what its own documentation already claimed, a shortcut inside a
+closed popover is inert while the same one inside an open popover fires (pinned both ways in one test),
+and damage-based repaint gets the transition it was missing, an opening popover being nodes that appear
+rather than nodes whose signature never changed.
+
+**`IPixelWidget` gains what a router reads back from a paint**: `CollectPaintedRegions(into)`,
+`CollectPaintedNodes(into)`, `Pointer`, `ScrollTargetAt(x, y)` and `HitTestCursor(x, y)`. The two collect
+methods fill a caller's buffer rather than returning a list, being on the pointer-move path.
+`CompositeWidget` overrides all of them, which is the silent miss that class already exists for: a
+child's regions live on the CHILD, so a router asking only the composite would find no controls, no wheel
+target and no cursor, and would leave every child's hover unlit because nothing told the child where the
+pointer was. `PixelWidgetBase.Pointer` and `ScrollTargetAt` became `virtual` for that, and
+`CompositeWidget.PaintedRegions()` is now the snapshot form of `CollectPaintedRegions` rather than a
+second walk of the same children.
+
+Additive, apart from those two members becoming virtual, which no already-compiled caller can tell apart.
+No record changed, so no constructor or `Deconstruct` arity is at stake this time. Adding to
+`IPixelWidget` does break an implementer that does not derive from `PixelWidgetBase`, exactly as
+`CaretIndexAt` did in wave 1a; no such implementer exists in this repo or in the siblings.
+
 ## 9.1
 
 **A pointer can reach the caret.** A text field has had a full selection model since it was written —
