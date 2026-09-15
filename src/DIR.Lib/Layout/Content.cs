@@ -51,6 +51,26 @@ public abstract record Content
         /// </para>
         /// </summary>
         public TextTrim Trim { get; init; } = TextTrim.End;
+
+        /// <summary>
+        /// This run's characters can be selected and copied, the way a paragraph on a web page can and a
+        /// readout drawn as glyphs into a texture cannot. Off by default: a raster host has to be ASKED to
+        /// put a run into its selection layer, because everything it draws is glyphs and the layer is not
+        /// free.
+        /// <para>
+        /// Declared on the RUN rather than switched on per host, for the reason a
+        /// <see cref="HitResult.LinkHit"/> is: only the author knows which text is content the reader may
+        /// want to take away (a coordinate, an error message, a file path) and which is chrome. A painter
+        /// meeting it routes the run through <c>DrawSelectableText</c> -- the same path linked text already
+        /// takes -- so a DOM host overlays a real selectable span and a terminal host can offer a native
+        /// drag-select, both from one authored tree.
+        /// </para>
+        /// <para>
+        /// Marking a run costs nothing where the host cannot act on it: the glyphs are drawn identically
+        /// and the region is simply never read.
+        /// </para>
+        /// </summary>
+        public bool Selectable { get; init; }
     }
 
     /// <summary>A fixed-size piece (icon, swatch, separator, spacer) -- intrinsic size is <paramref name="Width"/> x <paramref name="Height"/> design units. The painter fills it only when <see cref="Color"/> is non-transparent, so a transparent Box is a pure spacer.</summary>
@@ -211,6 +231,71 @@ public abstract record Content
         /// </para>
         /// </summary>
         public IconKind? LeadingIcon { get; init; }
+
+        /// <summary>
+        /// This field wants the keyboard as soon as it appears -- the search box of a panel that has just
+        /// opened, the editor a row turns into. The declarative form of the "activate this input" signal a
+        /// consumer otherwise posts by hand from wherever it decided to open the panel.
+        /// <para>
+        /// <b>It never takes the keyboard off a field the user is typing in.</b> It fires only where
+        /// <c>Focus.Current</c> is null or is itself no longer being painted, and only once per appearance:
+        /// a tree is rebuilt every frame, so a naive reading of this flag would re-focus the field sixty
+        /// times a second and hold the caret at the end of the value under the user's fingers. The rule is
+        /// "the first painted field that asks, once, since it was last not painted".
+        /// </para>
+        /// <para>
+        /// The painter only REPORTS the request, on the region it registers
+        /// (<see cref="ClickableRegion.FocusOnOpen"/>); the rule above is applied after the frame is
+        /// painted, because that is the only moment the whole painted set is known -- and "is the focused
+        /// field still on screen" is exactly the question
+        /// <see cref="TextInputFocus.BlurIfUnpainted"/> already answers there.
+        /// </para>
+        /// </summary>
+        public bool FocusOnOpen { get; init; }
+    }
+
+    /// <summary>
+    /// A draggable value in a range: the node IS the control, the same precedent <see cref="TextInput"/>
+    /// sets for a field. A painter meeting this leaf draws it through the shared
+    /// <c>PixelWidgetBase.DrawTrackSlider</c> track/fill/handle implementation (so a slider still has
+    /// exactly one drawing, whether it is declared this way or hand-painted), registers a
+    /// <see cref="HitResult.SliderStateHit"/> and arms its own drag: a press maps its X through
+    /// <c>PixelWidgetBase.TrackFrac</c> to a new <see cref="SliderState.Value"/>, clamped to
+    /// [<see cref="SliderState.Min"/>, <see cref="SliderState.Max"/>] and rounded to
+    /// <see cref="SliderState.Step"/> where it is non-zero, and calls <see cref="SliderState.OnChanged"/>,
+    /// on the press itself and on every move until release.
+    /// <para>
+    /// <b>The node carries a reference to caller-owned mutable state</b>, exactly as <see cref="TextInput"/>
+    /// does: the consumer still owns <see cref="State"/> and its commit wiring, and a tree rebuilt every
+    /// frame keeps reading the position the last drag left it at rather than one baked into the record.
+    /// </para>
+    /// <para>
+    /// While <see cref="SliderState.Enabled"/> is false, the leaf paints dimmed (toward whatever background
+    /// is behind it, the same rule a <see cref="Node.DisabledReason"/> subtree uses) and its region still
+    /// registers, with no press bound, so it keeps its place and swallows a press rather than letting it
+    /// fall through to whatever is behind it.
+    /// </para>
+    /// </summary>
+    /// <param name="State">The caller-owned slider state: value, range, step and the change callback.</param>
+    public sealed record Slider(SliderState State) : Content
+    {
+        /// <summary>
+        /// The intrinsic (Auto) height in design units, when nothing else states one; the same "6" the
+        /// track bar itself is drawn at (not shared code, since the paint reads its own arranged rect and
+        /// never this constant, so a slider left to size itself is exactly as tall as the mark it draws,
+        /// and a row that wants more gives it explicitly, as every existing hand-painted track slider
+        /// already does with its own handle band).
+        /// </summary>
+        public const float TrackHeight = 6f;
+
+        /// <summary>The played portion of the track and the handle. Default opaque white, the convention
+        /// <see cref="Text.Color"/> and <see cref="Icon.Color"/> use; override per slider, the way every
+        /// existing hand-painted track slider already supplies its own accent.</summary>
+        public RGBAColor32 FillColor { get; init; } = new(0xff, 0xff, 0xff, 0xff);
+
+        /// <summary>The unfilled track and the handle marker's own colours: the two chrome tones the
+        /// painter needs beside <see cref="FillColor"/>.</summary>
+        public TrackSliderChrome Chrome { get; init; } = new(new RGBAColor32(0x40, 0x40, 0x40, 0xff), new RGBAColor32(0xff, 0xff, 0xff, 0xff));
     }
 
     /// <summary>
@@ -255,6 +340,23 @@ public enum IconKind
 
     /// <summary><see cref="CaretUp"/> inverted: "this opens downward", or "this is already open".</summary>
     CaretDown,
+
+    /// <summary>
+    /// <see cref="CaretUp"/> turned a quarter anticlockwise: "step back", "previous", "collapse this way".
+    /// The mark on a jog control, a pan arrow or the backward half of a cycler.
+    /// </summary>
+    /// <remarks>
+    /// The vertical pair alone was not enough, and the gap showed up the way a missing member always does
+    /// here: a consumer sweeping its symbol marks into this family could convert its steppers and had to
+    /// leave every pan, jog and cycle control spelled as a text rune, because the nearest members named the
+    /// direction a MENU opens rather than the direction a control moves. The two questions share a shape and
+    /// not a meaning, so borrowing <see cref="CaretUp"/> for "previous" would have made the family's own
+    /// documentation wrong.
+    /// </remarks>
+    CaretLeft,
+
+    /// <summary><see cref="CaretLeft"/> mirrored: "step forward", "next", "expand this way".</summary>
+    CaretRight,
 
     /// <summary>
     /// A cross of two bars: "add one". The mark on a new-tab button, and the increment half of a stepper.

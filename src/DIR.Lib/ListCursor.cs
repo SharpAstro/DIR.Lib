@@ -44,6 +44,38 @@ public sealed class ListCursor
     public bool IsOpen => ListId is not null;
 
     /// <summary>
+    /// How many rows the list has, when the caller has stated it, or null when it has not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is what lets a cursor walk a VIRTUALISED list.</b> Without it the rows the last paint
+    /// registered are the whole of what exists, which is the right answer for a list that paints all of
+    /// itself and wrong for one that paints only its viewport: a cursor that cannot step onto an
+    /// unpainted row cannot reach the twentieth row of a list showing five, so the arrows stop dead at
+    /// the bottom of the window and the list can only be scrolled with the mouse.
+    /// </para>
+    /// <para>
+    /// Stating it does not weaken the reachability rule where it still applies. Within the span the paint
+    /// DID register, an unregistered or disabled row is still skipped -- the paint is evidence there, and
+    /// a row it left out of its own window is a row the reader cannot act on. Beyond that span there is
+    /// no evidence either way, and the count is what says the row is there at all.
+    /// </para>
+    /// </remarks>
+    public int? RowCount { get; private set; }
+
+    /// <summary>
+    /// Raised whenever the cursor actually MOVES, with the row it moved to -- the hook a consumer hangs
+    /// <see cref="ListScrollController.EnsureVisible"/> off.
+    /// </summary>
+    /// <remarks>
+    /// It exists for the same reason <see cref="RowCount"/> does: once a step can land on a row the last
+    /// paint did not draw, something has to bring that row into view, and the cursor is the only thing
+    /// that knows the step happened. Not raised by <see cref="Open"/> or <see cref="Close"/>, which place
+    /// the cursor rather than moving it -- a list opening at its current selection has not scrolled.
+    /// </remarks>
+    public event Action<int>? Moved;
+
+    /// <summary>
     /// Puts the cursor in <paramref name="listId"/>, at <paramref name="index"/> when the caller has
     /// a row to start on — normally whatever the list is currently showing, so the arrows step off
     /// something the reader can see rather than from the top of a list of thirty.
@@ -52,6 +84,19 @@ public sealed class ListCursor
     {
         ListId = listId;
         Index = index;
+        RowCount = null;
+    }
+
+    /// <summary>
+    /// <see cref="Open(string,int)"/> for a list that knows how long it is, which is what a virtualised
+    /// list must say: see <see cref="RowCount"/> for why the painted rows alone cannot answer.
+    /// </summary>
+    /// <param name="count">The list's row count. Clamps the arrows to <c>[0, count)</c>.</param>
+    public void Open(string listId, int index, int count)
+    {
+        ListId = listId;
+        Index = index;
+        RowCount = Math.Max(0, count);
     }
 
     /// <summary>Takes the cursor out of any list.</summary>
@@ -59,10 +104,21 @@ public sealed class ListCursor
     {
         ListId = null;
         Index = -1;
+        RowCount = null;
     }
 
-    /// <summary>Moves the cursor to <paramref name="index"/> of the list it is already in.</summary>
-    public void MoveTo(int index) => Index = index;
+    /// <summary>Moves the cursor to <paramref name="index"/> of the list it is already in, raising
+    /// <see cref="Moved"/> when that is a change.</summary>
+    public void MoveTo(int index)
+    {
+        if (Index == index)
+        {
+            return;
+        }
+
+        Index = index;
+        Moved?.Invoke(index);
+    }
 
     /// <summary>Whether <paramref name="hit"/> is the row the cursor is on.</summary>
     public bool IsOn(HitResult? hit)

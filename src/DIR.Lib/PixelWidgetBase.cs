@@ -25,11 +25,76 @@ namespace DIR.Lib
         List<TextInputState> GetRegisteredTextInputs();
 
         /// <summary>
+        /// Which character of <paramref name="hit"/>'s field a pointer at <paramref name="pointerX"/> is
+        /// over -- the pixel host's half of <see cref="TextInputInteraction.HandlePointer"/>, which takes
+        /// the index this returns.
+        /// </summary>
+        /// <remarks>
+        /// On the interface because a router holds its widgets as <see cref="IPixelWidget"/>, and a press
+        /// over a field is useless without it. Only the widget that PRODUCED the hit can answer: the
+        /// answer is measured through the renderer and the fallback chain that drew the text, so anything
+        /// else would be a second measurement free to disagree with where the caret was painted. A host
+        /// reaching for it through a cast -- or through an interface of its own declaring exactly this one
+        /// method, which is what one consumer wrote -- is the shape that says it belongs here.
+        /// </remarks>
+        int CaretIndexAt(HitResult.TextInputHit hit, float pointerX);
+
+        /// <summary>
         /// The per-window presentation values, and the frame's keyboard claimant. On the interface so a host
         /// holding only <see cref="IPixelWidget"/> can ask who owns the keyboard without knowing which
         /// concrete widget painted the overlay.
         /// </summary>
         WindowUiSettings Ui { get; }
+
+        /// <summary>
+        /// Appends this widget's regions from the frame it last painted, in paint order, and a composite's
+        /// children's with them.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Five of the things <see cref="InputRouter"/> resolves live on the region and nowhere else (the
+        /// press handler, the cursor, the tooltip, the wheel target and a field's focus-on-open request),
+        /// so a router holding <see cref="IPixelWidget"/> needs the list rather than one answer at a time.
+        /// </para>
+        /// <para>
+        /// It fills a caller's list rather than returning one, because the caller has a scratch buffer and
+        /// this is on the pointer-move path. <see cref="PixelWidgetBase{TSurface}.GetRegisteredRegions"/>
+        /// stays for a reader that wants a snapshot it can keep; what lands here is valid until the next
+        /// frame.
+        /// </para>
+        /// </remarks>
+        void CollectPaintedRegions(List<ClickableRegion> into);
+
+        /// <summary>
+        /// Appends the arranged nodes this widget PAINTED, in paint order, and a composite's children's
+        /// with them.
+        /// </summary>
+        /// <remarks>
+        /// What a declaration carrying no region of its own is read from: a
+        /// <see cref="Layout.Node.Shortcut"/> or a <see cref="Layout.Node.HoverBackground"/> lives on the
+        /// node. PAINTED rather than arranged is the load-bearing word, and it is what makes a shortcut on
+        /// a panel that is not on screen inert with nobody having to say so.
+        /// </remarks>
+        void CollectPaintedNodes(List<Layout.ArrangedNode<float>> into);
+
+        /// <summary>
+        /// Where the pointer is, in this widget's coordinates, or null when it is elsewhere. Set by
+        /// whatever routes the motion, read by the paint to resolve hover.
+        /// </summary>
+        /// <remarks>
+        /// On the interface because hover resolves during PAINT, so it has to be stated beforehand by
+        /// something that sees the whole frame. A router setting it on each widget it lists is the only
+        /// thing that can say which of them the pointer is over.
+        /// </remarks>
+        (float X, float Y)? Pointer { get; set; }
+
+        /// <summary>The scroll controller of the innermost region under the point that declared one, or
+        /// null where nothing there scrolls.</summary>
+        ListScrollController? ScrollTargetAt(float x, float y);
+
+        /// <summary>The cursor stated by the topmost region under the point, or null where nothing under
+        /// it had a view.</summary>
+        CursorKind? HitTestCursor(float x, float y);
     }
 
     /// <summary>
@@ -60,6 +125,9 @@ namespace DIR.Lib
         // rects that changed is worth far more than this allocation (measured: 8% GPU for a full-window
         // repaint of a 4 Mpix pane to update one status-bar number).
         // Mirrors _tracker: cleared in BeginFrame, appended in PaintLayout. Render-thread only.
+        // PAINTED, not arranged: a closed popover's subtree is measured and arranged and never drawn, so it
+        // is not here. That is what lets a shortcut, a hover background and a debug inspector all read this
+        // one list and mean "what is on screen".
         private List<Layout.ArrangedNode<float>>? _capturedLayout;
 
         protected Renderer<TSurface> Renderer { get; } = renderer;
@@ -199,6 +267,11 @@ namespace DIR.Lib
             _tracker.BeginFrame(Ui.FrameId);
             _selectableText.Clear();
             _capturedLayout?.Clear();
+
+            // Window-level, so it is cleared once per paint CYCLE rather than once per widget: see the
+            // remarks on WindowUiSettings.PointerOwner for why clearing it here unconditionally would break
+            // the moment a window had two widgets, and why the cycle cannot be read off Ui.FrameId.
+            Ui.NoteFrameBegin(this);
         }
 
         /// <summary>
@@ -242,12 +315,34 @@ namespace DIR.Lib
         /// paint happens — it stays lit behind a pointer that is somewhere else entirely.
         /// </para>
         /// </summary>
-        public (float X, float Y)? Pointer { get; set; }
+        /// <remarks>
+        /// Virtual so a <see cref="CompositeWidget{TSurface}"/> can pass it on to the widgets it paints.
+        /// Without that, setting it on the composite leaves every child at null and nothing a child drew
+        /// ever lights, which is the same silent miss the composite's other aggregate queries exist for.
+        /// </remarks>
+        public virtual (float X, float Y)? Pointer { get; set; }
 
         /// <summary>Whether <see cref="Pointer"/> is inside an arranged rect. Top/left inclusive and
         /// bottom/right exclusive, so two rows sharing an edge never both claim it.</summary>
         private bool PointerWithin(Rect<float> r) =>
-            Pointer is { } p && p.X >= r.X && p.X < r.X + r.Width && p.Y >= r.Y && p.Y < r.Y + r.Height;
+            Pointer is { } p && PointerIsOwned(p)
+            && p.X >= r.X && p.X < r.X + r.Width && p.Y >= r.Y && p.Y < r.Y + r.Height;
+
+        /// <summary>
+        /// Whether the pointer is somewhere hover is allowed to answer: always, unless an open popover has
+        /// claimed it (<see cref="WindowUiSettings.PointerOwner"/>), in which case only inside the popover's
+        /// own content.
+        /// </summary>
+        /// <remarks>
+        /// Written as "no owner, or inside the owner" rather than as a check on each rect, so a node cannot
+        /// opt out of it: the popover's own content passes because the pointer is inside the owner, and
+        /// everything the popover covers fails because it is not, with no node needing to know a popover
+        /// exists. Only HOVER is confined; the region tracker still hit-tests in paint order, so the
+        /// backdrop keeps taking the click that dismisses.
+        /// </remarks>
+        private bool PointerIsOwned((float X, float Y) p) =>
+            Ui.PointerOwner is not { } owner
+            || (p.X >= owner.X && p.X < owner.X + owner.Width && p.Y >= owner.Y && p.Y < owner.Y + owner.Height);
 
         /// <summary>
         /// Where the KEYBOARD is inside a list this widget declared — the counterpart of
@@ -295,9 +390,19 @@ namespace DIR.Lib
         {
             var from = ListCursor.Index;
             var best = -1;
+            var paintedLow = int.MaxValue;
+            var paintedHigh = int.MinValue;
             foreach (var region in RegisteredRegions)
             {
                 if (region.Result is not HitResult.ListItemHit item || !ListCursor.Owns(item)) continue;
+                // The span this paint covered, so a counted list can tell "off the bottom of the
+                // viewport" from "deliberately unreachable" -- see TryStepPastTheViewport.
+                if (item.Index < paintedLow) paintedLow = item.Index;
+                if (item.Index > paintedHigh) paintedHigh = item.Index;
+                // Declared unavailable: registered so the press is swallowed, and stepped over for the
+                // same reason a row that is not clickable is -- the cursor must never park somewhere
+                // Enter will refuse.
+                if (region.IsDisabled) continue;
                 // Beyond where we are, in the direction of travel. From -1 — a list the reader has not
                 // moved in — every row qualifies, so this lands on the first or the last.
                 if (from >= 0 && (direction > 0 ? item.Index <= from : item.Index >= from)) continue;
@@ -305,8 +410,48 @@ namespace DIR.Lib
                 best = item.Index;
             }
 
-            if (best < 0) return false;
-            ListCursor.MoveTo(best);
+            if (best >= 0)
+            {
+                ListCursor.MoveTo(best);
+                return true;
+            }
+
+            return TryStepPastTheViewport(direction, from, paintedLow, paintedHigh);
+        }
+
+        /// <summary>
+        /// The step a VIRTUALISED list needs: onto a row the last paint never registered, because the
+        /// list only paints its viewport. Only possible where the cursor was opened with a row count --
+        /// see <see cref="ListCursor.RowCount"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The painted span stays the evidence wherever there is any: the walk above has already refused
+        /// every row inside it, on purpose, so the first row that can still be stepped onto is the one
+        /// just past that span -- never a row within it, which would reach over the top of the
+        /// reachability rule. Beyond the span there is no evidence at all, and the count is the only
+        /// thing that says the row is there.
+        /// </para>
+        /// <para>
+        /// A list NOTHING of which was painted is still unnavigable, counted or not: a card that is not
+        /// on screen must not move its cursor over rows nobody can see.
+        /// </para>
+        /// <para>
+        /// The move raises <see cref="ListCursor.Moved"/> like any other, which is how the row is brought
+        /// into view -- without that the cursor lands somewhere nobody can see either.
+        /// </para>
+        /// </remarks>
+        private bool TryStepPastTheViewport(int direction, int from, int paintedLow, int paintedHigh)
+        {
+            if (ListCursor.RowCount is not { } count || count <= 0) return false;
+            if (paintedHigh < paintedLow) return false;
+
+            var candidate = direction > 0
+                ? Math.Max(from + 1, paintedHigh + 1)
+                : Math.Min(from < 0 ? count - 1 : from - 1, paintedLow - 1);
+            if (candidate < 0 || candidate >= count) return false;
+
+            ListCursor.MoveTo(candidate);
             return true;
         }
 
@@ -328,19 +473,32 @@ namespace DIR.Lib
             foreach (var region in RegisteredRegions)
             {
                 if (!ListCursor.IsOn(region.Result)) continue;
-                // A row can declare itself and still carry no handler: it registers so the cursor can
-                // reach it and a debug inspector can name it, while its host takes the action on the
+                // Declared unavailable: the press is swallowed, so Enter is too, and for the same
+                // reason. The arrows do not stop here either, so reaching this is a cursor placed by
+                // hand rather than walked.
+                if (region.IsDisabled)
+                {
+                    return false;
+                }
+
+                // Enter's own handler where the row declared one, because Enter and a click are not
+                // always the same act -- Enter pins the target, a click merely selects it. Without
+                // somewhere to say so, such a list had to keep Enter by hand and the cursor could not
+                // own the whole keyboard contract.
+                //
+                // A row can also declare itself and carry NEITHER handler: it registers so the cursor
+                // can reach it and a debug inspector can name it, while its host takes the action on the
                 // pointer RELEASE somewhere else (a list whose press must reach a scroll controller, or
                 // a touch drag would act on whichever row it started on). This used to answer true
                 // there, reporting an activation that had not happened, and a host forwarding the key
                 // saw it claimed and never reached its own binding. Silently, there being no handler to
                 // notice it was missing.
-                if (region.OnClick is not { } onClick)
+                if ((region.OnActivate ?? region.OnClick) is not { } act)
                 {
                     return false;
                 }
 
-                onClick(modifier);
+                act(modifier);
                 return true;
             }
             return false;
@@ -366,20 +524,96 @@ namespace DIR.Lib
         };
 
         /// <summary>
-        /// Registers a clickable region with an optional direct click handler.
+        /// Registers a clickable region with an optional direct click handler, and an optional press
+        /// handler that is told WHERE the press landed and may claim the drag that follows
+        /// (<see cref="Layout.Node.OnPress"/>).
         /// </summary>
-        protected void RegisterClickable(float x, float y, float w, float h, HitResult result, Action<InputModifier>? onClick = null, CursorKind? cursor = null)
-            => _tracker.Register(x, y, w, h, result, onClick, cursor);
+        protected void RegisterClickable(float x, float y, float w, float h, HitResult result,
+            Action<InputModifier>? onClick = null, CursorKind? cursor = null,
+            Func<PointerPress, DragCapture?>? onPress = null, bool focusOnOpen = false)
+            => _tracker.Register(new ClickableRegion(x, y, w, h, result, onClick, cursor)
+            {
+                OnPress = onPress,
+                FocusOnOpen = focusOnOpen
+            });
+
+        /// <summary>
+        /// Registers an already-built region, for the paths that state more than the shorthand above
+        /// covers -- a tooltip, a scroll target, a disabled row. <see cref="PaintLayout"/>'s own path,
+        /// since a node can declare all of them at once.
+        /// </summary>
+        protected void RegisterClickable(in ClickableRegion region) => _tracker.Register(region);
 
         /// <summary>Registers a region that only states a cursor -- a card, a bar -- with no action.</summary>
         protected void RegisterCursor(float x, float y, float w, float h, CursorKind cursor)
             => _tracker.RegisterCursor(x, y, w, h, cursor);
 
         /// <summary>
+        /// The scroll controller of the innermost region under the point that declared one
+        /// (<see cref="Layout.Node.Scroll"/>), or null where nothing there scrolls.
+        /// </summary>
+        /// <remarks>
+        /// The answer to "whose wheel is this", asked of the region list rather than of every list in
+        /// turn. Innermost = last registered, since the painter emits parent before child, which is the
+        /// same top-most rule the hit test uses -- a list inside a panel that also scrolls takes the
+        /// wheel, as it should. Until the router exists a consumer calls this from its own scroll branch;
+        /// after it, the router does.
+        /// <para>
+        /// Virtual for the reason <see cref="HitTestAndDispatch"/> is: a composite's children register on
+        /// their own trackers, so asking only the composite would leave every list they declared unable to
+        /// take a wheel.
+        /// </para>
+        /// </remarks>
+        public virtual ListScrollController? ScrollTargetAt(float x, float y)
+        {
+            if (!RegionsAreCurrent)
+            {
+                return null;
+            }
+
+            var regions = _tracker.Regions;
+            for (var i = regions.Length - 1; i >= 0; i--)
+            {
+                var r = regions[i];
+                if (r.Scroll is { } scroll && x >= r.X && x < r.X + r.Width && y >= r.Y && y < r.Y + r.Height)
+                {
+                    return scroll;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// A colour half way to the background it is drawn on: how this library greys something out.
+        /// </summary>
+        /// <remarks>
+        /// Halved toward the background rather than made translucent, because these things are drawn
+        /// over an opaque panel and a translucent colour reads as a different shade per theme -- and per
+        /// what happens to be behind it, which is not a property of the control. Alpha is kept, so a
+        /// caller that was already drawing translucent stays as translucent as it was.
+        /// <para>
+        /// One helper because there are two callers with one rule:
+        /// <see cref="RenderDropdownMenu{T}"/>'s disabled row, which is where it was written, and
+        /// <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, PixelMeasureContext{TSurface}, Action{Layout.Content.Fill, RectF32}?)"/>'s
+        /// <see cref="Layout.Node.DisabledReason"/>, which generalises it to any node. Two copies of one
+        /// rule is two greys that can drift apart on the same screen.
+        /// </para>
+        /// </remarks>
+        protected static RGBAColor32 DimTowards(RGBAColor32 color, RGBAColor32 background)
+            => new(
+                (byte)((color.Red + background.Red) / 2),
+                (byte)((color.Green + background.Green) / 2),
+                (byte)((color.Blue + background.Blue) / 2),
+                color.Alpha);
+
+        /// <summary>
         /// Registers a text input field — renders it and registers the clickable region.
         /// </summary>
+        /// <param name="focusOnOpen">The field asked for the keyboard as it appeared; reported on the region
+        /// so the request can be answered after the frame is painted. See
+        /// <see cref="Layout.Content.TextInput.FocusOnOpen"/>.</param>
         protected void RenderTextInput(TextInputState state, int x, int y, int width, int height, string fontPath,
-            float fontSize, TextInputColors? colors = null, float leadingRoom = 0f)
+            float fontSize, TextInputColors? colors = null, float leadingRoom = 0f, bool focusOnOpen = false)
         {
             // The widget's own fallback chain goes in, so a field displays anything the app can display.
             // Nothing else reaches inside a field: the layout painter splits TEXT LEAVES per coverage run,
@@ -396,7 +630,7 @@ namespace DIR.Lib
             // TextInputGeometry.
             RegisterClickable(x, y, width, height,
                 new HitResult.TextInputHit(state, new TextInputGeometry(x, fontPath, fontSize, leadingRoom)),
-                cursor: CursorKind.Text);
+                cursor: CursorKind.Text, focusOnOpen: focusOnOpen);
         }
 
         /// <summary>
@@ -431,11 +665,11 @@ namespace DIR.Lib
         /// integer-grid (RectInt) internally -- so call sites stop repeating the four-way (int) cast.
         /// </summary>
         protected void RenderTextInput(TextInputState state, RectF32 rect, string fontPath, float fontSize,
-            TextInputColors? colors = null, float leadingRoom = 0f) =>
+            TextInputColors? colors = null, float leadingRoom = 0f, bool focusOnOpen = false) =>
             RenderTextInput(state,
                 (int)MathF.Round(rect.X), (int)MathF.Round(rect.Y),
                 (int)MathF.Round(rect.Width), (int)MathF.Round(rect.Height),
-                fontPath, fontSize, colors, leadingRoom);
+                fontPath, fontSize, colors, leadingRoom, focusOnOpen);
 
         // -------------------------------------------------------------------------------------------------
         // TrackSlider -- the one horizontal press/drag/release track (WB / wavelet / scrub / ...).
@@ -461,11 +695,39 @@ namespace DIR.Lib
             float handleH, float frac, RGBAColor32 fillColor, RectF32 hitBand, HitResult hit,
             TrackSliderChrome chrome, DesignScale? scale = null)
         {
+            DrawTrackSliderVisual(trackX, trackW, barCenterY, handleY, handleH, frac, fillColor, chrome, scale);
+            RegisterClickable(hitBand.X, hitBand.Y, hitBand.Width, hitBand.Height, hit);
+        }
+
+        /// <summary>
+        /// The bar/fill/handle drawing above <see cref="DrawTrackSlider(float,float,float,float,float,float,RGBAColor32,RectF32,HitResult,TrackSliderChrome,DesignScale?)"/>
+        /// and a <see cref="Layout.Content.Slider"/> leaf both paint through, so there is exactly one place
+        /// a track slider's geometry is computed regardless of how the region around it gets registered.
+        /// Registers nothing itself: the two callers state their own region, a plain hit for the
+        /// hand-painted overload above and one carrying <see cref="Layout.Node.OnPress"/> for the declared
+        /// leaf (<see cref="PaintLayout(System.Collections.Immutable.ImmutableArray{Layout.ArrangedNode{float}},PixelMeasureContext{TSurface},System.Action{Layout.Content.Fill,RectF32}?)"/>).
+        /// </summary>
+        private void DrawTrackSliderVisual(float trackX, float trackW, float barCenterY, float handleY,
+            float handleH, float frac, RGBAColor32 fillColor, TrackSliderChrome chrome, DesignScale? scale)
+        {
             var s = (scale ?? Scale).OrOne();
             // A bar thickness runs across the track and a handle width along it, but both are the same
-            // 6 design units and neither is axis-specific -- the axis-free mapping is what they mean.
-            var barH = MathF.Max(4f, s.ToSurface(6f));
-            var handleW = MathF.Max(4f, s.ToSurface(6f));
+            // design units and neither is axis-specific; the axis-free mapping is what they mean.
+            //
+            // The number is Content.Slider.TrackHeight and not a literal, because the ENGINE measures a
+            // slider leaf's intrinsic height from that same constant. Two 6s, one here and one in
+            // Engine.MeasureContent, are free to drift into a leaf whose arranged row is not the height of
+            // the bar drawn in it, which is the defect this whole line of work exists to remove.
+            //
+            // The pixel floor stays HERE and is deliberately not pushed into the measure. It is a minimum
+            // VISIBLE thickness, so it means something on a GPU surface and nothing on a cell surface,
+            // where four cells would be an absurd slider; MeasureContent is generic over the surface and
+            // must not carry a pixel rule. The two therefore disagree below a design scale of about 0.67,
+            // where this floors at 4 and the intrinsic does not: the bar then paints a little outside a row
+            // sized to the intrinsic. Left as is, since a slider is Star-width chrome that is given a row
+            // height in practice, and the alternative is a pixel constant in a generic measure.
+            var barH = MathF.Max(4f, s.ToSurface(Layout.Content.Slider.TrackHeight));
+            var handleW = MathF.Max(4f, s.ToSurface(Layout.Content.Slider.TrackHeight));
 
             var barY = barCenterY - barH / 2f;
             FillRect(trackX, barY, trackW, barH, chrome.TrackBackground);
@@ -476,8 +738,45 @@ namespace DIR.Lib
             var handleMax = MathF.Max(trackX, trackX + trackW - handleW);
             var handleX = Math.Clamp(trackX + trackW * frac - handleW / 2f, trackX, handleMax);
             FillRect(handleX, handleY, handleW, handleH, chrome.Handle);
+        }
 
-            RegisterClickable(hitBand.X, hitBand.Y, hitBand.Width, hitBand.Height, hit);
+        /// <summary>
+        /// Arms a <see cref="Layout.Content.Slider"/> leaf's drag: the press itself, and every move until
+        /// release, map their X through <see cref="TrackFrac"/> onto <paramref name="state"/>'s
+        /// <see cref="SliderState.Value"/> (see <see cref="ApplySliderValueAt"/>). Applying it on the press
+        /// too, and not only on a subsequent move, is what makes a plain click jump the handle to where it
+        /// landed rather than requiring a drag to go anywhere, the behaviour every existing hand-painted
+        /// track slider's own mouse-down already gives it.
+        /// </summary>
+        private static DragCapture BeginSliderDrag(SliderState state, RectF32 track, PointerPress press)
+        {
+            ApplySliderValueAt(state, track, press.X);
+            return new DragCapture(
+                onMove: move => ApplySliderValueAt(state, track, move.X),
+                onRelease: release => ApplySliderValueAt(state, track, release.X));
+        }
+
+        /// <summary>
+        /// One pointer X, mapped through <see cref="TrackFrac"/> onto <paramref name="track"/> and then
+        /// onto <paramref name="state"/>'s range: rounded to <see cref="SliderState.Step"/> where it is
+        /// non-zero, clamped back to [<see cref="SliderState.Min"/>, <see cref="SliderState.Max"/>] (a
+        /// caller may state them in either order, and stepping can overshoot the edge it rounded toward),
+        /// written to <see cref="SliderState.Value"/> and handed to <see cref="SliderState.OnChanged"/>.
+        /// </summary>
+        private static void ApplySliderValueAt(SliderState state, RectF32 track, float x)
+        {
+            var frac = TrackFrac(track, x);
+            var span = state.Max - state.Min;
+            var raw = state.Min + frac * span;
+            var stepped = state.Step > 0f
+                ? state.Min + MathF.Round((raw - state.Min) / state.Step) * state.Step
+                : raw;
+            var lo = MathF.Min(state.Min, state.Max);
+            var hi = MathF.Max(state.Min, state.Max);
+            var value = Math.Clamp(stepped, lo, hi);
+
+            state.Value = value;
+            state.OnChanged?.Invoke(value);
         }
 
         /// <summary>
@@ -630,6 +929,26 @@ namespace DIR.Lib
             => RegionsAreCurrent && _capturedLayout is { } captured ? captured : [];
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Virtual for the reason <see cref="HitTestAndDispatch"/> is: a composite draws its children into
+        /// the same surface, but their regions are on THEIR trackers, so a router asking only the
+        /// composite would silently miss every control they registered.
+        /// </remarks>
+        public virtual void CollectPaintedRegions(List<ClickableRegion> into)
+        {
+            ArgumentNullException.ThrowIfNull(into);
+            into.AddRange(RegisteredRegions);
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>Virtual for the same reason <see cref="CollectPaintedRegions"/> is.</remarks>
+        public virtual void CollectPaintedNodes(List<Layout.ArrangedNode<float>> into)
+        {
+            ArgumentNullException.ThrowIfNull(into);
+            into.AddRange(GetCapturedLayout());
+        }
+
+        /// <inheritdoc/>
         /// <remarks>Null on a frame this widget did not draw — see <see cref="WindowUiSettings.FrameId"/>.</remarks>
         public virtual HitResult? HitTest(float x, float y) => RegionsAreCurrent ? _tracker.HitTest(x, y) : null;
 
@@ -737,11 +1056,9 @@ namespace DIR.Lib
 
             // A disabled row is greyed by halving toward the background rather than by alpha: these rows are
             // drawn over an opaque menu, so a translucent colour would read as a different shade per theme.
-            var disabledColor = new RGBAColor32(
-                (byte)((textColor.Red + bgColor.Red) / 2),
-                (byte)((textColor.Green + bgColor.Green) / 2),
-                (byte)((textColor.Blue + bgColor.Blue) / 2),
-                textColor.Alpha);
+            // The rule now lives in DimTowards, shared with the layout painter's Node.DisabledReason, so a
+            // disabled row and a disabled button are one grey rather than two that can drift.
+            var disabledColor = DimTowards(textColor, bgColor);
 
             foreach (var (index, rect) in scroll.VisibleRows())
             {
@@ -817,6 +1134,35 @@ namespace DIR.Lib
         /// <see cref="FontFallback"/>. Threading the resolver through here is what lets a consumer set it
         /// once on the widget and have measure and paint both honour it.
         /// </summary>
+        /// <summary>
+        /// How big <paramref name="root"/> would be in <paramref name="available"/>, measured through
+        /// this widget's own font, scale and fallback chain -- so a box can BE the measurement of its
+        /// content instead of a sum of the constants its body happens to draw with.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="Layout.Engine.Measure{T}"/> has always been public and there was no seam for it
+        /// here, so a widget wanting one built a <see cref="PixelMeasureContext{TSurface}"/> by hand --
+        /// which is a second statement of the font and the scale, free to disagree with the one arrange
+        /// and paint share. That is the whole distance between a popover whose box is measured and the
+        /// dozens of hand-summed ones beside it.
+        /// </remarks>
+        protected Layout.Size<float> MeasureLayout(Layout.Node root, Layout.Size<float> available,
+            string? fontPath = null, DesignScale? scale = null)
+            => Layout.Engine.Measure(root, available, DefaultContext(fontPath, scale));
+
+        /// <summary>
+        /// The measure context this widget's layout helpers build for themselves, so measure, arrange and
+        /// paint can be handed ONE instance rather than three that agree by hand.
+        /// </summary>
+        /// <remarks>
+        /// Pass the result to the context-taking overloads of <see cref="ArrangeLayout(Layout.Node, RectF32, PixelMeasureContext{TSurface})"/>
+        /// and <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, PixelMeasureContext{TSurface}, Action{Layout.Content.Fill, RectF32}?)"/>.
+        /// It also reuses one scratch buffer for the fallback run split, so measuring a tree several
+        /// times through one context stays off the allocator.
+        /// </remarks>
+        protected PixelMeasureContext<TSurface> MeasureContext(string? fontPath = null, DesignScale? scale = null)
+            => DefaultContext(fontPath, scale);
+
         private PixelMeasureContext<TSurface> DefaultContext(string? fontPath, DesignScale? scale)
             => new(Renderer, fontPath ?? FontPath, (scale ?? Scale).X, (scale ?? Scale).Y)
             {
@@ -863,12 +1209,39 @@ namespace DIR.Lib
         {
             var fp = ctx.FontPath;
 
+            // Retain the painted tree, always: damage-based repaint diffs it against the previous frame to
+            // decide which rects need painting at all, so this is not a debug aid that can be switched off.
+            // Appended across the frame's multiple PaintLayout calls, like the region tracker.
+            var captured = _capturedLayout ??= [];
+
             // The enclosing hyperlink, so a LinkHit stated on a row wrapper reaches the text leaves under it
             // rather than only working when it happens to sit on the text itself. Keyed by depth: entering a
             // node pops every entry at or below its own depth (those belong to a sibling subtree), so the top
             // is always the nearest enclosing link. Console.Lib's CellLayout resolves it identically -- the
             // two painters have to agree, or the same tree means different things per surface.
             var links = new Stack<(int Depth, string Url)>();
+
+            // The nearest enclosing DISABLED node, and the background the dim is measured against, both
+            // resolved by depth exactly as the link above is. Disabling reaches the subtree because that
+            // is what a caller means by it: a row declared unavailable whose label stayed bright would be
+            // a row that looks pressable and is not. -1 is "nothing disabled here".
+            var disabledDepth = -1;
+            var backgrounds = new Stack<(int Depth, RGBAColor32 Color)>();
+
+            // A CLOSED popover's whole subtree is skipped, resolved by depth exactly as disabling is: the
+            // tree was still measured and arranged (the node is inert everywhere but here), so the closed
+            // popover is present in this list and has to be stepped over rather than absent from it.
+            // -1 is "no closed popover here".
+            var closedPopoverDepth = -1;
+
+            // An OPEN popover claims the pointer for its content. The claim is the ANCHORED node's rect, not
+            // the popover root's: the root is the full-bleed overlay, whose rect is everything, and
+            // confining hover to everything confines nothing. -1 is "not inside an open popover".
+            var openPopoverDepth = -1;
+
+            // Depth at which the popover's content is expected next; -1 when not waiting for it. See the
+            // capture below for why the owner cannot be read off the Anchored node itself.
+            var pendingOwnerDepth = -1;
 
             foreach (var arrangedNode in arranged)
             {
@@ -879,10 +1252,86 @@ namespace DIR.Lib
                     links.Pop();
                 }
 
+                while (backgrounds.Count > 0 && backgrounds.Peek().Depth >= arrangedNode.Depth)
+                {
+                    backgrounds.Pop();
+                }
+
+                if (disabledDepth >= 0 && arrangedNode.Depth <= disabledDepth)
+                {
+                    disabledDepth = -1;
+                }
+
+                if (closedPopoverDepth >= 0 && arrangedNode.Depth <= closedPopoverDepth)
+                {
+                    closedPopoverDepth = -1;
+                }
+
+                if (openPopoverDepth >= 0 && arrangedNode.Depth <= openPopoverDepth)
+                {
+                    openPopoverDepth = -1;
+                }
+
+                if (node.Popover is { } popover)
+                {
+                    if (popover.IsOpen)
+                    {
+                        openPopoverDepth = arrangedNode.Depth;
+
+                        // The claim is made BY BEING PAINTED, which is what makes it self-retiring: a
+                        // popover that closed simply stops painting, and nothing has to remember to release
+                        // anything. Same mechanism the dropdown's keyboard claim already uses.
+                        Ui.KeyboardClaimant = popover;
+                    }
+                    else if (closedPopoverDepth < 0)
+                    {
+                        closedPopoverDepth = arrangedNode.Depth;
+                    }
+                }
+
+                if (closedPopoverDepth >= 0)
+                {
+                    continue;
+                }
+
+                // Captured HERE, past the closed-popover skip, so what is retained is what was PAINTED and
+                // not merely what was arranged. A closed popover is still measured and still arranged (the
+                // node is inert everywhere but this loop), so appending the whole arranged array at the end
+                // would put its rows in the painted set: a shortcut declared on one would then fire from a
+                // panel nobody can see, which is the one thing matching against the painted tree exists to
+                // prevent. It also gives damage-based repaint the transition it was missing, an opening
+                // popover being nodes that appear rather than nodes whose signature never changed.
+                captured.Add(arrangedNode);
+
+                // The pointer owner is the popover's CONTENT rect, and it cannot be read off the Anchored
+                // node: ArrangeNode records every node against the rect it was GIVEN, so the Anchored node's
+                // own entry carries the pane it floats in, and the placed rect belongs to its child, which
+                // pre-order puts next at one greater depth. Confining hover to the Anchored node's rect
+                // would therefore confine it to the whole pane, which is to say not at all.
+                //
+                // Taking the FIRST such content means a popover whose content itself anchors something, a
+                // submenu, still confines to the outer content, which is the rect being pointed at.
+                if (pendingOwnerDepth >= 0 && arrangedNode.Depth == pendingOwnerDepth)
+                {
+                    Ui.PointerOwner = new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+                    pendingOwnerDepth = -1;
+                }
+                else if (openPopoverDepth >= 0 && node is Layout.Node.Anchored && Ui.PointerOwner is null)
+                {
+                    pendingOwnerDepth = arrangedNode.Depth + 1;
+                }
+
                 if (node.Hit is HitResult.LinkHit linkHit)
                 {
                     links.Push((arrangedNode.Depth, linkHit.Url));
                 }
+
+                if (node.IsDisabled && disabledDepth < 0)
+                {
+                    disabledDepth = arrangedNode.Depth;
+                }
+
+                var disabled = disabledDepth >= 0;
 
                 // CornerRadius is in design units like every other chrome measure, so it scales with DPI —
                 // through the context's axis-free mapping, the same one that resolved it at measure time.
@@ -900,22 +1349,68 @@ namespace DIR.Lib
                 if (nodeFill is { } bg)
                 {
                     FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, bg, radius);
+                    backgrounds.Push((arrangedNode.Depth, bg));
                 }
+
+                // The engine is the only thing that knows where the list was arranged, so it is the only
+                // thing that can state the viewport without keeping a second copy of the rect. What the
+                // list contains stays the consumer's, through SetExtent -- and bound BEFORE the leaf
+                // draws, so a drawFill that states the whole extent is the later word and wins.
+                node.Scroll?.BindViewport(new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height));
 
                 // Auto-bind the click region to the arranged rect. Any node can be a hit target -- a whole
                 // slot row or panel, not just a leaf -- and inner nodes register later so they win the hit.
+                //
+                // A disabled node registers too, and that is the point: the press is SWALLOWED rather than
+                // falling through to whatever is behind it, which for a row over a menu backdrop would
+                // dismiss the menu and so behave exactly like a working row. It registers without its
+                // handlers, with the NotAllowed cursor, and with its reason as the hover text -- the answer
+                // to "why can't I press this" belongs where the press was refused.
+                //
+                // Only the node that DECLARES the disability states the cursor. A descendant says
+                // nothing -- it must not go on advertising a hand, and it has no need to repeat the
+                // refusal: a region with no opinion is transparent to the cursor lookup, so the enclosing
+                // NotAllowed shows through, and repeating it would register a region per node in the
+                // subtree for no answer that was not already there.
+                var cursor = node.IsDisabled ? CursorKind.NotAllowed : disabled ? null : node.Cursor;
+                var tooltip = node.Tooltip ?? node.DisabledReason;
                 if (node.Hit is { } hit)
                 {
-                    RegisterClickable(bounds.X, bounds.Y, bounds.Width, bounds.Height, hit, node.OnClick, node.Cursor);
+                    RegisterClickable(new ClickableRegion(
+                        bounds.X, bounds.Y, bounds.Width, bounds.Height, hit,
+                        disabled ? null : node.OnClick, cursor)
+                    {
+                        OnPress = disabled ? null : node.OnPress,
+                        OnActivate = disabled ? null : node.OnActivate,
+                        Tooltip = tooltip,
+                        IsDisabled = disabled,
+                        Scroll = node.Scroll,
+                    });
                 }
-                else if (node.Cursor is { } cursor)
+                else if (cursor is not null || tooltip is not null || node.Scroll is not null)
                 {
-                    // A cursor with no hit still needs a region, or the statement has nowhere to live.
-                    RegisterCursor(bounds.X, bounds.Y, bounds.Width, bounds.Height, cursor);
+                    // A cursor, a tooltip or a scroll target with no hit still needs a region, or the
+                    // statement has nowhere to live. Inert to presses (ChromeHit, no handler), which is
+                    // what RegisterCursor has always emitted for the cursor-only case.
+                    RegisterClickable(new ClickableRegion(
+                        bounds.X, bounds.Y, bounds.Width, bounds.Height, new HitResult.ChromeHit(),
+                        null, cursor)
+                    {
+                        Tooltip = tooltip,
+                        IsDisabled = disabled,
+                        Scroll = node.Scroll,
+                    });
                 }
 
                 if (node is Layout.Node.Leaf leaf)
                 {
+                    // What a disabled run is dimmed TOWARD: the nearest background actually painted
+                    // behind it, since halving toward the wrong colour is how a grey ends up brighter
+                    // than the thing it is greying. Nothing painted a background means nothing knows,
+                    // and halving toward transparent black is simply "half as bright", which is the
+                    // honest answer on a surface that has not said what it is.
+                    var behind = backgrounds.Count > 0 ? backgrounds.Peek().Color : default;
+
                     switch (leaf.Content)
                     {
                         case Layout.Content.Text text:
@@ -941,20 +1436,24 @@ namespace DIR.Lib
                             // navigation affordance on top of it, the pixel-surface counterpart to the OSC 8
                             // wrap Console.Lib's CellLayout paints for the same node.
                             //
-                            // Only LINKED text takes this path. Ordinary layout text stays on DrawText, so
-                            // nothing else starts landing in the host's selection layer.
-                            if (links.Count > 0)
+                            // Only LINKED text takes this path, or a run that ASKED for it with
+                            // .Selectable(). Ordinary layout text stays on DrawText, so nothing else
+                            // starts landing in the host's selection layer. A selectable run that is not
+                            // also a link goes out with a null Href, which is a plain span rather than an
+                            // anchor -- the two declarations compose, and neither implies the other.
+                            var runColor = disabled ? DimTowards(text.Color, behind) : text.Color;
+                            if (links.Count > 0 || text.Selectable)
                             {
                                 DrawSelectableText(value, fp, ctx.Fallback,
                                     bounds.X, bounds.Y, bounds.Width, bounds.Height,
-                                    fontSize, text.Color, text.HAlign, text.VAlign,
-                                    links.Peek().Url);
+                                    fontSize, runColor, text.HAlign, text.VAlign,
+                                    links.Count > 0 ? links.Peek().Url : null);
                             }
                             else
                             {
                                 DrawText(value.AsSpan(), fp, ctx.Fallback,
                                     bounds.X, bounds.Y, bounds.Width, bounds.Height,
-                                    fontSize, text.Color, text.HAlign, text.VAlign);
+                                    fontSize, runColor, text.HAlign, text.VAlign);
                             }
                             break;
                         case Layout.Content.Box box when box.Color.Alpha > 0:
@@ -976,7 +1475,7 @@ namespace DIR.Lib
                                     bounds.X + (bounds.Width - iconSide) / 2f,
                                     bounds.Y + (bounds.Height - iconSide) / 2f,
                                     iconSide, iconSide),
-                                icon.Color);
+                                disabled ? DimTowards(icon.Color, behind) : icon.Color);
                             break;
                         case Layout.Content.TextInput field:
                             // RenderTextInput both draws AND registers the TextInputHit + I-beam, which is
@@ -990,9 +1489,13 @@ namespace DIR.Lib
                             // handler must not swallow a click meant to focus the field inside it.
                             var fieldPx = field.FontSize * ctx.FontScale;
                             var lead = TextInputRenderer.LeadingRoom(fieldPx, field.LeadingIcon is not null);
+                            // FocusOnOpen only travels: the painter reports the request on the region and
+                            // takes no focus of its own. Acting on it here would fire once per frame and
+                            // from inside a paint, where "is the field that has the keyboard still on
+                            // screen" cannot be answered yet -- the rest of the frame has not been drawn.
                             RenderTextInput(field.State,
                                 new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height),
-                                fp, fieldPx, field.Colors, lead);
+                                fp, fieldPx, field.Colors, lead, field.FocusOnOpen);
                             // Drawn HERE rather than inside TextInputRenderer, which is static and has no
                             // icon drawing of its own: the renderer only has to leave the room, and the
                             // widget that owns DrawLayoutIcon fills it. Seated at the field's side padding,
@@ -1010,6 +1513,42 @@ namespace DIR.Lib
                             }
 
                             break;
+                        case Layout.Content.Slider slider:
+                        {
+                            // Enabled is the CONTENT's own flag (a caller disabling this one slider while
+                            // the row around it stays live), and the ambient node-level "disabled" folds
+                            // into it rather than replacing it: a slider inside a disabled panel is
+                            // exactly as inert as a slider whose own state says so.
+                            var sliderState = slider.State;
+                            var sliderDisabled = disabled || !sliderState.Enabled;
+                            var span = sliderState.Max - sliderState.Min;
+                            var frac = span > 0f
+                                ? Math.Clamp((sliderState.Value - sliderState.Min) / span, 0f, 1f)
+                                : 0f;
+
+                            var fillColor = sliderDisabled ? DimTowards(slider.FillColor, behind) : slider.FillColor;
+                            var chrome = sliderDisabled
+                                ? new TrackSliderChrome(
+                                    DimTowards(slider.Chrome.TrackBackground, behind),
+                                    DimTowards(slider.Chrome.Handle, behind))
+                                : slider.Chrome;
+
+                            DrawTrackSliderVisual(bounds.X, bounds.Width, bounds.Y + bounds.Height / 2f,
+                                bounds.Y, bounds.Height, frac, fillColor, chrome, ctx.Scale);
+
+                            // draw == hit: the drag reads the SAME rect it was just painted into, captured
+                            // once here rather than re-derived from wherever the press lands.
+                            var track = new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+                            RegisterClickable(new ClickableRegion(
+                                bounds.X, bounds.Y, bounds.Width, bounds.Height,
+                                new HitResult.SliderStateHit(sliderState), null,
+                                sliderDisabled ? CursorKind.NotAllowed : null)
+                            {
+                                OnPress = sliderDisabled ? null : press => BeginSliderDrag(sliderState, track, press),
+                                IsDisabled = sliderDisabled,
+                            });
+                            break;
+                        }
                         case Layout.Content.Fill fill:
                             drawFill?.Invoke(fill, new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height));
                             break;
@@ -1017,11 +1556,6 @@ namespace DIR.Lib
                 }
             }
 
-            // Retain the arranged tree, always: damage-based repaint diffs it against the previous
-            // frame to decide which rects need painting at all, so this is not a debug aid that can be
-            // switched off. Appended across the frame's multiple PaintLayout calls, like the region
-            // tracker.
-            (_capturedLayout ??= []).AddRange(arranged);
         }
 
         /// <summary>

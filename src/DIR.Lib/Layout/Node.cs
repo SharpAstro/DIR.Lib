@@ -145,6 +145,118 @@ public abstract partial record Node
     /// <summary>Optional direct click handler, registered alongside <see cref="Hit"/> when present.</summary>
     public Action<InputModifier>? OnClick { get; init; }
 
+    /// <summary>
+    /// A press handler that is told WHERE it landed and may claim the gesture that follows, set via
+    /// <see cref="Pressable"/>. Returning a <see cref="DragCapture"/> says "mine until the button comes
+    /// up"; returning null declines, and the press falls through to <see cref="OnClick"/> as before.
+    /// </summary>
+    /// <remarks>
+    /// The counterpart of <see cref="OnClick"/> for a control whose behaviour depends on where inside
+    /// itself it was pressed -- a slider, a scrub bar, a divider. <see cref="OnClick"/> carries no
+    /// position, so every one of those instead re-derived its own track rect beside the paint and armed a
+    /// flag from the host's dispatcher: three branches of one gesture in three places, over a cached rect
+    /// the arranged one is free to disagree with. With the press on the node, "draw == hit" becomes
+    /// "draw == drag". See <see cref="PointerPress"/>.
+    /// </remarks>
+    public Func<PointerPress, DragCapture?>? OnPress { get; init; }
+
+    /// <summary>
+    /// What Enter does on this node when it differs from a click, set via <see cref="Activatable"/>.
+    /// Null (the default) means the two are the same thing and Enter runs <see cref="OnClick"/>.
+    /// </summary>
+    /// <remarks>
+    /// A list whose Enter is not its click is ordinary rather than exotic -- a planner row where Enter
+    /// pins the target and a click merely selects it -- and until a row could declare both,
+    /// <c>PixelWidgetBase.ActivateListCursor</c> was all-or-nothing on the click handler, so such a list
+    /// kept its Enter by hand and the cursor could not own the whole keyboard contract of a list.
+    /// </remarks>
+    public Action<InputModifier>? OnActivate { get; init; }
+
+    /// <summary>
+    /// Hover text for this node, set via <see cref="WithTooltip"/>. A node with a tooltip and no
+    /// <see cref="Hit"/> still registers a region -- inert to presses -- because a statement about what
+    /// is under the pointer has nowhere else to live.
+    /// </summary>
+    /// <remarks>
+    /// Declared here rather than painted by each consumer, for the reason <see cref="Cursor"/> is: the
+    /// region list already knows what is under the pointer. Three separate tooltip painters were counted
+    /// in one consumer, none of them with a hover delay, over two declarations (<c>TabItem.Tooltip</c>,
+    /// <c>DropdownItem.Tooltip</c>) this library owned and refused to paint.
+    /// </remarks>
+    public string? Tooltip { get; init; }
+
+    /// <summary>
+    /// Why this node cannot be acted on, set via <see cref="Disabled(string)"/>. Null (the default) is an
+    /// ordinary node and paints exactly as before.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A REASON rather than a flag, because the two facts are one: something a reader cannot press with
+    /// no explanation teaches nothing about how to make it pressable, and the explanation belongs where
+    /// the press was refused rather than somewhere they reach by making the choice that just failed. The
+    /// reason serves as the node's <see cref="Tooltip"/> when it has no other.
+    /// </para>
+    /// <para>
+    /// The painter dims the subtree's text and icons toward the background they are drawn on
+    /// (<c>PixelWidgetBase.DimTowards</c>, the rule <c>RenderDropdownMenu</c> has always used for a
+    /// disabled row), and registers the region with no click, no press and a
+    /// <see cref="CursorKind.NotAllowed"/> cursor. Registered rather than omitted so the press is
+    /// SWALLOWED: a disabled row that let the press through to the backdrop behind it would dismiss the
+    /// panel, which is to say it would behave exactly like a working one. The list cursor steps over it.
+    /// </para>
+    /// </remarks>
+    public string? DisabledReason { get; init; }
+
+    /// <summary>Whether this node was declared disabled -- <see cref="DisabledReason"/> is stated.</summary>
+    public bool IsDisabled => DisabledReason is not null;
+
+    /// <summary>
+    /// The scroll controller whose viewport is this node's arranged rect, set via
+    /// <see cref="WithScroll"/>. The painter binds the rect
+    /// (<see cref="ListScrollController.BindViewport"/>) and registers it as the controller's region, so
+    /// a wheel can be delivered to the innermost scrollable under the pointer.
+    /// </summary>
+    /// <remarks>
+    /// The rows and the row height stay the consumer's, stated through
+    /// <see cref="ListScrollController.SetExtent"/>; only the viewport moves here, because only the
+    /// engine knows it. What it removes is the "is the pointer over my rect" test every wheel handler was
+    /// making for itself -- seventeen of them across eleven files in one consumer, each a second
+    /// derivation of a rect the arrange pass already held.
+    /// </remarks>
+    public ListScrollController? Scroll { get; init; }
+
+    /// <summary>
+    /// A keyboard binding that reaches this node, set via <see cref="WithShortcut"/>. Inert in measure
+    /// and in paint: the router matches it against the PAINTED tree, so a shortcut on a panel that is not
+    /// on screen is inert without anyone saying so.
+    /// </summary>
+    /// <remarks>
+    /// What a match DOES depends on the node -- a text-input leaf takes the keyboard, a clickable node is
+    /// clicked, a node with <see cref="OnActivate"/> is activated. Whether it fires at all while a field
+    /// has the keyboard is <see cref="KeyChord.BeatsFocusedField"/>, stated once, on the chord.
+    /// </remarks>
+    public KeyChord? Shortcut { get; init; }
+
+    /// <summary>
+    /// Marks this node as the root of a popover, so the painter honours its open state rather than the
+    /// consumer doing it. Set by <see cref="Builder.Popover"/>; null on every ordinary node.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A closed popover paints NOTHING, itself and its whole subtree, and an open one additionally claims
+    /// the keyboard and confines the pointer to its content. That is the entire five-obligation checklist
+    /// <see cref="PopoverState"/> describes, moved from every consumer into one place, and it is stated on
+    /// the node because the node is the thing that knows whether it was painted.
+    /// </para>
+    /// <para>
+    /// It is INERT in measure and arrange, exactly like <see cref="Shortcut"/>: a closed popover is still
+    /// measured and still arranged, and only the paint skips it. That costs a little arithmetic on a closed
+    /// popover and buys the property that opening one cannot change the layout of anything around it, which
+    /// is what a floating overlay is for.
+    /// </para>
+    /// </remarks>
+    public PopoverState? Popover { get; init; }
+
     /// <summary>What the pointer looks like over this node's arranged rect, or null to inherit from
     /// whatever encloses it. Bound to the rect the content was painted in, like <see cref="Hit"/>.</summary>
     public CursorKind? Cursor { get; init; }
@@ -180,7 +292,29 @@ public abstract partial record Node
         ImmutableArray<Node> Cells,
         float RowGap = 0f,
         float ColumnGap = 0f,
-        bool AutoRows = false) : Node;
+        bool AutoRows = false) : Node
+    {
+        /// <summary>
+        /// Per-column sizing, set via <see cref="WithColumns"/>. Empty (the default) is the even split
+        /// this grid has always done, so an untouched grid arranges byte-identically.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>Auto</c> measures a column to its own widest cell, <c>Fixed</c> is fixed, and
+        /// <c>Star</c> shares whatever the fixed and auto columns leave. That is what a TABLE is: a
+        /// label column as wide as its longest label and a value column taking the rest. Without it a
+        /// consumer measures the column stops itself and places the cells by hand, which is the one
+        /// container that kept re-deriving the arithmetic the engine already owns.
+        /// </para>
+        /// <para>
+        /// Fewer entries than <see cref="Columns"/> leaves the remaining columns <c>Star(1)</c>; extra
+        /// entries are ignored. An init-only property rather than a further positional parameter, for
+        /// the reason <see cref="ArrangedNode{T}.Depth"/> is one: an optional parameter added to a
+        /// record's primary constructor deletes the old constructor from the assembly.
+        /// </para>
+        /// </remarks>
+        public ImmutableArray<Sizing> ColumnSizing { get; init; } = [];
+    }
 
     /// <summary>Children flow along <paramref name="Axis"/> and wrap into a new line when the next child
     /// would overflow the available extent -- the flexbox <c>wrap</c> for toolbars / chip rows on narrow
@@ -250,13 +384,56 @@ public abstract partial record Node
     /// hand re-clamps every frame for exactly that reason. Set false for a child that is deliberately
     /// allowed to overhang, such as a drag chip tracking a pointer past an edge.
     /// </param>
+    /// <param name="Anchor">
+    /// A rect to place against INSTEAD of this node's own, in the same surface coordinates the tree is
+    /// arranged into, or null for the pre-9.2 behaviour of placing against the parent.
+    /// <para>
+    /// <b><see cref="Side"/> means the opposite thing when this is set, and that is the point.</b> Against
+    /// the parent, a side places the child just INSIDE that edge, which is what pins a panel to the bottom
+    /// of a pane. Against an anchor, it places the child just OUTSIDE that edge, because the anchor is a
+    /// thing on screen the child must sit beside and not cover: a popover under its button, a tooltip above
+    /// its icon. Two different questions that happened to share a word, so the word does what the presence
+    /// of an anchor says it does.
+    /// </para>
+    /// <para>
+    /// <see cref="Clamp"/> still clamps into this node's rect, not the anchor's. That combination is the
+    /// whole reason this exists in the engine rather than in each consumer: a menu opening under the
+    /// rightmost button in a bar has to sit below THAT button and still stay on screen, and the hand-written
+    /// version of it was got wrong twice.
+    /// </para>
+    /// </param>
     public sealed record Anchored(
         Node Child,
         DockSide? Side = null,
         float OffsetAlong = 0f,
         float OffsetAcross = 0f,
         float Margin = 0f,
-        bool Clamp = true) : Node;
+        bool Clamp = true,
+        RectF32? Anchor = null) : Node
+    {
+        /// <summary>The pre-9.2 shape, kept so an already-compiled consumer keeps binding. A record's
+        /// constructor takes its arity from the primary constructor, and a trailing DEFAULT does not help
+        /// a caller that was compiled against the shorter one; DIR.Lib 9.1 shipped exactly that mistake on
+        /// an input record and broke Console.Lib.</summary>
+        public Anchored(Node Child, DockSide? Side, float OffsetAlong, float OffsetAcross, float Margin, bool Clamp)
+            : this(Child, Side, OffsetAlong, OffsetAcross, Margin, Clamp, null)
+        {
+        }
+
+        /// <summary>The six-element deconstruction, for the positional patterns written against it. A
+        /// positional pattern resolves by ARITY, so both arities have to exist or every
+        /// <c>Anchored(var child, var side, _, _, _, _)</c> stops compiling.</summary>
+        public void Deconstruct(out Node child, out DockSide? side, out float offsetAlong,
+            out float offsetAcross, out float margin, out bool clamp)
+        {
+            child = Child;
+            side = Side;
+            offsetAlong = OffsetAlong;
+            offsetAcross = OffsetAcross;
+            margin = Margin;
+            clamp = Clamp;
+        }
+    }
 
     /// <summary>A terminal paintable piece.</summary>
     public sealed record Leaf(Content Content) : Node;

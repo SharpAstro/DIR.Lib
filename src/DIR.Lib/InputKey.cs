@@ -73,8 +73,21 @@ public static class InputKeyExtensions
         /// Maps an <see cref="InputKey"/> and <see cref="InputModifier"/> to a <see cref="TextInputKey"/>,
         /// or null if not applicable. Handles Ctrl+A → SelectAll.
         /// </summary>
+        /// <remarks>
+        /// <b>Shift is not part of the mapping, and that is deliberate.</b> Shift+Ctrl+Left is the SAME
+        /// meaning as Ctrl+Left -- go a word left -- differing only in whether the selection follows, which
+        /// travels beside the key as <c>extend</c> (see <see cref="TextInputState.HandleKey"/>). Folding it
+        /// in would double the word half of this enum to say one thing twice.
+        /// <para>
+        /// The Ctrl'd arrows are matched BEFORE their plain forms, since a <c>switch</c> arm without a
+        /// guard would otherwise claim Ctrl+Left as an ordinary Left and step one character.
+        /// </para>
+        /// </remarks>
         public TextInputKey? ToTextInputKey(InputModifier modifiers = InputModifier.None) => key switch
         {
+            InputKey.Backspace when (modifiers & InputModifier.Ctrl) != 0 => TextInputKey.WordBackspace,
+            InputKey.Left when (modifiers & InputModifier.Ctrl) != 0 => TextInputKey.WordLeft,
+            InputKey.Right when (modifiers & InputModifier.Ctrl) != 0 => TextInputKey.WordRight,
             InputKey.Backspace => TextInputKey.Backspace,
             InputKey.Delete => TextInputKey.Delete,
             InputKey.Left => TextInputKey.Left,
@@ -86,6 +99,7 @@ public static class InputKeyExtensions
             InputKey.A when (modifiers & InputModifier.Ctrl) != 0 => TextInputKey.SelectAll,
             InputKey.V when (modifiers & InputModifier.Ctrl) != 0 => TextInputKey.Paste,
             InputKey.C when (modifiers & InputModifier.Ctrl) != 0 => TextInputKey.Copy,
+            InputKey.X when (modifiers & InputModifier.Ctrl) != 0 => TextInputKey.Cut,
             _ => null
         };
     }

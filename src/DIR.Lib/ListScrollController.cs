@@ -255,6 +255,32 @@ public sealed class ListScrollController
     }
 
     /// <summary>
+    /// The viewport half of <see cref="SetExtent"/> on its own: where the list IS, with what it contains
+    /// left alone.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the half a layout tree can honestly state. <c>PixelWidgetBase.PaintLayout</c> calls it for
+    /// a node carrying <see cref="Layout.Node.Scroll"/>, because the arranged rect IS the viewport and
+    /// the engine is the only thing that knows it -- a consumer restating that rect beside its paint is
+    /// the drift <c>.Clickable</c> exists to remove, one axis over. What the engine cannot know is how
+    /// many rows there are or how tall one is, so those stay the consumer's, stated through
+    /// <see cref="SetExtent"/> exactly as before.
+    /// </para>
+    /// <para>
+    /// Side-effect-free w.r.t. <see cref="Changed"/>, like <see cref="SetExtent"/>, and it deliberately
+    /// takes no part in the first-position / tail-pin logic: those decisions belong to the call that
+    /// knows the row count, and a <see cref="ScrollAnchor.Bottom"/> list would otherwise latch to the end
+    /// of a list of nothing on the frame before its rows were stated.
+    /// </para>
+    /// </remarks>
+    public void BindViewport(RectF32 viewport)
+    {
+        _viewport = viewport;
+        _offset = Math.Clamp(_offset, 0f, MaxOffset);
+    }
+
+    /// <summary>
     /// Single input forward: wheel + interactive-scrollbar thumb/track + surface tap-or-drag. Returns
     /// <c>true</c> when the event was consumed. The owning widget should forward only presses that its
     /// own registered clickables (row sub-buttons, etc.) did not claim — unclaimed presses fall through

@@ -90,6 +90,59 @@ public sealed class WindowUiSettings
     public IKeyboardClaimant? KeyboardClaimant { get; set; }
 
     /// <summary>
+    /// The rect that owns the pointer this frame, set by an open popover as it paints, or null when nothing
+    /// does. Hover resolution consults it, so what is BEHIND a popover stops lighting up under the cursor.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Hover, not hit-testing. Clicks already go through the region tracker in paint order, so the backdrop
+    /// takes them without help; what a raw pointer position cannot express on its own is that a row a
+    /// popover is covering should look inert rather than warm. Confining hover is that rule, stated once.
+    /// </para>
+    /// <para>
+    /// <b>Cleared once per PAINT CYCLE, not once per widget</b> (<see cref="NoteFrameBegin"/>). Per widget
+    /// would be wrong in a way that only shows up with more than one: every widget clears in its own
+    /// BeginFrame, so a second widget beginning its frame would wipe the owner a first widget had just
+    /// painted, and the popover would confine hover only when it happened to belong to the last widget
+    /// drawn. Unlike <see cref="KeyboardClaimant"/> this cannot be left stale, because a rect has no way to
+    /// answer "I am not displayed any more".
+    /// </para>
+    /// <para>
+    /// <b>A cycle is not <see cref="FrameId"/>, and keying it on that was a bug.</b> The first shipped
+    /// version cleared when the id CHANGED, which is correct only for a host that advances it. That property
+    /// is documented as optional and defaults to 0, so on a host that leaves it there the first BeginFrame
+    /// cleared and every later one returned early: an open popover then owned the pointer for the life of
+    /// the process, and every hover in the window died the first time one closed. A default that quietly
+    /// disables a rule is worse than no default, so the cycle is now derived from the widgets themselves.
+    /// </para>
+    /// </remarks>
+    public RectF32? PointerOwner { get; set; }
+
+    private readonly HashSet<object> _begunThisCycle = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
+    /// Notes that <paramref name="widget"/> has begun a frame, and clears <see cref="PointerOwner"/> when
+    /// that begins a NEW cycle. Called by every widget's BeginFrame.
+    /// </summary>
+    /// <remarks>
+    /// A cycle ends when a widget begins a second time, which needs nothing of the host: one widget or
+    /// twenty, in any paint order, the first repeat is the boundary. Within a cycle the owner survives every
+    /// other widget's BeginFrame, which is the property the whole mechanism exists for, since a popover in
+    /// one widget must confine hover in the widgets painted after it.
+    /// </remarks>
+    internal void NoteFrameBegin(object widget)
+    {
+        if (_begunThisCycle.Add(widget))
+        {
+            return;
+        }
+
+        _begunThisCycle.Clear();
+        _begunThisCycle.Add(widget);
+        PointerOwner = null;
+    }
+
+    /// <summary>
     /// Which text field in this window has the keyboard, and the one way to move it.
     /// </summary>
     /// <remarks>

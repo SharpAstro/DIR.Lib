@@ -54,6 +54,56 @@ namespace DIR.Lib
         public override CursorKind? HitTestCursor(float x, float y)
             => base.HitTestCursor(x, y) ?? FromChildren(child => child.HitTestCursor(x, y));
 
+        /// <inheritdoc/>
+        public override ListScrollController? ScrollTargetAt(float x, float y)
+            => base.ScrollTargetAt(x, y) ?? FromChildren(child => child.ScrollTargetAt(x, y));
+
+        /// <summary>
+        /// Where the pointer is, passed on to every child as it is set.
+        /// </summary>
+        /// <remarks>
+        /// Hover resolves during PAINT, against this value, so a child left at null never lights anything
+        /// it drew. Whatever routes the motion can only set what it holds, and what it holds is the
+        /// composite, so the composite is what passes it down. Written on the way in rather than read on
+        /// the way out, because a child reads its own copy mid-paint and there is nowhere to intercept
+        /// that.
+        /// </remarks>
+        public override (float X, float Y)? Pointer
+        {
+            get => base.Pointer;
+            set
+            {
+                base.Pointer = value;
+                var children = Children;
+                for (var i = 0; i < children.Count; i++)
+                {
+                    children[i].Pointer = value;
+                }
+            }
+        }
+
+        /// <inheritdoc/>
+        public override void CollectPaintedRegions(List<ClickableRegion> into)
+        {
+            base.CollectPaintedRegions(into);
+            var children = Children;
+            for (var i = 0; i < children.Count; i++)
+            {
+                children[i].CollectPaintedRegions(into);
+            }
+        }
+
+        /// <inheritdoc/>
+        public override void CollectPaintedNodes(List<Layout.ArrangedNode<float>> into)
+        {
+            base.CollectPaintedNodes(into);
+            var children = Children;
+            for (var i = 0; i < children.Count; i++)
+            {
+                children[i].CollectPaintedNodes(into);
+            }
+        }
+
         /// <summary>
         /// Every text field painted this frame, this widget's and its children's, in paint order — which
         /// is what makes Tab cycling follow the VISUAL order across a composed frame automatically.
@@ -86,16 +136,15 @@ namespace DIR.Lib
         /// override of it, because that one means "the regions I registered" and is what the hit tests
         /// above read per widget. Conflating the two would make a composite's own hit test walk its
         /// children twice.
+        /// <para>
+        /// The walk itself is <see cref="CollectPaintedRegions"/>'s, not a second copy of it: this is the
+        /// snapshot form, for a reader that wants a list it can keep rather than one it fills.
+        /// </para>
         /// </remarks>
         public IReadOnlyList<ClickableRegion> PaintedRegions()
         {
-            var regions = new List<ClickableRegion>(GetRegisteredRegions());
-            var children = Children;
-            for (var i = 0; i < children.Count; i++)
-            {
-                regions.AddRange(children[i].GetRegisteredRegions());
-            }
-
+            var regions = new List<ClickableRegion>();
+            CollectPaintedRegions(regions);
             return regions;
         }
 
