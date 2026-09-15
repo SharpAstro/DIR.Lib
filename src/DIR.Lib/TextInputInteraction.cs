@@ -160,9 +160,30 @@ public static class TextInputInteraction
             return true;
         }
 
-        if (textKey.HasValue && activeInput.HandleKey(textKey.Value))
+        // Cut is Copy and then Delete, in that order and in one place. Spelling it as the two halves rather
+        // than as its own state operation is what keeps a cut and a copy putting IDENTICAL text on the
+        // clipboard: there is one expression for "the selected text", and the delete goes through the
+        // field's own Delete case, which already knows that a selection is what Delete removes.
+        if (textKey == TextInputKey.Cut)
         {
-            if (textKey.Value is TextInputKey.Backspace or TextInputKey.Delete)
+            if (activeInput.HasSelection)
+            {
+                ctx.SetClipboardText?.Invoke(
+                    activeInput.Text[activeInput.SelectionStart..activeInput.SelectionEnd]);
+                activeInput.HandleKey(TextInputKey.Delete);
+                activeInput.OnTextChanged?.Invoke(activeInput.Text);
+                ctx.RequestRedraw();
+            }
+            return true;
+        }
+
+        // Shift rides beside the key rather than inside it: Shift+Ctrl+Left is Ctrl+Left with the selection
+        // following, not a different motion. See TextInputState.HandleKey for which keys honour it.
+        var extend = (modifiers & InputModifier.Shift) != 0;
+
+        if (textKey.HasValue && activeInput.HandleKey(textKey.Value, extend))
+        {
+            if (textKey.Value is TextInputKey.Backspace or TextInputKey.Delete or TextInputKey.WordBackspace)
             {
                 activeInput.OnTextChanged?.Invoke(activeInput.Text);
             }

@@ -81,6 +81,14 @@ public static class TextInputRenderer
     public static float LeadingIconSize(float fontSize) => fontSize * LeadingIconRatio;
 
     /// <summary>
+    /// How wide the caret is drawn, and therefore how much room the scroll has to leave for it at the
+    /// right-hand edge. Stated once rather than as a literal in the caret's rect, because the scroll has
+    /// to reserve exactly what the caret occupies: reserving less puts the caret half outside the field at
+    /// the end of an over-long value, which is the one position it is most often in.
+    /// </summary>
+    private const int CaretWidthPx = 2;
+
+    /// <summary>
     /// Where the field's first glyph lands, given the field's own left edge. The third reader of the
     /// insets above, after the measure pass and the paint: <see cref="CaretIndexAt"/> has to start from
     /// exactly the origin <see cref="Render"/> drew from, or a click resolves to a different character
@@ -134,7 +142,11 @@ public static class TextInputRenderer
             return 0;
         }
 
-        var target = pointerX - TextOriginX(x, fontSize, leadingRoom);
+        // The field's own scroll goes back on before the widths are searched: the paint drew boundary i at
+        // (origin - offset + width(i)), so the pointer has to be moved into the same unscrolled frame the
+        // widths are measured in. Rounded exactly as the paint rounds it, or a click on a scrolled field
+        // lands a pixel out at the far end of a long value -- which is a character at a small size.
+        var target = pointerX - TextOriginX(x, fontSize, leadingRoom) + (int)MathF.Round(state.ScrollOffsetPx);
         if (target <= 0f)
         {
             return 0;
@@ -259,6 +271,68 @@ public static class TextInputRenderer
         var displayText = visibleText.Length > 0 ? visibleText : (state.IsActive ? "" : state.Placeholder);
         var textColor = visibleText.Length > 0 ? colors.Text : colors.Placeholder;
 
+        // While composing, the caret belongs to the IME's position inside the preedit, not to the
+        // field's own CursorPos. Resolved here rather than beside the caret's own drawing because the
+        // scroll below is decided BY it: which part of the value is on screen is "wherever the caret is".
+        var caretChars = composing ? state.CursorPos + state.CompositionCursor : state.CursorPos;
+
+        // How far the value is slid to the left so the caret stays in the box. A value longer than its
+        // field used to be drawn from its first character and left to run off the right-hand edge, so
+        // typing past the width of the field put the caret outside it and the characters over whatever was
+        // painted next door. Holding the CARET in view and sliding the value under it is what every text
+        // box does instead, and it is one number -- which lives on the field (see
+        // TextInputState.ScrollOffsetPx) because several fields are on screen at once and the offset has to
+        // survive between frames.
+        //
+        // Maintained only while focused: an unfocused field has no caret to chase, and asking every field
+        // on screen to measure its whole value once a frame just to discover that it fits is a cost paid
+        // by the fields that never needed this.
+        var overflows = false;
+        if (!state.IsActive || textW <= 0)
+        {
+            state.ScrollOffsetPx = 0f;
+        }
+        else
+        {
+            var fullWidth = WidthUpTo(visibleText.Length);
+            overflows = fullWidth > textW;
+            if (!overflows)
+            {
+                // It fits. Never hold a value off its own left edge -- a field that has just been cleared
+                // or shortened would otherwise keep showing the empty space the deleted characters left.
+                state.ScrollOffsetPx = 0f;
+            }
+            else
+            {
+                var caretWidth = WidthUpTo(caretChars);
+                var offset = state.ScrollOffsetPx;
+                if (caretWidth < offset)
+                {
+                    offset = caretWidth;                                // the caret fell off the left edge
+                }
+                else if (caretWidth - offset > textW - CaretWidthPx)
+                {
+                    offset = caretWidth - textW + CaretWidthPx;         // ... or off the right one
+                }
+
+                // Clamped so a shrinking value drags the window back with it instead of leaving the field
+                // scrolled past its own end, showing blank.
+                state.ScrollOffsetPx = Math.Clamp(offset, 0f, fullWidth - textW);
+            }
+        }
+
+        var scroll = (int)MathF.Round(state.ScrollOffsetPx);
+
+        // Clipped only while the value does not fit, so a field that fitted before draws byte-identically.
+        // It is not optional once it does not fit: the run starts LEFT of the text box and DrawText draws
+        // from wherever it is told without stopping, so an unclipped scrolled field paints over its own
+        // border and out across whatever sits beside it.
+        var clipped = overflows;
+        if (clipped)
+        {
+            renderer.PushClip(new RectInt(new PointInt(textX + textW, y + height), new PointInt(textX, y)));
+        }
+
         // Selection highlight, painted BEFORE the glyphs. Painted after them it is a fill OVER the run,
         // and at alpha 180 the selected characters simply vanish; a field that opens with its contents
         // selected (the sky atlas F3 box, whose OpenSearch does Activate then SelectAll) then reads as an
@@ -280,9 +354,12 @@ public static class TextInputRenderer
 
         if (displayText.Length > 0)
         {
+            // The rect's LEFT edge carries the scroll and its right edge does not, so the run starts where
+            // the offset says and still has the whole box to run into. Narrowing both edges together would
+            // scroll the text and then cut it off at the same width it already did not fit in.
             var layoutRect = new RectInt(
                 new PointInt(textX + textW, textY + textH),
-                new PointInt(textX, textY));
+                new PointInt(textX - scroll, textY));
 
             if (fallback is not null)
             {
@@ -304,12 +381,24 @@ public static class TextInputRenderer
         // Measured through the SAME chain the text was drawn with, or the caret and selection would be
         // positioned for a face that did not render it -- with a fallback in play the primary reports zero
         // advance for a glyph it lacks, so every measurement past the first CJK character would be short.
-        int XOf(int chars) => textX + (int)(fallback is not null
+        float WidthUpTo(int chars) => fallback is not null
             ? fallback.Measure(renderer, visibleText[..chars], fontSize).Width
-            : renderer.MeasureText(visibleText[..chars].AsSpan(), fontFamily, fontSize).Width);
+            : renderer.MeasureText(visibleText[..chars].AsSpan(), fontFamily, fontSize).Width;
+
+        // Where boundary `chars` lands ON SCREEN: the measurement above, moved by the scroll the paint
+        // applied. Everything positional goes through here -- selection, preedit underline, caret -- so
+        // there is one place the offset is subtracted and nothing can be drawn in the unscrolled frame.
+        int XOf(int chars) => textX - scroll + (int)WidthUpTo(chars);
 
         if (!state.IsActive)
         {
+            // Unreachable today, since only a focused field scrolls and only a scrolled one clips. Paired
+            // anyway: a push and a pop belong to each other, and an unbalanced stack does not fail here --
+            // it clips everything drawn after this field, which reads as the NEXT widget being broken.
+            if (clipped)
+            {
+                renderer.PopClip();
+            }
             return default;
         }
 
@@ -326,19 +415,22 @@ public static class TextInputRenderer
                 textColor);
         }
 
-        // While composing, the caret belongs to the IME's position inside the preedit, not to the
-        // field's own CursorPos.
-        var caretChars = composing ? state.CursorPos + state.CompositionCursor : state.CursorPos;
         var caretX = XOf(caretChars);
         var caretY = y + (int)(height * 0.15f);
         var caretH = (int)(height * 0.7f);
-        var caretRect = new RectInt(new PointInt(caretX + 2, caretY + caretH), new PointInt(caretX, caretY));
+        var caretRect = new RectInt(
+            new PointInt(caretX + CaretWidthPx, caretY + caretH), new PointInt(caretX, caretY));
 
         // The caret stops blinking while composing: it is tracking the input method, and a blink there
         // reads as the field being unresponsive rather than as a text cursor.
         if (composing || (frameCount / 30) % 2 == 0)
         {
             renderer.FillRectangle(caretRect, colors.Cursor);
+        }
+
+        if (clipped)
+        {
+            renderer.PopClip();
         }
 
         return caretRect;

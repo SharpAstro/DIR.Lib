@@ -39,9 +39,11 @@ namespace DIR.Lib
         }
 
         /// <summary>Registers a clickable region with an optional click handler.</summary>
+        /// <param name="focusOnOpen">The region is a field that asked for the keyboard as it appeared --
+        /// see <see cref="ClickableRegion.FocusOnOpen"/>.</param>
         public void Register(float x, float y, float w, float h, HitResult result,
-            Action<InputModifier>? onClick = null, CursorKind? cursor = null)
-            => _regions.Add(new ClickableRegion(x, y, w, h, result, onClick, cursor));
+            Action<InputModifier>? onClick = null, CursorKind? cursor = null, bool focusOnOpen = false)
+            => _regions.Add(new ClickableRegion(x, y, w, h, result, onClick, cursor, focusOnOpen));
 
         /// <summary>
         /// Registers a region that only states a cursor — a panel card, a bar — with no action. It still

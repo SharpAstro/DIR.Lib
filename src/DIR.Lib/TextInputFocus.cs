@@ -57,8 +57,16 @@ public sealed class TextInputFocus
     /// </para>
     /// </summary>
     /// <param name="input">The field to focus.</param>
-    /// <param name="initialText">Seed text, selecting the whole field's worth of value the way opening an
-    /// editor on an existing value should; null leaves the field's current text alone.</param>
+    /// <param name="initialText">Seed text, SELECTED so that typing replaces it the way opening an editor
+    /// on an existing value should; null leaves the field's current text and caret alone.</param>
+    /// <remarks>
+    /// <b>The seed is selected here rather than by the caller.</b> Seeding without selecting puts the caret
+    /// at the end of the value, so the first keystroke appends to it -- which is almost never what "edit
+    /// this number" means, and every caller that had noticed was following the call with its own
+    /// <see cref="TextInputState.SelectAll"/>. Two of them had; the ones that had not simply behaved
+    /// differently, which is the shape of bug an owner exists to make unreachable. Seeding and selecting
+    /// are one act, so they are one call.
+    /// </remarks>
     public void Focus(TextInputState input, string? initialText = null)
     {
         if (ReferenceEquals(_current, input))
@@ -71,6 +79,10 @@ public sealed class TextInputFocus
 
         _current = input;
         input.Activate(initialText);
+        if (initialText is not null)
+        {
+            input.SelectAll();
+        }
 
         FocusChanged?.Invoke(previous, input);
     }

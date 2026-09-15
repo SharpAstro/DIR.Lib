@@ -69,13 +69,17 @@ public static class Builder
     /// case); <paramref name="widthSample"/> only decides anything under <c>Auto</c>.
     /// </para>
     /// </summary>
+    /// <param name="focusOnOpen">Ask for the keyboard when this field first appears, without taking it off
+    /// a field already being typed in -- see <see cref="Content.TextInput.FocusOnOpen"/>.</param>
     public static Node TextInput(TextInputState state, float fontSize = 14f,
-        TextInputColors? colors = null, string? widthSample = null, IconKind? leadingIcon = null)
+        TextInputColors? colors = null, string? widthSample = null, IconKind? leadingIcon = null,
+        bool focusOnOpen = false)
         => new Node.Leaf(new Content.TextInput(state, fontSize)
         {
             Colors = colors,
             WidthSample = widthSample,
             LeadingIcon = leadingIcon,
+            FocusOnOpen = focusOnOpen,
         });
 
     /// <summary>An app-drawn escape-hatch leaf (chart/sky map). Pair with <c>Star</c> sizing to fill; set <paramref name="key"/> to route multiple fills. A text field has its own <see cref="TextInput"/> factory.</summary>

@@ -274,6 +274,97 @@ public class TextInputInteractionTests
         harness.Clipboard.ShouldBe("previous");
     }
 
+    /// <summary>
+    /// Cut is copy and then delete, and both halves have to happen: a cut that only copied would silently
+    /// be a Ctrl+C, which is the failure nobody notices until the paste lands beside the original.
+    /// </summary>
+    [Fact]
+    public void CtrlX_CopiesTheSelectionAndRemovesIt()
+    {
+        var seen = new List<string>();
+        var field = new TextInputState
+        {
+            Text = "abcdef",
+            SelectionAnchor = 1,
+            CursorPos = 4,
+            OnTextChanged = t => seen.Add(t),
+        };
+        var harness = new Harness(field);
+        harness.Focus.Focus(field);
+
+        harness.Key(InputKey.X, InputModifier.Ctrl).ShouldBeTrue();
+
+        harness.Clipboard.ShouldBe("bcd");
+        field.Text.ShouldBe("aef");
+        field.CursorPos.ShouldBe(1);
+        field.HasSelection.ShouldBeFalse();
+        seen.ShouldBe(["aef"], "a live search must see the text the cut left behind");
+    }
+
+    [Fact]
+    public void CtrlXWithNoSelection_ChangesNothing()
+    {
+        var field = new TextInputState { Text = "abcdef" };
+        var harness = new Harness(field) { Clipboard = "previous" };
+        harness.Focus.Focus(field);
+
+        harness.Key(InputKey.X, InputModifier.Ctrl).ShouldBeTrue();
+
+        harness.Clipboard.ShouldBe("previous");
+        field.Text.ShouldBe("abcdef");
+    }
+
+    // ---- Word motion ----
+
+    [Fact]
+    public void CtrlLeftAndCtrlRight_StepAWordAtATime()
+    {
+        var field = new TextInputState { Text = "hello brave world" };
+        var harness = new Harness(field);
+        harness.Focus.Focus(field);
+        field.CursorPos = 0;
+
+        harness.Key(InputKey.Right, InputModifier.Ctrl);
+        field.CursorPos.ShouldBe(6);
+
+        harness.Key(InputKey.Left, InputModifier.Ctrl);
+        field.CursorPos.ShouldBe(0);
+    }
+
+    /// <summary>
+    /// Shift is not a different motion, it is the same one with the selection following -- which is why it
+    /// is not a fifth <see cref="TextInputKey"/> but the <c>extend</c> beside the key.
+    /// </summary>
+    [Fact]
+    public void ShiftCtrlRight_SelectsTheWordItStepsOver()
+    {
+        var field = new TextInputState { Text = "hello brave world" };
+        var harness = new Harness(field);
+        harness.Focus.Focus(field);
+        field.CursorPos = 0;
+
+        harness.Key(InputKey.Right, InputModifier.Ctrl | InputModifier.Shift);
+
+        field.SelectionStart.ShouldBe(0);
+        field.SelectionEnd.ShouldBe(6);
+    }
+
+    [Fact]
+    public void CtrlBackspace_DeletesTheWordBeforeTheCaretAndNotifies()
+    {
+        var seen = new List<string>();
+        var field = new TextInputState { Text = "hello brave world", OnTextChanged = t => seen.Add(t) };
+        var harness = new Harness(field);
+        harness.Focus.Focus(field);
+        field.CursorPos = field.Text.Length;
+
+        harness.Key(InputKey.Backspace, InputModifier.Ctrl);
+
+        field.Text.ShouldBe("hello brave ");
+        seen.ShouldBe(["hello brave "],
+            "a word delete changes the text exactly as a plain backspace does, so a live search owes it the same callback");
+    }
+
     // ---- Override ----
 
     /// <summary>

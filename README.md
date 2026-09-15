@@ -79,8 +79,9 @@ Layout.Builder.HStack(
 
 ## Text Input
 
-- **`TextInputState`** — single-line text input state machine with cursor, selection, undo
-- **`TextInputRenderer`** — renders text input using any `Renderer<T>` (blinking cursor, selection highlight)
+- **`TextInputState`** — single-line text input state machine with cursor and selection
+- **`TextInputRenderer`** — renders text input using any `Renderer<T>` (blinking cursor, selection highlight, and a horizontal scroll that keeps the caret inside a box too narrow for the whole value)
+- **Word motion**: `Ctrl+Left` / `Ctrl+Right` step to the start of the neighbouring word, `Shift` extends the selection with them, `Ctrl+Backspace` deletes back over one and `Ctrl+X` cuts. `InputKey.ToTextInputKey` is the one place a chord becomes a meaning, so every surface reads the keyboard the same way.
 - Callbacks: `OnCommit` (async), `OnCancel`, `OnTextChanged`, `OnKeyOverride`
 
 ## Signals & Async

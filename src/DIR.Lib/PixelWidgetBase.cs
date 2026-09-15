@@ -368,8 +368,8 @@ namespace DIR.Lib
         /// <summary>
         /// Registers a clickable region with an optional direct click handler.
         /// </summary>
-        protected void RegisterClickable(float x, float y, float w, float h, HitResult result, Action<InputModifier>? onClick = null, CursorKind? cursor = null)
-            => _tracker.Register(x, y, w, h, result, onClick, cursor);
+        protected void RegisterClickable(float x, float y, float w, float h, HitResult result, Action<InputModifier>? onClick = null, CursorKind? cursor = null, bool focusOnOpen = false)
+            => _tracker.Register(x, y, w, h, result, onClick, cursor, focusOnOpen);
 
         /// <summary>Registers a region that only states a cursor -- a card, a bar -- with no action.</summary>
         protected void RegisterCursor(float x, float y, float w, float h, CursorKind cursor)
@@ -378,8 +378,11 @@ namespace DIR.Lib
         /// <summary>
         /// Registers a text input field — renders it and registers the clickable region.
         /// </summary>
+        /// <param name="focusOnOpen">The field asked for the keyboard as it appeared; reported on the region
+        /// so the request can be answered after the frame is painted. See
+        /// <see cref="Layout.Content.TextInput.FocusOnOpen"/>.</param>
         protected void RenderTextInput(TextInputState state, int x, int y, int width, int height, string fontPath,
-            float fontSize, TextInputColors? colors = null, float leadingRoom = 0f)
+            float fontSize, TextInputColors? colors = null, float leadingRoom = 0f, bool focusOnOpen = false)
         {
             // The widget's own fallback chain goes in, so a field displays anything the app can display.
             // Nothing else reaches inside a field: the layout painter splits TEXT LEAVES per coverage run,
@@ -396,7 +399,7 @@ namespace DIR.Lib
             // TextInputGeometry.
             RegisterClickable(x, y, width, height,
                 new HitResult.TextInputHit(state, new TextInputGeometry(x, fontPath, fontSize, leadingRoom)),
-                cursor: CursorKind.Text);
+                cursor: CursorKind.Text, focusOnOpen: focusOnOpen);
         }
 
         /// <summary>
@@ -431,11 +434,11 @@ namespace DIR.Lib
         /// integer-grid (RectInt) internally -- so call sites stop repeating the four-way (int) cast.
         /// </summary>
         protected void RenderTextInput(TextInputState state, RectF32 rect, string fontPath, float fontSize,
-            TextInputColors? colors = null, float leadingRoom = 0f) =>
+            TextInputColors? colors = null, float leadingRoom = 0f, bool focusOnOpen = false) =>
             RenderTextInput(state,
                 (int)MathF.Round(rect.X), (int)MathF.Round(rect.Y),
                 (int)MathF.Round(rect.Width), (int)MathF.Round(rect.Height),
-                fontPath, fontSize, colors, leadingRoom);
+                fontPath, fontSize, colors, leadingRoom, focusOnOpen);
 
         // -------------------------------------------------------------------------------------------------
         // TrackSlider -- the one horizontal press/drag/release track (WB / wavelet / scrub / ...).
@@ -941,14 +944,17 @@ namespace DIR.Lib
                             // navigation affordance on top of it, the pixel-surface counterpart to the OSC 8
                             // wrap Console.Lib's CellLayout paints for the same node.
                             //
-                            // Only LINKED text takes this path. Ordinary layout text stays on DrawText, so
-                            // nothing else starts landing in the host's selection layer.
-                            if (links.Count > 0)
+                            // Only LINKED text takes this path, or a run that ASKED for it with
+                            // .Selectable(). Ordinary layout text stays on DrawText, so nothing else
+                            // starts landing in the host's selection layer. A selectable run that is not
+                            // also a link goes out with a null Href, which is a plain span rather than an
+                            // anchor -- the two declarations compose, and neither implies the other.
+                            if (links.Count > 0 || text.Selectable)
                             {
                                 DrawSelectableText(value, fp, ctx.Fallback,
                                     bounds.X, bounds.Y, bounds.Width, bounds.Height,
                                     fontSize, text.Color, text.HAlign, text.VAlign,
-                                    links.Peek().Url);
+                                    links.Count > 0 ? links.Peek().Url : null);
                             }
                             else
                             {
@@ -990,9 +996,13 @@ namespace DIR.Lib
                             // handler must not swallow a click meant to focus the field inside it.
                             var fieldPx = field.FontSize * ctx.FontScale;
                             var lead = TextInputRenderer.LeadingRoom(fieldPx, field.LeadingIcon is not null);
+                            // FocusOnOpen only travels: the painter reports the request on the region and
+                            // takes no focus of its own. Acting on it here would fire once per frame and
+                            // from inside a paint, where "is the field that has the keyboard still on
+                            // screen" cannot be answered yet -- the rest of the frame has not been drawn.
                             RenderTextInput(field.State,
                                 new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height),
-                                fp, fieldPx, field.Colors, lead);
+                                fp, fieldPx, field.Colors, lead, field.FocusOnOpen);
                             // Drawn HERE rather than inside TextInputRenderer, which is static and has no
                             // icon drawing of its own: the renderer only has to leave the room, and the
                             // widget that owns DrawLayoutIcon fills it. Seated at the field's side padding,

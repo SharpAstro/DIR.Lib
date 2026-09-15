@@ -63,6 +63,51 @@ public class TextInputFocusTests
     }
 
     /// <summary>
+    /// Seeding a field is opening an editor on a value that already exists, and the first thing you do to
+    /// a value you are editing is replace it. Seeding without selecting puts the caret at the END, so the
+    /// first keystroke appends -- which is why the two callers who had noticed were each following the
+    /// call with their own <c>SelectAll</c>, and the ones who had not simply behaved differently.
+    /// </summary>
+    [Fact]
+    public void FocusingWithSeedText_SelectsIt_SoTheFirstKeystrokeReplacesTheValue()
+    {
+        var focus = new TextInputFocus();
+        var field = new TextInputState { Text = "stale" };
+
+        focus.Focus(field, "12.5");
+
+        field.Text.ShouldBe("12.5");
+        field.HasSelection.ShouldBeTrue("a seeded value the caller cannot see selected is a value they have to select themselves");
+        field.SelectionStart.ShouldBe(0);
+        field.SelectionEnd.ShouldBe(4);
+    }
+
+    [Fact]
+    public void FocusingWithoutSeedText_LeavesTheValueAndTheCaretAlone()
+    {
+        var focus = new TextInputFocus();
+        var field = new TextInputState { Text = "typed so far", CursorPos = 5 };
+
+        focus.Focus(field);
+
+        field.Text.ShouldBe("typed so far");
+        field.CursorPos.ShouldBe(5);
+        field.HasSelection.ShouldBeFalse("nothing was seeded, so there is no value being replaced");
+    }
+
+    [Fact]
+    public void SeedingAnEmptyValue_SelectsNothing_BecauseThereIsNothingToReplace()
+    {
+        var focus = new TextInputFocus();
+        var field = new TextInputState { Text = "stale" };
+
+        focus.Focus(field, "");
+
+        field.Text.ShouldBeEmpty();
+        field.HasSelection.ShouldBeFalse();
+    }
+
+    /// <summary>
     /// A declarative UI asks for what it wants on EVERY frame, so re-focusing the focused field has to be
     /// free. A naive implementation re-activates it each time, which resets the caret under the user's
     /// fingers and, with seed text, throws away what they had typed.

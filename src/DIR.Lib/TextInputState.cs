@@ -37,6 +37,29 @@ public class TextInputState
     /// <summary>Optional placeholder text shown when empty and not active.</summary>
     public string Placeholder { get; set; } = "";
 
+    /// <summary>
+    /// How far this field's text is scrolled to the LEFT, in surface pixels, so that the caret stays
+    /// inside a box too narrow to show the whole value. Zero means the value is drawn from its own first
+    /// character, which is every field that fits.
+    /// </summary>
+    /// <remarks>
+    /// Maintained by <see cref="TextInputRenderer.Render"/> -- hence the internal setter -- and read back
+    /// by <see cref="TextInputRenderer.CaretIndexAt"/>, which has to subtract exactly what the paint
+    /// shifted by or a click on a scrolled field resolves to a character the pointer is nowhere near.
+    /// <para>
+    /// It lives on the STATE rather than in the renderer because a renderer is static and a field is not:
+    /// several fields are on screen at once, each scrolled to its own caret, and the offset has to survive
+    /// between frames or the value would snap back to its first character every time it was drawn. It is
+    /// public to READ because a consumer measuring its own overlay over a field (a completion popup under
+    /// the caret) needs the same number.
+    /// </para>
+    /// <para>
+    /// Reset to zero whenever the field is not focused: an unfocused field has no caret to keep in view,
+    /// and showing the START of a value is what a reader wants from a box they are not editing.
+    /// </para>
+    /// </remarks>
+    public float ScrollOffsetPx { get; internal set; }
+
     /// <summary>Set to true when the user pressed Enter to commit the value.</summary>
     public bool IsCommitted { get; set; }
 
@@ -88,7 +111,14 @@ public class TextInputState
     /// <summary>
     /// Handles a key press. Returns true if the key was consumed.
     /// </summary>
-    public bool HandleKey(TextInputKey key)
+    /// <param name="extend">
+    /// Grow the selection to wherever the caret lands instead of dropping it -- Shift held. Honoured by
+    /// the word motions (<see cref="TextInputKey.WordLeft"/> / <see cref="TextInputKey.WordRight"/>) and
+    /// ignored by everything else, deliberately: the plain arrows have always collapsed a selection, and
+    /// teaching them to extend would change what Shift+Left does for every existing consumer at once.
+    /// That is a behaviour change and belongs in its own wave, not smuggled in on a new parameter.
+    /// </param>
+    public bool HandleKey(TextInputKey key, bool extend = false)
     {
         switch (key)
         {
@@ -139,6 +169,29 @@ public class TextInputState
                 }
                 return true;
 
+            case TextInputKey.WordLeft:
+                MoveCaretToWordBoundary(-1, extend);
+                return true;
+
+            case TextInputKey.WordRight:
+                MoveCaretToWordBoundary(1, extend);
+                return true;
+
+            case TextInputKey.WordBackspace:
+                if (HasSelection)
+                {
+                    DeleteSelection();
+                }
+                else if (CursorPos > 0)
+                {
+                    // The same boundary Ctrl+Left would have moved to, so "delete the word" and "step over
+                    // the word" can never disagree about where the word began.
+                    var wordStart = WordBoundary(CursorPos, -1);
+                    Text = Text.Remove(wordStart, CursorPos - wordStart);
+                    CursorPos = wordStart;
+                }
+                return true;
+
             case TextInputKey.Home:
                 ClearSelection();
                 CursorPos = 0;
@@ -165,6 +218,7 @@ public class TextInputState
 
             case TextInputKey.Paste:
             case TextInputKey.Copy:
+            case TextInputKey.Cut:
                 // Handled by the host (clipboard is platform-specific).
                 // Returning true signals the key was consumed.
                 return true;
@@ -209,6 +263,70 @@ public class TextInputState
         }
 
         CursorPos = Math.Clamp(index, 0, Text.Length);
+    }
+
+    /// <summary>
+    /// Steps the caret to the next word boundary in <paramref name="direction"/> -- Ctrl+Left and
+    /// Ctrl+Right. Negative goes left, positive right; zero does nothing.
+    /// </summary>
+    /// <remarks>
+    /// The boundary is the START of a word in both directions, which is what every desktop text box does
+    /// and what makes the two directions inverses of each other over the same text: going right steps off
+    /// the current word and over the gap after it, going left steps back over the gap and then off the
+    /// word before it. Both use the same <c>IsWordChar</c> the double-click selection does, so "the word"
+    /// means one thing in a field however you reach it.
+    /// </remarks>
+    /// <param name="extend">
+    /// Grow the selection to the new position instead of dropping it -- Shift+Ctrl+Left / Right. Routed
+    /// through <see cref="MoveCaretTo"/>, so the anchor rule is stated once: it is taken from where the
+    /// caret already was when there is no selection yet.
+    /// </param>
+    public void MoveCaretToWordBoundary(int direction, bool extend = false)
+    {
+        if (direction == 0)
+        {
+            return;
+        }
+
+        MoveCaretTo(WordBoundary(CursorPos, direction), extend);
+    }
+
+    /// <summary>
+    /// The word boundary <paramref name="direction"/> of <paramref name="from"/>, clamped to the text.
+    /// Shared by the word motions and by <see cref="TextInputKey.WordBackspace"/>, which must delete
+    /// exactly the span Ctrl+Left would have stepped over.
+    /// </summary>
+    private int WordBoundary(int from, int direction)
+    {
+        var index = Math.Clamp(from, 0, Text.Length);
+
+        if (direction < 0)
+        {
+            // Over the gap first, then off the word: a caret sitting just after "hello " lands on the "h".
+            while (index > 0 && !IsWordChar(Text[index - 1]))
+            {
+                index--;
+            }
+
+            while (index > 0 && IsWordChar(Text[index - 1]))
+            {
+                index--;
+            }
+
+            return index;
+        }
+
+        while (index < Text.Length && IsWordChar(Text[index]))
+        {
+            index++;
+        }
+
+        while (index < Text.Length && !IsWordChar(Text[index]))
+        {
+            index++;
+        }
+
+        return index;
     }
 
     /// <summary>
@@ -302,6 +420,7 @@ public class TextInputState
         SelectionAnchor = -1;
         IsCommitted = false;
         IsCancelled = false;
+        ScrollOffsetPx = 0f;
         ClearComposition();
     }
 
@@ -327,6 +446,10 @@ public class TextInputState
     {
         IsActive = false;
         ClearSelection();
+        // A blurred field has no caret to keep in view, so it goes back to showing the start of its value.
+        // Cleared HERE as well as in the paint because CaretIndexAt may be asked before the next frame --
+        // a click that focuses a field arrives before anything has been drawn with the new offset.
+        ScrollOffsetPx = 0f;
         // A preedit belongs to the input method, and blurring the field abandons it. Leaving it behind
         // would paint composition text in a field nobody is typing into, and it would still be there
         // the next time the field is focused.
@@ -370,5 +493,30 @@ public enum TextInputKey
     Escape,
     SelectAll,
     Paste,
-    Copy
+    Copy,
+
+    // Appended rather than slotted in beside their plain counterparts: these are wire values for anything
+    // that has already compiled against the enum, and renumbering Paste or Copy to keep the list tidy would
+    // change what a published consumer's constant means.
+
+    /// <summary>Ctrl+Left -- the caret to the start of the word before it.</summary>
+    WordLeft,
+
+    /// <summary>Ctrl+Right -- the caret to the start of the word after it.</summary>
+    WordRight,
+
+    /// <summary>
+    /// Ctrl+Backspace -- delete back to the boundary <see cref="WordLeft"/> would have moved to. Its own
+    /// member rather than "Backspace with Ctrl" because the state's key handling takes no modifiers: the
+    /// mapping from a chord to a meaning happens once, in <see cref="InputKeyExtensions"/>, so a cell host
+    /// and a pixel host cannot disagree about it.
+    /// </summary>
+    WordBackspace,
+
+    /// <summary>
+    /// Ctrl+X -- copy the selection and delete it. Like <see cref="Paste"/> and <see cref="Copy"/> the
+    /// clipboard half is the host's, so <see cref="TextInputState.HandleKey"/> only swallows it and
+    /// <see cref="TextInputInteraction.HandleKey"/> performs it.
+    /// </summary>
+    Cut
 }

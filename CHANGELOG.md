@@ -9,6 +9,78 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 9.2
+
+### Wave 1b -- the text field behaves like a field
+
+**Word motion, which every desktop text box has had for thirty years and this one did not.**
+`TextInputKey` gains `WordLeft`, `WordRight`, `WordBackspace` and `Cut`, mapped from Ctrl+Left,
+Ctrl+Right, Ctrl+Backspace and Ctrl+X by `InputKey.ToTextInputKey` -- which is where a chord becomes a
+meaning, once, so a cell host and a pixel host cannot come to different conclusions about the same
+keyboard. `TextInputState.MoveCaretToWordBoundary(direction, extend)` is the motion, over the same
+`IsWordChar` the double-click selection uses: a Ctrl+Left and a double click are two ways of asking what
+a word is, and answering them separately is how they come to disagree about a hyphen. Both directions
+land on the START of a word, so they are inverses over the same text -- the plausible alternative
+(right stops at the end of the word it was in) makes a walk take twice the presses it looks like, and
+reads as the caret drifting rather than as a bug.
+
+Shift rides BESIDE the key rather than inside it: Shift+Ctrl+Left is Ctrl+Left with the selection
+following, not a fifth member of the enum, so `TextInputState.HandleKey` gains an optional `extend`
+rather than the word half of the enum doubling. The plain arrows deliberately still collapse a
+selection -- teaching them to extend changes what Shift+Left does for every existing consumer at once,
+and that is a decision, not a side effect of a new parameter.
+
+Cut is spelled as its two halves in `TextInputInteraction.HandleKey`: copy the selection through
+`SetClipboardText`, then delete it through the field's own Delete case. One expression for "the selected
+text" is what keeps a cut and a copy putting identical characters on the clipboard.
+
+**A long value scrolls inside its field.** `TextInputRenderer` drew every field from its first character
+and let the rest run off the right-hand edge, so typing past the width of the box put the caret outside
+it and the characters over whatever was painted next door -- which is the state a field is in most often
+once it holds a path, a URL or a long name. It now holds the CARET in view and slides the value under
+it. That is one number, `TextInputState.ScrollOffsetPx`, and it lives on the field rather than in the
+static renderer because several fields are on screen at once, each scrolled to its own caret, and the
+offset has to survive between frames.
+
+Two things fall out of it that are not optional. `CaretIndexAt` adds the offset back before it searches
+the prefix widths, because the click mapping has to undo exactly the shift the paint applied or a press
+on a scrolled field resolves to a character the pointer is nowhere near -- pinned by a round-trip test
+over every boundary of a value three times the field's width. And the run is CLIPPED while it does not
+fit, because it now starts left of the text box and `DrawText` draws from wherever it is told without
+stopping. A value that fits takes no clip and no measurement at all, so every field that rendered
+correctly before renders identically.
+
+**`TextInputFocus.Focus(input, initialText)` selects the seed**, as its own documentation already
+promised. Seeding without selecting puts the caret at the end of the value, so the first keystroke
+appends to it -- almost never what "edit this number" means. The callers who had noticed were each
+following the call with their own `SelectAll`; the ones who had not simply behaved differently, which is
+the shape of bug an owner exists to make unreachable. Seeding and selecting are one act, so they are one
+call.
+
+**Two declarations a tree could not make.** `Layout.Content.TextInput.FocusOnOpen` (builder
+`TextInput(state, ..., focusOnOpen: true)`) is a field asking for the keyboard as it appears, instead of
+a signal posted by hand from wherever the panel was opened. The painter only REPORTS the request, on the
+region it registers (`ClickableRegion.FocusOnOpen`): the rule it feeds -- the first painted field that
+asks, once, since it was last not painted, and never off a field being typed in -- can only be applied
+after the frame is painted, because "is the focused field still on screen" has no answer while the frame
+is still being drawn. That is the same moment, and the same knowledge, `BlurIfUnpainted` already needs.
+
+`Layout.Content.Text.Selectable`, with a `.Selectable()` modifier on a Text leaf, marks a read-only run
+as content a reader may want to take away. A raster host draws glyphs into a texture, so there is
+nothing to select unless the run reaches the host's selection layer -- the path a `LinkHit` already
+takes. Until now only a link could get there, so a coordinate or an error message drawn in a panel was
+untakeable by construction. The two declarations compose: a marked link keeps its `Href` and is still an
+anchor.
+
+**The README's "undo" is deleted.** There is no undo stack, there never was one, and nothing has asked
+for one. A false claim in a feature list is worse than a missing feature, because it is the one thing a
+reader will not think to check.
+
+Additive throughout: every new member is new surface, `HandleKey`'s `extend` and the builder's
+`focusOnOpen` are trailing and defaulted, and the enum's new members are appended rather than slotted in
+beside their plain counterparts -- renumbering `Paste` to keep the list tidy would change what an
+already-compiled consumer's constant means.
+
 ## 9.1
 
 **A pointer can reach the caret.** A text field has had a full selection model since it was written —

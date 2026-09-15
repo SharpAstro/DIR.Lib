@@ -51,6 +51,26 @@ public abstract record Content
         /// </para>
         /// </summary>
         public TextTrim Trim { get; init; } = TextTrim.End;
+
+        /// <summary>
+        /// This run's characters can be selected and copied, the way a paragraph on a web page can and a
+        /// readout drawn as glyphs into a texture cannot. Off by default: a raster host has to be ASKED to
+        /// put a run into its selection layer, because everything it draws is glyphs and the layer is not
+        /// free.
+        /// <para>
+        /// Declared on the RUN rather than switched on per host, for the reason a
+        /// <see cref="HitResult.LinkHit"/> is: only the author knows which text is content the reader may
+        /// want to take away (a coordinate, an error message, a file path) and which is chrome. A painter
+        /// meeting it routes the run through <c>DrawSelectableText</c> -- the same path linked text already
+        /// takes -- so a DOM host overlays a real selectable span and a terminal host can offer a native
+        /// drag-select, both from one authored tree.
+        /// </para>
+        /// <para>
+        /// Marking a run costs nothing where the host cannot act on it: the glyphs are drawn identically
+        /// and the region is simply never read.
+        /// </para>
+        /// </summary>
+        public bool Selectable { get; init; }
     }
 
     /// <summary>A fixed-size piece (icon, swatch, separator, spacer) -- intrinsic size is <paramref name="Width"/> x <paramref name="Height"/> design units. The painter fills it only when <see cref="Color"/> is non-transparent, so a transparent Box is a pure spacer.</summary>
@@ -211,6 +231,27 @@ public abstract record Content
         /// </para>
         /// </summary>
         public IconKind? LeadingIcon { get; init; }
+
+        /// <summary>
+        /// This field wants the keyboard as soon as it appears -- the search box of a panel that has just
+        /// opened, the editor a row turns into. The declarative form of the "activate this input" signal a
+        /// consumer otherwise posts by hand from wherever it decided to open the panel.
+        /// <para>
+        /// <b>It never takes the keyboard off a field the user is typing in.</b> It fires only where
+        /// <c>Focus.Current</c> is null or is itself no longer being painted, and only once per appearance:
+        /// a tree is rebuilt every frame, so a naive reading of this flag would re-focus the field sixty
+        /// times a second and hold the caret at the end of the value under the user's fingers. The rule is
+        /// "the first painted field that asks, once, since it was last not painted".
+        /// </para>
+        /// <para>
+        /// The painter only REPORTS the request, on the region it registers
+        /// (<see cref="ClickableRegion.FocusOnOpen"/>); the rule above is applied after the frame is
+        /// painted, because that is the only moment the whole painted set is known -- and "is the focused
+        /// field still on screen" is exactly the question
+        /// <see cref="TextInputFocus.BlurIfUnpainted"/> already answers there.
+        /// </para>
+        /// </summary>
+        public bool FocusOnOpen { get; init; }
     }
 
     /// <summary>

@@ -138,4 +138,20 @@ public abstract partial record Node
     /// every row shrinking as cells are added.
     /// </summary>
     public Node WithAutoRows(bool autoRows = true) => this is Grid g ? g with { AutoRows = autoRows } : this;
+
+    // ---- Leaf-specific (no-op on the wrong kind) ----
+
+    /// <summary>
+    /// Mark a <see cref="Content.Text"/> leaf's run as selectable, so a host that can offer selection does
+    /// -- a real span on the web, a native drag-select on a terminal; no-op on any other node. See
+    /// <see cref="Content.Text.Selectable"/> for why the run declares this rather than the host deciding.
+    /// <para>
+    /// A modifier rather than an argument on <see cref="Builder.Text"/> because it is the one piece of a
+    /// run's styling that is about the READER rather than about the ink, and because a whole row of
+    /// readouts is marked in one pass at the call site that builds them.
+    /// </para>
+    /// </summary>
+    public Node Selectable(bool selectable = true) => this is Leaf { Content: Content.Text run } leaf
+        ? leaf with { Content = run with { Selectable = selectable } }
+        : this;
 }
