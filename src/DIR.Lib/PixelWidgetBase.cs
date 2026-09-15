@@ -627,9 +627,22 @@ namespace DIR.Lib
         {
             var s = (scale ?? Scale).OrOne();
             // A bar thickness runs across the track and a handle width along it, but both are the same
-            // 6 design units and neither is axis-specific -- the axis-free mapping is what they mean.
-            var barH = MathF.Max(4f, s.ToSurface(6f));
-            var handleW = MathF.Max(4f, s.ToSurface(6f));
+            // design units and neither is axis-specific; the axis-free mapping is what they mean.
+            //
+            // The number is Content.Slider.TrackHeight and not a literal, because the ENGINE measures a
+            // slider leaf's intrinsic height from that same constant. Two 6s, one here and one in
+            // Engine.MeasureContent, are free to drift into a leaf whose arranged row is not the height of
+            // the bar drawn in it, which is the defect this whole line of work exists to remove.
+            //
+            // The pixel floor stays HERE and is deliberately not pushed into the measure. It is a minimum
+            // VISIBLE thickness, so it means something on a GPU surface and nothing on a cell surface,
+            // where four cells would be an absurd slider; MeasureContent is generic over the surface and
+            // must not carry a pixel rule. The two therefore disagree below a design scale of about 0.67,
+            // where this floors at 4 and the intrinsic does not: the bar then paints a little outside a row
+            // sized to the intrinsic. Left as is, since a slider is Star-width chrome that is given a row
+            // height in practice, and the alternative is a pixel constant in a generic measure.
+            var barH = MathF.Max(4f, s.ToSurface(Layout.Content.Slider.TrackHeight));
+            var handleW = MathF.Max(4f, s.ToSurface(Layout.Content.Slider.TrackHeight));
 
             var barY = barCenterY - barH / 2f;
             FillRect(trackX, barY, trackW, barH, chrome.TrackBackground);
