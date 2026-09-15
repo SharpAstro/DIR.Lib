@@ -5,6 +5,17 @@
 /// </summary>
 public enum MouseButton
 {
+    /// <summary>
+    /// No button -- a pointer that is merely moving, which is what
+    /// <see cref="InputEvent.MouseMove.Button"/> reports when nothing is held.
+    /// </summary>
+    /// <remarks>
+    /// Numbered -1 rather than taking 0, which is <see cref="Left"/> and has been since this enum was
+    /// written. Renumbering would change what every already-compiled host means by a left press, and what
+    /// every value already stored means, to buy nothing -- this is not a button, so a number outside the
+    /// buttons is the honest one anyway.
+    /// </remarks>
+    None = -1,
     Left = 0,
     Middle = 1,
     Right = 2,
@@ -84,10 +95,70 @@ public abstract record InputEvent
         InputModifier Modifiers = default, int ClickCount = 1) : InputEvent;
 
     /// <summary>Mouse button release at pixel coordinates.</summary>
-    public sealed record MouseUp(float X, float Y, MouseButton Button = MouseButton.Left) : InputEvent;
+    /// <param name="Modifiers">
+    /// Modifiers held at RELEASE. <see cref="MouseDown"/> has carried them since it was written and this
+    /// did not, so every consumer that needed the pair remembered the press's own modifiers in a field --
+    /// which is the right answer for a gesture (a reader who lets go of Shift mid-drag has not changed
+    /// what the drag is, so <see cref="PointerMove"/> carries the press's), and the wrong answer for a
+    /// plain Shift+click, where the release is simply the other half of one event.
+    /// </param>
+    public sealed record MouseUp(float X, float Y, MouseButton Button = MouseButton.Left,
+        InputModifier Modifiers = default) : InputEvent
+    {
+        /// <summary>
+        /// The pre-9.2 shape, kept so an already-compiled host keeps binding.
+        /// </summary>
+        /// <remarks>
+        /// <b>An optional parameter added to a record's primary constructor DELETES the old constructor
+        /// from the assembly.</b> Source-compatible, binary-fatal: 9.1 added one to
+        /// <c>HitResult.TextInputHit</c> and the published Console.Lib, which calls the two-argument form,
+        /// threw <c>MissingMethodException</c> on every terminal hit test -- invisible on a dev box, where
+        /// the sibling compiles from source and the package path is never taken. Console.Lib and
+        /// SdlVulkan.Renderer both construct a <c>MouseUp</c> with three arguments today, so this is that
+        /// constructor, kept by hand.
+        /// </remarks>
+        public MouseUp(float X, float Y, MouseButton Button) : this(X, Y, Button, default) { }
+
+        /// <summary>
+        /// The three-element deconstruction, for the positional patterns written against it.
+        /// </summary>
+        /// <remarks>
+        /// A record's synthesized <c>Deconstruct</c> takes its arity from the primary constructor, so
+        /// <c>MouseUp(var x, var y, _)</c> would stop compiling the moment a fourth parameter appeared --
+        /// a positional pattern resolves by arity, and a trailing DEFAULT does not help it. Both arities
+        /// exist, so both patterns bind.
+        /// </remarks>
+        public void Deconstruct(out float x, out float y, out MouseButton button)
+        {
+            x = X;
+            y = Y;
+            button = Button;
+        }
+    }
 
     /// <summary>Mouse cursor movement to pixel coordinates.</summary>
-    public sealed record MouseMove(float X, float Y) : InputEvent;
+    /// <param name="Button">
+    /// The button held while moving, or <see cref="MouseButton.None"/> for a bare hover. Every drag in
+    /// every consumer used to answer this from a flag it set on the press and cleared on the release --
+    /// three branches of one gesture in three places, which is how a divider drag reached one dispatcher
+    /// and not the other. A host that does not track the held button leaves it <c>None</c>, which is the
+    /// truthful answer for a move it cannot describe.
+    /// </param>
+    public sealed record MouseMove(float X, float Y, MouseButton Button = MouseButton.None) : InputEvent
+    {
+        /// <summary>The pre-9.2 shape, kept so an already-compiled host keeps binding -- see
+        /// <see cref="MouseUp(float,float,MouseButton)"/> for why a defaulted parameter is not enough.
+        /// Console.Lib and SdlVulkan.Renderer both construct a <c>MouseMove</c> with two arguments.</summary>
+        public MouseMove(float X, float Y) : this(X, Y, MouseButton.None) { }
+
+        /// <summary>The two-element deconstruction, for the <c>MouseMove(var x, var y)</c> patterns
+        /// written against it -- a positional pattern resolves by arity, so both arities must exist.</summary>
+        public void Deconstruct(out float x, out float y)
+        {
+            x = X;
+            y = Y;
+        }
+    }
 
     /// <summary>Mouse wheel scroll at pixel coordinates. Positive delta = scroll up.</summary>
     public sealed record Scroll(float Delta, float X, float Y, InputModifier Modifiers = default) : InputEvent;

@@ -104,6 +104,56 @@ public abstract partial record Node
     public Node Clickable(HitResult? hit, Action<InputModifier>? onClick = null, CursorKind? cursor = null)
         => this with { Hit = hit, OnClick = onClick, Cursor = cursor };
 
+    /// <summary>
+    /// Bind a PRESS to this node's whole rect: <paramref name="onPress"/> is told where the press landed
+    /// and returns a <see cref="DragCapture"/> to own the gesture until the button comes up, or null to
+    /// decline. The sibling of <see cref="Clickable"/>, and a node may carry both -- the press wins when
+    /// it claims, and otherwise the click fires on release exactly as it does today.
+    /// See <see cref="Node.OnPress"/>.
+    /// </summary>
+    public Node Pressable(HitResult? hit, Func<PointerPress, DragCapture?> onPress, CursorKind? cursor = null)
+        => this with { Hit = hit, OnPress = onPress, Cursor = cursor };
+
+    /// <summary>
+    /// State what Enter does on this node when that is not what a click does -- Enter pins, a click
+    /// selects. Without one, Enter runs the click handler. See <see cref="Node.OnActivate"/>.
+    /// </summary>
+    public Node Activatable(Action<InputModifier> onActivate) => this with { OnActivate = onActivate };
+
+    /// <summary>Give this node hover text. Named With* like the gap setters, because a bare
+    /// <c>Tooltip</c> method cannot shadow the <see cref="Node.Tooltip"/> property it sets.</summary>
+    public Node WithTooltip(string text) => this with { Tooltip = text };
+
+    /// <summary>
+    /// Declare this node unavailable, and say WHY: the subtree paints dim, the region swallows the press
+    /// with a <see cref="CursorKind.NotAllowed"/> cursor, the reason serves as the tooltip, and the list
+    /// cursor steps over it. See <see cref="Node.DisabledReason"/>.
+    /// </summary>
+    public Node Disabled(string reason) => this with { DisabledReason = reason };
+
+    /// <summary>
+    /// <see cref="Disabled(string)"/> only when <paramref name="when"/>. The common conditional, spelled
+    /// so a caller keeps one chain rather than breaking out of it -- every fluent modifier always SETS a
+    /// value, so the <c>if</c> has to go around a re-assignment (see <see cref="Bg"/>).
+    /// </summary>
+    public Node Disabled(bool when, string reason) => when ? this with { DisabledReason = reason } : this;
+
+    /// <summary>
+    /// Declare this node's arranged rect to be <paramref name="controller"/>'s viewport, so a wheel can
+    /// reach the innermost list under the pointer and a list stops re-deriving where it was drawn. The
+    /// rows and row height stay the consumer's, through
+    /// <see cref="ListScrollController.SetExtent"/>. Named With* so it does not shadow the
+    /// <see cref="Node.Scroll"/> property it sets.
+    /// </summary>
+    public Node WithScroll(ListScrollController controller) => this with { Scroll = controller };
+
+    /// <summary>
+    /// Give this node a keyboard binding, matched against the PAINTED tree. Named With* so it does not
+    /// shadow the <see cref="Node.Shortcut"/> property it sets.
+    /// </summary>
+    public Node WithShortcut(InputKey key, InputModifier mods = InputModifier.None)
+        => this with { Shortcut = new KeyChord(key, mods) };
+
     /// <summary>States the pointer's appearance over this node without making it a click target — a
     /// panel's card saying "arrow here", so nothing inside it has to repeat the claim. Named apart from
     /// the <see cref="Node.Cursor"/> property it sets, which a same-named method cannot shadow.</summary>
@@ -154,4 +204,13 @@ public abstract partial record Node
     public Node Selectable(bool selectable = true) => this is Leaf { Content: Content.Text run } leaf
         ? leaf with { Content = run with { Selectable = selectable } }
         : this;
+
+    /// <summary>
+    /// Size a <see cref="Grid"/>'s columns individually instead of splitting the width evenly; no-op on
+    /// any other node. <c>Auto</c> takes the column's own widest cell, <c>Fixed</c> is fixed, <c>Star</c>
+    /// shares what is left -- which is what a table is, and what a consumer measuring its own column
+    /// stops was writing out. See <see cref="Grid.ColumnSizing"/>.
+    /// </summary>
+    public Node WithColumns(params ReadOnlySpan<Sizing> columns)
+        => this is Grid g ? g with { ColumnSizing = [.. columns] } : this;
 }

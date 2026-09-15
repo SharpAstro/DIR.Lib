@@ -43,7 +43,18 @@ namespace DIR.Lib
         /// see <see cref="ClickableRegion.FocusOnOpen"/>.</param>
         public void Register(float x, float y, float w, float h, HitResult result,
             Action<InputModifier>? onClick = null, CursorKind? cursor = null, bool focusOnOpen = false)
-            => _regions.Add(new ClickableRegion(x, y, w, h, result, onClick, cursor, focusOnOpen));
+            => _regions.Add(new ClickableRegion(x, y, w, h, result, onClick, cursor) { FocusOnOpen = focusOnOpen });
+
+        /// <summary>
+        /// Registers an already-built region, for a caller stating more than the scalar overload's
+        /// shorthand covers -- a press handler, a tooltip, a scroll target, a disabled row.
+        /// </summary>
+        /// <remarks>
+        /// A second overload rather than five more optional parameters on the one above: those would grow
+        /// the shorthand past the point where its arguments read at a call site, and they would change
+        /// that method's signature, which is a binary break for anything already compiled against it.
+        /// </remarks>
+        public void Register(in ClickableRegion region) => _regions.Add(region);
 
         /// <summary>
         /// Registers a region that only states a cursor — a panel card, a bar — with no action. It still

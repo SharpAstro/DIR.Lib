@@ -17,7 +17,63 @@ namespace DIR.Lib;
 /// it can only be applied after the paint, is on the property.</param>
 public readonly record struct ClickableRegion(
     float X, float Y, float Width, float Height, HitResult Result,
-    Action<InputModifier>? OnClick = null, CursorKind? Cursor = null, bool FocusOnOpen = false);
+    Action<InputModifier>? OnClick = null, CursorKind? Cursor = null)
+{
+    // The 9.2 additions are init-only properties rather than further positional parameters, for the
+    // reason ArrangedNode.Depth is: an optional parameter added to a record's primary constructor DELETES
+    // the old constructor from the assembly, so every already-compiled caller of the 7-argument form
+    // would throw MissingMethodException. Init-only properties add nothing to the constructor's identity.
+
+    /// <summary>
+    /// The press handler bound from <see cref="Layout.Node.OnPress"/>: it is handed the position, the
+    /// button and the click count, and returns a <see cref="DragCapture"/> to claim the gesture until the
+    /// button comes up -- or null to decline, leaving the press to <see cref="OnClick"/>.
+    /// </summary>
+    public Func<PointerPress, DragCapture?>? OnPress { get; init; }
+
+    /// <summary>
+    /// What Enter on this row does when it differs from a click, bound from
+    /// <see cref="Layout.Node.OnActivate"/>. Null means the two are the same thing, which is the ordinary
+    /// case; <c>PixelWidgetBase.ActivateListCursor</c> prefers this and falls back to
+    /// <see cref="OnClick"/>.
+    /// </summary>
+    /// <remarks>
+    /// It rides on the REGION rather than being looked up on the node afterwards, so a list assembled
+    /// imperatively and a list declared as a tree answer Enter the same way -- the region list is where
+    /// both end up, and it is what the cursor already resolves against.
+    /// </remarks>
+    public Action<InputModifier>? OnActivate { get; init; }
+
+    /// <summary>
+    /// The hover text for this region, from <see cref="Layout.Node.Tooltip"/> -- or, for a disabled one,
+    /// the reason it is disabled, since the answer to "why can't I press this" belongs where the press
+    /// was refused rather than in a panel the reader only reaches by making the choice that just failed.
+    /// </summary>
+    public string? Tooltip { get; init; }
+
+    /// <summary>
+    /// Whether this region is inert by declaration (<see cref="Layout.Node.DisabledReason"/>). It still
+    /// takes part in hit testing, which is the point: the press is SWALLOWED rather than falling through
+    /// to whatever is behind it, and the list cursor steps over it.
+    /// </summary>
+    public bool IsDisabled { get; init; }
+
+    /// <summary>
+    /// The scroll controller this region's node declared (<see cref="Layout.Node.Scroll"/>), so a wheel
+    /// can be delivered to the innermost list under the pointer instead of every list testing the pointer
+    /// against a rect of its own.
+    /// </summary>
+    public ListScrollController? Scroll { get; init; }
+
+    /// <summary>
+    /// The region is a field that asked for the keyboard as it appeared
+    /// (<see cref="Layout.Content.TextInput.FocusOnOpen"/>). The painter only REPORTS it here; the rule
+    /// that acts on it -- the first painted field that asks, once, since it was last not painted, and never
+    /// off a field being typed in -- runs after the frame is painted, where "is the focused field still on
+    /// screen" has an answer.
+    /// </summary>
+    public bool FocusOnOpen { get; init; }
+}
 
 /// <summary>
 /// What a field's paint knows about its own text that a hit test cannot see: the left edge it drew from
@@ -49,7 +105,22 @@ public record HitResult
     /// did before the caret could be placed at all.
     /// </para>
     /// </param>
-    public sealed record TextInputHit(TextInputState Input, TextInputGeometry Painted = default) : HitResult;
+    public sealed record TextInputHit(TextInputState Input, TextInputGeometry Painted = default) : HitResult
+    {
+        /// <summary>
+        /// The pre-9.1 shape, kept so an already-compiled host keeps binding.
+        /// </summary>
+        /// <remarks>
+        /// This is the constructor 9.1 deleted. Adding <c>Painted</c> as an optional parameter on the
+        /// primary constructor was source-compatible and binary-fatal: the published Console.Lib, compiled
+        /// against 9.0, calls <c>new HitResult.TextInputHit(field.State)</c> in <c>CellLayout.HitOf</c>, so
+        /// against 9.1 every terminal hit test threw <c>MissingMethodException</c>. Invisible on a dev box,
+        /// where the sibling compiles from source and the package path CI takes is never taken; it surfaced
+        /// only because an agent happened to be working in a checkout where the sibling probe failed.
+        /// Restoring it here is what lets Console.Lib 4.33 run against 9.2 with no rebuild.
+        /// </remarks>
+        public TextInputHit(TextInputState Input) : this(Input, default) { }
+    }
 
     /// <summary>A named action button was clicked.</summary>
     public sealed record ButtonHit(string Action) : HitResult;
