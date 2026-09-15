@@ -2,8 +2,13 @@
 
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-    <!-- Allow floating versions (e.g. "2.30.*") for sibling-tracked codec packages
-         so DIR.Lib stays current with whatever StbImage repo publishes. -->
+    <!-- Allow floating versions so a sibling repo's CI publishes reach this repo on restore,
+         with no bump here. Only the build counter floats: an X.Y.* wildcard never crosses a
+         minor, which is how a pin can sit several published families behind while every
+         restore still succeeds and no publish is ever going to move it. (The example this
+         comment used to give, "2.30.*", was SharpAstro.StbImage, which left this graph when
+         4.0 dropped the codec dependencies and Fonts.Lib 1.5 moved CBDT decoding onto
+         SharpAstro.Png.) -->
     <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
   </PropertyGroup>
 
