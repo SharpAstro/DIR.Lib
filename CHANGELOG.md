@@ -54,6 +54,15 @@ each other, which is where the drift lived — not the number a host sets.
 
 `TapOrDragGesture.Arm`'s `slopPx` is now `slopDesignUnits`, because it was never pixels: it is scaled.
 
+**Later in 9.0: the declared `SharpAstro.Fonts` floor moves to 1.12.901, the build that takes
+`SharpAstro.Png` 3.14.** Nothing in this repo had to change for that — the pin is `1.12.*` and floats
+onto it on its own. The *publish* is the point. A package declares the floor its own pack resolved, and
+NuGet hands a consumer exactly that floor for a transitive dependency, never the newest: 9.0.2941 was
+packed against Fonts 1.12.881, which declares `SharpAstro.Png` 3.8.701, so every consumer that reaches
+Png only through DIR.Lib got a decoder six published families behind the Codecs repo, and would have
+kept getting it however often Fonts.Lib republished. Only a DIR.Lib publish moves that floor. No API
+change, so it rides the 9.0 build counter rather than taking a minor.
+
 ## 8.21
 
 **`ActivateListCursor` answers whether the row was ACTED on, not whether it was found.** It had
