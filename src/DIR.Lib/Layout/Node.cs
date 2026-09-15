@@ -237,6 +237,26 @@ public abstract partial record Node
     /// </remarks>
     public KeyChord? Shortcut { get; init; }
 
+    /// <summary>
+    /// Marks this node as the root of a popover, so the painter honours its open state rather than the
+    /// consumer doing it. Set by <see cref="Builder.Popover"/>; null on every ordinary node.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A closed popover paints NOTHING, itself and its whole subtree, and an open one additionally claims
+    /// the keyboard and confines the pointer to its content. That is the entire five-obligation checklist
+    /// <see cref="PopoverState"/> describes, moved from every consumer into one place, and it is stated on
+    /// the node because the node is the thing that knows whether it was painted.
+    /// </para>
+    /// <para>
+    /// It is INERT in measure and arrange, exactly like <see cref="Shortcut"/>: a closed popover is still
+    /// measured and still arranged, and only the paint skips it. That costs a little arithmetic on a closed
+    /// popover and buys the property that opening one cannot change the layout of anything around it, which
+    /// is what a floating overlay is for.
+    /// </para>
+    /// </remarks>
+    public PopoverState? Popover { get; init; }
+
     /// <summary>What the pointer looks like over this node's arranged rect, or null to inherit from
     /// whatever encloses it. Bound to the rect the content was painted in, like <see cref="Hit"/>.</summary>
     public CursorKind? Cursor { get; init; }
@@ -364,13 +384,56 @@ public abstract partial record Node
     /// hand re-clamps every frame for exactly that reason. Set false for a child that is deliberately
     /// allowed to overhang, such as a drag chip tracking a pointer past an edge.
     /// </param>
+    /// <param name="Anchor">
+    /// A rect to place against INSTEAD of this node's own, in the same surface coordinates the tree is
+    /// arranged into, or null for the pre-9.2 behaviour of placing against the parent.
+    /// <para>
+    /// <b><see cref="Side"/> means the opposite thing when this is set, and that is the point.</b> Against
+    /// the parent, a side places the child just INSIDE that edge, which is what pins a panel to the bottom
+    /// of a pane. Against an anchor, it places the child just OUTSIDE that edge, because the anchor is a
+    /// thing on screen the child must sit beside and not cover: a popover under its button, a tooltip above
+    /// its icon. Two different questions that happened to share a word, so the word does what the presence
+    /// of an anchor says it does.
+    /// </para>
+    /// <para>
+    /// <see cref="Clamp"/> still clamps into this node's rect, not the anchor's. That combination is the
+    /// whole reason this exists in the engine rather than in each consumer: a menu opening under the
+    /// rightmost button in a bar has to sit below THAT button and still stay on screen, and the hand-written
+    /// version of it was got wrong twice.
+    /// </para>
+    /// </param>
     public sealed record Anchored(
         Node Child,
         DockSide? Side = null,
         float OffsetAlong = 0f,
         float OffsetAcross = 0f,
         float Margin = 0f,
-        bool Clamp = true) : Node;
+        bool Clamp = true,
+        RectF32? Anchor = null) : Node
+    {
+        /// <summary>The pre-9.2 shape, kept so an already-compiled consumer keeps binding. A record's
+        /// constructor takes its arity from the primary constructor, and a trailing DEFAULT does not help
+        /// a caller that was compiled against the shorter one; DIR.Lib 9.1 shipped exactly that mistake on
+        /// an input record and broke Console.Lib.</summary>
+        public Anchored(Node Child, DockSide? Side, float OffsetAlong, float OffsetAcross, float Margin, bool Clamp)
+            : this(Child, Side, OffsetAlong, OffsetAcross, Margin, Clamp, null)
+        {
+        }
+
+        /// <summary>The six-element deconstruction, for the positional patterns written against it. A
+        /// positional pattern resolves by ARITY, so both arities have to exist or every
+        /// <c>Anchored(var child, var side, _, _, _, _)</c> stops compiling.</summary>
+        public void Deconstruct(out Node child, out DockSide? side, out float offsetAlong,
+            out float offsetAcross, out float margin, out bool clamp)
+        {
+            child = Child;
+            side = Side;
+            offsetAlong = OffsetAlong;
+            offsetAcross = OffsetAcross;
+            margin = Margin;
+            clamp = Clamp;
+        }
+    }
 
     /// <summary>A terminal paintable piece.</summary>
     public sealed record Leaf(Content Content) : Node;

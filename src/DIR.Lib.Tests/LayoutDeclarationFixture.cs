@@ -43,4 +43,8 @@ internal sealed class DeclarationWidget(Renderer<RgbaImage> renderer) : PixelWid
     /// <summary>The one context measure, arrange and paint can share.</summary>
     public PixelMeasureContext<RgbaImage> Context()
         => MeasureContext(fontPath: "stub.ttf", scale: DesignScale.One);
+
+    /// <summary>Hands this widget's window settings to another, as a host does for the panes it owns, so a
+    /// test can exercise the two-widget cases per-WINDOW state exists for.</summary>
+    public void ShareWith(DeclarationWidget other) => ShareUiContext(other);
 }

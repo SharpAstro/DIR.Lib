@@ -214,6 +214,11 @@ namespace DIR.Lib
             _tracker.BeginFrame(Ui.FrameId);
             _selectableText.Clear();
             _capturedLayout?.Clear();
+
+            // Window-level and therefore cleared per FRAME rather than per widget: see the remarks on
+            // WindowUiSettings.PointerOwner for why clearing it here unconditionally would break the moment
+            // a window had two widgets.
+            Ui.ClearPointerOwnerForFrame(Ui.FrameId);
         }
 
         /// <summary>
@@ -262,7 +267,24 @@ namespace DIR.Lib
         /// <summary>Whether <see cref="Pointer"/> is inside an arranged rect. Top/left inclusive and
         /// bottom/right exclusive, so two rows sharing an edge never both claim it.</summary>
         private bool PointerWithin(Rect<float> r) =>
-            Pointer is { } p && p.X >= r.X && p.X < r.X + r.Width && p.Y >= r.Y && p.Y < r.Y + r.Height;
+            Pointer is { } p && PointerIsOwned(p)
+            && p.X >= r.X && p.X < r.X + r.Width && p.Y >= r.Y && p.Y < r.Y + r.Height;
+
+        /// <summary>
+        /// Whether the pointer is somewhere hover is allowed to answer: always, unless an open popover has
+        /// claimed it (<see cref="WindowUiSettings.PointerOwner"/>), in which case only inside the popover's
+        /// own content.
+        /// </summary>
+        /// <remarks>
+        /// Written as "no owner, or inside the owner" rather than as a check on each rect, so a node cannot
+        /// opt out of it: the popover's own content passes because the pointer is inside the owner, and
+        /// everything the popover covers fails because it is not, with no node needing to know a popover
+        /// exists. Only HOVER is confined; the region tracker still hit-tests in paint order, so the
+        /// backdrop keeps taking the click that dismisses.
+        /// </remarks>
+        private bool PointerIsOwned((float X, float Y) p) =>
+            Ui.PointerOwner is not { } owner
+            || (p.X >= owner.X && p.X < owner.X + owner.Width && p.Y >= owner.Y && p.Y < owner.Y + owner.Height);
 
         /// <summary>
         /// Where the KEYBOARD is inside a list this widget declared — the counterpart of
@@ -610,11 +632,39 @@ namespace DIR.Lib
             float handleH, float frac, RGBAColor32 fillColor, RectF32 hitBand, HitResult hit,
             TrackSliderChrome chrome, DesignScale? scale = null)
         {
+            DrawTrackSliderVisual(trackX, trackW, barCenterY, handleY, handleH, frac, fillColor, chrome, scale);
+            RegisterClickable(hitBand.X, hitBand.Y, hitBand.Width, hitBand.Height, hit);
+        }
+
+        /// <summary>
+        /// The bar/fill/handle drawing above <see cref="DrawTrackSlider(float,float,float,float,float,float,RGBAColor32,RectF32,HitResult,TrackSliderChrome,DesignScale?)"/>
+        /// and a <see cref="Layout.Content.Slider"/> leaf both paint through, so there is exactly one place
+        /// a track slider's geometry is computed regardless of how the region around it gets registered.
+        /// Registers nothing itself: the two callers state their own region, a plain hit for the
+        /// hand-painted overload above and one carrying <see cref="Layout.Node.OnPress"/> for the declared
+        /// leaf (<see cref="PaintLayout(System.Collections.Immutable.ImmutableArray{Layout.ArrangedNode{float}},PixelMeasureContext{TSurface},System.Action{Layout.Content.Fill,RectF32}?)"/>).
+        /// </summary>
+        private void DrawTrackSliderVisual(float trackX, float trackW, float barCenterY, float handleY,
+            float handleH, float frac, RGBAColor32 fillColor, TrackSliderChrome chrome, DesignScale? scale)
+        {
             var s = (scale ?? Scale).OrOne();
             // A bar thickness runs across the track and a handle width along it, but both are the same
-            // 6 design units and neither is axis-specific -- the axis-free mapping is what they mean.
-            var barH = MathF.Max(4f, s.ToSurface(6f));
-            var handleW = MathF.Max(4f, s.ToSurface(6f));
+            // design units and neither is axis-specific; the axis-free mapping is what they mean.
+            //
+            // The number is Content.Slider.TrackHeight and not a literal, because the ENGINE measures a
+            // slider leaf's intrinsic height from that same constant. Two 6s, one here and one in
+            // Engine.MeasureContent, are free to drift into a leaf whose arranged row is not the height of
+            // the bar drawn in it, which is the defect this whole line of work exists to remove.
+            //
+            // The pixel floor stays HERE and is deliberately not pushed into the measure. It is a minimum
+            // VISIBLE thickness, so it means something on a GPU surface and nothing on a cell surface,
+            // where four cells would be an absurd slider; MeasureContent is generic over the surface and
+            // must not carry a pixel rule. The two therefore disagree below a design scale of about 0.67,
+            // where this floors at 4 and the intrinsic does not: the bar then paints a little outside a row
+            // sized to the intrinsic. Left as is, since a slider is Star-width chrome that is given a row
+            // height in practice, and the alternative is a pixel constant in a generic measure.
+            var barH = MathF.Max(4f, s.ToSurface(Layout.Content.Slider.TrackHeight));
+            var handleW = MathF.Max(4f, s.ToSurface(Layout.Content.Slider.TrackHeight));
 
             var barY = barCenterY - barH / 2f;
             FillRect(trackX, barY, trackW, barH, chrome.TrackBackground);
@@ -625,8 +675,45 @@ namespace DIR.Lib
             var handleMax = MathF.Max(trackX, trackX + trackW - handleW);
             var handleX = Math.Clamp(trackX + trackW * frac - handleW / 2f, trackX, handleMax);
             FillRect(handleX, handleY, handleW, handleH, chrome.Handle);
+        }
 
-            RegisterClickable(hitBand.X, hitBand.Y, hitBand.Width, hitBand.Height, hit);
+        /// <summary>
+        /// Arms a <see cref="Layout.Content.Slider"/> leaf's drag: the press itself, and every move until
+        /// release, map their X through <see cref="TrackFrac"/> onto <paramref name="state"/>'s
+        /// <see cref="SliderState.Value"/> (see <see cref="ApplySliderValueAt"/>). Applying it on the press
+        /// too, and not only on a subsequent move, is what makes a plain click jump the handle to where it
+        /// landed rather than requiring a drag to go anywhere, the behaviour every existing hand-painted
+        /// track slider's own mouse-down already gives it.
+        /// </summary>
+        private static DragCapture BeginSliderDrag(SliderState state, RectF32 track, PointerPress press)
+        {
+            ApplySliderValueAt(state, track, press.X);
+            return new DragCapture(
+                onMove: move => ApplySliderValueAt(state, track, move.X),
+                onRelease: release => ApplySliderValueAt(state, track, release.X));
+        }
+
+        /// <summary>
+        /// One pointer X, mapped through <see cref="TrackFrac"/> onto <paramref name="track"/> and then
+        /// onto <paramref name="state"/>'s range: rounded to <see cref="SliderState.Step"/> where it is
+        /// non-zero, clamped back to [<see cref="SliderState.Min"/>, <see cref="SliderState.Max"/>] (a
+        /// caller may state them in either order, and stepping can overshoot the edge it rounded toward),
+        /// written to <see cref="SliderState.Value"/> and handed to <see cref="SliderState.OnChanged"/>.
+        /// </summary>
+        private static void ApplySliderValueAt(SliderState state, RectF32 track, float x)
+        {
+            var frac = TrackFrac(track, x);
+            var span = state.Max - state.Min;
+            var raw = state.Min + frac * span;
+            var stepped = state.Step > 0f
+                ? state.Min + MathF.Round((raw - state.Min) / state.Step) * state.Step
+                : raw;
+            var lo = MathF.Min(state.Min, state.Max);
+            var hi = MathF.Max(state.Min, state.Max);
+            var value = Math.Clamp(stepped, lo, hi);
+
+            state.Value = value;
+            state.OnChanged?.Invoke(value);
         }
 
         /// <summary>
@@ -1053,6 +1140,21 @@ namespace DIR.Lib
             var disabledDepth = -1;
             var backgrounds = new Stack<(int Depth, RGBAColor32 Color)>();
 
+            // A CLOSED popover's whole subtree is skipped, resolved by depth exactly as disabling is: the
+            // tree was still measured and arranged (the node is inert everywhere but here), so the closed
+            // popover is present in this list and has to be stepped over rather than absent from it.
+            // -1 is "no closed popover here".
+            var closedPopoverDepth = -1;
+
+            // An OPEN popover claims the pointer for its content. The claim is the ANCHORED node's rect, not
+            // the popover root's: the root is the full-bleed overlay, whose rect is everything, and
+            // confining hover to everything confines nothing. -1 is "not inside an open popover".
+            var openPopoverDepth = -1;
+
+            // Depth at which the popover's content is expected next; -1 when not waiting for it. See the
+            // capture below for why the owner cannot be read off the Anchored node itself.
+            var pendingOwnerDepth = -1;
+
             foreach (var arrangedNode in arranged)
             {
                 var (node, bounds) = arrangedNode;
@@ -1070,6 +1172,56 @@ namespace DIR.Lib
                 if (disabledDepth >= 0 && arrangedNode.Depth <= disabledDepth)
                 {
                     disabledDepth = -1;
+                }
+
+                if (closedPopoverDepth >= 0 && arrangedNode.Depth <= closedPopoverDepth)
+                {
+                    closedPopoverDepth = -1;
+                }
+
+                if (openPopoverDepth >= 0 && arrangedNode.Depth <= openPopoverDepth)
+                {
+                    openPopoverDepth = -1;
+                }
+
+                if (node.Popover is { } popover)
+                {
+                    if (popover.IsOpen)
+                    {
+                        openPopoverDepth = arrangedNode.Depth;
+
+                        // The claim is made BY BEING PAINTED, which is what makes it self-retiring: a
+                        // popover that closed simply stops painting, and nothing has to remember to release
+                        // anything. Same mechanism the dropdown's keyboard claim already uses.
+                        Ui.KeyboardClaimant = popover;
+                    }
+                    else if (closedPopoverDepth < 0)
+                    {
+                        closedPopoverDepth = arrangedNode.Depth;
+                    }
+                }
+
+                if (closedPopoverDepth >= 0)
+                {
+                    continue;
+                }
+
+                // The pointer owner is the popover's CONTENT rect, and it cannot be read off the Anchored
+                // node: ArrangeNode records every node against the rect it was GIVEN, so the Anchored node's
+                // own entry carries the pane it floats in, and the placed rect belongs to its child, which
+                // pre-order puts next at one greater depth. Confining hover to the Anchored node's rect
+                // would therefore confine it to the whole pane, which is to say not at all.
+                //
+                // Taking the FIRST such content means a popover whose content itself anchors something, a
+                // submenu, still confines to the outer content, which is the rect being pointed at.
+                if (pendingOwnerDepth >= 0 && arrangedNode.Depth == pendingOwnerDepth)
+                {
+                    Ui.PointerOwner = new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+                    pendingOwnerDepth = -1;
+                }
+                else if (openPopoverDepth >= 0 && node is Layout.Node.Anchored && Ui.PointerOwner is null)
+                {
+                    pendingOwnerDepth = arrangedNode.Depth + 1;
                 }
 
                 if (node.Hit is HitResult.LinkHit linkHit)
@@ -1264,6 +1416,42 @@ namespace DIR.Lib
                             }
 
                             break;
+                        case Layout.Content.Slider slider:
+                        {
+                            // Enabled is the CONTENT's own flag (a caller disabling this one slider while
+                            // the row around it stays live), and the ambient node-level "disabled" folds
+                            // into it rather than replacing it: a slider inside a disabled panel is
+                            // exactly as inert as a slider whose own state says so.
+                            var sliderState = slider.State;
+                            var sliderDisabled = disabled || !sliderState.Enabled;
+                            var span = sliderState.Max - sliderState.Min;
+                            var frac = span > 0f
+                                ? Math.Clamp((sliderState.Value - sliderState.Min) / span, 0f, 1f)
+                                : 0f;
+
+                            var fillColor = sliderDisabled ? DimTowards(slider.FillColor, behind) : slider.FillColor;
+                            var chrome = sliderDisabled
+                                ? new TrackSliderChrome(
+                                    DimTowards(slider.Chrome.TrackBackground, behind),
+                                    DimTowards(slider.Chrome.Handle, behind))
+                                : slider.Chrome;
+
+                            DrawTrackSliderVisual(bounds.X, bounds.Width, bounds.Y + bounds.Height / 2f,
+                                bounds.Y, bounds.Height, frac, fillColor, chrome, ctx.Scale);
+
+                            // draw == hit: the drag reads the SAME rect it was just painted into, captured
+                            // once here rather than re-derived from wherever the press lands.
+                            var track = new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+                            RegisterClickable(new ClickableRegion(
+                                bounds.X, bounds.Y, bounds.Width, bounds.Height,
+                                new HitResult.SliderStateHit(sliderState), null,
+                                sliderDisabled ? CursorKind.NotAllowed : null)
+                            {
+                                OnPress = sliderDisabled ? null : press => BeginSliderDrag(sliderState, track, press),
+                                IsDisabled = sliderDisabled,
+                            });
+                            break;
+                        }
                         case Layout.Content.Fill fill:
                             drawFill?.Invoke(fill, new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height));
                             break;

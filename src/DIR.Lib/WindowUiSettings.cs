@@ -90,6 +90,42 @@ public sealed class WindowUiSettings
     public IKeyboardClaimant? KeyboardClaimant { get; set; }
 
     /// <summary>
+    /// The rect that owns the pointer this frame, set by an open popover as it paints, or null when nothing
+    /// does. Hover resolution consults it, so what is BEHIND a popover stops lighting up under the cursor.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Hover, not hit-testing. Clicks already go through the region tracker in paint order, so the backdrop
+    /// takes them without help; what a raw pointer position cannot express on its own is that a row a
+    /// popover is covering should look inert rather than warm. Confining hover is that rule, stated once.
+    /// </para>
+    /// <para>
+    /// <b>Cleared once per FRAME, not once per widget</b> (<see cref="ClearPointerOwnerForFrame"/>). Per
+    /// widget would be wrong in a way that only shows up with more than one: every widget clears in its own
+    /// BeginFrame, so a second widget beginning its frame would wipe the owner a first widget had just
+    /// painted, and the popover would confine hover only when it happened to belong to the last widget
+    /// drawn. Unlike <see cref="KeyboardClaimant"/> this cannot be left stale, because a rect has no way to
+    /// answer "I am not displayed any more".
+    /// </para>
+    /// </remarks>
+    public RectF32? PointerOwner { get; set; }
+
+    private long _pointerOwnerFrame = -1;
+
+    /// <summary>Clears <see cref="PointerOwner"/> the first time it is called for a given frame, and does
+    /// nothing on later calls for that same frame. Called by every widget's BeginFrame.</summary>
+    internal void ClearPointerOwnerForFrame(long frameId)
+    {
+        if (_pointerOwnerFrame == frameId)
+        {
+            return;
+        }
+
+        _pointerOwnerFrame = frameId;
+        PointerOwner = null;
+    }
+
+    /// <summary>
     /// Which text field in this window has the keyboard, and the one way to move it.
     /// </summary>
     /// <remarks>

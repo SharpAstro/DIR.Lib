@@ -206,6 +206,67 @@ Additive throughout: every new member is new surface, `HandleKey`'s `extend` and
 beside their plain counterparts -- renumbering `Paste` to keep the list tidy would change what an
 already-compiled consumer's constant means.
 
+### Wave 2: the slider and the popover
+
+**A slider is now a leaf, not six re-implementations of one drag.** `Layout.Content.Slider(SliderState)`
+is the node IS the control precedent `TextInput` already set, applied to the other control every consumer
+had opted out of the region model for: `OnClick` carries no position, so a track slider could not arm its
+own drag the way `OnPress` now lets it, and every one of them instead cached its track rect beside the
+paint and armed a flag from the host's dispatcher (six such caches counted in one consumer, each free to
+disagree with the rect the engine actually arranged). `Builder.Slider(state)` is the whole declaration,
+`Star` width by default (unlike `TextInput`, which has a placeholder-shaped content width to shrink to
+under `Auto` and a slider has none).
+
+`SliderState` is caller-owned and mutable, the same precedent `TextInputState` sets: `Value`, `Min`, `Max`,
+a `Step` (0 = continuous), `Enabled`, and an `OnChanged` called with the new value. `PaintLayout` draws the
+leaf through the SAME `DrawTrackSlider` bar/fill/handle implementation every hand-painted track slider
+already uses (extracted into a private `DrawTrackSliderVisual` so there is exactly one such drawing,
+whichever way a slider is painted) and registers a `HitResult.SliderStateHit(SliderState)` whose `OnPress`
+claims the drag: the press itself, and every move until release, map their X through the existing
+`TrackFrac` onto a new value, clamped to range and rounded to `Step`, and call `OnChanged`, including on
+the press, which is what lets a plain click jump the handle rather than only a drag going anywhere, the
+behaviour every hand-painted track slider's own mouse-down already gave it.
+
+`SliderState.Enabled` is the content's own disabled flag (a caller silencing this one slider without
+touching the row around it), and folds together with the ambient `Node.DisabledReason`: dims the
+fill/track/handle toward the background behind it and registers the region with no press bound, so a
+disabled slider still occupies its place and swallows a press rather than letting it fall through, exactly
+as a `Disabled` subtree already does for a button.
+
+Additive throughout: `Content.Slider`, `SliderState`, `HitResult.SliderStateHit` and `Builder.Slider` are
+new surface, and the only change to an existing member is `DrawTrackSlider`'s body being split behind a
+new private helper with byte-identical behaviour at every existing call site.
+
+**A popover costs one obligation instead of five.** `Builder.Popover(anchor, content, state, side,
+backdrop)` returns the whole thing: content floated beside the anchor over a full-bleed backdrop that
+dismisses, displayed only while `PopoverState` is open. The five were a flag, that backdrop, a placement,
+an Escape route and a line in the host's dispatcher, and forgetting any one of them was SILENT, because
+the overlay still opened, still drew and still took clicks, and only the key that should have dismissed
+it went missing. `PopoverState` is `IKeyboardClaimant` with `IsOpen`, `Open`, `Close`, `Toggle` and a
+`Closed` event; it closes on Escape and declines every other key, including while already closed, which is
+what makes the never-cleared claimant slot safe to leave stale.
+
+`Layout.Node.Popover` carries the state and the painter honours it: a closed popover paints nothing, itself
+and its whole subtree, and an open one claims the keyboard by being painted and sets
+`WindowUiSettings.PointerOwner` to its content rect, which confines HOVER so what sits behind a popover
+stops lighting up under the cursor. Clicks are untouched, since the region tracker already hit-tests in
+paint order and the backdrop takes them. `PointerOwner` is cleared once per FRAME rather than once per
+widget, because a per-widget clear lets the second widget of a window wipe an owner the first had just
+painted.
+
+**`Node.Anchored` can place against a rect that is not its parent.** The new `Anchor` parameter, and
+`Builder.AnchoredTo(anchor, child, side)` beside it. With an anchor a side means just OUTSIDE that edge
+(a popover under its button); without one it keeps meaning just inside the parent's edge (a panel pinned
+to the bottom of a pane), and the clamp is into the parent either way, which is what keeps a menu opened
+from the rightmost button in a bar both under its button and on screen. That last case is the one the
+hand-written placement in a consumer got wrong twice.
+
+Additive, with the binary-compatibility guard 9.1 taught: `Node.Anchored` gained a parameter, so it
+carries an explicit six-argument constructor AND an explicit six-element `Deconstruct`, because a record's
+synthesized members take their arity from the primary constructor and a trailing default does not help a
+caller compiled against the shorter one, nor a positional pattern, which resolves by arity. `AnchoredTo`
+is a new method rather than another optional parameter on `Anchored` for the same reason.
+
 ## 9.1
 
 **A pointer can reach the caret.** A text field has had a full selection model since it was written —

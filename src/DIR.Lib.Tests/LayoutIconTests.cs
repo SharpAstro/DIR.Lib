@@ -231,6 +231,36 @@ public class LayoutIconTests
     }
 
     /// <summary>
+    /// The horizontal pair is the vertical one turned a quarter, asserted the same way: tip on the named
+    /// edge, base spanning the opposite one, and the corners beside the tip left empty.
+    /// </summary>
+    /// <remarks>
+    /// Worth its own test rather than trusting the transposition, because the painter writes the two loops
+    /// out separately on purpose. That is the trade it made: one axis-swapping loop cannot drift between
+    /// the pairs but is read correctly once and mistrusted afterwards, while two loops read plainly and can
+    /// drift. This is the test that catches the drift.
+    /// </remarks>
+    [Fact]
+    public void TheHorizontalCaretIsTheVerticalOneTurned_AndPointsTheWayItIsNamed()
+    {
+        var mid = (int)Surface / 2;
+        var last = (int)Surface - 1;
+
+        var (left, _) = Paint(Layout.IconKind.CaretLeft);
+        left(0, mid).ShouldBeTrue("the tip must reach the left edge");
+        left(last, 0).ShouldBeTrue("the base must reach the top-right corner");
+        left(last, last).ShouldBeTrue("the base must reach the bottom-right corner");
+        left(0, 0).ShouldBeFalse("the left corners are outside a triangle pointing left");
+        left(0, last).ShouldBeFalse();
+
+        var (right, _) = Paint(Layout.IconKind.CaretRight);
+        right(last, mid).ShouldBeTrue("the tip must reach the right edge");
+        right(0, 0).ShouldBeTrue("the base must reach the top-left corner");
+        right(0, last).ShouldBeTrue();
+        right(last, 0).ShouldBeFalse("the right corners are outside a triangle pointing right");
+    }
+
+    /// <summary>
     /// The plus reaches all four edges, and its centre is inked -- the two things that separate it from the
     /// caret (a triangle, so its top corners are empty) and from the grid (a gutter, so its centre is).
     /// </summary>
