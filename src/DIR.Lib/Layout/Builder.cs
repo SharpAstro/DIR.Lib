@@ -144,6 +144,52 @@ public static class Builder
         float offsetAlong = 0f, float offsetAcross = 0f, float margin = 0f, bool clamp = true)
         => new Node.Anchored(child, side, offsetAlong, offsetAcross, margin, clamp);
 
+    /// <summary>
+    /// A floating child placed just OUTSIDE <paramref name="side"/> of <paramref name="anchor"/>, still
+    /// clamped inside the node it floats in. The shape a menu, a tooltip or a popover wants: beside the
+    /// thing that opened it, and on screen.
+    /// </summary>
+    /// <remarks>
+    /// A separate method rather than another optional parameter on <see cref="Anchored"/>, because an
+    /// optional parameter added to an existing method changes the signature a compiled caller binds to, the
+    /// same trap the records here carry explicit old-arity members for. A new name is always safe.
+    /// </remarks>
+    public static Node AnchoredTo(RectF32 anchor, Node child, DockSide? side = DockSide.Bottom,
+        float offsetAlong = 0f, float offsetAcross = 0f, float margin = 0f, bool clamp = true)
+        => new Node.Anchored(child, side, offsetAlong, offsetAcross, margin, clamp, anchor);
+
+    /// <summary>
+    /// A popover: <paramref name="content"/> floated beside <paramref name="anchor"/> over a full-bleed
+    /// backdrop that closes it, displayed only while <paramref name="state"/> is open.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the whole five-obligation checklist in one call.</b> The flag, the backdrop that dismisses
+    /// it, the placement, the Escape route and the host dispatcher line are what a hand-written popover cost,
+    /// and forgetting one of them is invisible (see <see cref="PopoverState"/>). Here the painter honours the
+    /// open state, the backdrop is part of the tree, the placement is the engine's, and the keyboard claim
+    /// happens by being painted.
+    /// </para>
+    /// <para>
+    /// The backdrop takes a <see cref="HitResult.ChromeHit"/> and closes on click. It is a real node rather
+    /// than an invisible rule so that a click anywhere outside the content is CONSUMED as well as dismissing:
+    /// without it, dismissing and whatever sat under the pointer would both fire, which is the behaviour
+    /// people read as "it closed and then did something I did not ask for". A null
+    /// <paramref name="backdrop"/> leaves it unpainted, still present, and still dismissing.
+    /// </para>
+    /// </remarks>
+    public static Node Popover(RectF32 anchor, Node content, PopoverState state,
+        DockSide side = DockSide.Bottom, RGBAColor32? backdrop = null)
+    {
+        var scrim = Spacer().Stretch().Clickable(new HitResult.ChromeHit(), _ => state.Close());
+        if (backdrop is { } colour)
+        {
+            scrim = scrim.Bg(colour);
+        }
+
+        return Overlay(scrim, AnchoredTo(anchor, content, side)) with { Popover = state };
+    }
+
     /// <summary>Two resizable panes plus a draggable divider; <paramref name="firstExtent"/> is consumer-owned state. See <see cref="Node.Split"/>.</summary>
     public static Node Split(Node first, Node second, Axis axis = Axis.Horizontal,
         float firstExtent = 0f, float dividerThickness = 6f,

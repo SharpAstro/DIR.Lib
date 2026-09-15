@@ -175,14 +175,22 @@ public static class Engine
 
         // A pinned side fixes one coordinate at the margin and keeps the offset on the other; free keeps
         // both. Left/Right pin X and run the offset down; Top/Bottom pin Y and run it across.
-        var (x, y) = anchored.Side switch
-        {
-            DockSide.Left => (inner.X + margin, inner.Y + along),
-            DockSide.Right => (inner.X + inner.Width - margin - size.Width, inner.Y + along),
-            DockSide.Top => (inner.X + along, inner.Y + margin),
-            DockSide.Bottom => (inner.X + along, inner.Y + inner.Height - margin - size.Height),
-            _ => (inner.X + along, inner.Y + across),
-        };
+        //
+        // With an Anchor the child is placed against THAT rect instead, and a side then means OUTSIDE the
+        // named edge rather than inside it: an anchor is a thing on screen the child must sit beside and not
+        // cover, where the parent is a region the child sits within. The clamp below still uses `inner`
+        // either way, which is the combination that keeps a menu under the rightmost button in a bar both
+        // below its button and on screen.
+        var (x, y) = anchored.Anchor is { } a
+            ? PlaceAgainstAnchor(a, anchored.Side, size, margin, along, across)
+            : anchored.Side switch
+            {
+                DockSide.Left => (inner.X + margin, inner.Y + along),
+                DockSide.Right => (inner.X + inner.Width - margin - size.Width, inner.Y + along),
+                DockSide.Top => (inner.X + along, inner.Y + margin),
+                DockSide.Bottom => (inner.X + along, inner.Y + inner.Height - margin - size.Height),
+                _ => (inner.X + along, inner.Y + across),
+            };
 
         if (anchored.Clamp)
         {
@@ -193,6 +201,33 @@ public static class Engine
         }
 
         ArrangeNode(anchored.Child, new Rect<T>(x, y, size.Width, size.Height), ctx, output, depth);
+    }
+
+    /// <summary>
+    /// Where a child sits relative to an anchor rect: just outside the named edge, with the offset running
+    /// along that edge, and free placement from the anchor's own origin when no side is named.
+    /// </summary>
+    /// <remarks>
+    /// The anchor is in SURFACE units, not design units, because it is always a rect something else was
+    /// already arranged or painted into: a button's rect, a row's rect. Converting it per axis would be
+    /// wrong for the same reason converting a pointer position would be.
+    /// </remarks>
+    private static (T X, T Y) PlaceAgainstAnchor<T>(RectF32 anchor, DockSide? side, Size<T> size,
+        T margin, T along, T across) where T : INumber<T>
+    {
+        var ax = T.CreateTruncating(anchor.X);
+        var ay = T.CreateTruncating(anchor.Y);
+        var aw = T.CreateTruncating(anchor.Width);
+        var ah = T.CreateTruncating(anchor.Height);
+
+        return side switch
+        {
+            DockSide.Left => (ax - margin - size.Width, ay + along),
+            DockSide.Right => (ax + aw + margin, ay + along),
+            DockSide.Top => (ax + along, ay - margin - size.Height),
+            DockSide.Bottom => (ax + along, ay + ah + margin),
+            _ => (ax + along, ay + across),
+        };
     }
 
     private static void ArrangeSplit<T>(Node.Split split, Rect<T> inner, IMeasureContext<T> ctx,

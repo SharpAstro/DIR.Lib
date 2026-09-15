@@ -214,6 +214,11 @@ namespace DIR.Lib
             _tracker.BeginFrame(Ui.FrameId);
             _selectableText.Clear();
             _capturedLayout?.Clear();
+
+            // Window-level and therefore cleared per FRAME rather than per widget: see the remarks on
+            // WindowUiSettings.PointerOwner for why clearing it here unconditionally would break the moment
+            // a window had two widgets.
+            Ui.ClearPointerOwnerForFrame(Ui.FrameId);
         }
 
         /// <summary>
@@ -262,7 +267,24 @@ namespace DIR.Lib
         /// <summary>Whether <see cref="Pointer"/> is inside an arranged rect. Top/left inclusive and
         /// bottom/right exclusive, so two rows sharing an edge never both claim it.</summary>
         private bool PointerWithin(Rect<float> r) =>
-            Pointer is { } p && p.X >= r.X && p.X < r.X + r.Width && p.Y >= r.Y && p.Y < r.Y + r.Height;
+            Pointer is { } p && PointerIsOwned(p)
+            && p.X >= r.X && p.X < r.X + r.Width && p.Y >= r.Y && p.Y < r.Y + r.Height;
+
+        /// <summary>
+        /// Whether the pointer is somewhere hover is allowed to answer: always, unless an open popover has
+        /// claimed it (<see cref="WindowUiSettings.PointerOwner"/>), in which case only inside the popover's
+        /// own content.
+        /// </summary>
+        /// <remarks>
+        /// Written as "no owner, or inside the owner" rather than as a check on each rect, so a node cannot
+        /// opt out of it: the popover's own content passes because the pointer is inside the owner, and
+        /// everything the popover covers fails because it is not, with no node needing to know a popover
+        /// exists. Only HOVER is confined; the region tracker still hit-tests in paint order, so the
+        /// backdrop keeps taking the click that dismisses.
+        /// </remarks>
+        private bool PointerIsOwned((float X, float Y) p) =>
+            Ui.PointerOwner is not { } owner
+            || (p.X >= owner.X && p.X < owner.X + owner.Width && p.Y >= owner.Y && p.Y < owner.Y + owner.Height);
 
         /// <summary>
         /// Where the KEYBOARD is inside a list this widget declared — the counterpart of
@@ -1118,6 +1140,21 @@ namespace DIR.Lib
             var disabledDepth = -1;
             var backgrounds = new Stack<(int Depth, RGBAColor32 Color)>();
 
+            // A CLOSED popover's whole subtree is skipped, resolved by depth exactly as disabling is: the
+            // tree was still measured and arranged (the node is inert everywhere but here), so the closed
+            // popover is present in this list and has to be stepped over rather than absent from it.
+            // -1 is "no closed popover here".
+            var closedPopoverDepth = -1;
+
+            // An OPEN popover claims the pointer for its content. The claim is the ANCHORED node's rect, not
+            // the popover root's: the root is the full-bleed overlay, whose rect is everything, and
+            // confining hover to everything confines nothing. -1 is "not inside an open popover".
+            var openPopoverDepth = -1;
+
+            // Depth at which the popover's content is expected next; -1 when not waiting for it. See the
+            // capture below for why the owner cannot be read off the Anchored node itself.
+            var pendingOwnerDepth = -1;
+
             foreach (var arrangedNode in arranged)
             {
                 var (node, bounds) = arrangedNode;
@@ -1135,6 +1172,56 @@ namespace DIR.Lib
                 if (disabledDepth >= 0 && arrangedNode.Depth <= disabledDepth)
                 {
                     disabledDepth = -1;
+                }
+
+                if (closedPopoverDepth >= 0 && arrangedNode.Depth <= closedPopoverDepth)
+                {
+                    closedPopoverDepth = -1;
+                }
+
+                if (openPopoverDepth >= 0 && arrangedNode.Depth <= openPopoverDepth)
+                {
+                    openPopoverDepth = -1;
+                }
+
+                if (node.Popover is { } popover)
+                {
+                    if (popover.IsOpen)
+                    {
+                        openPopoverDepth = arrangedNode.Depth;
+
+                        // The claim is made BY BEING PAINTED, which is what makes it self-retiring: a
+                        // popover that closed simply stops painting, and nothing has to remember to release
+                        // anything. Same mechanism the dropdown's keyboard claim already uses.
+                        Ui.KeyboardClaimant = popover;
+                    }
+                    else if (closedPopoverDepth < 0)
+                    {
+                        closedPopoverDepth = arrangedNode.Depth;
+                    }
+                }
+
+                if (closedPopoverDepth >= 0)
+                {
+                    continue;
+                }
+
+                // The pointer owner is the popover's CONTENT rect, and it cannot be read off the Anchored
+                // node: ArrangeNode records every node against the rect it was GIVEN, so the Anchored node's
+                // own entry carries the pane it floats in, and the placed rect belongs to its child, which
+                // pre-order puts next at one greater depth. Confining hover to the Anchored node's rect
+                // would therefore confine it to the whole pane, which is to say not at all.
+                //
+                // Taking the FIRST such content means a popover whose content itself anchors something, a
+                // submenu, still confines to the outer content, which is the rect being pointed at.
+                if (pendingOwnerDepth >= 0 && arrangedNode.Depth == pendingOwnerDepth)
+                {
+                    Ui.PointerOwner = new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+                    pendingOwnerDepth = -1;
+                }
+                else if (openPopoverDepth >= 0 && node is Layout.Node.Anchored && Ui.PointerOwner is null)
+                {
+                    pendingOwnerDepth = arrangedNode.Depth + 1;
                 }
 
                 if (node.Hit is HitResult.LinkHit linkHit)
