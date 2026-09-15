@@ -15,13 +15,36 @@ public readonly record struct ClickableRegion(
     Action<InputModifier>? OnClick = null, CursorKind? Cursor = null);
 
 /// <summary>
+/// What a field's paint knows about its own text that a hit test cannot see: the left edge it drew from
+/// and the face it drew with. Enough, with <see cref="TextInputRenderer.CaretIndexAt"/>, to turn a pointer
+/// position into a character index through the same measurements that placed the caret.
+/// </summary>
+/// <param name="X">The FIELD's left edge, not the text origin — the insets are
+/// <see cref="TextInputRenderer"/>'s to apply, and applying them here would be the second copy.</param>
+/// <param name="FontFamily">The face the glyphs were measured and drawn with; empty where no font was
+/// configured, which is the same case the paint declines to draw.</param>
+/// <param name="LeadingRoom">Room taken by a leading mark, as handed to the paint.</param>
+public readonly record struct TextInputGeometry(int X, string FontFamily, float FontSize, float LeadingRoom);
+
+/// <summary>
 /// Describes what was hit during a click. Open hierarchy — extend with
 /// app-specific subclasses (e.g. SlotHit, SliderHit) in downstream projects.
 /// </summary>
 public record HitResult
 {
     /// <summary>A text input field was clicked — activate it and start text input.</summary>
-    public sealed record TextInputHit(TextInputState Input) : HitResult;
+    /// <param name="Painted">
+    /// Where this field's text was laid down, so the click can be resolved to a character.
+    /// <para>
+    /// Stated as part of the HIT for the reason <see cref="LinkHit"/> is: it keeps the drawn region and the
+    /// clickable region the same arranged rect. A host that re-derived the text origin from the region's own
+    /// x would be keeping a second copy of the field's insets, and the copy that drifts is the one nobody
+    /// looks at — a caret landing a padding-width off the pointer is not obviously a bug, it just feels
+    /// wrong. Left at <c>default</c> by a caller that only wants focus-on-click, which is what every caller
+    /// did before the caret could be placed at all.
+    /// </para>
+    /// </param>
+    public sealed record TextInputHit(TextInputState Input, TextInputGeometry Painted = default) : HitResult;
 
     /// <summary>A named action button was clicked.</summary>
     public sealed record ButtonHit(string Action) : HitResult;

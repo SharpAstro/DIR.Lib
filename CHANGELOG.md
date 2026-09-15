@@ -9,6 +9,44 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 9.1
+
+**A pointer can reach the caret.** A text field has had a full selection model since it was written —
+an anchor, `SelectWordAt`, `SelectAll` — and no way to drive any of it with a mouse, because nothing
+mapped a position to a character. A click could focus a box and nothing else: double-clicking a word
+selected nothing, dragging selected nothing, and there was no gesture at all that selected what was
+already in a field.
+
+`TextInputRenderer.CaretIndexAt` is the missing direction, and it is deliberately the inverse of the
+measurement the paint places the caret with rather than a second one. It measures prefixes through the
+same fallback chain the text was drawn with — with a fallback in play the primary face reports zero
+advance for a glyph it lacks, so a mapping through the primary alone collapses every position past the
+first CJK character onto one index — and it binary-searches them rather than walking, since prefix
+widths are monotonic in the boundary index. A shaped run is not the concatenation of its glyphs, so
+summing advances would be the wrong question; the width up to a boundary is the one the caret already
+answers.
+
+`TextInputRenderer.TextOriginX` states where the glyphs start, joining `HorizontalPadding` and
+`LeadingRoom` as geometry declared once and read by everyone. It now has three readers: the measure
+pass, the paint, and this.
+
+`TextInputInteraction.HandlePointer` is the rule — one click places, two select the word, three or more
+the field, shift or a drag extends — and it takes an INDEX, not a coordinate. That is the seam between
+what every surface shares and what none of them do: which character a point falls on is a property of
+how that surface laid the text out (glyph measurement on a pixel host, a column subtraction on a cell
+one), while what a second click means is the same everywhere, and was the half missing on every surface
+at once. `TextInputState.MoveCaretTo` is its counterpart to the arrow keys.
+
+`HitResult.TextInputHit` carries a `TextInputGeometry`: the field's left edge and the face it was drawn
+with, stated by the paint that drew it, for the reason `LinkHit` carries its URL — it keeps the drawn
+region and the clickable region the same arranged rect. A host that re-derived the text origin would be
+keeping a second copy of the field's insets, and a caret landing a padding-width off the pointer is not
+obviously a bug, it just feels wrong. `PixelWidgetBase.CaretIndexAt` resolves a hit through the
+widget's own renderer and fallback chain, so the answer cannot disagree with where the caret was drawn.
+
+Additive throughout: the new `TextInputHit` component is optional and every existing construction of it
+still compiles.
+
 ## 9.0
 
 Two halves of one idea: the content transform reaches the last backend that ignored it, and the
