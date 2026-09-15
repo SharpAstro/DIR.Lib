@@ -162,4 +162,11 @@ public record HitResult
 
     /// <summary>A slider was clicked/dragged at the given index.</summary>
     public sealed record SliderHit(int SliderIndex) : HitResult;
+
+    /// <summary>
+    /// A <see cref="Layout.Content.Slider"/> leaf was pressed or dragged. Carries the live
+    /// <see cref="SliderState"/> itself rather than an index: the leaf's identity IS its state, the same
+    /// reason a <see cref="TextInputHit"/> carries a <see cref="TextInputState"/> rather than a field id.
+    /// </summary>
+    public sealed record SliderStateHit(SliderState State) : HitResult;
 }

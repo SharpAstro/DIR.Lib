@@ -206,6 +206,37 @@ Additive throughout: every new member is new surface, `HandleKey`'s `extend` and
 beside their plain counterparts -- renumbering `Paste` to keep the list tidy would change what an
 already-compiled consumer's constant means.
 
+### Wave 2: the slider (the popover half of this wave is not in this entry)
+
+**A slider is now a leaf, not six re-implementations of one drag.** `Layout.Content.Slider(SliderState)`
+is the node IS the control precedent `TextInput` already set, applied to the other control every consumer
+had opted out of the region model for: `OnClick` carries no position, so a track slider could not arm its
+own drag the way `OnPress` now lets it, and every one of them instead cached its track rect beside the
+paint and armed a flag from the host's dispatcher (six such caches counted in one consumer, each free to
+disagree with the rect the engine actually arranged). `Builder.Slider(state)` is the whole declaration,
+`Star` width by default (unlike `TextInput`, which has a placeholder-shaped content width to shrink to
+under `Auto` and a slider has none).
+
+`SliderState` is caller-owned and mutable, the same precedent `TextInputState` sets: `Value`, `Min`, `Max`,
+a `Step` (0 = continuous), `Enabled`, and an `OnChanged` called with the new value. `PaintLayout` draws the
+leaf through the SAME `DrawTrackSlider` bar/fill/handle implementation every hand-painted track slider
+already uses (extracted into a private `DrawTrackSliderVisual` so there is exactly one such drawing,
+whichever way a slider is painted) and registers a `HitResult.SliderStateHit(SliderState)` whose `OnPress`
+claims the drag: the press itself, and every move until release, map their X through the existing
+`TrackFrac` onto a new value, clamped to range and rounded to `Step`, and call `OnChanged`, including on
+the press, which is what lets a plain click jump the handle rather than only a drag going anywhere, the
+behaviour every hand-painted track slider's own mouse-down already gave it.
+
+`SliderState.Enabled` is the content's own disabled flag (a caller silencing this one slider without
+touching the row around it), and folds together with the ambient `Node.DisabledReason`: dims the
+fill/track/handle toward the background behind it and registers the region with no press bound, so a
+disabled slider still occupies its place and swallows a press rather than letting it fall through, exactly
+as a `Disabled` subtree already does for a button.
+
+Additive throughout: `Content.Slider`, `SliderState`, `HitResult.SliderStateHit` and `Builder.Slider` are
+new surface, and the only change to an existing member is `DrawTrackSlider`'s body being split behind a
+new private helper with byte-identical behaviour at every existing call site.
+
 ## 9.1
 
 **A pointer can reach the caret.** A text field has had a full selection model since it was written —

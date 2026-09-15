@@ -255,6 +255,50 @@ public abstract record Content
     }
 
     /// <summary>
+    /// A draggable value in a range: the node IS the control, the same precedent <see cref="TextInput"/>
+    /// sets for a field. A painter meeting this leaf draws it through the shared
+    /// <c>PixelWidgetBase.DrawTrackSlider</c> track/fill/handle implementation (so a slider still has
+    /// exactly one drawing, whether it is declared this way or hand-painted), registers a
+    /// <see cref="HitResult.SliderStateHit"/> and arms its own drag: a press maps its X through
+    /// <c>PixelWidgetBase.TrackFrac</c> to a new <see cref="SliderState.Value"/>, clamped to
+    /// [<see cref="SliderState.Min"/>, <see cref="SliderState.Max"/>] and rounded to
+    /// <see cref="SliderState.Step"/> where it is non-zero, and calls <see cref="SliderState.OnChanged"/>,
+    /// on the press itself and on every move until release.
+    /// <para>
+    /// <b>The node carries a reference to caller-owned mutable state</b>, exactly as <see cref="TextInput"/>
+    /// does: the consumer still owns <see cref="State"/> and its commit wiring, and a tree rebuilt every
+    /// frame keeps reading the position the last drag left it at rather than one baked into the record.
+    /// </para>
+    /// <para>
+    /// While <see cref="SliderState.Enabled"/> is false, the leaf paints dimmed (toward whatever background
+    /// is behind it, the same rule a <see cref="Node.DisabledReason"/> subtree uses) and its region still
+    /// registers, with no press bound, so it keeps its place and swallows a press rather than letting it
+    /// fall through to whatever is behind it.
+    /// </para>
+    /// </summary>
+    /// <param name="State">The caller-owned slider state: value, range, step and the change callback.</param>
+    public sealed record Slider(SliderState State) : Content
+    {
+        /// <summary>
+        /// The intrinsic (Auto) height in design units, when nothing else states one; the same "6" the
+        /// track bar itself is drawn at (not shared code, since the paint reads its own arranged rect and
+        /// never this constant, so a slider left to size itself is exactly as tall as the mark it draws,
+        /// and a row that wants more gives it explicitly, as every existing hand-painted track slider
+        /// already does with its own handle band).
+        /// </summary>
+        public const float TrackHeight = 6f;
+
+        /// <summary>The played portion of the track and the handle. Default opaque white, the convention
+        /// <see cref="Text.Color"/> and <see cref="Icon.Color"/> use; override per slider, the way every
+        /// existing hand-painted track slider already supplies its own accent.</summary>
+        public RGBAColor32 FillColor { get; init; } = new(0xff, 0xff, 0xff, 0xff);
+
+        /// <summary>The unfilled track and the handle marker's own colours: the two chrome tones the
+        /// painter needs beside <see cref="FillColor"/>.</summary>
+        public TrackSliderChrome Chrome { get; init; } = new(new RGBAColor32(0x40, 0x40, 0x40, 0xff), new RGBAColor32(0xff, 0xff, 0xff, 0xff));
+    }
+
+    /// <summary>
     /// An app-drawn escape hatch (chart, sky map, custom widget). Carries only a minimum intrinsic
     /// size in design units; pair with <c>Star</c> sizing to fill available space. The painter draws it via an
     /// app <c>drawFill</c> callback, which receives this instance back -- so when one tree contains several

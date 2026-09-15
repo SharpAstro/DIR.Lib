@@ -86,6 +86,25 @@ public static class Builder
     public static Node Fill(float minWidth = 0f, float minHeight = 0f, string? key = null)
         => new Node.Leaf(new Content.Fill(minWidth, minHeight, key));
 
+    /// <summary>
+    /// A draggable value in a range: <c>Builder.Slider(state)</c> is the whole declaration, and the
+    /// painter takes care of drawing it (through the one shared track/fill/handle implementation),
+    /// registering its <see cref="HitResult.SliderStateHit"/> and arming its own drag. See
+    /// <see cref="Content.Slider"/>.
+    /// <para>
+    /// <c>Star</c> width by default, unlike <see cref="TextInput"/>: a slider almost always fills the row
+    /// it sits in and has no placeholder-shaped content to shrink to under <c>Auto</c> the way a field
+    /// does.
+    /// </para>
+    /// </summary>
+    public static Node Slider(SliderState state, RGBAColor32? fillColor = null, TrackSliderChrome? chrome = null)
+        => new Node.Leaf(new Content.Slider(state)
+        {
+            FillColor = fillColor ?? new RGBAColor32(0xff, 0xff, 0xff, 0xff),
+            Chrome = chrome ?? new TrackSliderChrome(new RGBAColor32(0x40, 0x40, 0x40, 0xff), new RGBAColor32(0xff, 0xff, 0xff, 0xff)),
+        })
+        { Width = Sizing.Star() };
+
     /// <summary>A transparent zero-intrinsic box -- a pure spacer; size it with <c>.ColW()</c> / <c>.HFixed()</c> / a <c>Star</c> weight.</summary>
     public static Node Spacer() => new Node.Leaf(new Content.Box(0f, 0f));
 

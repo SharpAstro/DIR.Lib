@@ -618,6 +618,11 @@ public static class Engine
             // turns one design square into the cell it actually occupies.
             Content.Icon icon => new Size<T>(ctx.ToSurfaceX(icon.Size), ctx.ToSurfaceY(icon.Size)),
             Content.TextInput field => MeasureTextInput(field, ctx),
+            // Zero-width intrinsic: a slider has no content to size itself from, unlike Box/Icon, which is
+            // exactly why Builder.Slider sets Star width rather than leaving the node-level Auto default.
+            // Height alone carries an intrinsic, so a slider placed with no row height still occupies the
+            // track it draws instead of collapsing to nothing.
+            Content.Slider => new Size<T>(T.Zero, ctx.ToSurfaceY(Content.Slider.TrackHeight)),
             Content.Fill fill => new Size<T>(ctx.ToSurfaceX(fill.MinWidth), ctx.ToSurfaceY(fill.MinHeight)),
             _ => Size<T>.Zero,
         };
