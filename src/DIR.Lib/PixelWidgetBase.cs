@@ -45,6 +45,56 @@ namespace DIR.Lib
         /// concrete widget painted the overlay.
         /// </summary>
         WindowUiSettings Ui { get; }
+
+        /// <summary>
+        /// Appends this widget's regions from the frame it last painted, in paint order, and a composite's
+        /// children's with them.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Five of the things <see cref="InputRouter"/> resolves live on the region and nowhere else (the
+        /// press handler, the cursor, the tooltip, the wheel target and a field's focus-on-open request),
+        /// so a router holding <see cref="IPixelWidget"/> needs the list rather than one answer at a time.
+        /// </para>
+        /// <para>
+        /// It fills a caller's list rather than returning one, because the caller has a scratch buffer and
+        /// this is on the pointer-move path. <see cref="PixelWidgetBase{TSurface}.GetRegisteredRegions"/>
+        /// stays for a reader that wants a snapshot it can keep; what lands here is valid until the next
+        /// frame.
+        /// </para>
+        /// </remarks>
+        void CollectPaintedRegions(List<ClickableRegion> into);
+
+        /// <summary>
+        /// Appends the arranged nodes this widget PAINTED, in paint order, and a composite's children's
+        /// with them.
+        /// </summary>
+        /// <remarks>
+        /// What a declaration carrying no region of its own is read from: a
+        /// <see cref="Layout.Node.Shortcut"/> or a <see cref="Layout.Node.HoverBackground"/> lives on the
+        /// node. PAINTED rather than arranged is the load-bearing word, and it is what makes a shortcut on
+        /// a panel that is not on screen inert with nobody having to say so.
+        /// </remarks>
+        void CollectPaintedNodes(List<Layout.ArrangedNode<float>> into);
+
+        /// <summary>
+        /// Where the pointer is, in this widget's coordinates, or null when it is elsewhere. Set by
+        /// whatever routes the motion, read by the paint to resolve hover.
+        /// </summary>
+        /// <remarks>
+        /// On the interface because hover resolves during PAINT, so it has to be stated beforehand by
+        /// something that sees the whole frame. A router setting it on each widget it lists is the only
+        /// thing that can say which of them the pointer is over.
+        /// </remarks>
+        (float X, float Y)? Pointer { get; set; }
+
+        /// <summary>The scroll controller of the innermost region under the point that declared one, or
+        /// null where nothing there scrolls.</summary>
+        ListScrollController? ScrollTargetAt(float x, float y);
+
+        /// <summary>The cursor stated by the topmost region under the point, or null where nothing under
+        /// it had a view.</summary>
+        CursorKind? HitTestCursor(float x, float y);
     }
 
     /// <summary>
@@ -75,6 +125,9 @@ namespace DIR.Lib
         // rects that changed is worth far more than this allocation (measured: 8% GPU for a full-window
         // repaint of a 4 Mpix pane to update one status-bar number).
         // Mirrors _tracker: cleared in BeginFrame, appended in PaintLayout. Render-thread only.
+        // PAINTED, not arranged: a closed popover's subtree is measured and arranged and never drawn, so it
+        // is not here. That is what lets a shortcut, a hover background and a debug inspector all read this
+        // one list and mean "what is on screen".
         private List<Layout.ArrangedNode<float>>? _capturedLayout;
 
         protected Renderer<TSurface> Renderer { get; } = renderer;
@@ -262,7 +315,12 @@ namespace DIR.Lib
         /// paint happens — it stays lit behind a pointer that is somewhere else entirely.
         /// </para>
         /// </summary>
-        public (float X, float Y)? Pointer { get; set; }
+        /// <remarks>
+        /// Virtual so a <see cref="CompositeWidget{TSurface}"/> can pass it on to the widgets it paints.
+        /// Without that, setting it on the composite leaves every child at null and nothing a child drew
+        /// ever lights, which is the same silent miss the composite's other aggregate queries exist for.
+        /// </remarks>
+        public virtual (float X, float Y)? Pointer { get; set; }
 
         /// <summary>Whether <see cref="Pointer"/> is inside an arranged rect. Top/left inclusive and
         /// bottom/right exclusive, so two rows sharing an edge never both claim it.</summary>
@@ -500,8 +558,13 @@ namespace DIR.Lib
         /// same top-most rule the hit test uses -- a list inside a panel that also scrolls takes the
         /// wheel, as it should. Until the router exists a consumer calls this from its own scroll branch;
         /// after it, the router does.
+        /// <para>
+        /// Virtual for the reason <see cref="HitTestAndDispatch"/> is: a composite's children register on
+        /// their own trackers, so asking only the composite would leave every list they declared unable to
+        /// take a wheel.
+        /// </para>
         /// </remarks>
-        public ListScrollController? ScrollTargetAt(float x, float y)
+        public virtual ListScrollController? ScrollTargetAt(float x, float y)
         {
             if (!RegionsAreCurrent)
             {
@@ -866,6 +929,26 @@ namespace DIR.Lib
             => RegionsAreCurrent && _capturedLayout is { } captured ? captured : [];
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Virtual for the reason <see cref="HitTestAndDispatch"/> is: a composite draws its children into
+        /// the same surface, but their regions are on THEIR trackers, so a router asking only the
+        /// composite would silently miss every control they registered.
+        /// </remarks>
+        public virtual void CollectPaintedRegions(List<ClickableRegion> into)
+        {
+            ArgumentNullException.ThrowIfNull(into);
+            into.AddRange(RegisteredRegions);
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>Virtual for the same reason <see cref="CollectPaintedRegions"/> is.</remarks>
+        public virtual void CollectPaintedNodes(List<Layout.ArrangedNode<float>> into)
+        {
+            ArgumentNullException.ThrowIfNull(into);
+            into.AddRange(GetCapturedLayout());
+        }
+
+        /// <inheritdoc/>
         /// <remarks>Null on a frame this widget did not draw — see <see cref="WindowUiSettings.FrameId"/>.</remarks>
         public virtual HitResult? HitTest(float x, float y) => RegionsAreCurrent ? _tracker.HitTest(x, y) : null;
 
@@ -1126,6 +1209,11 @@ namespace DIR.Lib
         {
             var fp = ctx.FontPath;
 
+            // Retain the painted tree, always: damage-based repaint diffs it against the previous frame to
+            // decide which rects need painting at all, so this is not a debug aid that can be switched off.
+            // Appended across the frame's multiple PaintLayout calls, like the region tracker.
+            var captured = _capturedLayout ??= [];
+
             // The enclosing hyperlink, so a LinkHit stated on a row wrapper reaches the text leaves under it
             // rather than only working when it happens to sit on the text itself. Keyed by depth: entering a
             // node pops every entry at or below its own depth (those belong to a sibling subtree), so the top
@@ -1205,6 +1293,15 @@ namespace DIR.Lib
                 {
                     continue;
                 }
+
+                // Captured HERE, past the closed-popover skip, so what is retained is what was PAINTED and
+                // not merely what was arranged. A closed popover is still measured and still arranged (the
+                // node is inert everywhere but this loop), so appending the whole arranged array at the end
+                // would put its rows in the painted set: a shortcut declared on one would then fire from a
+                // panel nobody can see, which is the one thing matching against the painted tree exists to
+                // prevent. It also gives damage-based repaint the transition it was missing, an opening
+                // popover being nodes that appear rather than nodes whose signature never changed.
+                captured.Add(arrangedNode);
 
                 // The pointer owner is the popover's CONTENT rect, and it cannot be read off the Anchored
                 // node: ArrangeNode records every node against the rect it was GIVEN, so the Anchored node's
@@ -1459,11 +1556,6 @@ namespace DIR.Lib
                 }
             }
 
-            // Retain the arranged tree, always: damage-based repaint diffs it against the previous
-            // frame to decide which rects need painting at all, so this is not a debug aid that can be
-            // switched off. Appended across the frame's multiple PaintLayout calls, like the region
-            // tracker.
-            (_capturedLayout ??= []).AddRange(arranged);
         }
 
         /// <summary>
