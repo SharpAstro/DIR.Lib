@@ -268,10 +268,10 @@ namespace DIR.Lib
             _selectableText.Clear();
             _capturedLayout?.Clear();
 
-            // Window-level and therefore cleared per FRAME rather than per widget: see the remarks on
-            // WindowUiSettings.PointerOwner for why clearing it here unconditionally would break the moment
-            // a window had two widgets.
-            Ui.ClearPointerOwnerForFrame(Ui.FrameId);
+            // Window-level, so it is cleared once per paint CYCLE rather than once per widget: see the
+            // remarks on WindowUiSettings.PointerOwner for why clearing it here unconditionally would break
+            // the moment a window had two widgets, and why the cycle cannot be read off Ui.FrameId.
+            Ui.NoteFrameBegin(this);
         }
 
         /// <summary>

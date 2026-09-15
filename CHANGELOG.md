@@ -250,9 +250,19 @@ what makes the never-cleared claimant slot safe to leave stale.
 and its whole subtree, and an open one claims the keyboard by being painted and sets
 `WindowUiSettings.PointerOwner` to its content rect, which confines HOVER so what sits behind a popover
 stops lighting up under the cursor. Clicks are untouched, since the region tracker already hit-tests in
-paint order and the backdrop takes them. `PointerOwner` is cleared once per FRAME rather than once per
-widget, because a per-widget clear lets the second widget of a window wipe an owner the first had just
+paint order and the backdrop takes them. `PointerOwner` is cleared once per PAINT CYCLE rather than once
+per widget, because a per-widget clear lets the second widget of a window wipe an owner the first had just
 painted.
+
+**A cycle is not `FrameId`, and the first cut of this got that wrong.** It cleared when the id CHANGED,
+which is correct only for a host that advances it; `FrameId` is optional and starts at 0, so on a host
+that leaves it there the first paint cleared and every later one returned early. An open popover then
+owned the pointer for the life of the process, and every hover in the window died the first time one
+closed. The cycle is now derived from the widgets themselves: it ends when a widget begins a frame a
+second time, which asks nothing of the host and still lets a popover in one widget confine hover in the
+widgets painted after it. Caught by the first consumer to adopt popovers, and pinned by
+`AClosedPopoverStopsOwningThePointerOnAHostThatNeverMovesTheFrameId`, which paints repeatedly and never
+moves the id, the shape every other test here was missing.
 
 **`Node.Anchored` can place against a rect that is not its parent.** The new `Anchor` parameter, and
 `Builder.AnchoredTo(anchor, child, side)` beside it. With an anchor a side means just OUTSIDE that edge

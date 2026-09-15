@@ -235,6 +235,43 @@ public class LayoutPopoverTests
     }
 
     /// <summary>
+    /// Closing a popover releases the pointer on the NEXT paint, on a host that never touches
+    /// <see cref="WindowUiSettings.FrameId"/>. That host is the default and the common case, and the first
+    /// shipped version of this failed it.
+    /// </summary>
+    /// <remarks>
+    /// The clear was keyed on the frame id CHANGING, which is right only for a host that advances it.
+    /// <see cref="WindowUiSettings.FrameId"/> is documented as optional and starts at 0, so on a host that
+    /// leaves it there the first paint cleared and every later one returned early: the popover kept the
+    /// pointer for the life of the process and every hover in the window died the first time one closed. It
+    /// took a consumer adopting popovers to find it, because every test here painted once.
+    /// <para>
+    /// So this paints REPEATEDLY and never moves the frame id, which is the shape that was missing.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AClosedPopoverStopsOwningThePointerOnAHostThatNeverMovesTheFrameId()
+    {
+        var (widget, _) = Fixture();
+        var state = new PopoverState();
+        state.Open();
+        var tree = Layout.Builder.Popover(Anchor, Content(), state);
+
+        widget.Render(tree, new RectF32(0, 0, 200, 200));
+        widget.Ui.PointerOwner.ShouldNotBeNull("an open popover owns the pointer");
+        widget.Ui.FrameId.ShouldBe(0, "and the host has not touched the frame id");
+
+        // Painting again while it is still open keeps the claim, because the popover re-makes it.
+        widget.Render(tree, new RectF32(0, 0, 200, 200));
+        widget.Ui.PointerOwner.ShouldNotBeNull("still open, still owned");
+
+        state.Close();
+        widget.Render(tree, new RectF32(0, 0, 200, 200));
+
+        widget.Ui.PointerOwner.ShouldBeNull("a closed popover paints nothing, so nothing re-claims the pointer");
+    }
+
+    /// <summary>
     /// The multi-widget case the per-frame clear exists for. Clearing in each widget's BeginFrame would let
     /// a second widget wipe the owner a first had just painted, so the confinement would hold only when the
     /// popover happened to belong to the last widget drawn.
