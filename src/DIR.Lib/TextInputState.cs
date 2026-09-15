@@ -187,6 +187,31 @@ public class TextInputState
     }
 
     /// <summary>
+    /// Puts the caret at <paramref name="index"/>, the mouse's counterpart to the arrow keys.
+    /// </summary>
+    /// <param name="extend">
+    /// Grow the selection to here instead of dropping it -- a shift-click, or every move of a drag after
+    /// the first. The anchor is taken from where the caret already was when there is no selection yet,
+    /// which is what makes shift-click select from the old caret rather than from nothing.
+    /// </param>
+    public void MoveCaretTo(int index, bool extend = false)
+    {
+        if (extend)
+        {
+            if (SelectionAnchor < 0)
+            {
+                SelectionAnchor = CursorPos;
+            }
+        }
+        else
+        {
+            ClearSelection();
+        }
+
+        CursorPos = Math.Clamp(index, 0, Text.Length);
+    }
+
+    /// <summary>
     /// Selects the word at the given character position.
     /// </summary>
     public void SelectWordAt(int position)

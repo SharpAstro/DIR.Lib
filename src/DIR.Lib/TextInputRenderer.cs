@@ -81,6 +81,100 @@ public static class TextInputRenderer
     public static float LeadingIconSize(float fontSize) => fontSize * LeadingIconRatio;
 
     /// <summary>
+    /// Where the field's first glyph lands, given the field's own left edge. The third reader of the
+    /// insets above, after the measure pass and the paint: <see cref="CaretIndexAt"/> has to start from
+    /// exactly the origin <see cref="Render"/> drew from, or a click resolves to a different character
+    /// than the caret was painted at -- off by the padding, which at a normal font size is most of a
+    /// character.
+    /// </summary>
+    public static int TextOriginX(int x, float fontSize, float leadingRoom)
+        => x + (int)HorizontalPadding(fontSize) + (int)MathF.Round(leadingRoom);
+
+    /// <summary>
+    /// Which character boundary a pointer at <paramref name="pointerX"/> lands on: the inverse of the
+    /// measurement <see cref="Render"/> places the caret with, so a click puts the caret under the
+    /// pointer and a drag selects exactly the glyphs it crossed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Measured through the same chain the text was drawn with</b>, for the reason the forward
+    /// direction is: with a fallback in play the primary face reports zero advance for a glyph it lacks,
+    /// so a mapping done through the primary alone collapses every position past the first CJK character
+    /// onto one index.
+    /// </para>
+    /// <para>
+    /// <b>Prefix widths, not a sum of advances.</b> A shaped run is not the concatenation of its glyphs
+    /// -- kerning and ligatures move the boundaries -- so the only honest question is how wide the text
+    /// UP TO a boundary is, which is what the caret is positioned by. That makes the widths monotonic in
+    /// the boundary index, which is what lets this binary search them instead of walking: a click costs
+    /// about log2(n) measures, against n for a scan, and it is the same measure the paint already does
+    /// once a frame.
+    /// </para>
+    /// <para>
+    /// Answers against the committed <see cref="TextInputState.Text"/>, never the preedit. While an input
+    /// method is composing, the caret inside the composition belongs to the IME, and moving the field's
+    /// own caret to a pointer would place it among characters the field does not yet own.
+    /// </para>
+    /// </remarks>
+    /// <param name="x">The field's left edge -- the same one handed to <see cref="Render"/>, not the text origin.</param>
+    /// <param name="pointerX">Pointer position in the same space as <paramref name="x"/>.</param>
+    /// <returns>A boundary in <c>[0, Text.Length]</c>, never inside a surrogate pair.</returns>
+    public static int CaretIndexAt<TSurface>(
+        Renderer<TSurface> renderer,
+        TextInputState state,
+        int x,
+        string fontFamily, float fontSize,
+        float pointerX,
+        FontFallbackResolver? fallback = null,
+        float leadingRoom = 0f)
+    {
+        var text = state.Text;
+        if (text.Length == 0 || string.IsNullOrEmpty(fontFamily))
+        {
+            return 0;
+        }
+
+        var target = pointerX - TextOriginX(x, fontSize, leadingRoom);
+        if (target <= 0f)
+        {
+            return 0;
+        }
+
+        float WidthOf(int chars) => fallback is not null
+            ? fallback.Measure(renderer, text[..chars], fontSize).Width
+            : renderer.MeasureText(text.AsSpan(0, chars), fontFamily, fontSize).Width;
+
+        // The last boundary whose text still ends left of the pointer.
+        var lo = 0;
+        var hi = text.Length;
+        while (lo < hi)
+        {
+            var mid = (lo + hi + 1) / 2;
+            if (WidthOf(mid) <= target) lo = mid; else hi = mid - 1;
+        }
+
+        // A caret goes to the NEARER boundary, not the one before: clicking the right half of a character
+        // means "after it", which is how every other text box behaves and what makes click-then-type land
+        // where it looks like it will.
+        var index = lo;
+        if (lo < text.Length && WidthOf(lo + 1) - target < target - WidthOf(lo))
+        {
+            index = lo + 1;
+        }
+
+        // A surrogate pair is one glyph and has no boundary through the middle of it. The measurement
+        // cannot say so -- a lone high surrogate has no advance of its own -- so the pair is stepped off
+        // here rather than left to produce an index that splits a character on the next keystroke.
+        if (index > 0 && index < text.Length
+            && char.IsLowSurrogate(text[index]) && char.IsHighSurrogate(text[index - 1]))
+        {
+            index = target - WidthOf(index - 1) < WidthOf(index + 1) - target ? index - 1 : index + 1;
+        }
+
+        return index;
+    }
+
+    /// <summary>
     /// Renders a text input field at the specified position.
     /// </summary>
     /// <param name="renderer">Target renderer.</param>
@@ -137,7 +231,7 @@ public static class TextInputRenderer
         // expressed against textX/textW, so insetting those two is the whole change.
         var padding = (int)HorizontalPadding(fontSize);
         var lead = (int)MathF.Round(leadingRoom);
-        var textX = x + padding + lead;
+        var textX = TextOriginX(x, fontSize, leadingRoom);
         var textY = y;
         var textW = width - padding * 2 - lead;
         var textH = height;

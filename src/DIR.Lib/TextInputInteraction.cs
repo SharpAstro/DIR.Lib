@@ -192,6 +192,65 @@ public static class TextInputInteraction
         return true;   // Swallow every key while a field is active.
     }
 
+    /// <summary>
+    /// Routes a pointer press on a field to the caret: place, extend, select a word, select the lot.
+    /// Focuses <paramref name="field"/> first, so a click into an unfocused box both gives it the keyboard
+    /// and lands the caret where it was aimed, in one gesture.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Takes an index rather than a coordinate, which is the seam between what every surface shares and
+    /// what none of them do. WHICH character a point falls on is a property of how that surface laid the
+    /// text out -- glyph measurement through a fallback chain on a pixel host
+    /// (<see cref="TextInputRenderer.CaretIndexAt"/>), a column subtraction on a cell one -- while what a
+    /// second click MEANS is the same everywhere, and is the half that was missing on every surface at once.
+    /// </para>
+    /// <para>
+    /// A press while an input method is composing is swallowed without moving anything, for the reason
+    /// <see cref="HandleKey"/> swallows keys: those characters belong to the IME until it commits them, and
+    /// the field's own indices do not address what is on screen.
+    /// </para>
+    /// </remarks>
+    /// <param name="clicks">
+    /// How many clicks this press is part of, as the platform counts them: 1 places the caret, 2 selects the
+    /// word under it, 3 or more the whole field. The run continues past three rather than cycling, so a
+    /// fourth click on a field still reads as "all of it" instead of silently collapsing the selection.
+    /// </param>
+    /// <param name="extend">Shift was held, or this is the continuation of a drag.</param>
+    /// <returns>True when the press was consumed, so a caller can offer every press and let this decide.</returns>
+    public static bool HandlePointer(
+        TextInputState field, int caretIndex, int clicks, bool extend, in PointerContext ctx)
+    {
+        if (field.IsComposing)
+        {
+            return true;
+        }
+
+        // Before the caret moves, or the focus change would seed the field and overwrite what we just set.
+        ctx.Focus.Focus(field);
+
+        switch (clicks)
+        {
+            case >= 3:
+                field.SelectAll();
+                break;
+            case 2:
+                field.SelectWordAt(caretIndex);
+                break;
+            default:
+                field.MoveCaretTo(caretIndex, extend);
+                break;
+        }
+
+        ctx.RequestRedraw();
+        return true;
+    }
+
+    /// <summary>Host services <see cref="HandlePointer"/> needs -- the pointer half of <see cref="KeyContext"/>.</summary>
+    /// <param name="Focus">Who has the keyboard; the one way to move it.</param>
+    /// <param name="RequestRedraw">Marks the surface dirty after the caret or selection moved.</param>
+    public readonly record struct PointerContext(TextInputFocus Focus, Action RequestRedraw);
+
     /// <summary>Reference position of <paramref name="input"/>, since <c>IReadOnlyList</c> has no IndexOf.</summary>
     private static int IndexOf(IReadOnlyList<TextInputState> inputs, TextInputState input)
     {

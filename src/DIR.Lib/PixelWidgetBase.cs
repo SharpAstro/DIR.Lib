@@ -391,9 +391,27 @@ namespace DIR.Lib
                 Ui.CaretRect = caret;
             }
             // A field is where text is edited, so the I-beam comes with it rather than being arranged for
-            // separately by whatever happens to enclose it.
-            RegisterClickable(x, y, width, height, new HitResult.TextInputHit(state), cursor: CursorKind.Text);
+            // separately by whatever happens to enclose it. The geometry travels with the hit so a click can
+            // be resolved to a character without anyone re-deriving where the text began -- see
+            // TextInputGeometry.
+            RegisterClickable(x, y, width, height,
+                new HitResult.TextInputHit(state, new TextInputGeometry(x, fontPath, fontSize, leadingRoom)),
+                cursor: CursorKind.Text);
         }
+
+        /// <summary>
+        /// Which character of <paramref name="hit"/>'s field a pointer at <paramref name="pointerX"/> is
+        /// over, measured through this widget's own renderer and fallback chain -- the same pair that
+        /// painted it, so the answer cannot disagree with where the caret was drawn.
+        /// </summary>
+        /// <remarks>
+        /// The pixel host's half of <see cref="TextInputInteraction.HandlePointer"/>, which takes the index
+        /// this returns. Feed it the press position in the same space the regions were registered in.
+        /// </remarks>
+        public int CaretIndexAt(HitResult.TextInputHit hit, float pointerX)
+            => TextInputRenderer.CaretIndexAt(
+                Renderer, hit.Input, hit.Painted.X, hit.Painted.FontFamily ?? "", hit.Painted.FontSize,
+                pointerX, FontFallback, hit.Painted.LeadingRoom);
 
         /// <summary>
         /// Where the focused field's caret was drawn, from <see cref="WindowUiSettings.CaretRect"/>.
