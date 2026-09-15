@@ -681,6 +681,40 @@ public class InputRouterTests
         harness.Focus.Current.ShouldBeSameAs(second, "paint order is the visual order and needs no maintaining");
     }
 
+    /// <summary>
+    /// A widget the host stopped drawing contributes NO fields to the ring, so Tab cannot put the keyboard
+    /// in a box nobody can see.
+    /// </summary>
+    /// <remarks>
+    /// The ring is every field every widget registered, which is right only because a widget that did not
+    /// paint reports none. That gate is <see cref="WindowUiSettings.FrameId"/>, and it is opt-in: a host
+    /// that never moves the counter leaves every widget answering with whatever it last painted. The first
+    /// consumer to adopt the router hit exactly that, because its chrome composes ALL its tabs rather than
+    /// only the visible one, so the ring spanned every tab that had ever been on screen. Nothing here
+    /// caught it: every other test in this file paints both widgets every frame, which is the one shape in
+    /// which the bug cannot appear.
+    /// </remarks>
+    [Fact]
+    public void TabSkipsAWidgetTheHostHasStoppedPainting()
+    {
+        var harness = new Harness();
+        TextInputState hidden = new(), shown = new();
+        harness.Paint(back: Field(hidden), front: Field(shown));
+
+        // The back widget is not drawn AT ALL next frame, which is what switching away from a tab looks
+        // like. Painting it with an empty tree instead proves nothing: that still runs its BeginFrame,
+        // which clears its regions regardless, so the test passes with the frame gate deleted. It was
+        // written that way first and did exactly that.
+        harness.Front.Ui.FrameId++;
+        harness.Front.Render(Field(shown), new RectF32(0, 0, 200, 200));
+        harness.Focus.Focus(shown);
+
+        harness.Key(InputKey.Tab);
+
+        harness.Focus.Current.ShouldBeSameAs(shown,
+            "the only painted field, so Tab has nowhere else to go and must not reach the undrawn one");
+    }
+
     // ---- AfterPaint ---------------------------------------------------------------------------
 
     [Fact]
