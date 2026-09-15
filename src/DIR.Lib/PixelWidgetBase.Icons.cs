@@ -64,6 +64,30 @@ namespace DIR.Lib
 
                     break;
 
+                case Layout.IconKind.CaretLeft:
+                case Layout.IconKind.CaretRight:
+                {
+                    // The vertical caret below, transposed: columns instead of rows, the HEIGHT
+                    // interpolating from a point to the full span. Written out rather than folded into that
+                    // case behind a pair of axis variables, because every FillRect here takes its arguments
+                    // in a fixed x, y, w, h order, and a loop that swaps which local means which is read
+                    // correctly once and mistrusted every time afterwards.
+                    var left = kind == Layout.IconKind.CaretLeft;
+                    var cols = Math.Max(1, (int)MathF.Round(side));
+                    var stepX = side / cols;
+                    var ox3 = rect.X + (rect.Width - side) / 2f;
+                    var oy3 = rect.Y + (rect.Height - side) / 2f;
+                    for (var c = 0; c < cols; c++)
+                    {
+                        var frac = (c + 1f) / cols;
+                        var h = MathF.Max(1f, MathF.Round(side * frac));
+                        var x = left ? ox3 + c * stepX : ox3 + side - (c + 1) * stepX;
+                        FillRect(x, MathF.Round(oy3 + (side - h) / 2f), stepX, h, ink);
+                    }
+
+                    break;
+                }
+
                 case Layout.IconKind.CaretUp:
                 case Layout.IconKind.CaretDown:
                 {

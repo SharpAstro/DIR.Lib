@@ -342,6 +342,23 @@ public enum IconKind
     CaretDown,
 
     /// <summary>
+    /// <see cref="CaretUp"/> turned a quarter anticlockwise: "step back", "previous", "collapse this way".
+    /// The mark on a jog control, a pan arrow or the backward half of a cycler.
+    /// </summary>
+    /// <remarks>
+    /// The vertical pair alone was not enough, and the gap showed up the way a missing member always does
+    /// here: a consumer sweeping its symbol marks into this family could convert its steppers and had to
+    /// leave every pan, jog and cycle control spelled as a text rune, because the nearest members named the
+    /// direction a MENU opens rather than the direction a control moves. The two questions share a shape and
+    /// not a meaning, so borrowing <see cref="CaretUp"/> for "previous" would have made the family's own
+    /// documentation wrong.
+    /// </remarks>
+    CaretLeft,
+
+    /// <summary><see cref="CaretLeft"/> mirrored: "step forward", "next", "expand this way".</summary>
+    CaretRight,
+
+    /// <summary>
     /// A cross of two bars: "add one". The mark on a new-tab button, and the increment half of a stepper.
     /// <para>
     /// Unlike most of this set it has a perfectly safe ASCII spelling, so it looks like the one kind that
