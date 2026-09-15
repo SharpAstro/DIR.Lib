@@ -16,7 +16,7 @@
 - **`FontResolver`** — resolves platform-default monospace fonts and enumerates installed font files across system + per-user font directories (incl. Windows 11 `%LOCALAPPDATA%\Microsoft\Windows\Fonts`)
 - **`FontFallbackResolver`** — splits a string into runs that each draw with a face that covers them; with faces declared by role (`FromRoles`), a codepoint whose Unicode default presentation is emoji is taken from the emoji face even where the primary covers it
 - **`EmojiPresentation`** — the UTS #51 `Emoji_Presentation` property (`IsDefaultFor`), over a table generated from the Unicode Character Database by `tools/gen-emoji-presentation`
-- **`ListCursor`** — the keyboard's position in a list the layout tree already declares. A row states `ListItemHit(list, index)` for its click binding and is navigable by that alone: `PixelWidgetBase.ListCursor` + `HandleListKey` move and act, `Layout.Node.FocusBackground` (`.BgFocus`) shows where it is, and a row that is not clickable is unreachable without anything beside the list saying so
+- **`ListCursor`** -- the keyboard's position in a list the layout tree already declares. A row states `ListItemHit(list, index)` for its click binding and is navigable by that alone: `PixelWidgetBase.ListCursor` + `HandleListKey` move and act, `Layout.Node.FocusBackground` (`.BgFocus`) shows where it is, and a row that is not clickable -- or one declared `.Disabled(reason)` -- is unreachable without anything beside the list saying so. `Open(listId, index, count)` adds the row count a VIRTUALISED list needs, so the arrows can step onto a row the last paint did not draw; `Moved` is where a consumer hangs `EnsureVisible`
 - **`FloatingPalette`** — a floating, grip-dragged, collapsible palette of toggle rows, as a `Layout.Node` tree plus the pure state and colour rules around it (`FloatingPaletteState`, `PaletteItem`, `PaletteColors`); `Build` returns the tree and touches no surface
 
 ## Input Handling
@@ -24,7 +24,9 @@
 - **`InputEvent`** — open record hierarchy: `KeyDown`, `TextInput`, `MouseDown`, `MouseUp`, `MouseMove`, `Scroll`, `Pinch`, `PinchEnd`
 - **`InputKey`** — platform-agnostic key codes (letters, digits, function keys, navigation, symbols)
 - **`InputModifier`** — modifier flags (Shift, Ctrl, Alt)
-- **`MouseButton`** — Left / Middle / Right
+- **`MouseButton`** -- Left / Middle / Right, plus `None` for a pointer moving with nothing held
+- **`KeyChord`** -- a key plus its modifiers, and the precedence rule on it: `BeatsFocusedField` is true for Ctrl, Alt and the function keys, false for a bare letter. Stated once so a router and a test read the same fact, instead of each host special-casing its own global key by name
+- **`PointerPress`** / **`PointerMove`** / **`DragCapture`** -- a press with its position, button, modifiers and click count; the capture a press handler returns to own every move and the release until the button comes up
 - **`IWidget`** — shared interface with `HandleInput` for both pixel and terminal widgets
 
 Platform bridges (in downstream packages):
@@ -35,7 +37,7 @@ Platform bridges (in downstream packages):
 ## Widget System
 
 - **`IPixelWidget`** — extends IWidget with pixel-coordinate hit testing and click dispatch
-- **`PixelWidgetBase<TSurface>`** — base class for pixel widgets: clickable regions, text input, buttons, dropdowns, drawing helpers
+- **`PixelWidgetBase<TSurface>`** -- base class for pixel widgets: clickable regions, text input, buttons, dropdowns, drawing helpers. `MeasureLayout` / `MeasureContext` are the measure seam (a box is the MEASUREMENT of its content, through the same context arrange and paint share); `ScrollTargetAt(x, y)` answers which declared list a wheel belongs to; `DimTowards(color, background)` is the one grey a disabled thing is painted in
 - **`PixelLayout`** + **`PixelDockStyle`** — dock-based layout engine (Top/Bottom/Left/Right/Fill)
 - **`DockLayout<T>`** — generic dock layout using `INumber<T>` (the integer / pixel layouts above are built on this)
 - **`ClickableRegion`** + **`ClickableRegionTracker`** — registered during render, walked in reverse for hit testing
@@ -47,6 +49,7 @@ Platform bridges (in downstream packages):
 A surface-agnostic declarative layout engine. Describe a tree of immutable records; the engine measures + arranges it into rects; a per-surface painter (`PixelWidgetBase.PaintLayout`) draws each node and binds its click region **from the same arranged rect** — draw == hit by construction, with no separate hit-rect arithmetic that can drift.
 
 - **`Layout.Node`** — the tree. Variants: `Stack` (vertical/horizontal), `Dock` (edge strips + a fill remainder), `Grid`, `Wrap` (children flow and wrap into new lines when out of extent — the flexbox `wrap` for toolbars/chip rows on narrow surfaces), `Overlay` (base/top, for modals/popups), `Split` (two resizable panes + a draggable divider), `Leaf` (a `Content`). Chrome lives on the base node: `Width`/`Height` (`Sizing`), `Padding`, `Background`, `Hit`, `OnClick`, `CollapseThreshold`.
+- **What a node DECLARES, beyond its chrome** (9.2) -- `OnPress` (a press with its position, returning a `DragCapture` to own the drag that follows), `OnActivate` (what Enter does when it differs from a click), `Tooltip`, `DisabledReason` (`IsDisabled`), `Scroll` (a `ListScrollController` whose viewport this node's arranged rect IS), `Shortcut` (a `KeyChord`). The painter binds every one of them to the same arranged rect it drew in, so what is declared and what responds cannot drift. Painting a tooltip and firing a shortcut belong to the router; declaring them does not wait for it.
 - **`Layout.Content`** — leaf payload: `Text` (value + colour + alignment), `Box` (fixed icon/swatch/spacer), `Fill` (an app-drawn escape hatch — chart, image, text input; routed by `Key`).
 - **`Layout.Sizing`** — `Fixed(designUnits)` | `Auto` (shrink-to-content) | `Star(weight, min, max)` (proportional split of leftover). Values are *design units* mapped to surface units (px × DPI, or character cells) by `Layout.IMeasureContext`. `Min`/`Max` clamp the resolved extent of an Auto/Star axis (0 = unclamped): a min-clamped Star holds its floor and overflows *visibly* instead of starving to zero when Fixed siblings eat the container, and a max-clamped Star's surplus redistributes to its Star siblings.
 - **Collapse-below-minimum** — `.CollapseBelow(designUnits)`: when a parent `Stack` would give the node a main-axis extent under the threshold, it drops out of the arrangement entirely (not painted, no hit, no gap) and its space redistributes to the survivors. The declarative form of "show the strip only when it is at least N tall".
@@ -68,7 +71,9 @@ Layout.Builder.HStack(
 ```
 
 - **Factories** — `VStack` / `HStack` / `Text` / `Box` / `Fill` / `Spacer` / `Grid` / `WrapH` / `WrapV` / `Overlay` / `Split` / `Dock` (+ `Left`/`Right`/`Top`/`Bottom` dock-strip helpers).
-- **Fluent modifiers** (instance methods on `Layout.Node`, each a pure `this with { … }` transform) — `.W`/`.H`/`.WFixed`/`.WStar(weight, min, max)`/`.WAuto` (+ `H*`), `.WClamp`/`.HClamp(min, max)` (clamp the current kind), `.RowH(u)` (full-width row), `.ColW(u)` (fixed-width column), `.Stretch()` (fill both axes), `.Bg`, `.Radius(u)`, `.Pad`, `.Clickable(hit, onClick?)`, `.CollapseBelow(u)`, `.WithGap`/`.WithGaps`/`.WithLineGap`.
+- **Fluent modifiers** (instance methods on `Layout.Node`, each a pure `this with { … }` transform) -- `.W`/`.H`/`.WFixed`/`.WStar(weight, min, max)`/`.WAuto` (+ `H*`), `.WClamp`/`.HClamp(min, max)` (clamp the current kind), `.RowH(u)` (full-width row), `.ColW(u)` (fixed-width column), `.Stretch()` (fill both axes), `.Bg`, `.Radius(u)`, `.Pad`, `.Clickable(hit, onClick?)`, `.CollapseBelow(u)`, `.WithGap`/`.WithGaps`/`.WithLineGap`/`.WithColumns`.
+- **Behaviour modifiers** (9.2) -- `.Pressable(hit, onPress)` (the press is handed a `PointerPress` and returns a `DragCapture` or null to decline, so a slider arms its drag from the node it was painted on), `.Activatable(onActivate)` (Enter pins where a click selects), `.WithTooltip(text)`, `.Disabled(reason)` / `.Disabled(when, reason)` (dims the subtree, swallows the press with a `NotAllowed` cursor, and the list cursor steps over it), `.WithScroll(controller)` (the arranged rect becomes the viewport; `PixelWidgetBase.ScrollTargetAt(x, y)` answers which list a wheel belongs to), `.WithShortcut(key, mods)`. **They are named `With*` where a bare verb would shadow the property it sets** -- the rule `.WithCursor` and `.WithGap` already follow.
+- **`Grid` column sizing** -- `.WithColumns(Sizing.Auto, Sizing.Star(), …)`: `Auto` takes its own column's widest cell, `Fixed` is fixed, `Star` shares the rest, columns past the stated ones are `Star(1)`, and stating none keeps the even split a grid has always done. That is a table without any column arithmetic at the call site.
 - **`.Radius(u)` is chrome, not geometry.** It rounds the node's `.Bg` (and a `Box` leaf's own fill) by `u`
   design units, but arrange never sees it — a rounded node occupies and insets exactly the rect a square one
   would, so rounding a panel can never shift the layout inside or around it. Each surface honours it as far

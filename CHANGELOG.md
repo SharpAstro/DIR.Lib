@@ -9,6 +9,133 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 9.2
+
+**A control DECLARES, the engine BEHAVES, a host BINDS the platform once.** The library had most of the
+behaviour and none of the routing: it can place a caret under a pointer, select the word under a second
+click, cycle Tab in paint order and walk a list with the arrows, and a host had to write the dispatcher
+that reached any of it. So every consuming surface wrote its own, each one slightly different, and there
+was nowhere to put a `.Shortcut(...)` even if a node had wanted one. This is the first wave: the
+declarations, and the seams beside them. Additive throughout -- and this time that claim covers the
+metadata as well as the source, which is what the last entry's did not.
+
+### Wave 1a
+
+**`KeyChord` states the precedence rule once.** A key plus its modifiers, with
+`BeatsFocusedField` on it: Ctrl, Alt or a function key reaches its node while a text field has the
+keyboard, a bare letter or Shift+letter does not. That is the fact every host answered per key at the one
+site that noticed -- a router carrying `if (key == F3) return false;` and a comment saying F3 is global,
+beside a hand-written Ctrl+letter map that is not, beside a bare `F` meaning a filter cycle in one panel
+and a typed letter in another. `Layout.Node.Shortcut` / `.WithShortcut(key, mods)` puts the chord on the
+node. It is inert until the router lands, and deliberately so: a shortcut is matched against the PAINTED
+tree, so a binding on a panel that is not on screen is inert without anyone saying so -- the same rule
+`BlurIfUnpainted` and the keyboard claimant already follow, and the guard a hand-written map needs beside
+every key.
+
+**A press now carries where it landed.** `Layout.Node.OnPress` / `.Pressable(hit, onPress)` is handed a
+`PointerPress` (position, button, modifiers, click count) and returns a `DragCapture` to own the gesture
+until the button comes up, or null to decline -- in which case the click fires on release exactly as
+before. `OnClick` is `Action<InputModifier>` and carries no position, so a slider, a scrub bar or a
+divider could not arm its own drag from the node it was painted on: each cached its track rect in a field
+beside the paint and armed a flag from the host's dispatcher, which puts the arming, the tracking and the
+ending in three places that must agree about a gesture only one of them can see. One consumer had six such
+rect caches and five drag flags; a divider added to one of its two dispatchers did nothing in the other.
+With the press on the node, "draw == hit" becomes "draw == drag".
+
+**Enter can differ from a click.** `Layout.Node.OnActivate` / `.Activatable(action)`, preferred by
+`ActivateListCursor` over `OnClick`. A planner row where Enter pins the target and a click merely selects
+it is ordinary rather than exotic, and until now `ActivateListCursor` was all-or-nothing on the click
+handler, so such a list kept its Enter by hand and the cursor could not own the whole keyboard contract of
+a list.
+
+**A tooltip is a property of the node.** `Layout.Node.Tooltip` / `.WithTooltip(text)`, registered on the
+region the node was arranged into; a node with a tooltip and no hit gets a region anyway, inert to presses,
+because a statement about what is under the pointer has nowhere else to live. Three separate tooltip
+painters were counted in one consumer, none of them with a hover delay, over two declarations
+(`TabItem.Tooltip`, `DropdownItem.Tooltip`) this library owned and refused to paint. The painting is the
+router's, in a later wave; the declaration is the half that was missing.
+
+**`.Disabled(reason)` on any node.** `Layout.Node.DisabledReason` / `IsDisabled` /
+`.Disabled(reason)` / `.Disabled(when, reason)`. The subtree's text and icons dim toward the background
+they are drawn on, through the new `PixelWidgetBase.DimTowards` -- which is the rule `RenderDropdownMenu`
+has always used for a disabled row, now called by both, because two copies of one rule is two greys that
+can drift apart on the same screen. Everywhere else it was written by hand as "grey the text", and the two
+halves that are not the colour went missing every time: the press has to be SWALLOWED (a disabled row that
+lets the press through to the backdrop behind it dismisses the panel, which is to say it behaves exactly
+like a working row), and the keyboard cursor has to step over it (a cursor parked where Enter will refuse
+is a card that looks drawn and stops responding). So the region is registered with no handlers, a
+`CursorKind.NotAllowed` cursor and the reason as its tooltip, `ClickableRegion.IsDisabled` says so, and
+`MoveListCursor` / `ActivateListCursor` both decline it. A reason rather than a flag because the two facts
+are one: something a reader cannot press with no explanation teaches nothing about how to make it
+pressable.
+
+**A list states its viewport by being arranged.** `Layout.Node.Scroll` / `.WithScroll(controller)` binds
+the arranged rect through the new `ListScrollController.BindViewport(RectF32)` -- the viewport half of
+`SetExtent` on its own, with the rows and the row height left to the consumer, since the engine cannot know
+them. The region carries the controller (`ClickableRegion.Scroll`) and `PixelWidgetBase.ScrollTargetAt(x, y)`
+answers "whose wheel is this" with the innermost one under the pointer. What it removes is the opening line
+of every wheel handler -- "is the pointer over my rect" -- written once per scrollable, seventeen times across
+eleven files in one consumer, each a second derivation of a rect the arrange pass already held.
+
+**A list cursor can walk past its own viewport.** `ListCursor.Open(listId, index, count)` and
+`event Action<int>? Moved`. `MoveListCursor` stepped only over rows the last paint REGISTERED, which is the
+right rule for a list that paints all of itself and the wrong one for a list that paints only its window: a
+twenty-row list showing five could not be walked past the fifth row, so the arrows stopped dead at the
+bottom of the viewport. That is what blocked two virtualised lists from adopting the cursor at all when a
+consumer swept for it. With a count the arrows clamp to `[0, count)` and may step onto an unpainted row,
+raising `Moved` so the consumer can `EnsureVisible` it. The count does not weaken the reachability rule
+where the paint is evidence: inside the span the paint covered, an unregistered or disabled row is still
+skipped, and a list nothing painted is still unnavigable. Without a count nothing changes.
+
+**A `Grid` can size its columns.** `Node.Grid.ColumnSizing` / `.WithColumns(Auto, Star(), ...)`: `Auto`
+takes its own column's widest cell, `Fixed` is fixed, `Star` shares the rest, and an empty list is the even
+split the grid has always done. That is what a TABLE is, and it is the one container a consumer kept
+writing out -- a helper that measures its own column stops and places each cell by hand, with a comment
+saying "the stops are measured, not assumed". True, and the measuring was the engine's to do. Measure and
+arrange resolve the columns through one helper, so a grid's intrinsic width cannot disagree with its
+arranged one.
+
+**The measure seam.** `PixelWidgetBase.MeasureLayout(root, available, ...)` and `MeasureContext(...)`.
+`Engine.Measure` has always been public and the widget base had no seam for it, so a widget that wanted one
+built a `PixelMeasureContext` by hand -- a second statement of the font and the scale, free to disagree with
+the one arrange and paint share. One consumer had 55 `MeasureText` call sites in 16 files and exactly one
+use of `Engine.Measure`, in the single panel someone had wired up that way. A box should be the
+MEASUREMENT of its content, not a sum of the constants its body happens to draw with.
+
+**`IPixelWidget.CaretIndexAt`.** The base has implemented it since 9.1 and the interface did not declare
+it, so a host routing a press over a field had no way to ask the widget that PRODUCED the hit -- and only
+that widget can answer, the answer being measured through the renderer and fallback chain that drew the
+text. A consumer wrote an interface of its own declaring exactly this one method, which is the shape that
+says it belongs here.
+
+**`InputEvent.MouseUp` carries modifiers and `MouseMove` carries the button held** (`MouseButton.None`
+is new, numbered -1 so `Left` keeps 0). Every drag answered both from a field it set on the press and
+cleared on the release. **Both records keep an explicit old-arity constructor, and both keep an explicit
+old-arity `Deconstruct`** -- which is the 9.1 lesson, paid forward. **An optional parameter added to a
+record's primary constructor DELETES the old constructor from the assembly**: 9.1 added one to
+`HitResult.TextInputHit` and called the release additive, which was true of the source and false of the
+metadata, so the published Console.Lib threw `MissingMethodException` on every terminal hit test -- invisible
+on a dev box, where the sibling compiles from source and the package path is never taken. Console.Lib and
+SdlVulkan.Renderer both construct a `MouseUp` and a `MouseMove`. And a trailing default does not save a
+positional PATTERN either: a record's synthesized `Deconstruct` takes its arity from the primary
+constructor, so `MouseMove(var x, var y)` stops compiling the moment a third parameter appears, defaulted
+or not.
+
+**And `HitResult.TextInputHit` gets back the one-parameter constructor 9.1 deleted**, which is the
+incident itself and not a lesson drawn from it: `new HitResult.TextInputHit(field.State)` is what
+Console.Lib 4.33's `CellLayout.HitOf` calls, so the published build throws on every terminal hit test
+against 9.1. Restoring it here is what lets that build run against 9.2 with no rebuild. All of the above is
+pinned by `InputEventCompatibilityTests`, whose reflection is the only thing that can see the difference -- a
+three-argument call binds happily to a four-parameter constructor with a default, so nothing written in C#
+can tell them apart.
+
+**The naming collision, resolved the way this repo already resolves it.** `Shortcut`, `Tooltip` and
+`Scroll` are properties, so the fluent setters are `WithShortcut`, `WithTooltip` and `WithScroll` -- a
+method cannot shadow a property of its own name, and `WithCursor`, `WithGap`, `WithGaps`, `WithLineGap`
+and `WithAutoRows` had all met the same wall before. `Pressable`, `Activatable` and `Disabled` keep the
+adjective form `Clickable` established, their properties being named differently (`OnPress`,
+`OnActivate`, `DisabledReason`).
+
 ## 9.1
 
 **A pointer can reach the caret.** A text field has had a full selection model since it was written —

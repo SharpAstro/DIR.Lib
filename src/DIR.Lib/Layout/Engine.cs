@@ -509,8 +509,10 @@ public static class Engine
         var totalColGap = colGap * T.CreateChecked(Math.Max(0, columns - 1));
         var totalRowGap = rowGap * T.CreateChecked(Math.Max(0, rows - 1));
 
-        // Columns are always an even split, with the remainder distributed so cells exactly tile the width.
-        var colWidths = DistributeByWeight(Max(T.Zero, inner.Width - totalColGap), EqualWeights(columns));
+        // Columns: an even split (the remainder distributed so cells exactly tile the width), or each
+        // column's own sizing where the grid states one.
+        var colWidths = GridColumnWidths(grid, columns, rows,
+            Max(T.Zero, inner.Width - totalColGap), inner.Height, ctx);
 
         // Rows: an even split of the height by default, or each row's own content height with AutoRows. The
         // content case measures against the COLUMN width, not the whole inner width, so a cell that wraps or
@@ -671,6 +673,92 @@ public static class Engine
     /// Star cells collapses to zero -- Star means "share what the parent gives me", which in a content-sized
     /// row is nothing. Give such a cell a Fixed height, or leave AutoRows off.
     /// </summary>
+    /// <summary>
+    /// The width of each column, shared by <see cref="ArrangeGrid"/> and <see cref="MeasureGrid"/> so the
+    /// two can never disagree about where a column starts.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// With no <see cref="Node.Grid.ColumnSizing"/> this is the even split the grid has always done, down
+    /// to the same remainder distribution -- an untouched grid arranges byte-identically.
+    /// </para>
+    /// <para>
+    /// With one: <c>Fixed</c> takes its stated extent, <c>Auto</c> takes its own column's widest cell,
+    /// and <c>Star</c> shares what those leave, by weight.
+    /// </para>
+    /// <para>
+    /// An Auto column is measured against the grid's whole available width, exactly as an Auto child of
+    /// a <see cref="ArrangeStack"/> is: what is left after its Fixed siblings is not what a cell can be
+    /// asked to fit into, only what it will be GIVEN, and the two are different questions. So a column
+    /// whose content overruns keeps its content's width and the overrun is visible at the grid's edge --
+    /// the same "holds its floor and overflows visibly" the <see cref="Sizing"/> clamps describe, and a
+    /// caller who wants a cap states <c>Max</c>. The leftover for the stars is floored at zero, so such a
+    /// grid starves them rather than handing one a negative width.
+    /// </para>
+    /// </remarks>
+    private static T[] GridColumnWidths<T>(Node.Grid grid, int columns, int rows, T availableWidth,
+        T availableHeight, IMeasureContext<T> ctx) where T : INumber<T>
+    {
+        var sizing = grid.ColumnSizing;
+        if (sizing.IsDefaultOrEmpty)
+        {
+            return DistributeByWeight(availableWidth, EqualWeights(columns));
+        }
+
+        var widths = new T[columns];
+        var starWeights = new float[columns];
+        var anyStar = false;
+        var spent = T.Zero;
+
+        for (var col = 0; col < columns; col++)
+        {
+            // Columns past the stated ones are Star(1): the common table states its label column and
+            // means "the rest" for everything after it.
+            var size = col < sizing.Length ? sizing[col] : Sizing.Star();
+            switch (size.Kind)
+            {
+                case SizeKind.Fixed:
+                    widths[col] = Clamp(ToSurfaceOn(ctx, size.Value, Axis.Horizontal), size, ctx, Axis.Horizontal);
+                    spent += widths[col];
+                    break;
+                case SizeKind.Auto:
+                    var widest = T.Zero;
+                    for (var row = 0; row < rows; row++)
+                    {
+                        var idx = row * columns + col;
+                        if (idx >= grid.Cells.Length)
+                        {
+                            break;
+                        }
+                        widest = Max(widest,
+                            Measure(grid.Cells[idx], new Size<T>(availableWidth, availableHeight), ctx).Width);
+                    }
+                    widths[col] = Clamp(widest, size, ctx, Axis.Horizontal);
+                    spent += widths[col];
+                    break;
+                default:
+                    starWeights[col] = size.Value > 0f ? size.Value : 1f;
+                    anyStar = true;
+                    break;
+            }
+        }
+
+        if (anyStar)
+        {
+            var shares = DistributeByWeight(Max(T.Zero, availableWidth - spent), starWeights);
+            for (var col = 0; col < columns; col++)
+            {
+                if (starWeights[col] > 0f)
+                {
+                    widths[col] = Clamp(shares[col],
+                        col < sizing.Length ? sizing[col] : Sizing.Star(), ctx, Axis.Horizontal);
+                }
+            }
+        }
+
+        return widths;
+    }
+
     private static T[] AutoRowHeights<T>(Node.Grid grid, int columns, int rows, T[] colWidths,
         T availableHeight, IMeasureContext<T> ctx) where T : INumber<T>
     {
@@ -704,8 +792,9 @@ public static class Engine
         {
             // Intrinsic height = the sum of the rows, so an Auto-height grid in a stack reports exactly what
             // its content needs and adding a cell adds a row rather than shrinking the existing ones. Rows
-            // are measured against the same even column split Arrange will use, so the two agree.
-            var colWidths = DistributeByWeight(Max(T.Zero, available.Width - totalColGap), EqualWeights(columns));
+            // are measured against the same column widths Arrange will use, so the two agree.
+            var colWidths = GridColumnWidths(grid, columns, rows,
+                Max(T.Zero, available.Width - totalColGap), available.Height, ctx);
             var rowHeights = AutoRowHeights(grid, columns, rows, colWidths, available.Height, ctx);
             var summed = totalRowGap;
             foreach (var rowHeight in rowHeights)
@@ -724,7 +813,23 @@ public static class Engine
             maxH = Max(maxH, size.Height);
         }
 
-        var w = maxW * T.CreateChecked(columns) + totalColGap;
+        // Intrinsic width: the widest cell in every column with an even split, since that is what an even
+        // split has to give each of them; the sum of the resolved columns where the grid sizes them, since
+        // then they differ and "the widest one, N times" is simply the wrong number.
+        var w = totalColGap;
+        if (grid.ColumnSizing.IsDefaultOrEmpty)
+        {
+            w += maxW * T.CreateChecked(columns);
+        }
+        else
+        {
+            foreach (var colWidth in GridColumnWidths(grid, columns, rows,
+                Max(T.Zero, available.Width - totalColGap), available.Height, ctx))
+            {
+                w += colWidth;
+            }
+        }
+
         var h = maxH * T.CreateChecked(rows) + totalRowGap;
         return new Size<T>(w, h);
     }
