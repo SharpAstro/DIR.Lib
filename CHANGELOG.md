@@ -9,6 +9,33 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 9.3
+
+**A dropdown is a popover whose content is a list.** Every behaviour a menu needs was already in the
+library and already correct -- `RenderDropdownMenu` had the backdrop, the Escape, the scroll and the
+disabled row swallowed with a `NotAllowed` cursor -- but it lived inside a protected method with ten
+parameters carrying the obligation "must be called LAST in the render pass". A caller who got that order
+wrong got a menu painted under the chrome it belongs to, with its clicks going to whatever sat on top, and
+nothing said so. The engine knew how; it had no node to know it on.
+
+`Layout.Builder.Dropdown(anchor, state)` is that node, and it adds no mechanism: the backdrop and the
+Escape claim are `Popover`'s, a refused row is `.Disabled(reason)`, the highlight is `.BgHover`, the
+overflow is `.WithScroll`. Opening one from a button is `.Clickable(hit, _ => state.Popover.Toggle())` --
+there is no dispatcher line to add, and so none to forget.
+
+**`DropdownMenuState` now HOLDS a `PopoverState`**, and `IsOpen` reads and writes through it. That is what
+makes the declared menu and the rendered one the same menu rather than two things shaped alike: one flag,
+one Escape rule, one backdrop. `Close()` and the Escape case delegate to it instead of keeping a second
+copy, and the highlight reset moved off `Close()` onto the `Closed` transition -- a declared menu closes
+through its backdrop without ever calling `Close()`, so the reset could not stay hung on that one caller.
+
+**The anchor is the trigger's arranged rect**, not the `AnchorX`/`AnchorY`/`AnchorWidth` captured when the
+menu opened. A menu still open across a resize is placed where the button is, rather than where it was.
+
+Additive: `RenderDropdownMenu` and the anchor fields stay, so nothing that calls them has to move yet, and
+both paths register their rows under the shared `DropdownMenuState<T>.ListId` so a host matching on the id
+sees the same thing either way.
+
 ## 9.2
 
 **A control DECLARES, the engine BEHAVES, a host BINDS the platform once.** The library had most of the
