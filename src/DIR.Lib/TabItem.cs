@@ -60,6 +60,40 @@ public readonly record struct TabItem<T>(string Label, T Value)
     /// </summary>
     public string? Tooltip { get; init; }
 
+    /// <summary>
+    /// The keyboard binding that reaches this tab -- Ctrl+E for Equipment, and so on down a strip. Null
+    /// is a tab with no chord, which is every tab the strip drew before this existed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Stated HERE for the reason <see cref="KeyChord"/> gives: a binding on the node is matched against
+    /// the PAINTED tree, so the chord of a tab the strip dropped on overflow, or of one that is
+    /// <see cref="IsEnabled"/> false, is inert with nothing guarding it. A host's own Ctrl+letter map
+    /// fires whatever the window is showing, which is why every one of them grows a check beside each key
+    /// and why the check is what goes missing.
+    /// </para>
+    /// <para>
+    /// Before this, the chord had to be put back on AFTER the paint: a consumer overrode
+    /// <c>CollectPaintedNodes</c>, found the cells by their hit, and rewrote each node with the chord and
+    /// a handler -- the host re-stating what the item already knew, one frame at a time.
+    /// </para>
+    /// </remarks>
+    public KeyChord? Shortcut { get; init; }
+
+    /// <summary>
+    /// What selecting this tab DOES, handed the tab's own <see cref="Value"/>. Null leaves selection to
+    /// whatever reads the strip's registered regions back, which is how a bar with no callbacks works and
+    /// stays the default.
+    /// </summary>
+    /// <remarks>
+    /// This is what makes <see cref="Shortcut"/> usable rather than decorative: the router ACTIVATES the
+    /// node a chord names, and a node with nothing bound to it has nothing to activate. Click and chord
+    /// then run the same handler, so the two routes cannot drift the way a press path and a key path
+    /// written separately do -- which is exactly how a tab once switched on click and did nothing on its
+    /// own shortcut.
+    /// </remarks>
+    public Action<T>? OnSelect { get; init; }
+
     /// <summary>A tab that cannot be selected, and says why.</summary>
     public static TabItem<T> Disabled(string label, T value, string? reason = null)
         => new(label, value) { IsEnabled = false, Tooltip = reason };

@@ -94,6 +94,22 @@ public interface ITabStripSource
 
     /// <summary>Whether it can be selected.</summary>
     bool Enabled(int index);
+
+    /// <summary>
+    /// The chord that reaches this tab, or null for one with no binding.
+    /// </summary>
+    /// <remarks>
+    /// A DEFAULT member rather than a required one: a source that predates tab chords answers "none" and
+    /// keeps compiling, which is the whole reason this is additive. See <see cref="TabItem{T}.Shortcut"/>
+    /// for why the binding belongs on the item and not in the host's key map.
+    /// </remarks>
+    KeyChord? Shortcut(int index) => null;
+
+    /// <summary>
+    /// What selecting this tab does, or null for a surface that reads the strip's registered regions back
+    /// instead of being called. Default: none.
+    /// </summary>
+    Action<InputModifier>? Select(int index) => null;
 }
 
 /// <summary>Tabs from a list of <see cref="TabItem{T}"/>.</summary>
@@ -110,6 +126,24 @@ public readonly struct TabItemsSource<T>(IReadOnlyList<TabItem<T>> items) : ITab
 
     /// <inheritdoc/>
     public bool Enabled(int index) => items[index].IsEnabled;
+
+    /// <inheritdoc/>
+    public KeyChord? Shortcut(int index) => items[index].Shortcut;
+
+    /// <inheritdoc/>
+    /// <remarks>The item's handler is given the tab's VALUE, which is what it is for; the modifier the
+    /// router carries is dropped here rather than widened into the item's signature, because "which tab"
+    /// is the question a tab answers and a modifier-sensitive tab has no meaning yet.</remarks>
+    public Action<InputModifier>? Select(int index)
+    {
+        if (items[index].OnSelect is not { } onSelect)
+        {
+            return null;
+        }
+
+        var value = items[index].Value;
+        return _ => onSelect(value);
+    }
 }
 
 /// <summary>Tabs from plain titles: all selectable, none with a glyph.</summary>
@@ -234,7 +268,8 @@ public static class TabStripTree
             }
 
             children.Add(Tab(icon, label, i, extent, iconExtent, closeBox,
-                active, enabled, hovered, closeHovered, uniform, vertical, outerAtStart, m, options, onSelect));
+                active, enabled, hovered, closeHovered, uniform, vertical, outerAtStart, m, options, onSelect,
+                source.Shortcut(i), source.Select(i)));
 
             used = tabStart + extent;
             tabsEnd = used;
@@ -285,7 +320,8 @@ public static class TabStripTree
     private static Node Tab(
         string? icon, string label, int index, float extent, float iconExtent, float closeBox,
         bool active, bool enabled, bool hovered, bool closeHovered, bool uniform, bool vertical, bool outerAtStart,
-        TabStripMetrics m, TabStripOptions options, Action<int>? onSelect)
+        TabStripMetrics m, TabStripOptions options, Action<int>? onSelect,
+        KeyChord? shortcut = null, Action<InputModifier>? select = null)
     {
         var colors = options.Colors;
 
@@ -322,15 +358,44 @@ public static class TabStripTree
                         .Along(vertical, m.Border).Across(vertical, null))
             : body;
 
-        return tab
+        // A DISABLED tab runs nothing. It still registers, under TabBarRegions.DisabledTabs, so a press on
+        // it is swallowed rather than falling through to whatever is behind the strip -- but the handlers
+        // are dropped, which is what "still drawn, and inert" has always claimed and what the index-only
+        // callback quietly did not do: it fired for a greyed tab as readily as for a live one.
+        var onPress = enabled ? Combine(index, onSelect, select) : null;
+
+        var node = tab
             .Along(vertical, extent)
             .Across(vertical, null)
             .Bg(plate)
             .Clickable(
                 new HitResult.ListItemHit(enabled ? TabBarRegions.Tabs : TabBarRegions.DisabledTabs, index),
-                onSelect is null ? null : _ => onSelect(index),
+                onPress,
                 enabled ? CursorKind.Pointer : null);
+
+        // The chord goes on only when the tab can actually be reached, so a locked tab's binding is inert
+        // by ABSENCE rather than by a guard someone has to remember to write. A dropped tab is not in the
+        // tree at all, which the router's match-against-the-painted-tree rule already handles.
+        return enabled && shortcut is { } chord ? node.WithShortcut(chord) : node;
     }
+
+    /// <summary>
+    /// The strip-wide index callback and the item's own handler as ONE click handler, since a node has one.
+    /// Both run when both are given: they answer different questions -- "the strip was used at index i"
+    /// against "this tab was chosen" -- and a caller that states both means both.
+    /// </summary>
+    private static Action<InputModifier>? Combine(int index, Action<int>? onSelect, Action<InputModifier>? select)
+        => (onSelect, select) switch
+        {
+            (null, null) => null,
+            ({ } byIndex, null) => _ => byIndex(index),
+            (null, { } byItem) => byItem,
+            ({ } byIndex, { } byItem) => mods =>
+            {
+                byIndex(index);
+                byItem(mods);
+            },
+        };
 
     /// <summary>Icon, label and ✕ laid out ACROSS the tab — horizontally in screen terms on every side,
     /// which is what "upright content" means for a vertical strip.</summary>
