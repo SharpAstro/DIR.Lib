@@ -44,6 +44,8 @@ Migration steps: [MIGRATION.md](MIGRATION.md).
   keyboard" and nine sites reaching around the owner. They also conflated two acts: seeding a field's text
   and claiming the keyboard for it. Seed by setting `Text` and `CursorPos`; where the two are genuinely
   one act, `TextInputFocus.Focus(input, seed)` is the call, and it selects the seed.
+  **`IsActive`'s setter went with them**, still public to READ: it is a cache of the owner's record of
+  focus, and leaving it writable would have renamed `Activate` rather than retired it.
 - **`HitResult.TextInputHit.Painted` is required.** One constructor, no trailing default. It arrived in
   9.1 as an optional parameter, which is the shape that deletes the old constructor from the assembly --
   source-compatible and binary-fatal -- and 9.2 papered over that with a second constructor. A default

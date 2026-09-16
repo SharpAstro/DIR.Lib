@@ -11,7 +11,15 @@ namespace DIR.Lib;
 public class TextInputState
 {
     /// <summary>Whether this field is currently focused and accepting text input.</summary>
-    public bool IsActive { get; set; }
+    /// <remarks>
+    /// <b>Read anywhere, written only by <see cref="TextInputFocus"/> (10.0).</b> It is a CACHE of the
+    /// owner's record of focus -- the same fact stored twice -- kept here because the painter needs it per
+    /// field and has no reason to hold the owner. Leaving the setter public would have left
+    /// <see cref="Activate"/> renamed rather than retired: assigning it paints a field as focused while the
+    /// owner knows nothing about it, so the caret blinks in a box the keyboard does not reach and a blur
+    /// has nothing to blur.
+    /// </remarks>
+    public bool IsActive { get; internal set; }
 
     /// <summary>The current text content.</summary>
     public string Text { get; set; } = "";
