@@ -1,4 +1,4 @@
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using System.Linq;
 using DIR.Lib;
 using Shouldly;
@@ -8,9 +8,9 @@ namespace DIR.Lib.Tests;
 /// <summary>
 /// Headless tests for <see cref="DropdownMenuState"/> -- focused on the overflow-scroll behaviour added
 /// so a menu whose items exceed its <c>maxHeight</c> scrolls its window instead of silently clipping the
-/// rows past the fold. The render method (<see cref="PixelWidgetBase{TSurface}.RenderDropdownMenu"/>) sets
-/// the scroll geometry each frame; here the tests drive <see cref="ListScrollController.SetExtent"/>
-/// directly (a 100px-tall viewport of 10px atoms = 10 visible) to stand in for that render pass.
+/// rows past the fold. The painted tree sets the scroll geometry each frame (the menu's list node carries
+/// the controller); here the tests drive <see cref="ListScrollController.SetExtent"/> directly (a 100px-tall
+/// viewport of 10px atoms = 10 visible) to stand in for that paint.
 /// </summary>
 public class DropdownMenuStateTests
 {
@@ -21,7 +21,7 @@ public class DropdownMenuStateTests
     {
         var d = new DropdownMenuState<string>();
         d.Open(0f, 0f, 100f, Items(itemCount));
-        // Stand in for the per-frame RenderDropdownMenu geometry refresh.
+        // Stand in for the per-frame geometry refresh the painted tree does.
         d.Scroll.SetExtent(new RectF32(0f, 0f, 100f, viewportH), atomPx, itemCount, DesignScale.One);
         return d;
     }

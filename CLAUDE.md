@@ -37,9 +37,9 @@ CI runs tests in Release config after building, before publishing NuGet packages
 - `Renderer<TSurface>` — abstract generic renderer; backends (SDL/Vulkan, Console) implement this in downstream repos. Provides default polyline + dashed-line implementations on top of the abstract rect / ellipse / text primitives.
 - `RgbaImageRenderer : Renderer<RgbaImage>` — pure software renderer used in tests and headless scenarios
 - `IWidget` / `IPixelWidget` — widget interfaces with input handling and hit testing
-- `PixelWidgetBase<TSurface>` — base class for pixel-based widgets, manages clickable regions, drawing helpers, dropdowns, text inputs
+- `PixelWidgetBase<TSurface>` — base class for pixel-based widgets, manages clickable regions, drawing helpers, text inputs
 - `InputEvent` — abstract record hierarchy (open discriminated union): `KeyDown`, `TextInput`, `MouseDown`, `MouseUp`, `MouseMove`, `Scroll`, `Pinch`, `PinchEnd`
-- `HitResult` — open record hierarchy for click dispatch: `TextInputHit`, `ButtonHit`, `ListItemHit`, `SlotHit<T>`, `SliderHit`
+- `HitResult` — open record hierarchy for click dispatch: `TextInputHit`, `ButtonHit`, `ChromeHit`, `LinkHit`, `ListItemHit`, `SlotHit<T>`, `SliderStateHit`
 - `SignalBus` — thread-safe typed event bus; `Post<T>()` is thread-safe, `ProcessPending()` runs on render thread
 - `DockLayout<T>` — generic dock layout engine using `INumber<T>`
 - `ManagedFontRasterizer` — pure-managed glyph rasterizer (AOT-compatible) backed by `SharpAstro.Fonts.OpenTypeFont`; supports COLRv1 color glyphs, grayscale, and PDF subset fonts

@@ -1,4 +1,4 @@
-using DIR.Lib;
+﻿using DIR.Lib;
 using Shouldly;
 
 namespace DIR.Lib.Tests;
@@ -43,7 +43,7 @@ public class FrameScopedRegionTests
 
         w.HitTest(50, 20).ShouldBeOfType<HitResult.ButtonHit>();
         w.HitTestCursor(50, 20).ShouldBe(CursorKind.Pointer);
-        w.HitTestAndDispatch(50, 20).ShouldNotBeNull();
+        Routing.Press(w, 50, 20).ShouldBeTrue();
         w.Clicks.ShouldBe(1);
     }
 
@@ -61,7 +61,7 @@ public class FrameScopedRegionTests
 
         w.HitTest(50, 20).ShouldBeNull();
         w.HitTestCursor(50, 20).ShouldBeNull();
-        w.HitTestAndDispatch(50, 20).ShouldBeNull();
+        Routing.Press(w, 50, 20).ShouldBeFalse();
         w.Clicks.ShouldBe(0);       // the handler is the part that would have done real damage
     }
 
@@ -174,7 +174,7 @@ public class FrameScopedRegionTests
         public void Render()
         {
             BeginFrame();
-            RegisterClickable(0, 0, 100, 24, new HitResult.TextInputHit(input));
+            RegisterClickable(0, 0, 100, 24, new HitResult.TextInputHit(input, default));
         }
     }
 

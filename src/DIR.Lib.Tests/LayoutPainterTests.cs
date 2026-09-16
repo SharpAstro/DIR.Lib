@@ -73,7 +73,6 @@ public class LayoutPainterTests
         public System.Collections.Immutable.ImmutableArray<Layout.ArrangedNode<float>> Arrange(Layout.Node root, RectF32 bounds)
             => ArrangeLayout(root, bounds, fontPath: string.Empty, scale: DesignScale.One);
 
-        public HitResult? DispatchAt(float x, float y) => HitTestAndDispatch(x, y);
     }
 
     /// <summary>Captures the font family each <see cref="DrawText"/> resolves to (draw is skipped, so no
@@ -139,11 +138,11 @@ public class LayoutPainterTests
 
         widget.Render(stack, new RectF32(0, 0, 100, 100));
 
-        var hit = widget.DispatchAt(50, 10); // inside the 0..100 x 0..20 row
-        hit.ShouldBeOfType<HitResult.ButtonHit>().Action.ShouldBe("X");
+        widget.HitTest(50, 10).ShouldBeOfType<HitResult.ButtonHit>().Action.ShouldBe("X");
+        Routing.Press(widget, 50, 10).ShouldBeTrue(); // inside the 0..100 x 0..20 row
         clicks.ShouldBe(1);
 
-        widget.DispatchAt(50, 50); // below the row -> no hit
+        Routing.Press(widget, 50, 50).ShouldBeFalse(); // below the row -> no region, nothing to run
         clicks.ShouldBe(1);
     }
 

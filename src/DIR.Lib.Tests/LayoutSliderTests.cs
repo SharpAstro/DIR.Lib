@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using DIR.Lib;
 using Shouldly;
 
@@ -176,7 +176,9 @@ public class LayoutSliderTests
         region.Cursor.ShouldBe(CursorKind.NotAllowed);
 
         // Still HIT, which is what swallowing means: a press over it does not fall through.
-        widget.HitTestAndDispatch(50f, 5f).ShouldBe(RegisteredSlider(widget));
+        widget.HitTest(50f, 5f).ShouldBe(RegisteredSlider(widget));
+        Routing.Press(widget, 50f, 5f).ShouldBeTrue();
+        state.Value.ShouldBe(5f, "a disabled slider takes the press and does nothing with it");
     }
 
     [Fact]

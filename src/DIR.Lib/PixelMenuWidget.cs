@@ -1,4 +1,4 @@
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 
 namespace DIR.Lib;
 
@@ -65,12 +65,17 @@ public class PixelMenuWidget<TSurface>(Renderer<TSurface> renderer, string fontP
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Keys only. A press on a row reaches <see cref="MenuLayout.BuildTree"/>'s own <c>.Clickable</c>
+    /// through <see cref="InputRouter"/>, which walks the regions this widget registered while painting --
+    /// so a host lists the widget on the router and writes no press arm. Until 10.0 this branch hit-tested
+    /// and dispatched for itself, which is a second dispatcher beside the router's for the same rects.
+    /// </remarks>
     public override bool HandleInput(InputEvent evt)
     {
         return evt switch
         {
             InputEvent.KeyDown(var key, _) => _model.HandleKey(key),
-            InputEvent.MouseDown(var x, var y, _, _, _) => HitTestAndDispatch(x, y) is not null,
             _ => false,
         };
     }

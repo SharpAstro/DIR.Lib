@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 
 namespace DIR.Lib;
@@ -425,9 +425,27 @@ public class TextInputState
     }
 
     /// <summary>
-    /// Activates the field with optional initial text.
+    /// Activates the field with optional initial text. <b>Internal since 10.0</b>: only
+    /// <see cref="TextInputFocus"/> may move focus.
     /// </summary>
-    public void Activate(string? initialText = null)
+    /// <remarks>
+    /// <para>
+    /// The owner existed from 8.x and was a CONVENTION, because this was public -- so tianwen had three
+    /// spellings of "give this field the keyboard" (<c>input.Activate()</c>, a posted signal, and
+    /// <c>TextInputFocus.Focus</c>) and nine call sites reaching around the owner. Every one of them was a
+    /// second writer of the same fact: this flag says the field is active while <see cref="TextInputFocus"/>
+    /// says which field is, and when the two disagree the blur has nothing to blur and the caret blinks in
+    /// a field the keyboard does not reach.
+    /// </para>
+    /// <para>
+    /// The two acts it conflates are the other half. Seeding a field's text and claiming the keyboard for it
+    /// are separate things -- six of those nine sites wanted the first alone, and got the second silently,
+    /// so three fields painted as focused at once and the row said nothing about where typing would go.
+    /// Set <see cref="Text"/> and <see cref="CursorPos"/> to seed; call
+    /// <see cref="TextInputFocus.Focus(TextInputState, string?)"/> where they are genuinely one act.
+    /// </para>
+    /// </remarks>
+    internal void Activate(string? initialText = null)
     {
         IsActive = true;
         IsCommitted = false;
@@ -440,9 +458,11 @@ public class TextInputState
     }
 
     /// <summary>
-    /// Deactivates the field.
+    /// Deactivates the field. <b>Internal since 10.0</b>, for the reason
+    /// <see cref="Activate"/> is: use <see cref="TextInputFocus.Blur"/> or
+    /// <see cref="TextInputFocus.BlurIfFocused"/>, which move the owner's own record of focus with it.
     /// </summary>
-    public void Deactivate()
+    internal void Deactivate()
     {
         IsActive = false;
         ClearSelection();

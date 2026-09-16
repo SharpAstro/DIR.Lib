@@ -1,4 +1,4 @@
-using DIR.Lib;
+﻿using DIR.Lib;
 using Shouldly;
 
 namespace DIR.Lib.Tests;
@@ -101,7 +101,10 @@ public class LayoutPressTests
         var region = widget.GetRegisteredRegions().Single(r => r.Result is HitResult.ButtonHit);
         region.OnPress!(new PointerPress(1f, 1f, MouseButton.Left, InputModifier.None, 1)).ShouldBeNull();
         region.OnClick.ShouldNotBeNull();
-        widget.HitTestAndDispatch(1f, 1f);
+
+        // Routed rather than dispatched, because the fall-through IS the router's rule: a press handler
+        // returning null declines the DRAG, and the click then fires as though the node carried only one.
+        Routing.Press(widget, 1f, 1f).ShouldBeTrue();
         clicked.ShouldBe(1);
     }
 

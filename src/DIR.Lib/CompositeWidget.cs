@@ -1,4 +1,4 @@
-namespace DIR.Lib
+﻿namespace DIR.Lib
 {
     /// <summary>
     /// A widget that paints OTHER widgets into the same surface — an application chrome hosting a tab
@@ -44,11 +44,6 @@ namespace DIR.Lib
         /// <inheritdoc/>
         public override HitResult? HitTest(float x, float y)
             => base.HitTest(x, y) ?? FromChildren(child => child.HitTest(x, y));
-
-        /// <inheritdoc/>
-        public override HitResult? HitTestAndDispatch(float x, float y, InputModifier modifiers = InputModifier.None)
-            => base.HitTestAndDispatch(x, y, modifiers)
-               ?? FromChildren(child => child.HitTestAndDispatch(x, y, modifiers));
 
         /// <inheritdoc/>
         public override CursorKind? HitTestCursor(float x, float y)

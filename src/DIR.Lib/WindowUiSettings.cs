@@ -1,18 +1,6 @@
-namespace DIR.Lib;
+﻿using System.Collections.Generic;
 
-/// <summary>
-/// Something that owns the keyboard while it is on screen -- an open dropdown, a menu, a modal.
-/// </summary>
-/// <remarks>
-/// Implementers must return <c>false</c> once they are no longer on screen. That is what makes a stale
-/// claim harmless and removes any need to clear one: a closed overlay simply declines, and the host falls
-/// through to its normal routing.
-/// </remarks>
-public interface IKeyboardClaimant
-{
-    /// <summary>Handle a key; return false to let it through (including when no longer displayed).</summary>
-    bool HandleKeyDown(InputKey key);
-}
+namespace DIR.Lib;
 
 /// <summary>
 /// The presentation values that are constant for one WINDOW and shared by every widget drawing into it:
@@ -69,9 +57,11 @@ public sealed class WindowUiSettings
     /// </summary>
     public FontFallbackResolver? FontFallback { get; set; }
 
+    private readonly List<PopoverState> _paintedPopovers = [];
+
     /// <summary>
-    /// The overlay that owns the keyboard, registered BY BEING PAINTED and consulted by the host before
-    /// its normal key routing.
+    /// The popovers painted this cycle, in paint order, which is z-order. <see cref="InputRouter"/> offers
+    /// a key to the LAST one first.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -82,12 +72,38 @@ public sealed class WindowUiSettings
     /// dropdown of four with no routing case.
     /// </para>
     /// <para>
-    /// Paint is the right moment to claim because paint order IS z-order, so the topmost overlay claims
-    /// last and therefore wins, with no host arbitrating. Never cleared: a claimant that is no longer
-    /// displayed returns false, so a stale claim costs one virtual call.
+    /// <b>A LIST since 10.0, where 9.x had one <c>IKeyboardClaimant</c> slot.</b> One slot means the last
+    /// painter wins and nothing restores, so a modal over a popover -- or a popover over the menu that
+    /// opened it -- took the slot, and the thing underneath stopped answering Escape for good: dismissing
+    /// the inner overlay left the outer one on screen with nothing claiming it. A stack makes the nesting
+    /// behave the way it looks, and hands the keyboard back on the next frame without restoring anything,
+    /// because the one underneath is still painting and the closed one is not.
+    /// </para>
+    /// <para>
+    /// <b>Cleared per paint CYCLE, registered by being PAINTED</b> (<see cref="NoteFrameBegin"/>,
+    /// <see cref="NotePopoverPainted"/>) -- the same mechanism as <see cref="PointerOwner"/>, and that is
+    /// what retired the interface. The slot was never cleared, so every implementer carried the obligation
+    /// to answer "I am no longer displayed" for itself, which is a contract nothing could check and which
+    /// a consumer's own overlay type got wrong. A popover that closed simply stops painting and is not in
+    /// the list.
     /// </para>
     /// </remarks>
-    public IKeyboardClaimant? KeyboardClaimant { get; set; }
+    public IReadOnlyList<PopoverState> PaintedPopovers => _paintedPopovers;
+
+    /// <summary>
+    /// Records that <paramref name="popover"/> painted, putting it on top of this cycle's stack. Called by
+    /// the layout painter for every OPEN popover node it draws.
+    /// </summary>
+    /// <remarks>
+    /// Re-registering one already in the list MOVES it to the top rather than duplicating it, so a popover
+    /// drawn in more than one of a widget's paint passes is ordered by its LAST paint, which is the one
+    /// actually on top.
+    /// </remarks>
+    internal void NotePopoverPainted(PopoverState popover)
+    {
+        _paintedPopovers.Remove(popover);
+        _paintedPopovers.Add(popover);
+    }
 
     /// <summary>
     /// The rect that owns the pointer this frame, set by an open popover as it paints, or null when nothing
@@ -104,8 +120,7 @@ public sealed class WindowUiSettings
     /// would be wrong in a way that only shows up with more than one: every widget clears in its own
     /// BeginFrame, so a second widget beginning its frame would wipe the owner a first widget had just
     /// painted, and the popover would confine hover only when it happened to belong to the last widget
-    /// drawn. Unlike <see cref="KeyboardClaimant"/> this cannot be left stale, because a rect has no way to
-    /// answer "I am not displayed any more".
+    /// drawn. <see cref="PaintedPopovers"/> is cleared on the same boundary, for the same reason.
     /// </para>
     /// <para>
     /// <b>A cycle is not <see cref="FrameId"/>, and keying it on that was a bug.</b> The first shipped
@@ -121,8 +136,8 @@ public sealed class WindowUiSettings
     private readonly HashSet<object> _begunThisCycle = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
-    /// Notes that <paramref name="widget"/> has begun a frame, and clears <see cref="PointerOwner"/> when
-    /// that begins a NEW cycle. Called by every widget's BeginFrame.
+    /// Notes that <paramref name="widget"/> has begun a frame, and clears <see cref="PointerOwner"/> and
+    /// <see cref="PaintedPopovers"/> when that begins a NEW cycle. Called by every widget's BeginFrame.
     /// </summary>
     /// <remarks>
     /// A cycle ends when a widget begins a second time, which needs nothing of the host: one widget or
@@ -140,6 +155,7 @@ public sealed class WindowUiSettings
         _begunThisCycle.Clear();
         _begunThisCycle.Add(widget);
         PointerOwner = null;
+        _paintedPopovers.Clear();
     }
 
     /// <summary>

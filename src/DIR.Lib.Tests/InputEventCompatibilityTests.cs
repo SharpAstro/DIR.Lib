@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Linq;
 using System.Reflection;
 using DIR.Lib;
 using Shouldly;
@@ -23,18 +24,32 @@ namespace DIR.Lib.Tests;
 /// and the reflection here is the only thing that can see them: a three-argument CALL binds happily to a
 /// four-parameter constructor with a default, so nothing written in C# can tell the two apart.
 /// </para>
+///
+/// <para>
+/// <c>TextInputHit</c> took the other road at 10.0, a major being the one place it is available: rather
+/// than carrying both arities forever it has ONE, with <c>Painted</c> required. Pinned here too, because
+/// the shape that caused the incident -- a trailing optional parameter -- is the shape someone adds back
+/// without noticing, and in C# it looks like a source-compatible addition.
+/// </para>
 /// </summary>
 public class InputEventCompatibilityTests
 {
     [Fact]
-    public void TextInputHitGetsBackTheOneParameterConstructor91Deleted()
+    public void TextInputHitHasExactlyOneConstructorAndPaintedIsRequired()
     {
-        // The incident itself: Console.Lib 4.33 calls new HitResult.TextInputHit(field.State) in
-        // CellLayout.HitOf, and 9.1 removed exactly that. Restoring it is what lets the published
-        // Console.Lib run against 9.2 with no rebuild.
-        typeof(HitResult.TextInputHit)
-            .GetConstructor([typeof(TextInputState)])
-            .ShouldNotBeNull("the published Console.Lib calls exactly this");
+        // The incident was Console.Lib 4.33 calling new HitResult.TextInputHit(field.State) in
+        // CellLayout.HitOf against a 9.1 that had just deleted that arity. 9.2 answered by keeping both;
+        // 10.0 rebuilds the chain, so it answers by keeping one -- and a surface registering a field now
+        // has to SAY where it laid the text down instead of defaulting to a geometry that puts every
+        // caret at the start.
+        var ctors = typeof(HitResult.TextInputHit)
+            .GetConstructors(BindingFlags.Public | BindingFlags.Instance);
+
+        ctors.Length.ShouldBe(1, "two arities is what let a caller mean the wrong one");
+        ctors[0].GetParameters().Select(p => p.ParameterType)
+            .ShouldBe([typeof(TextInputState), typeof(TextInputGeometry)]);
+        ctors[0].GetParameters().ShouldAllBe(p => !p.HasDefaultValue,
+            "a trailing default is the 9.1 shape, and it reads as source-compatible right up to the throw");
     }
 
     [Fact]

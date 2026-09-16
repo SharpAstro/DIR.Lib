@@ -1,4 +1,4 @@
-using DIR.Lib;
+﻿using DIR.Lib;
 using Shouldly;
 using Xunit;
 
@@ -33,13 +33,17 @@ public class CompositeWidgetTests
     {
         public TextInputState Field { get; } = new();
 
+        /// <summary>How many presses this leaf's own region has answered -- which leaf a ROUTED press
+        /// reached, where a returned hit only said which one was on top.</summary>
+        public int Clicks { get; private set; }
+
         public void Paint(float x, float y, float w, float h, CursorKind cursor)
         {
             BeginFrame();
-            RegisterClickable(x, y, w, h, new HitResult.ButtonHit(id), cursor: cursor);
+            RegisterClickable(x, y, w, h, new HitResult.ButtonHit(id), _ => Clicks++, cursor);
             // In a corner of the leaf, so it never shadows the button at the points these tests probe:
             // regions resolve last-registered-first, and a field over the whole rect would win every hit.
-            RegisterClickable(x, y, 10, 10, new HitResult.TextInputHit(Field), cursor: CursorKind.Text);
+            RegisterClickable(x, y, 10, 10, new HitResult.TextInputHit(Field, default), cursor: CursorKind.Text);
         }
     }
 
@@ -61,7 +65,7 @@ public class CompositeWidgetTests
 
             // The composite's own chrome: a bar across the top, painted OVER the children.
             RegisterClickable(0, 0, 200, 20, new HitResult.ButtonHit("chrome"), cursor: CursorKind.Default);
-            RegisterClickable(190, 0, 10, 20, new HitResult.TextInputHit(OwnField), cursor: CursorKind.Text);
+            RegisterClickable(190, 0, 10, 20, new HitResult.TextInputHit(OwnField, default), cursor: CursorKind.Text);
         }
     }
 
@@ -125,8 +129,14 @@ public class CompositeWidgetTests
         var (chrome, back, front) = Composed();
 
         chrome.HitTest(50f, 90f).ShouldBe(new HitResult.ButtonHit("front"));
-        chrome.HitTestAndDispatch(50f, 90f).ShouldBe(new HitResult.ButtonHit("front"));
         chrome.HitTestCursor(50f, 90f).ShouldBe(CursorKind.Pointer);
+
+        // And a press RUNS the front child's handler, not the back one's. Routed rather than dispatched
+        // through the composite, so the aggregation under test is the one a host actually uses: the
+        // router walks CollectPaintedRegions, which is the composite's own paint order.
+        Routing.Press(chrome, 50f, 90f).ShouldBeTrue();
+        front.Clicks.ShouldBe(1);
+        back.Clicks.ShouldBe(0);
 
         // Enumerations run in PAINT order instead -- they read the frame the way a person does.
         chrome.PaintedRegions()
