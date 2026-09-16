@@ -43,6 +43,28 @@ Additive: `RenderDropdownMenu` and the anchor fields stay, so nothing that calls
 both paths register their rows under the shared `DropdownMenuState<T>.ListId` so a host matching on the id
 sees the same thing either way.
 
+### What moving to 9.3 gets a consumer
+
+Concretely, and this is the reason to take it rather than sit on 9.2:
+
+- **The call-order obligation is gone.** `RenderDropdownMenu` had to be called LAST in the render pass, and
+  a caller who got that wrong got a menu painted under the chrome it belongs to with its clicks going
+  elsewhere -- no exception, no warning, just a menu that half works. A declared `Dropdown` is a node in the
+  tree like any other; the failure is unrepresentable.
+- **Ten parameters become two.** `Dropdown(anchor, state)` against
+  `RenderDropdownMenu(state, fontPath, fontSize, bg, highlight, text, border, viewportW, viewportH, maxHeight)`.
+  The colours that are the same every frame become optional arguments with defaults.
+- **The menu is placed where its trigger IS.** The rendered path anchors to coordinates captured when the
+  menu opened, so a menu still open across a resize or a relayout hangs where the button used to be.
+- **A hand-rolled popup beside it can be deleted rather than maintained.** The whole point of the node is
+  that a consumer with its own popup mechanism -- a result list, a suggestion dropdown, a help panel doing
+  a close-then-reopen-next-frame dance to get its z-order right -- can drop it and declare instead. In
+  tianwen's case that is `OpenToolbarDropdown`'s switch, `PumpHelpPanel`, and two hand-built result lists
+  that gain scrolling they never had.
+- **Nothing is forced.** `RenderDropdownMenu`, `IsOpen`, `Open(x, y, width, ...)` and the anchor fields all
+  still work, and both paths register rows under the same `ListId`. A consumer can move one menu at a time,
+  or none, and still take the version.
+
 ## 9.2
 
 **A control DECLARES, the engine BEHAVES, a host BINDS the platform once.** The library had most of the
