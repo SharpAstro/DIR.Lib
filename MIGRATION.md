@@ -124,6 +124,10 @@ focus.BlurIfFocused(input);           // ...without stealing it from someone els
 `TextInputFocus` is the window's, at `WindowUiSettings.Focus` -- reached through
 `PixelWidgetBase.Ui.Focus`, and shared by `ShareUiContext` so sibling widgets cannot end up with two.
 
+**`TextInputState.IsActive` is read-only from outside too**, for the same reason: it is a cache of the
+owner's record of focus, so `new TextInputState { IsActive = true }` (a common test fixture) becomes a
+`Focus` call on an owner. Reading it is unchanged, which is what a painter does with it.
+
 ### `HitResult.TextInputHit` takes both arguments
 
 ```csharp
