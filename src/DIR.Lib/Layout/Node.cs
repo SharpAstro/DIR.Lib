@@ -64,6 +64,24 @@ public abstract partial record Node
     /// </summary>
     public float? PaddingY { get; init; }
 
+    /// <summary>
+    /// Extra main-axis space before this child in a flow (<see cref="Wrap"/>), on top of the container's
+    /// own gap -- and suppressed when the child starts a line.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Group separation, without a spacer node.</b> A spacer between two groups is the obvious
+    /// spelling and it breaks on exactly the case that matters: when the line happens to break there,
+    /// the spacer leads the wrapped row and indents it. Carried on the child instead, the rule is the
+    /// one a flow already applies to its own gap -- a line never opens with separation -- so the wrapped
+    /// row starts flush under the one above it, which is what the row break already says.
+    /// </para>
+    /// <para>
+    /// Zero, and therefore invisible, on every node that does not set it.
+    /// </para>
+    /// </remarks>
+    public float LeadingGap { get; init; }
+
     /// <summary>The vertical inset actually applied: <see cref="PaddingY"/> if stated, else <see cref="Padding"/>.</summary>
     public float PadDown => PaddingY ?? Padding;
 

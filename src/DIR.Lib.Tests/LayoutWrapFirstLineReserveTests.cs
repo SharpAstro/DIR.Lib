@@ -133,4 +133,67 @@ public class LayoutWrapFirstLineReserveTests
 
         box.WithFirstLineReserve(40f).ShouldBe(box);
     }
+
+    // ---- LeadingGap ------------------------------------------------------------------
+
+    /// <summary>
+    /// Group separation carried on the child rather than as a spacer node between groups. The spacer
+    /// spelling breaks on the case that matters: when the line breaks exactly there, the spacer leads
+    /// the wrapped row and indents it.
+    /// </summary>
+    [Fact]
+    public void ALeadingGapSeparatesAChildFromThePreviousOne()
+    {
+        var (widget, _) = Fixture();
+
+        var run = Layout.Builder.WrapH(
+            Layout.Builder.Box(40f, 10f, Ink).Clickable(new HitResult.ListItemHit("run", 0), _ => { }),
+            Layout.Builder.Box(40f, 10f, Ink).Clickable(new HitResult.ListItemHit("run", 1), _ => { })
+                .WithLeadingGap(20f));
+        widget.Render(run, new RectF32(0, 0, 200, 200));
+
+        var placed = Placed(widget);
+        placed[1].Rect.X.ShouldBe(60f, 0.01f, "40 wide + a 20 leading gap");
+    }
+
+    [Fact]
+    public void ALeadingGapIsSuppressedWhenTheChildStartsALine()
+    {
+        var (widget, _) = Fixture();
+
+        // Five 40-unit boxes in 200: the fifth would start line two. Its leading gap must not indent it.
+        var children = Enumerable.Range(0, 5).Select(i =>
+        {
+            var box = Layout.Builder.Box(40f, 10f, Ink).Clickable(new HitResult.ListItemHit("run", i), _ => { });
+            return i == 4 ? box.WithLeadingGap(30f) : box;
+        }).ToArray();
+
+        widget.Render(Layout.Builder.WrapH(children), new RectF32(0, 0, 200, 200));
+
+        var placed = Placed(widget);
+        var firstY = placed[0].Rect.Y;
+        var wrapped = placed.Where(p => p.Rect.Y > firstY).ToArray();
+
+        wrapped.Length.ShouldBe(1, "the leading gap pushed it onto line two");
+        wrapped[0].Rect.X.ShouldBe(0f, 0.01f,
+            "a wrapped row starts flush under the one above -- the row break already says what the gap would");
+    }
+
+    [Fact]
+    public void ALeadingGapCountsTowardTheLineBreak()
+    {
+        var (widget, _) = Fixture();
+
+        // Four 40s fit 200 exactly with no gaps. Give the fourth a leading gap and it no longer fits.
+        var children = Enumerable.Range(0, 4).Select(i =>
+        {
+            var box = Layout.Builder.Box(50f, 10f, Ink).Clickable(new HitResult.ListItemHit("run", i), _ => { });
+            return i == 3 ? box.WithLeadingGap(10f) : box;
+        }).ToArray();
+
+        widget.Render(Layout.Builder.WrapH(children), new RectF32(0, 0, 200, 200));
+
+        var placed = Placed(widget);
+        placed.Count(p => p.Rect.Y == placed[0].Rect.Y).ShouldBe(3, "the gap pushed the fourth over");
+    }
 }

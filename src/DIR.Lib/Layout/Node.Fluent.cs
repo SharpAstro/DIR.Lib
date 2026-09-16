@@ -190,6 +190,12 @@ public abstract partial record Node
     public Node WithFirstLineReserve(float reserve)
         => this is Wrap wr ? wr with { FirstLineReserve = reserve } : this;
 
+    /// <summary>
+    /// Extra main-axis space before this child in a flow, suppressed when it starts a line. See
+    /// <see cref="LeadingGap"/>.
+    /// </summary>
+    public Node WithLeadingGap(float gap) => this with { LeadingGap = gap };
+
     /// <summary>Set the row/column gaps on a <see cref="Grid"/>; no-op on any other node.</summary>
     public Node WithGaps(float rowGap, float columnGap) => this is Grid g ? g with { RowGap = rowGap, ColumnGap = columnGap } : this;
 
