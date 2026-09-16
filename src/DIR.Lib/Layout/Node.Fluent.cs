@@ -154,6 +154,13 @@ public abstract partial record Node
     public Node WithShortcut(InputKey key, InputModifier mods = InputModifier.None)
         => this with { Shortcut = new KeyChord(key, mods) };
 
+    /// <summary>
+    /// <inheritdoc cref="WithShortcut(InputKey, InputModifier)" path="/summary"/>
+    /// <para>The <see cref="KeyChord"/> form, for a caller that already HAS one -- a tab or a menu item
+    /// that carries its binding -- so the chord is not taken apart and rebuilt to be passed on.</para>
+    /// </summary>
+    public Node WithShortcut(KeyChord chord) => this with { Shortcut = chord };
+
     /// <summary>States the pointer's appearance over this node without making it a click target — a
     /// panel's card saying "arrow here", so nothing inside it has to repeat the claim. Named apart from
     /// the <see cref="Node.Cursor"/> property it sets, which a same-named method cannot shadow.</summary>

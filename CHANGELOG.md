@@ -9,6 +9,38 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 9.5
+
+**A tab carries its own chord and its own handler.** `TabItem<T>` gains two init-only properties:
+
+- **`Shortcut`** (`KeyChord?`) -- the binding that reaches this tab, put on the node the strip paints.
+  A chord stated on a node is matched against the PAINTED tree, so the binding of a tab that was
+  dropped on overflow, or of one that is `IsEnabled` false, is inert with nothing guarding it. A host's
+  own Ctrl+letter map fires whatever the window is showing, which is why every one of them grows a
+  check beside each key and why the check is what goes missing.
+- **`OnSelect`** (`Action<T>?`) -- what selecting the tab does, handed the tab's own `Value`. This is
+  what makes the chord usable rather than decorative: the router ACTIVATES the node a chord names, and
+  a node with nothing bound to it has nothing to activate. Click and chord then run the same handler,
+  so the two routes cannot drift.
+
+`ITabStripSource` grew `Shortcut(int)` and `Select(int)` as DEFAULT interface members answering "none",
+so every existing implementation keeps compiling and every existing strip lays out identically.
+`Node.WithShortcut(KeyChord)` is the overload for a caller that already has a chord rather than a key
+and a modifier.
+
+**One behaviour change, and it is a fix.** A DISABLED tab now runs nothing. It still registers, under
+`TabBarRegions.DisabledTabs`, so a press on it is swallowed rather than falling through to whatever is
+behind the strip -- but its handlers are dropped. "Still drawn, and inert" is what `IsEnabled` has
+always promised; the strip-wide index callback quietly did not keep it, and fired for a greyed tab as
+readily as for a live one. No shipped consumer passed that callback, so nothing observable changes.
+
+### What moving to 9.5 gets a consumer
+
+A nav rail or tab bar stops re-stating its own bindings after the paint. The shape this replaces:
+override `CollectPaintedNodes`, find the tab cells by their hit, and rewrite each node with a chord out
+of a dictionary and a handler out of a closure -- once per frame, in the host, restating what the item
+already knew. That override goes away; the items carry both.
+
 ## 9.4
 
 **A wrap can flow around a floated corner.** Three additions to `Node.Wrap`, all init-only, all zero by
