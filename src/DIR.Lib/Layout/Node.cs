@@ -368,6 +368,25 @@ public abstract partial record Node
         /// </para>
         /// </remarks>
         public float FirstLineReserve { get; init; }
+
+        /// <summary>
+        /// Most lines the flow may use. Children that do not fit within them are DROPPED -- not
+        /// arranged, not painted, not registered. Zero (the default) means unlimited.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Dropping rather than clipping, because a half-painted control is worse than an absent one: a
+        /// clipped child still registers its region, so it keeps taking the clicks aimed at whatever is
+        /// drawn over it. That is the bug a toolbar hit when its run slid under a pinned corner button.
+        /// </para>
+        /// <para>
+        /// A cap belongs on the flow rather than on its container because the container cannot see where
+        /// the lines fall. The alternative -- letting the wrap grow and clipping it with a fixed height
+        /// -- turns a small window into a toolbar with a picture attached, and still registers the rows
+        /// nobody can see.
+        /// </para>
+        /// </remarks>
+        public int MaxLines { get; init; }
     }
 
     /// <summary><paramref name="Base"/> drawn first, <paramref name="Top"/> on top (modal / dropdown / popup). Both fill the same rect.</summary>

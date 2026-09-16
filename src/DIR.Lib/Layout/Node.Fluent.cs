@@ -196,6 +196,13 @@ public abstract partial record Node
     /// </summary>
     public Node WithLeadingGap(float gap) => this with { LeadingGap = gap };
 
+    /// <summary>
+    /// Most lines a <see cref="Wrap"/> may use; children beyond them are dropped entirely. No-op on any
+    /// other node. See <see cref="Wrap.MaxLines"/>.
+    /// </summary>
+    public Node WithMaxLines(int maxLines)
+        => this is Wrap wml ? wml with { MaxLines = maxLines } : this;
+
     /// <summary>Set the row/column gaps on a <see cref="Grid"/>; no-op on any other node.</summary>
     public Node WithGaps(float rowGap, float columnGap) => this is Grid g ? g with { RowGap = rowGap, ColumnGap = columnGap } : this;
 
