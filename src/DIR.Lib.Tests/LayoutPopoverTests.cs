@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using DIR.Lib;
 using Shouldly;
 
@@ -151,7 +151,68 @@ public class LayoutPopoverTests
 
         widget.Render(Layout.Builder.Popover(Anchor, Content(), state), new RectF32(0, 0, 200, 200));
 
-        widget.Ui.KeyboardClaimant.ShouldBeSameAs(state, "the claim is made BY BEING PAINTED");
+        widget.Ui.PaintedPopovers.ShouldBe([state], "the claim is made BY BEING PAINTED");
+        Routing.Key(widget, InputKey.Escape).ShouldBeTrue();
+        state.IsOpen.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// A popover that CLOSED is not on the stack, with nothing having released anything. That is the whole
+    /// of why 9.x's <c>IKeyboardClaimant</c> could be left stale and why implementers carried an obligation
+    /// to decline once off screen: the single slot was never cleared, so the contract had to live in every
+    /// implementer instead of in the mechanism.
+    /// </summary>
+    [Fact]
+    public void AClosedPopoverIsSimplyNotOnTheStack()
+    {
+        var (widget, _) = Fixture();
+        var state = new PopoverState();
+        state.Open();
+
+        var tree = Layout.Builder.Popover(Anchor, Content(), state);
+        widget.Render(tree, new RectF32(0, 0, 200, 200));
+        widget.Ui.PaintedPopovers.ShouldBe([state]);
+
+        state.Close();
+        widget.Render(tree, new RectF32(0, 0, 200, 200));
+        widget.Ui.PaintedPopovers.ShouldBeEmpty();
+        Routing.Key(widget, InputKey.Escape).ShouldBeFalse("nothing on screen owns Escape any more");
+    }
+
+    /// <summary>
+    /// The nesting 9.x could not express. One claimant slot meant the last painter won and nothing
+    /// restored, so a popover raised over another took the slot outright: dismissing the inner one left the
+    /// outer one on screen with Escape reaching nothing, for the rest of the window's life. Topmost-first
+    /// over a stack is that bug's absence.
+    /// </summary>
+    [Fact]
+    public void AnInnerPopoverTakesTheKeysAndHandsThemBackWhenItCloses()
+    {
+        var (widget, _) = Fixture();
+        var outer = new PopoverState();
+        var inner = new PopoverState();
+        outer.Open();
+        inner.Open();
+
+        // The inner one is painted INSIDE the outer one's content, so it is on top by paint order alone.
+        var tree = Layout.Builder.Popover(
+            Anchor,
+            Layout.Builder.Popover(new RectF32(60f, 40f, 20f, 10f), Content(), inner),
+            outer);
+
+        widget.Render(tree, new RectF32(0, 0, 200, 200));
+        widget.Ui.PaintedPopovers.ShouldBe([outer, inner], "paint order is z-order, bottom first");
+
+        Routing.Key(widget, InputKey.Escape).ShouldBeTrue();
+        inner.IsOpen.ShouldBeFalse();
+        outer.IsOpen.ShouldBeTrue("the key reached the topmost popover and stopped there");
+
+        // The next frame paints only the outer one, which is what hands the keyboard back.
+        widget.Render(tree, new RectF32(0, 0, 200, 200));
+        widget.Ui.PaintedPopovers.ShouldBe([outer]);
+
+        Routing.Key(widget, InputKey.Escape).ShouldBeTrue();
+        outer.IsOpen.ShouldBeFalse();
     }
 
     // ---- placement --------------------------------------------------------------------

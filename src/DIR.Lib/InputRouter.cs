@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace DIR.Lib;
@@ -425,12 +425,17 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     private bool HandleKeyDown(InputEvent.KeyDown key)
     {
         // An overlay that is on screen owns the keyboard: Escape closes a popover before anything else
-        // reads the key. A claimant that is no longer displayed declines, which is what makes the
-        // never-cleared slot harmless.
-        if (ui.KeyboardClaimant?.HandleKeyDown(key.Key) == true)
+        // reads the key. Topmost first, which is the LAST one painted -- so a modal over a popover takes
+        // the key, and dismissing it gives the keyboard back to the one underneath on the next frame,
+        // that one still being painted while the closed one is not.
+        var popovers = ui.PaintedPopovers;
+        for (var i = popovers.Count - 1; i >= 0; i--)
         {
-            requestRedraw();
-            return true;
+            if (popovers[i].HandleKeyDown(key.Key))
+            {
+                requestRedraw();
+                return true;
+            }
         }
 
         var chord = new KeyChord(key.Key, key.Modifiers);

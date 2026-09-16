@@ -9,6 +9,52 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 10.0
+
+**The cuts.** Seven things the 9.x line kept alive for consumers that have since stopped using them.
+Every one is a DELETION, each replaced by something that shipped in 9.2 or later, and the consumer diff
+across Console.Lib, SdlVulkan.Renderer, WebGl.Renderer and tianwen is deletions too -- the adoption ran
+first, and the count that gated this release was "zero production uses", checked by RECEIVER rather than
+by name (`ViewContexts.Activate` and `sdlWindow.Activate` are not `TextInputState.Activate`, and counting
+by name gets that wrong in both directions).
+
+Migration steps: [MIGRATION.md](MIGRATION.md).
+
+- **`IPixelWidget.HitTestAndDispatch` retired; `HitTest` stays.** A widget that hit-tests AND runs the
+  handler is a second dispatcher beside `InputRouter`'s, over the same rects, and two dispatchers for one
+  press is the divergence the router exists to remove -- the two the viewer carried disagreed about what a
+  toolbar press means, and the disagreement shipped. `ClickableRegionTracker.HitTestAndDispatch` is
+  untouched: that one is the tracker's own, and a cell surface still calls it.
+- **`IKeyboardClaimant` removed; the window keeps a STACK of painted popovers.**
+  `WindowUiSettings.KeyboardClaimant` (one slot) becomes `WindowUiSettings.PaintedPopovers`, which the
+  router walks topmost-first. One slot meant the last painter won and nothing restored, so a popover
+  raised over another took the keyboard outright and the one underneath never answered Escape again. The
+  stack is cleared per paint CYCLE and filled by PAINTING, the same mechanism as `PointerOwner` -- which
+  is also what retired the interface, whose whole contract was an implementer promising to decline once
+  off screen, because the slot was never cleared. `PopoverState.ContentKeys` is a
+  `Func<InputKey, bool>?` rather than a claimant.
+- **`PixelWidgetBase.RenderDropdownMenu` deleted.** 127 lines, ten parameters and a "must be called LAST
+  in the render pass" obligation, with zero callers since the menus became `Layout.Builder.Dropdown`
+  trees. `DropdownMenuState` itself stays, anchor fields and all: it is what a declared menu is declared
+  FROM.
+- **`HitResult.SliderHit(int)` removed.** A slider is a `Layout.Content.Slider` leaf whose hit carries the
+  live `SliderState`, so the index a host kept a parallel array against has nothing to index.
+- **`TextInputState.Activate` / `Deactivate` are internal.** `TextInputFocus` was the owner from 8.x and
+  a CONVENTION, since these were public -- so one consumer had three spellings of "give this field the
+  keyboard" and nine sites reaching around the owner. They also conflated two acts: seeding a field's text
+  and claiming the keyboard for it. Seed by setting `Text` and `CursorPos`; where the two are genuinely
+  one act, `TextInputFocus.Focus(input, seed)` is the call, and it selects the seed.
+- **`HitResult.TextInputHit.Painted` is required.** One constructor, no trailing default. It arrived in
+  9.1 as an optional parameter, which is the shape that deletes the old constructor from the assembly --
+  source-compatible and binary-fatal -- and 9.2 papered over that with a second constructor. A default
+  also reads as "geometry optional", and a hit registered without it puts every caret at the start of the
+  field with nothing to distinguish it from a field genuinely painted at zero.
+- **`LayoutInspection` deleted.** An obsolete no-op since layout capture became unconditional; its own
+  doc said to delete it at the next major.
+
+`PixelMenuWidget.HandleInput` is keys only for the same reason: its press arm hit-tested and dispatched
+for itself. A host lists the widget on an `InputRouter` and the rows it declared answer there.
+
 ## 9.5
 
 **A tab carries its own chord and its own handler.** `TabItem<T>` gains two init-only properties:

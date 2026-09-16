@@ -1,4 +1,4 @@
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using System.Linq;
 using DIR.Lib;
 using Shouldly;
@@ -170,9 +170,10 @@ public class LayoutDropdownTests
         disabled.OnClick.ShouldBeNull();
         disabled.Cursor.ShouldBe(CursorKind.NotAllowed);
 
-        // The region exists, so the press stops here. Dispatching on it must leave the menu OPEN.
-        widget.HitTestAndDispatch(disabled.X + 1f, disabled.Y + 1f)
-            .ShouldBeOfType<HitResult.ListItemHit>();
+        // The region exists, so the press stops here -- it must not reach the backdrop behind it, which
+        // would dismiss the menu and make a refused row behave exactly like a working one.
+        widget.HitTest(disabled.X + 1f, disabled.Y + 1f).ShouldBeOfType<HitResult.ListItemHit>();
+        Routing.Press(widget, disabled.X + 1f, disabled.Y + 1f).ShouldBeTrue();
         state.IsOpen.ShouldBeTrue("a refused click must not dismiss the menu");
     }
 
@@ -222,9 +223,10 @@ public class LayoutDropdownTests
     // ---- the keyboard ----------------------------------------------------------------
 
     /// <summary>
-    /// The popover takes the window's single claimant slot by being painted, so a menu that implements
-    /// <see cref="IKeyboardClaimant"/> itself never gets asked. The hand-rendered path did not hit this,
-    /// because the host registered the menu AS the claimant; the declared one would have opened a menu
+    /// The popover is what painted, so it is what <see cref="InputRouter"/> asks -- a menu answering keys
+    /// for itself never gets asked at all, and reaches them only through
+    /// <see cref="PopoverState.ContentKeys"/>. The hand-rendered path did not hit this, because the host
+    /// registered the menu as the window's claimant directly; the declared one would have opened a menu
     /// that could be dismissed but not navigated, with nothing to say so.
     /// </summary>
     [Fact]
@@ -234,20 +236,20 @@ public class LayoutDropdownTests
         var state = Menu(DropdownItem.Text("One"), DropdownItem.Text("Two"), DropdownItem.Text("Three"));
 
         widget.Render(Layout.Builder.Dropdown(Anchor, state), new RectF32(0, 0, 200, 200));
-        var claimant = widget.Ui.KeyboardClaimant.ShouldNotBeNull();
+        widget.Ui.PaintedPopovers.ShouldBe([state.Popover]);
 
-        claimant.HandleKeyDown(InputKey.Down).ShouldBeTrue();
+        Routing.Key(widget, InputKey.Down).ShouldBeTrue();
         state.HighlightIndex.ShouldBe(0);
 
-        claimant.HandleKeyDown(InputKey.Down).ShouldBeTrue();
+        Routing.Key(widget, InputKey.Down).ShouldBeTrue();
         state.HighlightIndex.ShouldBe(1);
 
-        claimant.HandleKeyDown(InputKey.Up).ShouldBeTrue();
+        Routing.Key(widget, InputKey.Up).ShouldBeTrue();
         state.HighlightIndex.ShouldBe(0);
     }
 
     [Fact]
-    public void EnterThroughTheClaimantChoosesTheHighlightedEntry()
+    public void EnterThroughThePopoverChoosesTheHighlightedEntry()
     {
         var (widget, _) = Fixture();
         DropdownItem<string>? chosen = null;
@@ -257,20 +259,20 @@ public class LayoutDropdownTests
             onSelect: item => chosen = item, highlightIndex: 1);
 
         widget.Render(Layout.Builder.Dropdown(Anchor, state), new RectF32(0, 0, 200, 200));
-        widget.Ui.KeyboardClaimant!.HandleKeyDown(InputKey.Enter).ShouldBeTrue();
+        Routing.Key(widget, InputKey.Enter).ShouldBeTrue();
 
         chosen!.Value.ShouldBe("Two");
         state.IsOpen.ShouldBeFalse();
     }
 
     [Fact]
-    public void EscapeThroughTheClaimantStillClosesIt()
+    public void EscapeThroughThePopoverStillClosesIt()
     {
         var (widget, _) = Fixture();
         var state = Menu(DropdownItem.Text("One"));
 
         widget.Render(Layout.Builder.Dropdown(Anchor, state), new RectF32(0, 0, 200, 200));
-        widget.Ui.KeyboardClaimant!.HandleKeyDown(InputKey.Escape).ShouldBeTrue();
+        Routing.Key(widget, InputKey.Escape).ShouldBeTrue();
 
         state.IsOpen.ShouldBeFalse();
     }

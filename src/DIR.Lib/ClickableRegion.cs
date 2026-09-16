@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace DIR.Lib;
 
@@ -89,7 +89,7 @@ public readonly record struct TextInputGeometry(int X, string FontFamily, float 
 
 /// <summary>
 /// Describes what was hit during a click. Open hierarchy — extend with
-/// app-specific subclasses (e.g. SlotHit, SliderHit) in downstream projects.
+/// app-specific subclasses in downstream projects.
 /// </summary>
 public record HitResult
 {
@@ -101,26 +101,21 @@ public record HitResult
     /// clickable region the same arranged rect. A host that re-derived the text origin from the region's own
     /// x would be keeping a second copy of the field's insets, and the copy that drifts is the one nobody
     /// looks at — a caret landing a padding-width off the pointer is not obviously a bug, it just feels
-    /// wrong. Left at <c>default</c> by a caller that only wants focus-on-click, which is what every caller
-    /// did before the caret could be placed at all.
+    /// wrong.
+    /// </para>
+    /// <para>
+    /// <b>Required since 10.0, and the arity is the reason.</b> It arrived in 9.1 as an optional parameter
+    /// on the primary constructor, which is source-compatible and binary-fatal: the published Console.Lib,
+    /// compiled against 9.0, called <c>new HitResult.TextInputHit(field.State)</c> in
+    /// <c>CellLayout.HitOf</c>, so against 9.1 every terminal hit test threw <c>MissingMethodException</c>.
+    /// 9.2 papered over that with a one-argument constructor beside the primary one, which left the record
+    /// with two shapes and a default that reads as "geometry optional" -- and a hit registered without it
+    /// puts every caret at the start of the field, silently, since nothing distinguishes <c>default</c>
+    /// from a field genuinely painted at zero. 10.0 rebuilds the whole chain, so the record states one
+    /// constructor and a surface that registers a field says where it laid the text down.
     /// </para>
     /// </param>
-    public sealed record TextInputHit(TextInputState Input, TextInputGeometry Painted = default) : HitResult
-    {
-        /// <summary>
-        /// The pre-9.1 shape, kept so an already-compiled host keeps binding.
-        /// </summary>
-        /// <remarks>
-        /// This is the constructor 9.1 deleted. Adding <c>Painted</c> as an optional parameter on the
-        /// primary constructor was source-compatible and binary-fatal: the published Console.Lib, compiled
-        /// against 9.0, calls <c>new HitResult.TextInputHit(field.State)</c> in <c>CellLayout.HitOf</c>, so
-        /// against 9.1 every terminal hit test threw <c>MissingMethodException</c>. Invisible on a dev box,
-        /// where the sibling compiles from source and the package path CI takes is never taken; it surfaced
-        /// only because an agent happened to be working in a checkout where the sibling probe failed.
-        /// Restoring it here is what lets Console.Lib 4.33 run against 9.2 with no rebuild.
-        /// </remarks>
-        public TextInputHit(TextInputState Input) : this(Input, default) { }
-    }
+    public sealed record TextInputHit(TextInputState Input, TextInputGeometry Painted) : HitResult;
 
     /// <summary>A named action button was clicked.</summary>
     public sealed record ButtonHit(string Action) : HitResult;
@@ -159,9 +154,6 @@ public record HitResult
 
     /// <summary>A slot was clicked for assignment. Payload is app-specific.</summary>
     public sealed record SlotHit<T>(T Slot) : HitResult;
-
-    /// <summary>A slider was clicked/dragged at the given index.</summary>
-    public sealed record SliderHit(int SliderIndex) : HitResult;
 
     /// <summary>
     /// A <see cref="Layout.Content.Slider"/> leaf was pressed or dragged. Carries the live

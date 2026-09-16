@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace DIR.Lib;
 
@@ -23,7 +23,7 @@ namespace DIR.Lib;
 /// would have to remember the previous value to notice.
 /// </para>
 /// </remarks>
-public sealed class PopoverState : IKeyboardClaimant
+public sealed class PopoverState
 {
     /// <summary>Whether the popover is currently displayed. Moved only by <see cref="Open"/>,
     /// <see cref="Close"/> and <see cref="Toggle"/>.</summary>
@@ -62,27 +62,28 @@ public sealed class PopoverState : IKeyboardClaimant
     }
 
     /// <summary>
-    /// The claimant for keys the popover itself does not handle -- its CONTENT. Null for a popover whose
-    /// content wants no keys, which is the common case and the behaviour this type shipped with.
+    /// Keys the popover itself does not handle, offered to its CONTENT. Returns true when the content
+    /// consumed the key. Null for a popover whose content wants no keys, which is the common case.
     /// </summary>
     /// <remarks>
     /// <b>The claim is made by the popover, so anything inside it that wants keys has to come through
-    /// here.</b> Painting an open popover puts THIS object in the window's single claimant slot, which is
-    /// what makes Escape work without a host dispatcher line -- and, until this property existed, also what
-    /// made a declared menu's Up/Down/Enter go nowhere: the menu state implemented
-    /// <see cref="IKeyboardClaimant"/> and never got asked, because the popover had taken the slot. A
-    /// hand-rendered menu did not hit this, since the host registered the menu itself as the claimant.
+    /// here.</b> Painting an open popover is what puts it on the window's
+    /// <see cref="WindowUiSettings.PaintedPopovers"/> stack, and that is what makes Escape work with no
+    /// host dispatcher line -- and, until this property existed, also what made a declared menu's
+    /// Up/Down/Enter go nowhere: the menu was its own claimant and never got asked, because the popover
+    /// held the window's one slot. A delegate rather than an interface since 10.0, the interface having
+    /// existed only to fill that slot.
     /// </remarks>
-    public IKeyboardClaimant? ContentKeys { get; set; }
+    public Func<InputKey, bool>? ContentKeys { get; set; }
 
     /// <summary>
     /// Closes on Escape while open, hands anything else to <see cref="ContentKeys"/>, and otherwise declines
     /// so the rest of the key routing still sees it.
     /// </summary>
     /// <remarks>
-    /// Declining while CLOSED is what makes the claimant slot safe to leave stale: the slot is set by being
-    /// painted and nothing clears it when the popover goes away, so a closed popover that answered true
-    /// would swallow every Escape in the window.
+    /// Kept declining while CLOSED although the stack is now cleared per paint cycle, so a closed popover
+    /// is not on it to be asked. The guard costs a branch and holds for a consumer calling this directly,
+    /// where there is no stack in the story at all.
     /// </remarks>
     public bool HandleKeyDown(InputKey key)
     {
@@ -96,7 +97,7 @@ public sealed class PopoverState : IKeyboardClaimant
             // Escape is the popover's own and never reaches the content; everything else is the content's
             // business. The two sets are disjoint, so a content claimant that routes Escape back here
             // cannot loop.
-            return ContentKeys?.HandleKeyDown(key) ?? false;
+            return ContentKeys?.Invoke(key) ?? false;
         }
 
         Close();

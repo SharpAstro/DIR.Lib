@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Runtime.InteropServices;
@@ -17,9 +17,6 @@ namespace DIR.Lib
     {
         /// <summary>Hit-tests the last rendered frame. Returns null for no hit.</summary>
         HitResult? HitTest(float x, float y);
-
-        /// <summary>Hit-tests and invokes the <see cref="ClickableRegion.OnClick"/> handler if present.</summary>
-        HitResult? HitTestAndDispatch(float x, float y, InputModifier modifiers = InputModifier.None);
 
         /// <summary>Returns all registered text inputs in order (for Tab cycling).</summary>
         List<TextInputState> GetRegisteredTextInputs();
@@ -40,7 +37,7 @@ namespace DIR.Lib
         int CaretIndexAt(HitResult.TextInputHit hit, float pointerX);
 
         /// <summary>
-        /// The per-window presentation values, and the frame's keyboard claimant. On the interface so a host
+        /// The per-window presentation values, and the frame's painted popovers. On the interface so a host
         /// holding only <see cref="IPixelWidget"/> can ask who owns the keyboard without knowing which
         /// concrete widget painted the overlay.
         /// </summary>
@@ -105,7 +102,7 @@ namespace DIR.Lib
 
     /// <summary>
     /// Base class for pixel-coordinate widgets. Provides the clickable region system
-    /// (RegisterClickable / HitTest / HitTestAndDispatch) and common drawing helpers.
+    /// (RegisterClickable / HitTest) and common drawing helpers.
     /// Generic over <typeparamref name="TSurface"/> so it works with any <see cref="Renderer{TSurface}"/>.
     /// </summary>
     public abstract partial class PixelWidgetBase<TSurface>(Renderer<TSurface> renderer) : IPixelWidget
@@ -301,7 +298,7 @@ namespace DIR.Lib
         /// <summary>
         /// Where the pointer is, in this widget's coordinates, or null when it is outside the window (or
         /// over something in front of this widget). Drives <see cref="Layout.Node.HoverBackground"/> and
-        /// the row highlight in <see cref="RenderDropdownMenu"/>.
+        /// the row highlight of a declared dropdown's rows.
         /// <para>
         /// A position rather than a hovered index or rect, for the reason <c>TabBar.Pointer</c> already
         /// takes one: the widget owns the geometry it drew, so it is the only thing that can say what the
@@ -559,9 +556,9 @@ namespace DIR.Lib
         /// wheel, as it should. Until the router exists a consumer calls this from its own scroll branch;
         /// after it, the router does.
         /// <para>
-        /// Virtual for the reason <see cref="HitTestAndDispatch"/> is: a composite's children register on
-        /// their own trackers, so asking only the composite would leave every list they declared unable to
-        /// take a wheel.
+        /// Virtual for the reason <see cref="HitTest"/> is: a composite's children register on their own
+        /// trackers, so asking only the composite would leave every list they declared unable to take a
+        /// wheel.
         /// </para>
         /// </remarks>
         public virtual ListScrollController? ScrollTargetAt(float x, float y)
@@ -592,11 +589,11 @@ namespace DIR.Lib
         /// what happens to be behind it, which is not a property of the control. Alpha is kept, so a
         /// caller that was already drawing translucent stays as translucent as it was.
         /// <para>
-        /// One helper because there are two callers with one rule:
-        /// <see cref="RenderDropdownMenu{T}"/>'s disabled row, which is where it was written, and
+        /// One helper because the rule outlived the place it was written. It began as the disabled row of
+        /// <c>RenderDropdownMenu</c> (deleted in 10.0, the menu being a declared tree now) and is
         /// <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, PixelMeasureContext{TSurface}, Action{Layout.Content.Fill, RectF32}?)"/>'s
-        /// <see cref="Layout.Node.DisabledReason"/>, which generalises it to any node. Two copies of one
-        /// rule is two greys that can drift apart on the same screen.
+        /// <see cref="Layout.Node.DisabledReason"/> today, which generalises it to any node. Two copies of
+        /// one rule is two greys that can drift apart on the same screen.
         /// </para>
         /// </remarks>
         protected static RGBAColor32 DimTowards(RGBAColor32 color, RGBAColor32 background)
@@ -930,9 +927,9 @@ namespace DIR.Lib
 
         /// <inheritdoc/>
         /// <remarks>
-        /// Virtual for the reason <see cref="HitTestAndDispatch"/> is: a composite draws its children into
-        /// the same surface, but their regions are on THEIR trackers, so a router asking only the
-        /// composite would silently miss every control they registered.
+        /// Virtual for the reason <see cref="HitTest"/> is: a composite draws its children into the same
+        /// surface, but their regions are on THEIR trackers, so a router asking only the composite would
+        /// silently miss every control they registered.
         /// </remarks>
         public virtual void CollectPaintedRegions(List<ClickableRegion> into)
         {
@@ -958,163 +955,11 @@ namespace DIR.Lib
         public virtual CursorKind? HitTestCursor(float x, float y)
             => RegionsAreCurrent ? _tracker.HitTestCursor(x, y) : null;
 
-        /// <inheritdoc/>
-        /// <remarks>
-        /// Dispatches nothing on a frame this widget did not draw, which is the case that matters most: a
-        /// stale region here does not merely report a hit, it RUNS the handler.
-        /// <para>
-        /// <b>Virtual so a COMPOSITE widget can extend dispatch to the widgets it paints.</b> One that
-        /// hosts children — a chrome with a tab strip in it — draws them into the same surface, but their
-        /// regions live on THEIR trackers, so a host asking only the composite silently misses every
-        /// control the children registered. Overriding is how the composite states its own paint order,
-        /// which is knowledge it alone has; a host reconstructing that order would keep a second copy of
-        /// it. Call <c>base</c> for this widget's own regions.
-        /// </para>
-        /// </remarks>
-        public virtual HitResult? HitTestAndDispatch(float x, float y, InputModifier modifiers = InputModifier.None)
-            => RegionsAreCurrent ? _tracker.HitTestAndDispatch(x, y, modifiers) : null;
-
         /// <summary>
         /// Handles an input event. Returns true if consumed.
         /// Override in tabs to pattern match on <see cref="InputEvent"/> subtypes.
         /// </summary>
         public virtual bool HandleInput(InputEvent evt) => false;
-
-        // --- Dropdown menu ---
-
-        /// <summary>
-        /// Renders a dropdown menu overlay. <b>Must be called last</b> in the render pass
-        /// so that its clickable regions win hit testing (paint order = z-order).
-        /// Registers a full-screen backdrop that dismisses the dropdown on click-outside.
-        /// </summary>
-        protected void RenderDropdownMenu<T>(
-            DropdownMenuState<T> dropdown,
-            string fontPath,
-            float fontSize,
-            RGBAColor32 bgColor,
-            RGBAColor32 highlightColor,
-            RGBAColor32 textColor,
-            RGBAColor32 borderColor,
-            float viewportWidth,
-            float viewportHeight,
-            float maxHeight = 0f)
-        {
-            if (!dropdown.IsOpen || dropdown.Items.Length == 0)
-            {
-                return;
-            }
-
-            var rowH = fontSize * 1.8f;
-            var padding = fontSize * 0.5f;
-            var totalItems = dropdown.Items.Length;
-
-            var x = dropdown.AnchorX;
-            var y = dropdown.AnchorY;
-            var w = dropdown.AnchorWidth;
-
-            // Clamp the menu to the space between its anchor and the bottom of the surface (or an explicit
-            // maxHeight, whichever is smaller) so a long list scrolls within view instead of running off the
-            // bottom edge -- the correctness fix that makes the scroll engage with no consumer change. A menu
-            // that already fits is unchanged: dropdownH stays totalItems * rowH, so MaxOffset is 0, no
-            // scrollbar draws, and every row renders exactly as before.
-            var available = MathF.Max(rowH, viewportHeight - y);
-            var clamp = maxHeight > 0f ? MathF.Min(maxHeight, available) : available;
-            var dropdownH = MathF.Min(totalItems * rowH, clamp);
-
-            // Claimed as it paints: the menu is on screen, so it owns the arrows, Enter and Escape. A host
-            // asks Ui.KeyboardClaimant once, instead of every widget owning an overlay remembering to route
-            // keys to it from its own input switch.
-            Ui.KeyboardClaimant = dropdown;
-
-            // Full-screen backdrop — closes dropdown on click-outside
-            RegisterClickable(0, 0, viewportWidth, viewportHeight, new HitResult.ButtonHit("DropdownBackdrop"),
-                _ => dropdown.Close());
-
-            // Border
-            FillRect(x - 1f, y - 1f, w + 2f, dropdownH + 2f, borderColor);
-            // Background
-            FillRect(x, y, w, dropdownH, bgColor);
-
-            // The menu body is a scroll viewport of `totalItems` atoms, each `rowH` tall. A menu that fits
-            // (maxHeight unset, or few enough rows) resolves to MaxOffset 0 -- no scrollbar, full-width
-            // rows, offset 0 -- so the common case is byte-identical to the pre-scroll behaviour (the old
-            // "+0.5px fit epsilon" that kept an exact-fit last row now lives in ListScrollController's
-            // VisibleAtoms). A menu clamped by maxHeight scrolls its window instead of silently dropping the
-            // rows past the fold: keyboard Up/Down scrolls via DropdownMenuState.HandleKeyDown->EnsureVisible,
-            // a wheel forwarded to HandleScrollInput scrolls too, and the scrollbar draws as the indicator.
-            var scroll = dropdown.Scroll;
-            scroll.SetExtent(new RectF32(x, y, w, dropdownH), rowH, totalItems, Scale);
-
-            // Slightly dimmed, blue-shifted text for an ACTION entry (one that does something rather than
-            // selecting a value -- a "Custom…" row). It used to be a hard-coded last atom; it is now just an
-            // item carrying OnChoose, and this is the styling that always went with it.
-            var actionColor = new RGBAColor32(
-                (byte)((textColor.Red * 3 + 2) / 4),
-                (byte)((textColor.Green * 3 + 2) / 4),
-                (byte)Math.Min(255, textColor.Blue + 40),
-                textColor.Alpha);
-
-            // A disabled row is greyed by halving toward the background rather than by alpha: these rows are
-            // drawn over an opaque menu, so a translucent colour would read as a different shade per theme.
-            // The rule now lives in DimTowards, shared with the layout painter's Node.DisabledReason, so a
-            // disabled row and a disabled button are one grey rather than two that can drift.
-            var disabledColor = DimTowards(textColor, bgColor);
-
-            foreach (var (index, rect) in scroll.VisibleRows())
-            {
-                var item = dropdown.Items[index];
-                var enabled = item.IsEnabled;
-
-                // The highlight follows the keyboard AND the pointer, and must never sit on a row Enter or
-                // a click would refuse. Hovering marks the row the pointer is over without moving
-                // HighlightIndex: that one is where the keyboard is, and a mouse crossing the list on its
-                // way somewhere else must not silently become what Enter takes.
-                var hovered = PointerWithin(new Rect<float>(rect.X, rect.Y, rect.Width, rowH));
-                if ((index == dropdown.HighlightIndex || hovered) && enabled)
-                {
-                    FillRect(rect.X, rect.Y, rect.Width, rowH, highlightColor);
-                }
-
-                var label = item.Label;
-
-                // A disabled row is still DRAWN, dimmed. Hiding what is unavailable teaches nothing about how
-                // to make it available, and a menu whose entries come and go is harder to learn than one whose
-                // entries grey out.
-                var rowColor = !enabled ? disabledColor
-                    : item.OnChoose is not null ? actionColor
-                    : textColor;
-                DrawText(label.AsSpan(), fontPath,
-                    rect.X + padding, rect.Y, rect.Width - padding * 2f, rowH,
-                    fontSize, rowColor, TextAlign.Near, TextAlign.Center);
-
-                // The reason rides the same row, right-aligned: the answer to "why can't I pick this" belongs
-                // where the decision is made, not in a panel the user only reaches by making the choice that
-                // just failed.
-                if (!enabled && item.Tooltip is { Length: > 0 } reason)
-                {
-                    DrawText(reason.AsSpan(), fontPath,
-                        rect.X + padding, rect.Y, rect.Width - padding * 2f, rowH,
-                        fontSize * 0.8f, disabledColor, TextAlign.Far, TextAlign.Center);
-                }
-
-                var capturedIndex = index;
-                if (enabled)
-                {
-                    RegisterClickable(rect.X, rect.Y, rect.Width, rowH, new HitResult.ListItemHit("Dropdown", capturedIndex),
-                        _ => dropdown.TrySelect(capturedIndex));
-                }
-                else
-                {
-                    // Registered but inert, so the click is SWALLOWED rather than falling through to the
-                    // full-screen backdrop behind it -- which would CLOSE the menu, making a disabled row
-                    // behave exactly like a working one. It also states the cursor.
-                    RegisterClickable(rect.X, rect.Y, rect.Width, rowH, new HitResult.ListItemHit("Dropdown", capturedIndex),
-                        _ => { }, cursor: CursorKind.NotAllowed);
-                }
-            }
-
-            scroll.DrawScrollBar(FillRect);
-        }
 
         // --- Declarative layout (Layout.Node tree -> arrange -> paint + auto-bind clicks) ---
 
@@ -1280,8 +1125,9 @@ namespace DIR.Lib
 
                         // The claim is made BY BEING PAINTED, which is what makes it self-retiring: a
                         // popover that closed simply stops painting, and nothing has to remember to release
-                        // anything. Same mechanism the dropdown's keyboard claim already uses.
-                        Ui.KeyboardClaimant = popover;
+                        // anything. Paint order is z-order, so the stack's top is the topmost overlay and
+                        // a nested one hands the keyboard back when it closes rather than keeping it.
+                        Ui.NotePopoverPainted(popover);
                     }
                     else if (closedPopoverDepth < 0)
                     {

@@ -1,19 +1,20 @@
-using System;
+﻿using System;
 using System.Collections.Immutable;
 
 namespace DIR.Lib
 {
     /// <summary>
     /// State for a generic dropdown menu overlay. Open it with <see cref="Open"/>,
-    /// render with <see cref="PixelWidgetBase{TSurface}.RenderDropdownMenu"/>,
-    /// and handle keyboard with <see cref="HandleKeyDown"/>.
+    /// declare it with <see cref="Layout.Builder.Dropdown"/>, and handle keyboard with
+    /// <see cref="HandleKeyDown"/> -- which the menu hangs off its own <see cref="PopoverState.ContentKeys"/>,
+    /// so a host routing through <see cref="InputRouter"/> never has to call it.
     /// </summary>
     /// <remarks>
     /// Typed over what an entry MEANS (see <see cref="DropdownItem{T}"/>), so the select callback receives
     /// the chosen entry rather than an index the caller has to map back. Use <c>DropdownMenuState&lt;string&gt;</c>
     /// with <see cref="DropdownItem.Text"/> for a plain list of labels.
     /// </remarks>
-    public class DropdownMenuState<T> : IKeyboardClaimant
+    public class DropdownMenuState<T>
     {
         /// <summary>
         /// Whether the menu is open, and the Escape that closes it -- the same <see cref="PopoverState"/>
@@ -43,10 +44,10 @@ namespace DIR.Lib
             // so the reset has to hang off the transition rather than off one of its callers.
             Popover.Closed += () => HighlightIndex = -1;
 
-            // The popover takes the window's one claimant slot by being painted, so the menu's own
-            // Up/Down/Enter only arrive if it is reachable THROUGH the popover. Without this a declared
-            // menu opens and dismisses but cannot be navigated, and nothing says so.
-            Popover.ContentKeys = this;
+            // The popover is what the router asks, being what painted, so the menu's own Up/Down/Enter
+            // only arrive if they are reachable THROUGH it. Without this a declared menu opens and
+            // dismisses but cannot be navigated, and nothing says so.
+            Popover.ContentKeys = HandleKeyDown;
         }
 
         /// <summary>Whether the menu is currently displayed. Backed by <see cref="Popover"/>.</summary>
@@ -77,8 +78,8 @@ namespace DIR.Lib
         /// Scroll model for a menu that outgrows its <c>maxHeight</c>. A menu that fits leaves this at
         /// offset 0 with no scrollbar (<see cref="ListScrollController.MaxOffset"/> is 0), so the common
         /// case is unchanged; an overflowing menu scrolls its window instead of silently clipping the rows
-        /// past the fold. Geometry is refreshed each frame by
-        /// <see cref="PixelWidgetBase{TSurface}.RenderDropdownMenu"/>; keyboard navigation keeps the
+        /// past the fold. Geometry is refreshed each frame by the painted tree
+        /// (<see cref="Layout.Node.Scroll"/> on the menu's list node); keyboard navigation keeps the
         /// highlight in view via <see cref="HandleKeyDown"/>, and a host may forward a wheel event through
         /// <see cref="HandleScrollInput"/>. Row-snapped + decorative (the dropdown owns row clicks, so the
         /// bar is a pure overflow indicator, not an interactive thumb).

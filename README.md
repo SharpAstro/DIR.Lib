@@ -38,11 +38,11 @@ Platform bridges (in downstream packages):
 ## Widget System
 
 - **`IPixelWidget`** — extends IWidget with pixel-coordinate hit testing and click dispatch, plus what a router reads back from the last paint: `CollectPaintedRegions` / `CollectPaintedNodes` (a composite folds its children's in), `Pointer`, `ScrollTargetAt`, `HitTestCursor` and `CaretIndexAt`
-- **`PixelWidgetBase<TSurface>`** -- base class for pixel widgets: clickable regions, text input, buttons, dropdowns, drawing helpers. `MeasureLayout` / `MeasureContext` are the measure seam (a box is the MEASUREMENT of its content, through the same context arrange and paint share); `ScrollTargetAt(x, y)` answers which declared list a wheel belongs to; `DimTowards(color, background)` is the one grey a disabled thing is painted in
+- **`PixelWidgetBase<TSurface>`** -- base class for pixel widgets: clickable regions, text input, buttons, drawing helpers. `MeasureLayout` / `MeasureContext` are the measure seam (a box is the MEASUREMENT of its content, through the same context arrange and paint share); `ScrollTargetAt(x, y)` answers which declared list a wheel belongs to; `DimTowards(color, background)` is the one grey a disabled thing is painted in
 - **`PixelLayout`** + **`PixelDockStyle`** — dock-based layout engine (Top/Bottom/Left/Right/Fill)
 - **`DockLayout<T>`** — generic dock layout using `INumber<T>` (the integer / pixel layouts above are built on this)
 - **`ClickableRegion`** + **`ClickableRegionTracker`** — registered during render, walked in reverse for hit testing
-- **`HitResult`** — open discriminated union: `TextInputHit`, `ButtonHit`, `ListItemHit`, `SlotHit<T>`, `SliderHit`
+- **`HitResult`** — open discriminated union: `TextInputHit`, `ButtonHit`, `ChromeHit`, `LinkHit`, `ListItemHit`, `SlotHit<T>`, `SliderStateHit`
 - **`DropdownMenuState`** — dropdown / popup menu state machine
 
 ## Declarative Layout (`DIR.Lib.Layout`)

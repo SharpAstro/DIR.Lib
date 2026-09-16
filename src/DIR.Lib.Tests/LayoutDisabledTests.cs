@@ -1,4 +1,4 @@
-using DIR.Lib;
+﻿using DIR.Lib;
 using Shouldly;
 
 namespace DIR.Lib.Tests;
@@ -42,8 +42,10 @@ public class LayoutDisabledTests
         region.Cursor.ShouldBe(CursorKind.NotAllowed);
 
         // It is still HIT, which is what swallowing means: the press stops here rather than reaching
-        // whatever is behind it.
-        widget.HitTestAndDispatch(50f, 50f).ShouldBeOfType<HitResult.ButtonHit>();
+        // whatever is behind it. Routed, so "stops here" is the router CONSUMING it with nothing run --
+        // the property a returned hit could only imply.
+        widget.HitTest(50f, 50f).ShouldBeOfType<HitResult.ButtonHit>();
+        Routing.Press(widget, 50f, 50f).ShouldBeTrue();
         clicked.ShouldBe(0);
     }
 
@@ -201,7 +203,7 @@ public class LayoutDisabledTests
         inner.IsDisabled.ShouldBeTrue();
         inner.OnClick.ShouldBeNull();
 
-        widget.HitTestAndDispatch(50f, 5f);
+        Routing.Press(widget, 50f, 5f).ShouldBeTrue();
         clicked.ShouldBe(0);
     }
 

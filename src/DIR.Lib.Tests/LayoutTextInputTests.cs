@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -43,7 +43,6 @@ public class LayoutTextInputTests
             return GetRegisteredTextInputs();
         }
 
-        public HitResult? DispatchAt(float x, float y) => HitTestAndDispatch(x, y);
     }
 
     private static TestWidget Widget() => new(new MetricsRenderer(400, 200));
@@ -118,7 +117,12 @@ public class LayoutTextInputTests
                 .Clickable(new HitResult.ButtonHit("row")),
             new RectF32(0f, 0f, 100f, 24f));
 
-        widget.DispatchAt(50f, 12f).ShouldBeOfType<HitResult.TextInputHit>().Input.ShouldBeSameAs(state);
+        widget.HitTest(50f, 12f).ShouldBeOfType<HitResult.TextInputHit>().Input.ShouldBeSameAs(state);
+
+        // And routing that press focuses the FIELD rather than running the row's click, which is the
+        // consequence the registration order exists for.
+        Routing.Press(widget, 50f, 12f).ShouldBeTrue();
+        widget.Ui.Focus.Current.ShouldBeSameAs(state);
     }
 
     // ---- Measure ----
