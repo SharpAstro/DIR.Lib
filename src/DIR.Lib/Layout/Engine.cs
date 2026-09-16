@@ -592,6 +592,10 @@ public static class Engine
         var lineGap = ToSurfaceOn(ctx, wrap.LineGap, CrossAxis(axis));
         var availSize = new Size<T>(inner.Width, inner.Height);
         var mainAvail = MainOf(axis, availSize);
+        // The first line alone stops short, so a run can flow BENEATH a corner item and still use the
+        // whole extent once it has. Clamped at zero: a reserve wider than the container would otherwise
+        // make the first line's limit negative and push every child onto line two.
+        var firstLineAvail = Max(T.Zero, mainAvail - ToSurfaceOn(ctx, wrap.FirstLineReserve, axis));
 
         // Resolve every child's main + natural cross extent up front (see ResolveWrapChild).
         var childMains = new T[n];
@@ -604,16 +608,18 @@ public static class Engine
         // Flow line by line: a child that would overflow a non-empty line starts the next one (a child
         // wider than the whole extent gets a line of its own and overflows visibly).
         var lineStart = 0;
+        var lineIndex = 0;
         var crossCursor = axis == Axis.Horizontal ? inner.Y : inner.X;
         while (lineStart < n)
         {
             var lineEnd = lineStart; // exclusive
             var used = T.Zero;
             var lineCross = T.Zero;
+            var lineAvail = lineIndex == 0 ? firstLineAvail : mainAvail;
             while (lineEnd < n)
             {
                 var extra = lineEnd == lineStart ? childMains[lineEnd] : gap + childMains[lineEnd];
-                if (lineEnd > lineStart && used + extra > mainAvail)
+                if (lineEnd > lineStart && used + extra > lineAvail)
                 {
                     break;
                 }
@@ -638,6 +644,7 @@ public static class Engine
 
             crossCursor += lineCross + lineGap;
             lineStart = lineEnd;
+            lineIndex++;
         }
     }
 
@@ -907,9 +914,12 @@ public static class Engine
         var gap = ToSurfaceOn(ctx, wrap.Gap, axis);
         var lineGap = ToSurfaceOn(ctx, wrap.LineGap, CrossAxis(axis));
         var mainAvail = MainOf(axis, available);
+        var firstLineAvail = Max(T.Zero, mainAvail - ToSurfaceOn(ctx, wrap.FirstLineReserve, axis));
 
         // Same line flow as ArrangeWrap: intrinsic main = the longest line, intrinsic cross = the sum of
-        // line extents -- so an Auto-height wrap grows taller as its container narrows.
+        // line extents -- so an Auto-height wrap grows taller as its container narrows. The first line's
+        // reserve is honoured HERE too: a measure that broke lines differently from the arrange would
+        // report a box the paint does not fit in, which is the whole class of bug the tree removes.
         var maxLineMain = T.Zero;
         var totalCross = T.Zero;
         var used = T.Zero;
@@ -920,7 +930,7 @@ public static class Engine
         {
             var (main, cross) = ResolveWrapChild(children[i], axis, available, ctx);
             var extra = itemsInLine == 0 ? main : gap + main;
-            if (itemsInLine > 0 && used + extra > mainAvail)
+            if (itemsInLine > 0 && used + extra > (lines == 1 ? firstLineAvail : mainAvail))
             {
                 maxLineMain = Max(maxLineMain, used);
                 totalCross += lineCross;

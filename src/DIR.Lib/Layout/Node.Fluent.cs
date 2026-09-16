@@ -178,6 +178,18 @@ public abstract partial record Node
     /// <summary>Set the between-lines gap on a <see cref="Wrap"/>; no-op on any other node.</summary>
     public Node WithLineGap(float lineGap) => this is Wrap w ? w with { LineGap = lineGap } : this;
 
+    /// <summary>
+    /// Main-axis extent the FIRST line of a <see cref="Wrap"/> must leave free; later lines run the full
+    /// extent. No-op on any other node.
+    /// </summary>
+    /// <remarks>
+    /// Flow around a floated corner item. A <see cref="Dock"/> reserves its strip on every line, which
+    /// narrows the wrapped rows too; this reserves it on the first line only. See
+    /// <see cref="Wrap.FirstLineReserve"/>.
+    /// </remarks>
+    public Node WithFirstLineReserve(float reserve)
+        => this is Wrap wr ? wr with { FirstLineReserve = reserve } : this;
+
     /// <summary>Set the row/column gaps on a <see cref="Grid"/>; no-op on any other node.</summary>
     public Node WithGaps(float rowGap, float columnGap) => this is Grid g ? g with { RowGap = rowGap, ColumnGap = columnGap } : this;
 
