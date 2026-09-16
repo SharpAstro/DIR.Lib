@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
 
 namespace DIR.Lib;
 
@@ -19,9 +20,11 @@ namespace DIR.Lib;
 /// list, and a wrong answer there is invisible: the card looks drawn and stops responding.
 /// </para>
 /// <para>
-/// The cursor holds no rows. It is a list id and an index, resolved against the regions the last
-/// paint registered (<c>PixelWidgetBase.MoveListCursor</c>), which is the same list a click is tested
-/// against — so what the arrows reach and what the mouse reaches cannot differ.
+/// The cursor holds no rows. It is a list id and an index, resolved against whatever the last paint
+/// put on screen — which is the same list a click is tested against, so what the arrows reach and what
+/// the mouse reaches cannot differ. A pixel widget hands <see cref="Step"/> the regions its tracker
+/// registered; a cell surface hands it the rows it drew. The WALK is here rather than on either, so
+/// there is one answer to "where does Down go" instead of one per surface.
 /// </para>
 /// </remarks>
 public sealed class ListCursor
@@ -132,4 +135,124 @@ public sealed class ListCursor
         => ListId is { } list
             && hit is HitResult.ListItemHit item
             && string.Equals(item.ListId, list, StringComparison.Ordinal);
+
+    /// <summary>
+    /// A row the last paint put on screen: its index in the list, and whether it refused the press.
+    /// </summary>
+    /// <remarks>
+    /// The two surfaces answer this from different evidence -- a pixel widget from the regions its
+    /// tracker registered, a cell surface from the window of rows it drew -- and that difference is the
+    /// whole of what is per-surface about navigating a list. Reduced to this pair, the STEP is one rule.
+    /// </remarks>
+    /// <param name="Index">The row's index within the list.</param>
+    /// <param name="IsDisabled">Whether the row declared itself unavailable, so the cursor steps over it:
+    /// parking where Enter will refuse reads as a stuck key.</param>
+    public readonly record struct PaintedRow(int Index, bool IsDisabled = false);
+
+    /// <summary>
+    /// Moves the cursor <paramref name="delta"/> rows through <paramref name="painted"/>. False when the
+    /// cursor is in no list, when nothing of that list was painted, or when there is no row that way --
+    /// in which case the cursor stays where it was, because stopping at the end reads as an end and
+    /// moving to nothing reads as a broken control.
+    /// </summary>
+    /// <remarks>
+    /// From <see cref="Index"/> of -1 -- a list the reader has not moved in yet -- this lands on the
+    /// first row for a forward step and the last for a backward one.
+    /// </remarks>
+    public bool Step(int delta, IReadOnlyList<PaintedRow> painted)
+    {
+        ArgumentNullException.ThrowIfNull(painted);
+        if (delta == 0 || !IsOpen)
+        {
+            return false;
+        }
+
+        var moved = false;
+        var direction = Math.Sign(delta);
+        for (var step = 0; step < Math.Abs(delta); step++)
+        {
+            if (!TryStep(direction, painted))
+            {
+                break;
+            }
+
+            moved = true;
+        }
+
+        return moved;
+    }
+
+    /// <summary>
+    /// One row along, to the NEAREST painted row in that direction. Nearest rather than "index plus
+    /// one", because the indices are the list's and need not be dense -- a list that leaves out the rows
+    /// a reader cannot act on has gaps exactly where a step must not stop.
+    /// </summary>
+    private bool TryStep(int direction, IReadOnlyList<PaintedRow> painted)
+    {
+        var from = Index;
+        var best = -1;
+        var paintedLow = int.MaxValue;
+        var paintedHigh = int.MinValue;
+        for (var i = 0; i < painted.Count; i++)
+        {
+            var row = painted[i];
+            // The span this paint covered, so a counted list can tell "off the bottom of the viewport"
+            // from "deliberately unreachable" -- see TryStepPastTheViewport.
+            if (row.Index < paintedLow) paintedLow = row.Index;
+            if (row.Index > paintedHigh) paintedHigh = row.Index;
+            // Declared unavailable: on screen so the press is swallowed, and stepped over for the same
+            // reason a row that is not clickable is -- the cursor must never park somewhere Enter will
+            // refuse.
+            if (row.IsDisabled) continue;
+            // Beyond where we are, in the direction of travel. From -1 -- a list the reader has not moved
+            // in -- every row qualifies, so this lands on the first or the last.
+            if (from >= 0 && (direction > 0 ? row.Index <= from : row.Index >= from)) continue;
+            if (best >= 0 && (direction > 0 ? row.Index >= best : row.Index <= best)) continue;
+            best = row.Index;
+        }
+
+        if (best >= 0)
+        {
+            MoveTo(best);
+            return true;
+        }
+
+        return TryStepPastTheViewport(direction, from, paintedLow, paintedHigh);
+    }
+
+    /// <summary>
+    /// The step a VIRTUALISED list needs: onto a row the last paint never drew, because the list only
+    /// paints its viewport. Only possible where the cursor was opened with a row count -- see
+    /// <see cref="RowCount"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The painted span stays the evidence wherever there is any: the walk above has already refused
+    /// every row inside it, on purpose, so the first row that can still be stepped onto is the one just
+    /// past that span -- never a row within it, which would reach over the top of the reachability rule.
+    /// Beyond the span there is no evidence at all, and the count is the only thing that says the row is
+    /// there.
+    /// </para>
+    /// <para>
+    /// A list NOTHING of which was painted is still unnavigable, counted or not: a card that is not on
+    /// screen must not move its cursor over rows nobody can see.
+    /// </para>
+    /// <para>
+    /// The move raises <see cref="Moved"/> like any other, which is how the row is brought into view --
+    /// without that the cursor lands somewhere nobody can see either.
+    /// </para>
+    /// </remarks>
+    private bool TryStepPastTheViewport(int direction, int from, int paintedLow, int paintedHigh)
+    {
+        if (RowCount is not { } count || count <= 0) return false;
+        if (paintedHigh < paintedLow) return false;
+
+        var candidate = direction > 0
+            ? Math.Max(from + 1, paintedHigh + 1)
+            : Math.Min(from < 0 ? count - 1 : from - 1, paintedLow - 1);
+        if (candidate < 0 || candidate >= count) return false;
+
+        MoveTo(candidate);
+        return true;
+    }
 }
