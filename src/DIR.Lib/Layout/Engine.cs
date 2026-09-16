@@ -618,7 +618,12 @@ public static class Engine
             var lineAvail = lineIndex == 0 ? firstLineAvail : mainAvail;
             while (lineEnd < n)
             {
-                var extra = lineEnd == lineStart ? childMains[lineEnd] : gap + childMains[lineEnd];
+                // A line never opens with separation: neither the container's gap nor the child's own
+                // leading gap applies to the child that starts one.
+                var lead = lineEnd == lineStart
+                    ? T.Zero
+                    : gap + ToSurfaceOn(ctx, children[lineEnd].LeadingGap, axis);
+                var extra = lead + childMains[lineEnd];
                 if (lineEnd > lineStart && used + extra > lineAvail)
                 {
                     break;
@@ -640,6 +645,10 @@ public static class Engine
                     : new Rect<T>(crossCursor, mainCursor, cross, childMains[i]);
                 ArrangeNode(children[i], childRect, ctx, output, depth);
                 mainCursor += childMains[i] + gap;
+                if (i + 1 < lineEnd)
+                {
+                    mainCursor += ToSurfaceOn(ctx, children[i + 1].LeadingGap, axis);
+                }
             }
 
             crossCursor += lineCross + lineGap;
@@ -929,7 +938,9 @@ public static class Engine
         for (var i = 0; i < n; i++)
         {
             var (main, cross) = ResolveWrapChild(children[i], axis, available, ctx);
-            var extra = itemsInLine == 0 ? main : gap + main;
+            var extra = itemsInLine == 0
+                ? main
+                : gap + ToSurfaceOn(ctx, children[i].LeadingGap, axis) + main;
             if (itemsInLine > 0 && used + extra > (lines == 1 ? firstLineAvail : mainAvail))
             {
                 maxLineMain = Max(maxLineMain, used);
