@@ -42,6 +42,11 @@ namespace DIR.Lib
             // a declared dropdown's backdrop press closes the PopoverState directly and never calls it,
             // so the reset has to hang off the transition rather than off one of its callers.
             Popover.Closed += () => HighlightIndex = -1;
+
+            // The popover takes the window's one claimant slot by being painted, so the menu's own
+            // Up/Down/Enter only arrive if it is reachable THROUGH the popover. Without this a declared
+            // menu opens and dismisses but cannot be navigated, and nothing says so.
+            Popover.ContentKeys = this;
         }
 
         /// <summary>Whether the menu is currently displayed. Backed by <see cref="Popover"/>.</summary>
