@@ -190,6 +190,93 @@ public static class Builder
         return Overlay(scrim, AnchoredTo(anchor, content, side)) with { Popover = state };
     }
 
+    /// <summary>
+    /// A dropdown menu: <paramref name="state"/>'s entries as a list floated beside
+    /// <paramref name="anchor"/>, on the popover the engine already owns.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This adds no mechanism.</b> Every behaviour a menu needs is already on the node: the backdrop and
+    /// the Escape claim come from <see cref="Popover"/>, a disabled row is <see cref="Node.Disabled(string)"/>
+    /// (dimmed, press swallowed with <see cref="CursorKind.NotAllowed"/>, the reason as its tooltip), the
+    /// highlight is <see cref="Node.BgHover"/>, the overflow is <see cref="Node.WithScroll"/>. What was
+    /// missing was a node to know them ON -- <c>PixelWidgetBase.RenderDropdownMenu</c> knows all of it
+    /// inside a ten-parameter method carrying the obligation "must be called LAST in the render pass",
+    /// and a caller who gets that order wrong gets a menu that paints under the chrome it belongs to and
+    /// loses its clicks, with nothing to say so.
+    /// </para>
+    /// <para>
+    /// <b>The anchor is the trigger's arranged rect, not remembered geometry.</b> The rendered path carries
+    /// <c>AnchorX</c>/<c>AnchorY</c>/<c>AnchorWidth</c> captured at the moment the menu opened, so a menu
+    /// still open across a resize hangs where the button used to be. Here placement is the engine's, and it
+    /// is re-measured with everything else.
+    /// </para>
+    /// <para>
+    /// Opening one from a button is <c>.Clickable(hit, _ =&gt; state.Popover.Toggle())</c> on the button node.
+    /// There is no dispatcher line to add and none to forget.
+    /// </para>
+    /// </remarks>
+    public static Node Dropdown<T>(RectF32 anchor, DropdownMenuState<T> state,
+        float fontSize = 14f, RGBAColor32? textColor = null, RGBAColor32? background = null,
+        RGBAColor32? highlight = null, RGBAColor32? backdrop = null,
+        float maxHeight = 0f, DockSide side = DockSide.Bottom)
+    {
+        var rowHeight = fontSize * 1.8f;
+        var rowPadding = fontSize * 0.5f;
+
+        var rows = new Node[state.Items.Length];
+        for (var i = 0; i < state.Items.Length; i++)
+        {
+            var item = state.Items[i];
+            // Captured per row. Closing over the loop variable itself would hand every row the final index.
+            var index = i;
+
+            // EVERY row declares its hit and its handler, disabled or not. .Disabled() strips the
+            // handler and marks the region; it does not create one. A disabled row declared without a hit
+            // would register nothing, so the press would fall through to the backdrop and CLOSE the menu --
+            // which reads as "it took my click and did nothing", the precise dead-end the disabled state
+            // exists to remove. TrySelect refuses a disabled index anyway, so the swallow is the point.
+            var row = Text(item.Label, fontSize, textColor)
+                .RowH(rowHeight)
+                .PadX(rowPadding)
+                .Clickable(new HitResult.ListItemHit(DropdownMenuState<T>.ListId, index),
+                    _ => state.TrySelect(index));
+
+            if (item.IsEnabled)
+            {
+                if (highlight is { } hoverColour)
+                {
+                    row = row.BgHover(hoverColour);
+                }
+
+                if (item.Tooltip is { Length: > 0 } tooltip)
+                {
+                    row = row.WithTooltip(tooltip);
+                }
+            }
+            else
+            {
+                row = row.Disabled(item.Tooltip ?? string.Empty);
+            }
+
+            rows[i] = row;
+        }
+
+        var list = VStack(rows).W(Sizing.Fixed(anchor.Size.X)).WithScroll(state.Scroll);
+
+        if (maxHeight > 0f)
+        {
+            list = list.HClamp(0f, maxHeight);
+        }
+
+        if (background is { } menuColour)
+        {
+            list = list.Bg(menuColour);
+        }
+
+        return Popover(anchor, list, state.Popover, side, backdrop);
+    }
+
     /// <summary>Two resizable panes plus a draggable divider; <paramref name="firstExtent"/> is consumer-owned state. See <see cref="Node.Split"/>.</summary>
     public static Node Split(Node first, Node second, Axis axis = Axis.Horizontal,
         float firstExtent = 0f, float dividerThickness = 6f,

@@ -15,7 +15,56 @@ namespace DIR.Lib
     /// </remarks>
     public class DropdownMenuState<T> : IKeyboardClaimant
     {
-        public bool IsOpen { get; set; }
+        /// <summary>
+        /// Whether the menu is open, and the Escape that closes it -- the same <see cref="PopoverState"/>
+        /// a declared popover uses, so a dropdown IS one rather than a second thing shaped like one.
+        /// </summary>
+        /// <remarks>
+        /// <b>This is the single writer.</b> <see cref="IsOpen"/> and <see cref="Close"/> both go through
+        /// it, which is what lets <see cref="Layout.Builder.Dropdown"/> hand the very same state to
+        /// <see cref="Layout.Builder.Popover"/> and have the backdrop, the Escape claim and the open flag
+        /// agree by construction. Two flags kept in step by hand is the failure this removes.
+        /// </remarks>
+        /// <summary>
+        /// The <see cref="HitResult.ListItemHit.ListId"/> every dropdown row registers under, on both the
+        /// declared path (<see cref="Layout.Builder.Dropdown"/>) and the hand-rendered one
+        /// (<c>PixelWidgetBase.RenderDropdownMenu</c>). Named once so the two cannot drift apart while
+        /// both exist -- a host matching on the id would otherwise see rows from one path and not the other.
+        /// </summary>
+        public const string ListId = "Dropdown";
+
+        public PopoverState Popover { get; } = new();
+
+        public DropdownMenuState()
+        {
+            // Whatever closes the menu -- Escape, the backdrop, TrySelect, a consumer assigning IsOpen --
+            // clears the highlight. Close() used to do this inline because it was the ONLY way to close;
+            // a declared dropdown's backdrop press closes the PopoverState directly and never calls it,
+            // so the reset has to hang off the transition rather than off one of its callers.
+            Popover.Closed += () => HighlightIndex = -1;
+        }
+
+        /// <summary>Whether the menu is currently displayed. Backed by <see cref="Popover"/>.</summary>
+        /// <remarks>
+        /// Kept settable so existing callers still read as they did, but assigning it now runs the popover's
+        /// verbs -- so <see cref="PopoverState.Closed"/> fires on the way down no matter which spelling the
+        /// caller used.
+        /// </remarks>
+        public bool IsOpen
+        {
+            get => Popover.IsOpen;
+            set
+            {
+                if (value)
+                {
+                    Popover.Open();
+                }
+                else
+                {
+                    Popover.Close();
+                }
+            }
+        }
         public ImmutableArray<DropdownItem<T>> Items { get; set; } = [];
         public int HighlightIndex { get; set; } = -1;
 
@@ -79,11 +128,7 @@ namespace DIR.Lib
         /// <summary>
         /// Closes the dropdown.
         /// </summary>
-        public void Close()
-        {
-            IsOpen = false;
-            HighlightIndex = -1;
-        }
+        public void Close() => Popover.Close();
 
         /// <summary>
         /// Selects the entry at <paramref name="index"/> if it can be chosen, and closes. Returns whether it
@@ -148,8 +193,9 @@ namespace DIR.Lib
                     return true;
 
                 case InputKey.Escape:
-                    Close();
-                    return true;
+                    // Deliberately the popover's own rule rather than a second copy of it: one Escape
+                    // behaviour, whether this menu was declared as a node or rendered by hand.
+                    return Popover.HandleKeyDown(key);
 
                 default:
                     return false;
