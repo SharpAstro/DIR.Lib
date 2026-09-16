@@ -32,6 +32,13 @@ through its backdrop without ever calling `Close()`, so the reset could not stay
 **The anchor is the trigger's arranged rect**, not the `AnchorX`/`AnchorY`/`AnchorWidth` captured when the
 menu opened. A menu still open across a resize is placed where the button is, rather than where it was.
 
+**`PopoverState.ContentKeys` reaches the keys inside a popover.** Painting an open popover puts it in the
+window's single claimant slot, which is what makes Escape work with no host dispatcher line -- and it is
+also what would have made a declared menu's Up/Down/Enter go nowhere, since the menu state implements
+`IKeyboardClaimant` and would simply never have been asked. A hand-rendered menu never hit this, because
+the host registered the menu itself as the claimant. The popover keeps Escape and hands everything else to
+its content; null (the default, and every existing popover) declines exactly as before.
+
 Additive: `RenderDropdownMenu` and the anchor fields stay, so nothing that calls them has to move yet, and
 both paths register their rows under the shared `DropdownMenuState<T>.ListId` so a host matching on the id
 sees the same thing either way.

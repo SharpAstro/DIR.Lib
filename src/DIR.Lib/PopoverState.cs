@@ -62,8 +62,22 @@ public sealed class PopoverState : IKeyboardClaimant
     }
 
     /// <summary>
-    /// Closes on Escape while open, and declines everything else so the rest of the key routing still sees
-    /// it.
+    /// The claimant for keys the popover itself does not handle -- its CONTENT. Null for a popover whose
+    /// content wants no keys, which is the common case and the behaviour this type shipped with.
+    /// </summary>
+    /// <remarks>
+    /// <b>The claim is made by the popover, so anything inside it that wants keys has to come through
+    /// here.</b> Painting an open popover puts THIS object in the window's single claimant slot, which is
+    /// what makes Escape work without a host dispatcher line -- and, until this property existed, also what
+    /// made a declared menu's Up/Down/Enter go nowhere: the menu state implemented
+    /// <see cref="IKeyboardClaimant"/> and never got asked, because the popover had taken the slot. A
+    /// hand-rendered menu did not hit this, since the host registered the menu itself as the claimant.
+    /// </remarks>
+    public IKeyboardClaimant? ContentKeys { get; set; }
+
+    /// <summary>
+    /// Closes on Escape while open, hands anything else to <see cref="ContentKeys"/>, and otherwise declines
+    /// so the rest of the key routing still sees it.
     /// </summary>
     /// <remarks>
     /// Declining while CLOSED is what makes the claimant slot safe to leave stale: the slot is set by being
@@ -72,9 +86,17 @@ public sealed class PopoverState : IKeyboardClaimant
     /// </remarks>
     public bool HandleKeyDown(InputKey key)
     {
-        if (!IsOpen || key != InputKey.Escape)
+        if (!IsOpen)
         {
             return false;
+        }
+
+        if (key != InputKey.Escape)
+        {
+            // Escape is the popover's own and never reaches the content; everything else is the content's
+            // business. The two sets are disjoint, so a content claimant that routes Escape back here
+            // cannot loop.
+            return ContentKeys?.HandleKeyDown(key) ?? false;
         }
 
         Close();

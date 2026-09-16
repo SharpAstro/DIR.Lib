@@ -218,4 +218,72 @@ public class LayoutDropdownTests
         Layout.Node.Overlay o => FindScroll(o.Top) ?? FindScroll(o.Base),
         _ => null,
     };
+
+    // ---- the keyboard ----------------------------------------------------------------
+
+    /// <summary>
+    /// The popover takes the window's single claimant slot by being painted, so a menu that implements
+    /// <see cref="IKeyboardClaimant"/> itself never gets asked. The hand-rendered path did not hit this,
+    /// because the host registered the menu AS the claimant; the declared one would have opened a menu
+    /// that could be dismissed but not navigated, with nothing to say so.
+    /// </summary>
+    [Fact]
+    public void ADeclaredMenuIsStillNavigableFromTheKeyboard()
+    {
+        var (widget, _) = Fixture();
+        var state = Menu(DropdownItem.Text("One"), DropdownItem.Text("Two"), DropdownItem.Text("Three"));
+
+        widget.Render(Layout.Builder.Dropdown(Anchor, state), new RectF32(0, 0, 200, 200));
+        var claimant = widget.Ui.KeyboardClaimant.ShouldNotBeNull();
+
+        claimant.HandleKeyDown(InputKey.Down).ShouldBeTrue();
+        state.HighlightIndex.ShouldBe(0);
+
+        claimant.HandleKeyDown(InputKey.Down).ShouldBeTrue();
+        state.HighlightIndex.ShouldBe(1);
+
+        claimant.HandleKeyDown(InputKey.Up).ShouldBeTrue();
+        state.HighlightIndex.ShouldBe(0);
+    }
+
+    [Fact]
+    public void EnterThroughTheClaimantChoosesTheHighlightedEntry()
+    {
+        var (widget, _) = Fixture();
+        DropdownItem<string>? chosen = null;
+        var state = new DropdownMenuState<string>();
+        state.Open(Anchor.Position.X, Anchor.Position.Y, Anchor.Size.X,
+            [DropdownItem.Text("One"), DropdownItem.Text("Two")],
+            onSelect: item => chosen = item, highlightIndex: 1);
+
+        widget.Render(Layout.Builder.Dropdown(Anchor, state), new RectF32(0, 0, 200, 200));
+        widget.Ui.KeyboardClaimant!.HandleKeyDown(InputKey.Enter).ShouldBeTrue();
+
+        chosen!.Value.ShouldBe("Two");
+        state.IsOpen.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void EscapeThroughTheClaimantStillClosesIt()
+    {
+        var (widget, _) = Fixture();
+        var state = Menu(DropdownItem.Text("One"));
+
+        widget.Render(Layout.Builder.Dropdown(Anchor, state), new RectF32(0, 0, 200, 200));
+        widget.Ui.KeyboardClaimant!.HandleKeyDown(InputKey.Escape).ShouldBeTrue();
+
+        state.IsOpen.ShouldBeFalse();
+    }
+
+    /// <summary>A popover whose content wants no keys is unchanged: it declines everything but Escape.</summary>
+    [Fact]
+    public void APopoverWithNoContentClaimantDeclinesEverythingButEscape()
+    {
+        var state = new PopoverState();
+        state.Open();
+
+        state.HandleKeyDown(InputKey.Down).ShouldBeFalse();
+        state.HandleKeyDown(InputKey.Enter).ShouldBeFalse();
+        state.HandleKeyDown(InputKey.Escape).ShouldBeTrue();
+    }
 }
