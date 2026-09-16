@@ -5,6 +5,12 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  # A push event CAN be dropped: the 9.4 merge landed on main and no run was ever created for the
+  # resulting commit, so the package simply did not publish and nothing said so. Without this trigger
+  # the only recovery is an empty commit, which puts a junk commit in the history of every repo that
+  # ever loses an event. Dispatch publishes for the same reason a push does -- see publish-nuget's
+  # condition, which names both events rather than assuming a run on main is a push.
+  workflow_dispatch:
 
 env:
   # Release notes live in CHANGELOG.md at the repo root, not here. Nothing in this workflow ever
@@ -60,7 +66,7 @@ jobs:
   publish-nuget:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     steps:
     - name: Download NuGet packages
       uses: actions/download-artifact@v8
