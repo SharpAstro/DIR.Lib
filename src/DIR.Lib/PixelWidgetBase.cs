@@ -109,6 +109,11 @@ namespace DIR.Lib
     {
         private readonly ClickableRegionTracker _tracker = new();
 
+        // Scratch for MoveListCursor: the painted rows of the list the cursor is in, rebuilt per step.
+        // Reused rather than allocated, for the reason the router's region buffer is -- a key repeat is
+        // a step per frame.
+        private readonly List<ListCursor.PaintedRow> _paintedListRows = [];
+
         // Selectable-text regions registered this frame (paint order). Mirrors _tracker's lifecycle --
         // cleared in BeginFrame, appended by DrawSelectableText, snapshotted by a host that renders the
         // text as native selectable UI (web DOM span / terminal yank). Kept OUT of the clickable tracker
@@ -357,99 +362,29 @@ namespace DIR.Lib
         /// <summary>
         /// Moves the cursor <paramref name="delta"/> rows through the list it is in, over the rows this
         /// widget actually painted. False when it is in no list, when nothing of that list was painted,
-        /// or when there is no row that way — in which case the cursor stays where it was, because
-        /// stopping at the end reads as an end and moving to nothing reads as a broken control.
+        /// or when there is no row that way.
         /// </summary>
         /// <remarks>
-        /// From <see cref="ListCursor.Index"/> of -1 — a list the reader has not moved in yet — this
-        /// lands on the first row for a forward step and the last for a backward one.
+        /// The walk itself is <see cref="ListCursor.Step"/>'s, and this is the pixel surface's half of
+        /// it: which rows are on screen, read off the regions the last paint registered. A cell surface
+        /// answers the same question from the window of rows it drew, and gets the same behaviour --
+        /// which is why the rule moved onto the cursor rather than staying here, where it was one of two
+        /// implementations of "where does Down go".
         /// </remarks>
         public bool MoveListCursor(int delta)
         {
             if (delta == 0 || !ListCursor.IsOpen) return false;
 
-            var moved = false;
-            var direction = Math.Sign(delta);
-            for (var step = 0; step < Math.Abs(delta); step++)
-            {
-                if (!TryStepListCursor(direction)) break;
-                moved = true;
-            }
-            return moved;
-        }
-
-        /// <summary>
-        /// One row along, to the NEAREST painted row in that direction. Nearest rather than "index
-        /// plus one", because the indices are the list's and need not be dense — a list that leaves
-        /// out the rows a reader cannot act on has gaps exactly where a step must not stop.
-        /// </summary>
-        private bool TryStepListCursor(int direction)
-        {
-            var from = ListCursor.Index;
-            var best = -1;
-            var paintedLow = int.MaxValue;
-            var paintedHigh = int.MinValue;
+            _paintedListRows.Clear();
             foreach (var region in RegisteredRegions)
             {
-                if (region.Result is not HitResult.ListItemHit item || !ListCursor.Owns(item)) continue;
-                // The span this paint covered, so a counted list can tell "off the bottom of the
-                // viewport" from "deliberately unreachable" -- see TryStepPastTheViewport.
-                if (item.Index < paintedLow) paintedLow = item.Index;
-                if (item.Index > paintedHigh) paintedHigh = item.Index;
-                // Declared unavailable: registered so the press is swallowed, and stepped over for the
-                // same reason a row that is not clickable is -- the cursor must never park somewhere
-                // Enter will refuse.
-                if (region.IsDisabled) continue;
-                // Beyond where we are, in the direction of travel. From -1 — a list the reader has not
-                // moved in — every row qualifies, so this lands on the first or the last.
-                if (from >= 0 && (direction > 0 ? item.Index <= from : item.Index >= from)) continue;
-                if (best >= 0 && (direction > 0 ? item.Index >= best : item.Index <= best)) continue;
-                best = item.Index;
+                if (region.Result is HitResult.ListItemHit item && ListCursor.Owns(item))
+                {
+                    _paintedListRows.Add(new ListCursor.PaintedRow(item.Index, region.IsDisabled));
+                }
             }
 
-            if (best >= 0)
-            {
-                ListCursor.MoveTo(best);
-                return true;
-            }
-
-            return TryStepPastTheViewport(direction, from, paintedLow, paintedHigh);
-        }
-
-        /// <summary>
-        /// The step a VIRTUALISED list needs: onto a row the last paint never registered, because the
-        /// list only paints its viewport. Only possible where the cursor was opened with a row count --
-        /// see <see cref="ListCursor.RowCount"/>.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// The painted span stays the evidence wherever there is any: the walk above has already refused
-        /// every row inside it, on purpose, so the first row that can still be stepped onto is the one
-        /// just past that span -- never a row within it, which would reach over the top of the
-        /// reachability rule. Beyond the span there is no evidence at all, and the count is the only
-        /// thing that says the row is there.
-        /// </para>
-        /// <para>
-        /// A list NOTHING of which was painted is still unnavigable, counted or not: a card that is not
-        /// on screen must not move its cursor over rows nobody can see.
-        /// </para>
-        /// <para>
-        /// The move raises <see cref="ListCursor.Moved"/> like any other, which is how the row is brought
-        /// into view -- without that the cursor lands somewhere nobody can see either.
-        /// </para>
-        /// </remarks>
-        private bool TryStepPastTheViewport(int direction, int from, int paintedLow, int paintedHigh)
-        {
-            if (ListCursor.RowCount is not { } count || count <= 0) return false;
-            if (paintedHigh < paintedLow) return false;
-
-            var candidate = direction > 0
-                ? Math.Max(from + 1, paintedHigh + 1)
-                : Math.Min(from < 0 ? count - 1 : from - 1, paintedLow - 1);
-            if (candidate < 0 || candidate >= count) return false;
-
-            ListCursor.MoveTo(candidate);
-            return true;
+            return ListCursor.Step(delta, _paintedListRows);
         }
 
         /// <summary>

@@ -57,6 +57,15 @@ Migration steps: [MIGRATION.md](MIGRATION.md).
 `PixelMenuWidget.HandleInput` is keys only for the same reason: its press arm hit-tested and dispatched
 for itself. A host lists the widget on an `InputRouter` and the rows it declared answer there.
 
+**One addition, and it is what the cuts are for.** `ListCursor.Step(delta, painted)` and
+`ListCursor.PaintedRow(Index, IsDisabled)`: the arrow walk, lifted off `PixelWidgetBase` so it is not a
+pixel-surface rule. `PixelWidgetBase.MoveListCursor` is unchanged from outside and now projects its
+registered regions onto that list; a cell surface projects the window of rows it drew, and gets the same
+behaviour -- the nearest painted row in the direction of travel, disabled rows stepped over, a counted
+list able to step past its own viewport. Console.Lib's `ScrollableList` was the second implementation of
+that walk, and "the same list behaves differently under the arrows depending which surface it is on" is a
+difference nothing would have reported.
+
 ## 9.5
 
 **A tab carries its own chord and its own handler.** `TabItem<T>` gains two init-only properties:
