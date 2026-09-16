@@ -9,6 +9,36 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 9.4
+
+**A wrap can flow around a floated corner.** Three additions to `Node.Wrap`, all init-only, all zero by
+default, and all from the same consumer: tianwen's toolbar, which pins a help button to the top-right
+corner and wraps the rest beneath it.
+
+- **`FirstLineReserve`** -- main-axis extent the FIRST line alone leaves free. The obvious substitute is
+  a `Dock`, and it is wrong in a way that is invisible until the run wraps: a dock takes its strip out
+  of EVERY line, so the wrapped rows narrow and children that used to fit start being dropped.
+- **`LeadingGap`** (on the CHILD, not the wrap) -- extra space before a child, on top of the
+  container's gap, and suppressed when the child starts a line. Group separation had no spelling that
+  survived wrapping: a spacer node leads the wrapped row and indents it, and folding the gap into a
+  neighbour's width grows that neighbour's hit rect into empty space.
+- **`MaxLines`** -- most lines the flow may use; children past them are DROPPED, not clipped. A clipped
+  child still registers its region and keeps taking the clicks aimed at whatever covers it, which is
+  worse than not being there.
+
+`MeasureWrap` honours all three, so the measured box and the painted rows break at the same places --
+a measure that disagreed would have the caller reserve a band for rows the arrange then drops.
+
+Init-only properties rather than primary-constructor parameters, for the reason the 9.1 `TextInputHit`
+release learned the expensive way.
+
+### What moving to 9.4 gets a consumer
+
+Any bar, chip row or tag list that pins something to a corner and wraps the rest. Before this the
+reservation had to be a hand-written wrap walk with a per-row limit, a group gap and a row cap --
+about 60 lines of arithmetic whose rules are now three properties. Nothing else changes: every
+existing `Wrap` has all three at zero and lays out identically.
+
 ## 9.3
 
 **A dropdown is a popover whose content is a list.** Every behaviour a menu needs was already in the
