@@ -196,4 +196,75 @@ public class LayoutWrapFirstLineReserveTests
         var placed = Placed(widget);
         placed.Count(p => p.Rect.Y == placed[0].Rect.Y).ShouldBe(3, "the gap pushed the fourth over");
     }
+
+    // ---- MaxLines --------------------------------------------------------------------
+
+    [Fact]
+    public void MaxLinesDropsTheChildrenThatDoNotFit()
+    {
+        var (widget, _) = Fixture();
+
+        // 12 boxes, 5 per line, capped at 2 lines: 10 placed, 2 dropped.
+        widget.Render(Run(12).WithMaxLines(2), new RectF32(0, 0, 200, 200));
+
+        var placed = Placed(widget);
+        placed.Length.ShouldBe(10);
+        placed.Select(p => p.Index).ShouldBe(Enumerable.Range(0, 10), "the TAIL is dropped, not the middle");
+    }
+
+    /// <summary>
+    /// Dropped, not clipped. A clipped child still registers its region and keeps taking the clicks
+    /// aimed at whatever is drawn over it -- which is worse than not being there.
+    /// </summary>
+    [Fact]
+    public void ADroppedChildRegistersNothing()
+    {
+        var (widget, _) = Fixture();
+
+        widget.Render(Run(12).WithMaxLines(2), new RectF32(0, 0, 200, 200));
+
+        widget.GetRegisteredRegions()
+            .Any(r => r.Result is HitResult.ListItemHit { Index: >= 10 })
+            .ShouldBeFalse();
+    }
+
+    [Fact]
+    public void MaxLinesZeroIsUnlimited()
+    {
+        var (widget, _) = Fixture();
+
+        widget.Render(Run(12), new RectF32(0, 0, 200, 200));
+
+        Placed(widget).Length.ShouldBe(12);
+    }
+
+    /// <summary>
+    /// The measure has to report the CAPPED box. If it reported the height an uncapped flow would need,
+    /// the caller would reserve a band for rows the arrange then drops -- a toolbar band with empty
+    /// space where the tail should have been.
+    /// </summary>
+    [Fact]
+    public void TheMeasuredBoxIsTheCappedOneRatherThanWhatItWouldNeedUncapped()
+    {
+        var (widget, _) = Fixture();
+        var available = new Layout.Size<float>(200f, 1000f);
+
+        var uncapped = widget.Measure(Run(12), available);
+        var capped = widget.Measure(Run(12).WithMaxLines(2), available);
+        var exactlyTwo = widget.Measure(Run(10), available);
+
+        uncapped.Height.ShouldBeGreaterThan(capped.Height);
+        capped.Height.ShouldBe(exactlyTwo.Height, 0.01f, "two lines is two lines, capped or not");
+    }
+
+    [Fact]
+    public void MaxLinesCombinesWithTheFirstLineReserve()
+    {
+        var (widget, _) = Fixture();
+
+        // First line holds 3 (80 reserved), second holds 5, cap at 2 -> 8 of 12 placed.
+        widget.Render(Run(12).WithFirstLineReserve(80f).WithMaxLines(2), new RectF32(0, 0, 200, 200));
+
+        Placed(widget).Length.ShouldBe(8);
+    }
 }

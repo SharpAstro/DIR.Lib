@@ -654,6 +654,14 @@ public static class Engine
             crossCursor += lineCross + lineGap;
             lineStart = lineEnd;
             lineIndex++;
+
+            // Out of lines. Everything after this point is dropped -- not arranged, so not painted and
+            // not registered, which is the difference between an absent control and one that is
+            // invisible but still eating the clicks aimed at what covers it.
+            if (wrap.MaxLines > 0 && lineIndex >= wrap.MaxLines)
+            {
+                break;
+            }
         }
     }
 
@@ -958,6 +966,46 @@ public static class Engine
         }
 
         maxLineMain = Max(maxLineMain, used);
+        // A capped flow reports the box it will actually paint, not the one it would need uncapped --
+        // otherwise the caller reserves a band for rows the arrange then drops.
+        if (wrap.MaxLines > 0 && lines > wrap.MaxLines)
+        {
+            lines = wrap.MaxLines;
+            totalCross = T.Zero;
+            var counted = 0;
+            var lineTop = T.Zero;
+            var inLine = 0;
+            var usedInLine = T.Zero;
+            for (var i = 0; i < n && counted < lines; i++)
+            {
+                var (main, cross) = ResolveWrapChild(children[i], axis, available, ctx);
+                var extra = inLine == 0
+                    ? main
+                    : gap + ToSurfaceOn(ctx, children[i].LeadingGap, axis) + main;
+                if (inLine > 0 && usedInLine + extra > (counted == 0 ? firstLineAvail : mainAvail))
+                {
+                    totalCross += lineTop;
+                    counted++;
+                    usedInLine = main;
+                    lineTop = cross;
+                    inLine = 1;
+                    continue;
+                }
+
+                usedInLine += extra;
+                lineTop = Max(lineTop, cross);
+                inLine++;
+            }
+
+            if (counted < lines)
+            {
+                totalCross += lineTop;
+            }
+
+            totalCross += lineGap * T.CreateChecked(lines - 1);
+            return Compose(axis, maxLineMain, totalCross);
+        }
+
         totalCross += lineCross + lineGap * T.CreateChecked(lines - 1);
         return Compose(axis, maxLineMain, totalCross);
     }
