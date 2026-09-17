@@ -1,7 +1,10 @@
 # Migration notes
 
-One section per breaking release, newest first. Additive releases are not listed here; the release
-notes in `.github/workflows/dotnet.yml` cover every version.
+One section per breaking release, newest first, each with a port recipe. Additive releases are not
+listed here -- [CHANGELOG.md](CHANGELOG.md) says what changed in every version, breaking or not.
+
+Upgrading across more than one major? Work UP the file: the sections are independent, and a 9.x
+consumer taking 10.0 needs only the 10.0 section.
 
 ## 10.0 the cuts: one dispatcher, one focus owner, a popover stack
 

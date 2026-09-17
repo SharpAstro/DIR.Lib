@@ -152,6 +152,18 @@ var unicode = MarkdownMacros.RenderMathUnicode("E = mc^2");      // "E = mc²"
 var image   = BoxRasterizer.RenderToRgba(boxBuilder(style), style);
 ```
 
+## Upgrading
+
+- **[CHANGELOG.md](CHANGELOG.md)** — what changed in each `Major.Minor`, and why. Newest first.
+- **[MIGRATION.md](MIGRATION.md)** — the port recipe for each BREAKING release, before/after per API.
+  A major is the only place this library removes anything; the current one is **10.0**, which deleted
+  `IPixelWidget.HitTestAndDispatch`, `IKeyboardClaimant`, `PixelWidgetBase.RenderDropdownMenu`,
+  `HitResult.SliderHit` and `LayoutInspection`, made `TextInputState.Activate` / `Deactivate` and the
+  `IsActive` setter internal, and made `HitResult.TextInputHit.Painted` required.
+
+The version number lives in one place, `src/Directory.Build.props` (`VersionMajorMinor`); CI reads it
+back rather than restating it, so a package cannot declare a version the changelog disagrees with.
+
 ## Dependencies
 
 - [SharpAstro.Fonts](https://www.nuget.org/packages/SharpAstro.Fonts) — pure-managed OpenType font loader & rasterizer (COLRv1, MATH table, CFF/glyf, hinting)
