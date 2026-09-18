@@ -78,7 +78,6 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     private InputModifier _captureModifiers;
 
     private (float X, float Y)? _pointer;
-    private (Rect<float> Bounds, RGBAColor32 Fill)? _hover;
     private TooltipRequest? _tooltip;
     private DateTimeOffset _tooltipSince;
     private bool _tooltipAnnounced;
@@ -356,6 +355,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
 
     private bool HandleMouseMove(InputEvent.MouseMove move)
     {
+        var from = _pointer;
         _pointer = (move.X, move.Y);
 
         // A gesture in flight owns every move until the button comes up, and it is told the button and
@@ -376,7 +376,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
 
         // Motion is not a reason to draw a frame by itself. It is a reason when it changed something the
         // frame shows, which is a lit background or a tooltip, and those are the two the router can see.
-        if (NoteHover(move.X, move.Y))
+        if (NoteHover(from, move.X, move.Y))
         {
             requestRedraw();
         }
@@ -637,21 +637,23 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     // ---- hover ------------------------------------------------------------------------------
 
     /// <summary>
-    /// Records what the pointer is now over, and answers whether the frame would look different for it:
-    /// a node whose <see cref="Layout.Node.HoverBackground"/> lights, or a region whose tooltip is now the
-    /// one being waited on.
+    /// Answers whether a move from <paramref name="from"/> to (<paramref name="x"/>, <paramref name="y"/>)
+    /// changes what the frame would show: a different node whose <see cref="Layout.Node.HoverBackground"/>
+    /// lights, or a region whose tooltip is now the one being waited on.
     /// </summary>
     /// <remarks>
-    /// Keyed on what the painter would DRAW, the lit rect and its colour, never on the node. A host builds
-    /// its tree afresh every paint, so the node under a pointer that has not left it is a different object
-    /// each frame: keyed on the reference, every move over a lit control asked for a whole frame, and the
-    /// frame it asked for made the next move ask again. The same rect in the same colour is the same pixels.
+    /// BOTH ends of the move are resolved against the frame on screen and compared by reference, which is
+    /// sound because both come from that one frame. It used to compare the node under the new position with
+    /// one REMEMBERED from an earlier move; a host builds its tree afresh every paint, so after any repaint
+    /// the remembered node was an object no longer on screen, the two never matched, and every move over a
+    /// lit control asked for a whole frame, whose paint made the next move ask again.
     /// </remarks>
-    private bool NoteHover(float x, float y)
+    private bool NoteHover((float X, float Y)? from, float x, float y)
     {
-        var hover = ResolveHover(x, y);
-        var changed = !Nullable.Equals(hover, _hover);
-        _hover = hover;
+        var lit = ResolveHoverNode(x, y);
+        var changed = from is { } previous
+            ? !ReferenceEquals(ResolveHoverNode(previous.X, previous.Y), lit)
+            : lit is not null;
 
         var target = ResolveTooltip(x, y);
         if (target != _tooltip)
@@ -671,15 +673,15 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     }
 
     /// <summary>
-    /// What the painter would light: the arranged rect and hover colour of the innermost painted node
-    /// carrying a hover background whose rect contains the point, or null.
+    /// The node the painter would light: the innermost painted node carrying a hover background whose
+    /// arranged rect contains the point.
     /// </summary>
     /// <remarks>
     /// Asked with the popover's pointer claim applied, exactly as
     /// <c>PixelWidgetBase.PointerWithin</c> asks it, or the router would request a redraw for a row an
     /// open popover is covering and the painter would then decline to light it.
     /// </remarks>
-    private (Rect<float> Bounds, RGBAColor32 Fill)? ResolveHover(float x, float y)
+    private Layout.Node? ResolveHoverNode(float x, float y)
     {
         if (ui.PointerOwner is { } owner
             && !(x >= owner.X && x < owner.X + owner.Width && y >= owner.Y && y < owner.Y + owner.Height))
@@ -696,11 +698,11 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             for (var i = _nodes.Count - 1; i >= 0; i--)
             {
                 var (node, bounds) = _nodes[i];
-                if (node.HoverBackground is { } fill
+                if (node.HoverBackground is not null
                     && x >= bounds.X && x < bounds.X + bounds.Width
                     && y >= bounds.Y && y < bounds.Y + bounds.Height)
                 {
-                    return (bounds, fill);
+                    return node;
                 }
             }
         }

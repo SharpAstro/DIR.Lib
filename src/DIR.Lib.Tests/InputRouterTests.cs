@@ -341,9 +341,10 @@ public class InputRouterTests
 
     /// <summary>
     /// A host builds its tree afresh every paint, so the lit node is a NEW object each frame, and moving on
-    /// inside it must still ask for nothing. Keyed on the node reference, every move over a lit control
-    /// after a repaint asked for a whole frame (found in tianwen, whose GUI buttons all light); the test
-    /// above paints once and so could not see it.
+    /// inside it must still ask for nothing. The router compared the node under the pointer with one it
+    /// remembered from an earlier frame, so every move over a lit control after a repaint asked for a whole
+    /// frame (found in tianwen, whose GUI buttons all light); the test above paints once and so could not
+    /// see it.
     /// </summary>
     [Fact]
     public void MovingWithinALitNodeAfterARepaintAsksForNothing()
