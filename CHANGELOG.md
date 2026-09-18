@@ -9,6 +9,17 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 10.1
+
+**A colour glyph fades with the text it is drawn in, on the CPU renderer too.** `RgbaImageRenderer` blitted
+COLR/CBDT glyphs exactly as rasterised and ignored the ink's alpha, so an emoji inside a label drawn at half
+alpha stayed at full strength, while SdlVulkan.Renderer's `tex.frag` already multiplies a colour glyph's alpha
+by the draw colour's (`pc.color.a * texel.a`). `DrawText` and `DrawGlyphBitmap` now pass the ink's alpha; the
+glyph still keeps its own RGB and is never tinted. Additive: `RgbaImage.BlitRgba` gains an overload taking an
+`opacity` byte (a new overload, not an optional parameter, which would have been a binary break), and the
+original five-argument form is byte-identical to `opacity: 255`. Pinned by `ColourGlyphOpacityTests`, which fail
+against the old blit.
+
 ## 10.0
 
 **The cuts.** Seven things the 9.x line kept alive for consumers that have since stopped using them.
