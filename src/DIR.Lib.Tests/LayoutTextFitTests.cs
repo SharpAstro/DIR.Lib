@@ -96,6 +96,32 @@ public class LayoutTextFitTests
         Paint("abcdefghij", 10f, 100f, TextTrim.Middle).ShouldBe(("abcdefghij", 10f));
     }
 
+    /// <summary>
+    /// One character is never replaced by an ellipsis, under any trim policy: the ellipsis is one
+    /// character too, so the cut saves nothing and loses the run. It overhangs instead. The G of an
+    /// R / G / B label column sized to R came out as a lone ellipsis until this.
+    /// </summary>
+    [Theory]
+    [InlineData(TextTrim.End)]
+    [InlineData(TextTrim.Start)]
+    [InlineData(TextTrim.Middle)]
+    public void ASingleCharacter_IsNeverReplacedByAnEllipsis(TextTrim trim)
+    {
+        // 5 wide at 10f against a 3-wide rect: it does not fit, and it is drawn whole anyway.
+        Paint("G", 10f, 3f, trim).ShouldBe(("G", 10f));
+
+        // A letter with a combining mark is two chars and ONE character on screen, so it is kept too.
+        Paint("e\u0301", 10f, 3f, trim).ShouldBe(("e\u0301", 10f));
+    }
+
+    [Fact]
+    public void TwoCharacters_AreStillCut()
+    {
+        // The rule is about one character and nothing wider: "ab" at 10f is 10 wide, and a 5-wide rect
+        // gets the one character that fits.
+        Paint("ab", 10f, 5f, TextTrim.End).Text.ShouldBe("…");
+    }
+
     [Fact]
     public void Middle_WithRoomForNothing_IsJustTheEllipsis()
     {

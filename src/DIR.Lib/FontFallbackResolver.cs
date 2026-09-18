@@ -350,6 +350,9 @@ public sealed class FontFallbackResolver
     {
         if (maxW <= 0) return "";
         if (Measure(renderer, text, fontSize).Width <= maxW) return text;
+        // One character is never swapped for an ellipsis, which is one character as wide or wider: see
+        // TextFit.IsSingleGrapheme.
+        if (TextFit.IsSingleGrapheme(text)) return text;
         for (var len = text.Length - 1; len > 0; len--)
         {
             var cand = string.Concat(text.AsSpan(0, len), "…");

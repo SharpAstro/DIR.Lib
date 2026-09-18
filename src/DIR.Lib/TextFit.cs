@@ -144,6 +144,7 @@ public static class TextFit
         if (maxWidth <= 0f) return "";
         if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(fontPath)) return text;
         if (Measure(renderer, text, fontPath, fallback, fontSize) <= maxWidth) return text;
+        if (IsSingleGrapheme(text)) return text;
 
         if (trim is TextTrim.Middle)
         {
@@ -192,6 +193,7 @@ public static class TextFit
         if (maxWidth <= 0f) return "";
         if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(fontPath)) return text;
         if (Measure(renderer, text, fontPath, fallback, fontSize) <= maxWidth) return text;
+        if (IsSingleGrapheme(text)) return text;
 
         const string Gap = "…";
         var lo = 0;
@@ -214,6 +216,24 @@ public static class TextFit
             ? Gap
             : string.Concat(text.AsSpan(0, lo), Gap, text.AsSpan(text.Length - lo));
     }
+
+    /// <summary>
+    /// Whether <paramref name="text"/> is one user-perceived character: a letter, a letter with its
+    /// combining marks, a surrogate pair, an emoji sequence. Such a run is NEVER cut by any trim policy.
+    /// </summary>
+    /// <remarks>
+    /// <para>The ellipsis that would replace it is itself one character, and as wide or wider (U+2026 is
+    /// close to an em in most faces, against about 0.7 em for a capital), so the cut saves no width at all
+    /// and loses the only thing the run said. A single character is drawn whole and overhangs its rect, the
+    /// <see cref="TextTrim.None"/> outcome, which a reader can at least read.</para>
+    /// <para>Found as the G of an R / G / B label column sized to the width of R: G is the widest of the
+    /// three in a round-letter face, so it alone came out as a lone ellipsis (tianwen's white-balance
+    /// popover, 2026-09-18). The column was the consumer's bug; the ellipsis was this one's.</para>
+    /// <para>Counted in text elements, not chars, so "e" plus a combining acute or a flag emoji is one
+    /// character here exactly as it is on screen.</para>
+    /// </remarks>
+    internal static bool IsSingleGrapheme(string text)
+        => text.Length > 0 && System.Globalization.StringInfo.GetNextTextElementLength(text) == text.Length;
 
     /// <summary>
     /// The one width oracle every branch here uses — through the fallback resolver when there is one, so a
