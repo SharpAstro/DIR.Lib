@@ -390,7 +390,8 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
 
                 if (glyph.IsColored)
                 {
-                    Surface.BlitRgba(gx, gy, glyph.Rgba, glyph.Width, glyph.Height);
+                    // Its own colours, never tinted, but faded with the text: the GPU renderers' rule.
+                    Surface.BlitRgba(gx, gy, glyph.Rgba, glyph.Width, glyph.Height, fontColor.Alpha);
                 }
                 else
                 {
@@ -425,7 +426,8 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
     /// <summary>
     /// Draw a pre-rasterized <see cref="GlyphBitmap"/> at <paramref name="dstX"/>/
     /// <paramref name="dstY"/> (top-left corner). Color glyphs (CBDT/COLR/SVG)
-    /// are blitted as-is; grayscale-alpha glyphs are tinted with
+    /// keep their own colours and take only <paramref name="color"/>'s alpha, so they
+    /// fade with the text; grayscale-alpha glyphs are tinted with
     /// <paramref name="color"/>. Used by MathLayout primitives that compose
     /// their own glyph bitmaps (stretchy delimiters from OT MATH variant /
     /// assembly recipes) and need to paint them with the box's foreground.
@@ -434,7 +436,7 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
     {
         if (glyph.Rgba is null || glyph.Width == 0 || glyph.Height == 0) return;
         if (glyph.IsColored)
-            Surface.BlitRgba(dstX, dstY, glyph.Rgba, glyph.Width, glyph.Height);
+            Surface.BlitRgba(dstX, dstY, glyph.Rgba, glyph.Width, glyph.Height, color.Alpha);
         else
             BlitGlyphTinted(dstX, dstY, glyph, color);
     }

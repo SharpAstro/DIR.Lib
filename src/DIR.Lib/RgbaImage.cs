@@ -313,7 +313,24 @@ public sealed class RgbaImage
         => FillRect(x, y0, x + 1, y1, color);
 
     public void BlitRgba(int dstX, int dstY, byte[] src, int srcW, int srcH)
+        => BlitRgba(dstX, dstY, src, srcW, srcH, opacity: 255);
+
+    /// <summary>
+    /// <see cref="BlitRgba(int, int, byte[], int, int)"/> with every source pixel's alpha scaled by
+    /// <paramref name="opacity"/>. It is how a COLOUR glyph, which keeps its own RGB and is never tinted,
+    /// still fades with the text around it: the rule SdlVulkan.Renderer's <c>tex.frag</c> applies on the GPU
+    /// (<c>pc.color.a * texel.a</c>). Without it a label drawn at half alpha kept its emoji at full strength
+    /// on this renderer alone.
+    /// </summary>
+    /// <remarks>A separate overload rather than an optional parameter on the one above, because adding a
+    /// parameter to a public method is a binary break for every caller compiled against the old one.</remarks>
+    public void BlitRgba(int dstX, int dstY, byte[] src, int srcW, int srcH, byte opacity)
     {
+        if (opacity == 0)
+        {
+            return;
+        }
+
         var pixels = Pixels;
         var w = Width;
 
@@ -327,7 +344,7 @@ public sealed class RgbaImage
                 for (var sx = 0; sx < srcW; sx++)
                 {
                     var si = (sy * srcW + sx) * 4;
-                    var sa = src[si + 3];
+                    var sa = ScaleAlpha(src[si + 3], opacity);
                     if (sa == 0)
                     {
                         continue;
@@ -355,7 +372,7 @@ public sealed class RgbaImage
 
                 var si = srcRow + sx * 4;
                 var di = dstRow + dx * 4;
-                var sa = src[si + 3];
+                var sa = ScaleAlpha(src[si + 3], opacity);
 
                 if (sa == 255)
                 {
@@ -371,6 +388,10 @@ public sealed class RgbaImage
             }
         }
     }
+
+    // Rounded, and an identity at full opacity, so the one-argument BlitRgba stays byte-identical.
+    private static byte ScaleAlpha(byte alpha, byte opacity)
+        => opacity == 255 ? alpha : (byte)((alpha * opacity + 127) / 255);
 
     /// <summary>
     /// Alpha-blends a color onto the pixel at (x, y). Safe for out-of-bounds coordinates, and for
