@@ -16,8 +16,8 @@ public class ColourGlyphOpacityTests
 
     private static string EmojiFont => Path.Combine(AppContext.BaseDirectory, "Fonts", "Noto-COLRv1.ttf");
 
-    // U+1F5BC FRAME WITH PICTURE: a colour glyph in the Noto COLRv1 face, and the one TianWen draws after
-    // the label of an object with a photo.
+    // U+1F5BC FRAME WITH PICTURE: a colour glyph in the Noto COLRv1 face whose palette is plainly coloured,
+    // which the keeps-its-colours assertion needs (a mostly grey emoji could sum to near-equal channels).
     private const string Picture = "\U0001F5BC";
 
     private static long[] ChannelSums(byte alpha)
