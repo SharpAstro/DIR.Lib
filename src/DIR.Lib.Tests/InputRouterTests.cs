@@ -339,6 +339,34 @@ public class InputRouterTests
         harness.Redraws.ShouldBe(2, "and nothing below it lights at all");
     }
 
+    /// <summary>
+    /// A host builds its tree afresh every paint, so the lit node is a NEW object each frame, and moving on
+    /// inside it must still ask for nothing. Keyed on the node reference, every move over a lit control
+    /// after a repaint asked for a whole frame (found in tianwen, whose GUI buttons all light); the test
+    /// above paints once and so could not see it.
+    /// </summary>
+    [Fact]
+    public void MovingWithinALitNodeAfterARepaintAsksForNothing()
+    {
+        var harness = new Harness();
+        static Layout.Node Tree() => Layout.Builder.VStack(
+            Layout.Builder.Box(200f, 20f).RowH(20f).BgHover(Lit),
+            Layout.Builder.Box(200f, 20f).RowH(20f)).Stretch();
+
+        harness.Paint(front: Tree());
+        harness.Move(10f, 10f);
+        harness.Redraws.ShouldBe(1, "the row lit");
+
+        // The frame that redraw asked for, built afresh as every host builds it.
+        harness.Paint(front: Tree());
+        harness.Move(20f, 10f);
+        harness.Redraws.ShouldBe(1, "the same row, at the same place, in the same colour: nothing changed");
+
+        harness.Paint(front: Tree());
+        harness.Move(20f, 30f);
+        harness.Redraws.ShouldBe(2, "the row went out");
+    }
+
     [Fact]
     public void AMoveWithNoGestureReachesTheHostsOwnRouting()
     {

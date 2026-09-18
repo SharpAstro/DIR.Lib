@@ -78,7 +78,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     private InputModifier _captureModifiers;
 
     private (float X, float Y)? _pointer;
-    private Layout.Node? _hoverNode;
+    private (Rect<float> Bounds, RGBAColor32 Fill)? _hover;
     private TooltipRequest? _tooltip;
     private DateTimeOffset _tooltipSince;
     private bool _tooltipAnnounced;
@@ -641,11 +641,17 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     /// a node whose <see cref="Layout.Node.HoverBackground"/> lights, or a region whose tooltip is now the
     /// one being waited on.
     /// </summary>
+    /// <remarks>
+    /// Keyed on what the painter would DRAW, the lit rect and its colour, never on the node. A host builds
+    /// its tree afresh every paint, so the node under a pointer that has not left it is a different object
+    /// each frame: keyed on the reference, every move over a lit control asked for a whole frame, and the
+    /// frame it asked for made the next move ask again. The same rect in the same colour is the same pixels.
+    /// </remarks>
     private bool NoteHover(float x, float y)
     {
-        var node = ResolveHoverNode(x, y);
-        var changed = !ReferenceEquals(node, _hoverNode);
-        _hoverNode = node;
+        var hover = ResolveHover(x, y);
+        var changed = !Nullable.Equals(hover, _hover);
+        _hover = hover;
 
         var target = ResolveTooltip(x, y);
         if (target != _tooltip)
@@ -665,15 +671,15 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     }
 
     /// <summary>
-    /// The node the painter would light: the innermost painted node carrying a hover background whose
-    /// arranged rect contains the point.
+    /// What the painter would light: the arranged rect and hover colour of the innermost painted node
+    /// carrying a hover background whose rect contains the point, or null.
     /// </summary>
     /// <remarks>
     /// Asked with the popover's pointer claim applied, exactly as
     /// <c>PixelWidgetBase.PointerWithin</c> asks it, or the router would request a redraw for a row an
     /// open popover is covering and the painter would then decline to light it.
     /// </remarks>
-    private Layout.Node? ResolveHoverNode(float x, float y)
+    private (Rect<float> Bounds, RGBAColor32 Fill)? ResolveHover(float x, float y)
     {
         if (ui.PointerOwner is { } owner
             && !(x >= owner.X && x < owner.X + owner.Width && y >= owner.Y && y < owner.Y + owner.Height))
@@ -690,11 +696,11 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             for (var i = _nodes.Count - 1; i >= 0; i--)
             {
                 var (node, bounds) = _nodes[i];
-                if (node.HoverBackground is not null
+                if (node.HoverBackground is { } fill
                     && x >= bounds.X && x < bounds.X + bounds.Width
                     && y >= bounds.Y && y < bounds.Y + bounds.Height)
                 {
-                    return node;
+                    return (bounds, fill);
                 }
             }
         }
