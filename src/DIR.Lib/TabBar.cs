@@ -121,6 +121,17 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
     public bool ShowNewTabButton { get; set; }
 
     /// <summary>
+    /// What the + does. Null leaves it to a host that asks <see cref="HitNewTabButton"/>, which is how
+    /// the bar has always worked and stays the default; set, the + is a live region a router can run,
+    /// rather than a hit with no handler that a router consumes and does nothing with.
+    /// </summary>
+    public Action? OnNewTab { get; set; }
+
+    // The click handler the + registers, made once: a closure per frame for a button that is drawn
+    // every frame is an allocation for nothing.
+    private Action<InputModifier>? _newTabClick;
+
+    /// <summary>
     /// True while whatever the + opens is what the window is showing. It then wears the accent an active
     /// tab wears — a host that puts a real page behind the + (a new-tab page) needs the strip to say so,
     /// or nothing in the bar reads as selected while the marked tab is not the one on screen.
@@ -387,8 +398,14 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
         DrawLayoutIcon(Layout.IconKind.Plus, new RectF32(
             rect.X + (rect.Width - mark) * 0.5f, rect.Y + (rect.Height - mark) * 0.5f, mark, mark), ink);
 
+        if (OnNewTab is not null)
+        {
+            _newTabClick ??= _ => OnNewTab?.Invoke();
+        }
+
         RegisterClickable(rect.X, rect.Y, rect.Width, rect.Height,
-            new HitResult.ButtonHit(TabBarRegions.NewTab), cursor: CursorKind.Pointer);
+            new HitResult.ButtonHit(TabBarRegions.NewTab),
+            onClick: OnNewTab is null ? null : _newTabClick, cursor: CursorKind.Pointer);
     }
 
     /// <summary>

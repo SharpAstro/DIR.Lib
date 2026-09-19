@@ -73,6 +73,20 @@ public readonly record struct ClickableRegion(
     /// screen" has an answer.
     /// </summary>
     public bool FocusOnOpen { get; init; }
+
+    /// <summary>
+    /// The popover this region is the trigger of (<see cref="Layout.Node.OpensPopover"/>): a press toggles
+    /// it, and while it is open a press on its backdrop that lands on this region reaches this region.
+    /// Null on a region that opens nothing, which is nearly all of them.
+    /// </summary>
+    public PopoverState? Opens { get; init; }
+
+    /// <summary>
+    /// The popover this region is the backdrop of (<see cref="Layout.Node.DismissesPopover"/>). The router
+    /// reads it to tell a trigger beneath the backdrop from the dismissed popover's own trigger, which
+    /// must not toggle it straight back open.
+    /// </summary>
+    public PopoverState? Dismisses { get; init; }
 }
 
 /// <summary>

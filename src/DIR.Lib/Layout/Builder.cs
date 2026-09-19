@@ -177,11 +177,17 @@ public static class Builder
     /// people read as "it closed and then did something I did not ask for". A null
     /// <paramref name="backdrop"/> leaves it unpainted, still present, and still dismissing.
     /// </para>
+    /// <para>
+    /// The one press the backdrop does NOT keep to itself is one that lands on a TRIGGER beneath it -- a
+    /// node declared <see cref="Node.Opens"/> -- which the router lets through so a bar of cards switches
+    /// in one press. The scrim says which popover it dismisses (<see cref="Node.DismissesPopover"/>) for
+    /// exactly that: the router has to know which trigger is the dismissed popover's own.
+    /// </para>
     /// </remarks>
     public static Node Popover(RectF32 anchor, Node content, PopoverState state,
         DockSide side = DockSide.Bottom, RGBAColor32? backdrop = null)
     {
-        var scrim = Spacer().Stretch().Clickable(new HitResult.ChromeHit(), _ => state.Close());
+        var scrim = Spacer().Stretch().Clickable(new HitResult.ChromeHit(), _ => state.Close()).Dismisses(state);
         if (backdrop is { } colour)
         {
             scrim = scrim.Bg(colour);
@@ -262,6 +268,10 @@ public static class Builder
             rows[i] = row;
         }
 
+        // A row is the atom, so the keyboard's EnsureVisible and the wheel's step count rows -- the
+        // engine converts it to surface units when it feeds the controller. Stated on every build for
+        // the same reason the rows are: the menu's font may have changed since the last one.
+        state.Scroll.AtomDesignUnits = rowHeight;
         var list = VStack(rows).W(Sizing.Fixed(anchor.Size.X)).WithScroll(state.Scroll);
 
         if (maxHeight > 0f)

@@ -140,10 +140,12 @@ public abstract partial record Node
 
     /// <summary>
     /// Declare this node's arranged rect to be <paramref name="controller"/>'s viewport, so a wheel can
-    /// reach the innermost list under the pointer and a list stops re-deriving where it was drawn. The
-    /// rows and row height stay the consumer's, through
-    /// <see cref="ListScrollController.SetExtent"/>. Named With* so it does not shadow the
-    /// <see cref="Node.Scroll"/> property it sets.
+    /// reach the innermost list under the pointer and a list stops re-deriving where it was drawn.
+    /// On a <see cref="Stack"/> it is a scroll CONTAINER: the children are laid out at their full extent
+    /// and slid by the controller's offset, the controller is told what it scrolls over (one surface
+    /// unit per atom), and the painter clips the subtree to this rect and registers only what shows.
+    /// Cap the stack's extent (<see cref="HClamp"/>) or it measures to its content and never scrolls.
+    /// Named With* so it does not shadow the <see cref="Node.Scroll"/> property it sets.
     /// </summary>
     public Node WithScroll(ListScrollController controller) => this with { Scroll = controller };
 
@@ -160,6 +162,21 @@ public abstract partial record Node
     /// that carries its binding -- so the chord is not taken apart and rebuilt to be passed on.</para>
     /// </summary>
     public Node WithShortcut(KeyChord chord) => this with { Shortcut = chord };
+
+    /// <summary>
+    /// Make this node the trigger of <paramref name="popover"/>: a press toggles it, a shortcut on the
+    /// node toggles it, and while it is open a press on its backdrop that lands here reaches here. See
+    /// <see cref="Node.OpensPopover"/>. Pair with <see cref="Clickable"/> or <see cref="Pressable"/> for the
+    /// hit; a trigger with neither registers no region and opens nothing.
+    /// </summary>
+    public Node Opens(PopoverState popover) => this with { OpensPopover = popover };
+
+    /// <summary>
+    /// Make this node the backdrop of <paramref name="popover"/>. <see cref="Builder.Popover"/> states it
+    /// on the scrim it builds; a hand-built backdrop states it here so a trigger beneath it stays
+    /// reachable. See <see cref="Node.DismissesPopover"/>.
+    /// </summary>
+    public Node Dismisses(PopoverState popover) => this with { DismissesPopover = popover };
 
     /// <summary>States the pointer's appearance over this node without making it a click target — a
     /// panel's card saying "arrow here", so nothing inside it has to repeat the claim. Named apart from

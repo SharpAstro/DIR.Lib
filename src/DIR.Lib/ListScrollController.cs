@@ -131,6 +131,20 @@ public sealed class ListScrollController
     /// <summary>Atoms scrolled per unit wheel delta. Default 3, matching desktop convention.</summary>
     public float WheelStepAtoms { get; set; } = 3f;
 
+    /// <summary>
+    /// What one atom IS when a layout tree feeds this controller (<see cref="Layout.Node.WithScroll"/>), in
+    /// design units along the scroll axis. Zero, the default, is one surface unit: the offset is then a
+    /// plain distance, which is right for a list of mixed or unknown row heights. A list of uniform rows
+    /// states its row height here, and the offset counts rows -- so <see cref="EnsureVisible"/> and the
+    /// wheel step keep meaning "this row" and "three rows", as they do on a hand-fed list.
+    /// </summary>
+    /// <remarks>
+    /// Read by the ENGINE, which is the only party that can convert it: the extent it hands
+    /// <see cref="SetExtent"/> is in surface units, and only the measure context knows how many of those
+    /// a design unit is on the surface being laid out.
+    /// </remarks>
+    public float AtomDesignUnits { get; set; }
+
     /// <summary>Raised whenever an input event changes the scroll position. Wire to the widget's redraw.</summary>
     public event Action? Changed;
 

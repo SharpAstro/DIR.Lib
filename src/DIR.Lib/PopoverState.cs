@@ -33,8 +33,47 @@ public sealed class PopoverState
     /// backdrop, or the consumer. Not raised by a <see cref="Close"/> on an already-closed popover.</summary>
     public event Action? Closed;
 
-    /// <summary>Opens the popover. Idempotent.</summary>
-    public void Open() => IsOpen = true;
+    /// <summary>Raised when the popover goes from closed to open, however it was opened: a trigger's
+    /// press, its shortcut, or the consumer. Not raised by an <see cref="Open"/> on one already open.</summary>
+    /// <remarks>
+    /// The transition a consumer builds on: a card whose rows are expensive to derive -- an outline walked
+    /// lazily -- derives them here, once, rather than on every frame that finds <see cref="IsOpen"/> true.
+    /// </remarks>
+    public event Action? Opened;
+
+    private PopoverGroup? _group;
+
+    /// <summary>
+    /// The group this popover is exclusive within, or null for one that coexists with every other. Stated
+    /// at construction, since a popover does not change bars.
+    /// </summary>
+    /// <remarks>
+    /// Joining is what the setter does, so the group needs no separate registration call that a consumer
+    /// could forget for one member of six -- which is the shape the hand-written sibling closing took.
+    /// </remarks>
+    public PopoverGroup? Group
+    {
+        get => _group;
+        init
+        {
+            _group = value;
+            value?.Add(this);
+        }
+    }
+
+    /// <summary>Opens the popover, closing the rest of its <see cref="Group"/> first, and raises
+    /// <see cref="Opened"/> if it was closed. Idempotent.</summary>
+    public void Open()
+    {
+        if (IsOpen)
+        {
+            return;
+        }
+
+        _group?.Opening(this);
+        IsOpen = true;
+        Opened?.Invoke();
+    }
 
     /// <summary>Closes the popover and raises <see cref="Closed"/> if it was open. Idempotent.</summary>
     public void Close()

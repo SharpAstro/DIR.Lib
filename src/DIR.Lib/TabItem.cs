@@ -94,6 +94,40 @@ public readonly record struct TabItem<T>(string Label, T Value)
     /// </remarks>
     public Action<T>? OnSelect { get; init; }
 
+    /// <summary>
+    /// The PRESS on this tab, handed the tab's <see cref="Value"/> and the press itself -- its button, its
+    /// click count, where it landed -- and returning a <see cref="DragCapture"/> to own the gesture that
+    /// follows, or null to decline. Null is a tab whose press is its click.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Everything a tab strip does beyond selecting lives on the press and not on the click: a middle
+    /// button closes, a drag reorders or tears the tab out into its own window. <see cref="OnSelect"/>
+    /// carries neither the button nor a gesture, and the bar never runs a drag of its own
+    /// (<c>TabBar.SlotAt</c> nominates a slot; the host moves the tab) -- so without this, a host under a
+    /// router had no way to start one: the region consumed the press and nothing reached the host.
+    /// </para>
+    /// <para>
+    /// The same composition rule as <see cref="Layout.Node.OnPress"/> beside <see cref="Layout.Node.OnClick"/>:
+    /// declining (null) lets the press fall through to <see cref="OnSelect"/>, claiming a capture makes the
+    /// gesture the press's whole meaning and <see cref="OnSelect"/> does not run. A drag that should also
+    /// select the tab it lifts selects it inside the press, which is what every host did anyway.
+    /// </para>
+    /// </remarks>
+    public Func<T, PointerPress, DragCapture?>? OnPress { get; init; }
+
+    /// <summary>
+    /// What the ✕ on this tab does, handed the tab's <see cref="Value"/>. Null leaves the ✕ to whatever
+    /// reads the strip's registered regions back (<c>TabBar.HandleMouseDown</c> reports it as a
+    /// <see cref="TabClick{T}.Close"/>), which is how a bar with no callbacks works and stays the default.
+    /// </summary>
+    /// <remarks>
+    /// Bound to the ✕'s own region, so under a router the mark is live rather than a region with a hit and
+    /// no handler -- which the router consumes and does nothing with, since registering a hit without a
+    /// handler means "nothing happens here" and never "someone else will do it".
+    /// </remarks>
+    public Action<T>? OnClose { get; init; }
+
     /// <summary>A tab that cannot be selected, and says why.</summary>
     public static TabItem<T> Disabled(string label, T value, string? reason = null)
         => new(label, value) { IsEnabled = false, Tooltip = reason };

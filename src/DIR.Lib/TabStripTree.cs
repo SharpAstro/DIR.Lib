@@ -110,6 +110,18 @@ public interface ITabStripSource
     /// instead of being called. Default: none.
     /// </summary>
     Action<InputModifier>? Select(int index) => null;
+
+    /// <summary>
+    /// The tab's own press handler (<see cref="TabItem{T}.OnPress"/>), or null for a tab whose press is
+    /// its click. Default: none.
+    /// </summary>
+    Func<PointerPress, DragCapture?>? Press(int index) => null;
+
+    /// <summary>
+    /// What the tab's ✕ does (<see cref="TabItem{T}.OnClose"/>), or null to leave the mark to a host that
+    /// reads the regions back. Default: none.
+    /// </summary>
+    Action<InputModifier>? CloseTab(int index) => null;
 }
 
 /// <summary>Tabs from a list of <see cref="TabItem{T}"/>.</summary>
@@ -143,6 +155,30 @@ public readonly struct TabItemsSource<T>(IReadOnlyList<TabItem<T>> items) : ITab
 
         var value = items[index].Value;
         return _ => onSelect(value);
+    }
+
+    /// <inheritdoc/>
+    public Func<PointerPress, DragCapture?>? Press(int index)
+    {
+        if (items[index].OnPress is not { } onPress)
+        {
+            return null;
+        }
+
+        var value = items[index].Value;
+        return press => onPress(value, press);
+    }
+
+    /// <inheritdoc/>
+    public Action<InputModifier>? CloseTab(int index)
+    {
+        if (items[index].OnClose is not { } onClose)
+        {
+            return null;
+        }
+
+        var value = items[index].Value;
+        return _ => onClose(value);
     }
 }
 
@@ -269,7 +305,7 @@ public static class TabStripTree
 
             children.Add(Tab(icon, label, i, extent, iconExtent, closeBox,
                 active, enabled, hovered, closeHovered, uniform, vertical, outerAtStart, m, options, onSelect,
-                source.Shortcut(i), source.Select(i)));
+                source.Shortcut(i), source.Select(i), source.Press(i), source.CloseTab(i)));
 
             used = tabStart + extent;
             tabsEnd = used;
@@ -321,7 +357,8 @@ public static class TabStripTree
         string? icon, string label, int index, float extent, float iconExtent, float closeBox,
         bool active, bool enabled, bool hovered, bool closeHovered, bool uniform, bool vertical, bool outerAtStart,
         TabStripMetrics m, TabStripOptions options, Action<int>? onSelect,
-        KeyChord? shortcut = null, Action<InputModifier>? select = null)
+        KeyChord? shortcut = null, Action<InputModifier>? select = null,
+        Func<PointerPress, DragCapture?>? press = null, Action<InputModifier>? close = null)
     {
         var colors = options.Colors;
 
@@ -341,7 +378,7 @@ public static class TabStripTree
             ? Builder.Text(icon ?? label, icon is not null ? m.IconSize ?? m.FontSize : m.FontSize,
                     ink, TextAlign.Center, TextAlign.Center)
                 .WStar().HStar()
-            : Row(icon, label, iconExtent, closeBox, ink, m, colors, index, enabled, closeHovered);
+            : Row(icon, label, iconExtent, closeBox, ink, m, colors, index, enabled, closeHovered, close);
 
         // Accent on the OUTER cross edge, content filling the rest. Zero border means no accent at all,
         // which is a cell surface: it cannot rule a fraction of a cell.
@@ -362,7 +399,7 @@ public static class TabStripTree
         // it is swallowed rather than falling through to whatever is behind the strip -- but the handlers
         // are dropped, which is what "still drawn, and inert" has always claimed and what the index-only
         // callback quietly did not do: it fired for a greyed tab as readily as for a live one.
-        var onPress = enabled ? Combine(index, onSelect, select) : null;
+        var onClick = enabled ? Combine(index, onSelect, select) : null;
 
         var node = tab
             .Along(vertical, extent)
@@ -370,8 +407,15 @@ public static class TabStripTree
             .Bg(plate)
             .Clickable(
                 new HitResult.ListItemHit(enabled ? TabBarRegions.Tabs : TabBarRegions.DisabledTabs, index),
-                onPress,
+                onClick,
                 enabled ? CursorKind.Pointer : null);
+
+        // The item's own press rides beside the click, for the button and the gesture the click has no
+        // room for; dropped on a disabled tab with the rest of its handlers.
+        if (enabled && press is not null)
+        {
+            node = node with { OnPress = press };
+        }
 
         // The chord goes on only when the tab can actually be reached, so a locked tab's binding is inert
         // by ABSENCE rather than by a guard someone has to remember to write. A dropped tab is not in the
@@ -401,7 +445,8 @@ public static class TabStripTree
     /// which is what "upright content" means for a vertical strip.</summary>
     private static Node Row(
         string? icon, string label, float iconExtent, float closeBox, RGBAColor32 ink,
-        TabStripMetrics m, TabBarColors colors, int index, bool enabled, bool closeHovered)
+        TabStripMetrics m, TabBarColors colors, int index, bool enabled, bool closeHovered,
+        Action<InputModifier>? close)
     {
         var parts = ImmutableArray.CreateBuilder<Node>(6);
         parts.Add(Builder.Spacer().WFixed(m.Pad).HStar());
@@ -420,17 +465,19 @@ public static class TabStripTree
         if (closeBox > 0f && enabled)
         {
             parts.Add(Builder.Spacer().WFixed(m.Pad * 0.1f).HStar());
-            var close = Builder.Text("×", m.FontSize, colors.CloseMark, TextAlign.Center, TextAlign.Center)
+            var closeMark = Builder.Text("×", m.FontSize, colors.CloseMark, TextAlign.Center, TextAlign.Center)
                 .WFixed(closeBox).HStar();
             if (closeHovered)
             {
                 // Separator is the plate: the one role guaranteed to read against both the panel and the
                 // header surface, so this needs no colour of its own in either theme.
-                close = close.Bg(colors.Separator).Radius(closeBox * 0.25f);
+                closeMark = closeMark.Bg(colors.Separator).Radius(closeBox * 0.25f);
             }
 
-            parts.Add(close.Clickable(
-                new HitResult.ListItemHit(TabBarRegions.CloseButtons, index), null, CursorKind.Pointer));
+            // The item's OnClose, where it states one; otherwise a hit with no handler, which a host
+            // reading the regions back answers itself and a router consumes and leaves dead.
+            parts.Add(closeMark.Clickable(
+                new HitResult.ListItemHit(TabBarRegions.CloseButtons, index), close, CursorKind.Pointer));
             parts.Add(Builder.Spacer().WFixed(m.Pad * 0.4f).HStar());
         }
         else

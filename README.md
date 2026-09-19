@@ -44,6 +44,7 @@ Platform bridges (in downstream packages):
 - **`ClickableRegion`** + **`ClickableRegionTracker`** — registered during render, walked in reverse for hit testing
 - **`HitResult`** — open discriminated union: `TextInputHit`, `ButtonHit`, `ChromeHit`, `LinkHit`, `ListItemHit`, `SlotHit<T>`, `SliderStateHit`
 - **`DropdownMenuState`** — dropdown / popup menu state machine
+- **`PopoverState`** + **`PopoverGroup`** — whether a popover is open, the Escape that closes it, and the group within which at most one is open (`new PopoverState { Group = bar }`). A node declared `.Opens(state)` is the popover's trigger: a press or its shortcut toggles it, and while it is open a press on the backdrop that lands on a trigger beneath reaches the trigger, so a bar of cards switches in one press
 
 ## Declarative Layout (`DIR.Lib.Layout`)
 
