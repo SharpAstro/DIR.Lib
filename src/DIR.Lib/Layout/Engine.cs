@@ -290,6 +290,15 @@ public static class Engine
         var mainAvail = MainOf(axis, availSize);
         var crossAvail = CrossOf(axis, availSize);
 
+        // A SCROLLED stack lays its children out at their full extent along the axis and slides them by
+        // the controller's offset: the rect it was given is its viewport, not the room its children get.
+        // The room is the larger of the two, so a list shorter than its viewport still hands its Star
+        // children the slack, and a longer one is laid out as if the viewport were as tall as it is.
+        var scroll = stack.Scroll;
+        var layoutMain = scroll is null
+            ? mainAvail
+            : Max(mainAvail, MainOf(axis, MeasureStack(stack, availSize, ctx)));
+
         // Collapse loop: resolve every child's main extent, then drop any child whose CollapseThreshold
         // undercuts its resolved extent and re-resolve so the freed space (extent + gap) redistributes.
         // Survivor extents only ever grow when a sibling collapses (Fixed/Auto are space-independent,
@@ -301,7 +310,7 @@ public static class Engine
         var mains = new T[n];
         while (true)
         {
-            ResolveStackMains(children, included, includedCount, axis, mainAvail, gap, availSize, ctx, mains);
+            ResolveStackMains(children, included, includedCount, axis, layoutMain, gap, availSize, ctx, mains);
 
             var anyCollapsed = false;
             for (var i = 0; i < n; i++)
@@ -328,6 +337,40 @@ public static class Engine
 
         // Final pass: resolve cross-axis size + position each surviving child along the main axis.
         var cursor = axis == Axis.Vertical ? inner.Y : inner.X;
+
+        if (scroll is not null)
+        {
+            // The controller is told what it scrolls OVER here, because only the arrange knows it: the
+            // viewport is the rect this stack was given and the content is what its children resolved
+            // to. One surface unit per atom, so the offset is a plain distance along the axis and a
+            // wheel or a drag moves the rows by exactly what it says. SetExtent is documented as
+            // idempotent and raises nothing, which is what makes it safe to call from a layout pass.
+            var total = gap * T.CreateChecked(Math.Max(0, includedCount - 1));
+            for (var i = 0; i < n; i++)
+            {
+                if (included[i])
+                {
+                    total += mains[i];
+                }
+            }
+
+            // An atom is a row where the list says so (AtomDesignUnits) and one surface unit otherwise.
+            var atom = scroll.AtomDesignUnits > 0f
+                ? MathF.Max(1f, float.CreateChecked(ToSurfaceOn(ctx, scroll.AtomDesignUnits, axis)))
+                : 1f;
+            scroll.SetExtent(
+                new RectF32(float.CreateChecked(inner.X), float.CreateChecked(inner.Y),
+                    float.CreateChecked(inner.Width), float.CreateChecked(inner.Height)),
+                atomExtentPx: atom,
+                totalAtoms: (int)MathF.Ceiling(float.CreateChecked(total) / atom),
+                new DesignScale(float.CreateChecked(ctx.ToSurfaceX(1f)), float.CreateChecked(ctx.ToSurfaceY(1f))));
+
+            // Slid, not clipped: the children that land outside the viewport are still arranged, and it
+            // is the PAINTER that clips them and declines to register what cannot be seen. Arrange has
+            // no surface to clip on, and a cell painter and a pixel painter clip differently.
+            cursor -= T.CreateTruncating(scroll.Offset * atom);
+        }
+
         for (var i = 0; i < n; i++)
         {
             if (!included[i])

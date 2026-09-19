@@ -66,6 +66,9 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     // Scratch buffers, reused across events rather than allocated per pointer move. Render-thread only,
     // and never held across a call: each is filled from one widget, walked, and abandoned.
     private readonly List<ClickableRegion> _regions = [];
+    // A second region buffer for the walk BENEATH a popover's backdrop, which crosses into lower widgets
+    // while _regions still holds the widget the backdrop was found in.
+    private readonly List<ClickableRegion> _beneath = [];
     private readonly List<Layout.ArrangedNode<float>> _nodes = [];
     private readonly List<TextInputState> _fields = [];
 
@@ -252,13 +255,41 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                     continue;
                 }
 
-                var acted = DispatchPress(widget, region, press);
+                bool acted;
+                var hadKeyboard = ui.Focus.Current;
+
+                // A popover's backdrop yields to a TRIGGER beneath it. The backdrop consumes every press
+                // outside the content, which is right for the page behind a menu and wrong for the bar the
+                // menu hangs from: pressing the next title would only close this one, and the reader
+                // pressed twice. So the popover closes AND the trigger is dispatched -- except the
+                // dismissed popover's own trigger, which is told not to toggle it straight back open, and
+                // that is what makes the lit button's press mean "close". Only the region the press would
+                // have hit had the backdrop not been there counts: a trigger under some other card is
+                // covered, not reachable. And not inside the popover's own content rect, where a press on
+                // the card's padding is a press on the card, whatever the bar holds underneath it.
+                if (region.Dismisses is { } dismissed
+                    && !WithinPointerOwner(down.X, down.Y)
+                    && TryFindTriggerBeneath(widgets, w, i, down.X, down.Y, out var owner, out var trigger))
+                {
+                    acted = DispatchPress(widget, region, press);
+                    acted |= DispatchPress(owner, trigger, press, dismissedByBackdrop: dismissed);
+                }
+                else
+                {
+                    acted = DispatchPress(widget, region, press);
+                }
 
                 // A press somewhere other than a field takes the keyboard off whichever field had it,
                 // and does so AFTER the dispatch so a handler reading the field still reads what the
                 // reader saw. A disabled region reaches here with nothing dispatched, which is right:
                 // the press was swallowed, and a swallowed press is still a press somewhere else.
-                if (region.Result is not HitResult.TextInputHit)
+                //
+                // Unless the press GAVE the keyboard to a field -- a button whose handler opens an editor
+                // on a value -- in which case that was the press's whole meaning, and taking it straight
+                // back would leave a field painted as focused that swallows nothing. Told apart by whether
+                // the focus the dispatch left behind is the one it found.
+                if (region.Result is not HitResult.TextInputHit
+                    && ReferenceEquals(ui.Focus.Current, hadKeyboard))
                 {
                     acted |= BlurFocusedField();
                 }
@@ -282,11 +313,57 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     }
 
     /// <summary>
+    /// The region a press would have hit had the backdrop at <paramref name="above"/> in widget
+    /// <paramref name="w"/> not been there -- and whether it is a trigger. Only the FIRST region beneath
+    /// counts: a trigger covered by some other card is not what the reader pressed.
+    /// </summary>
+    private bool TryFindTriggerBeneath(IReadOnlyList<IPixelWidget> widgets, int w, int above, float x, float y,
+        out IPixelWidget owner, out ClickableRegion trigger)
+    {
+        // The rest of the backdrop's own widget, below it.
+        for (var i = above - 1; i >= 0; i--)
+        {
+            if (Contains(_regions[i], x, y))
+            {
+                owner = widgets[w];
+                trigger = _regions[i];
+                return trigger.Opens is not null && !trigger.IsDisabled;
+            }
+        }
+
+        for (var v = w - 1; v >= 0; v--)
+        {
+            _beneath.Clear();
+            widgets[v].CollectPaintedRegions(_beneath);
+            for (var i = _beneath.Count - 1; i >= 0; i--)
+            {
+                if (Contains(_beneath[i], x, y))
+                {
+                    owner = widgets[v];
+                    trigger = _beneath[i];
+                    return trigger.Opens is not null && !trigger.IsDisabled;
+                }
+            }
+        }
+
+        owner = widgets[w];
+        trigger = default;
+        return false;
+    }
+
+    private bool WithinPointerOwner(float x, float y)
+        => ui.PointerOwner is { } owner
+           && x >= owner.X && x < owner.X + owner.Width && y >= owner.Y && y < owner.Y + owner.Height;
+
+    /// <summary>
     /// One press onto one region, in the order a region can answer it. Returns whether anything acted,
     /// which is what decides a redraw; the press is consumed either way, the topmost region under the
     /// pointer being the one that owns it.
     /// </summary>
-    private bool DispatchPress(IPixelWidget widget, in ClickableRegion region, in PointerPress press)
+    /// <param name="dismissedByBackdrop">The popover a backdrop above this region has just closed for this
+    /// same press, so a trigger of THAT popover must not toggle it back open. Null for an ordinary press.</param>
+    private bool DispatchPress(IPixelWidget widget, in ClickableRegion region, in PointerPress press,
+        PopoverState? dismissedByBackdrop = null)
     {
         if (region.Result is HitResult.TextInputHit field)
         {
@@ -322,6 +399,15 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         if (region.OnClick is { } click)
         {
             click(press.Modifiers);
+            acted = true;
+        }
+
+        // A trigger toggles its popover after its own handlers have run, so a handler that reads the
+        // popover still reads what the reader saw. A press that CLAIMED a drag never gets here: the
+        // gesture is that press's meaning, and a menu that opened under a drag would be a surprise.
+        if (region.Opens is { } opens && !ReferenceEquals(opens, dismissedByBackdrop))
+        {
+            opens.Toggle();
             acted = true;
         }
 
@@ -542,9 +628,24 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             return true;
         }
 
+        // A trigger's chord does what its press does: the handler AND the toggle, in that order, so the
+        // key and the button cannot drift -- which is what a hand-written key map beside a chip row did,
+        // the key path closing the siblings and the press path forgetting one.
+        var acted = false;
         if ((node.OnActivate ?? node.OnClick) is { } act)
         {
             act(chord.Modifiers);
+            acted = true;
+        }
+
+        if (node.OpensPopover is { } opens)
+        {
+            opens.Toggle();
+            acted = true;
+        }
+
+        if (acted)
+        {
             return true;
         }
 

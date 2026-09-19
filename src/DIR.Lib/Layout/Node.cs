@@ -275,6 +275,42 @@ public abstract partial record Node
     /// </remarks>
     public PopoverState? Popover { get; init; }
 
+    /// <summary>
+    /// The popover a press on this node toggles, set via <see cref="Opens"/>: this node is that popover's
+    /// TRIGGER. Null on every ordinary node.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A declaration rather than an <see cref="OnClick"/> that calls <see cref="PopoverState.Toggle"/>,
+    /// because the router has to be able to tell a trigger from any other button. A popover's backdrop
+    /// consumes every press outside its content, which is right for the page behind a menu and wrong for
+    /// the menu bar it hangs from: with one menu open, pressing the next title closed the first and did
+    /// nothing else, and the reader pressed again. Every consumer with a row of cards then re-ordered its
+    /// own dispatcher so the triggers were tested before the cards -- a rule about popovers, written into
+    /// each host. Stated on the node, the router applies it once: a press on a backdrop that lands on a
+    /// trigger beneath closes the popover AND reaches the trigger, so the switch is one press.
+    /// </para>
+    /// <para>
+    /// The trigger of the popover being dismissed is the one exception, and it is what makes the lit
+    /// button's press mean "close": the backdrop already closed it, and toggling again would reopen it.
+    /// A shortcut on a trigger toggles the same way a press does.
+    /// </para>
+    /// <para>
+    /// Composes with <see cref="OnPress"/> and <see cref="OnClick"/> rather than replacing them: a press
+    /// runs the handler AND toggles, unless the press handler claimed a drag, in which case the gesture is
+    /// the press's meaning and nothing toggles. The click count is on the press, so a control that opens
+    /// on one click and edits on two declares both and reads <see cref="PointerPress.Clicks"/>.
+    /// </para>
+    /// </remarks>
+    public PopoverState? OpensPopover { get; init; }
+
+    /// <summary>
+    /// The popover a press on this node dismisses: this node is that popover's BACKDROP. Set by
+    /// <see cref="Builder.Popover"/> on the scrim; a consumer painting a backdrop of its own states it via
+    /// <see cref="Dismisses"/>, or the router cannot let a trigger through it.
+    /// </summary>
+    public PopoverState? DismissesPopover { get; init; }
+
     /// <summary>What the pointer looks like over this node's arranged rect, or null to inherit from
     /// whatever encloses it. Bound to the rect the content was painted in, like <see cref="Hit"/>.</summary>
     public CursorKind? Cursor { get; init; }
