@@ -188,6 +188,157 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
     }
 
     /// <summary>
+    /// Fills the image of the unit disc under the affine map carrying local
+    /// <c>(-1,-1)</c>, <c>(+1,-1)</c>, <c>(+1,+1)</c>, <c>(-1,+1)</c> to the four corners given, in
+    /// surface pixels. Rotation, non-uniform scale and shear all fall out of the corners, so this is
+    /// the one entry point an ellipse at an arbitrary placement needs.
+    /// </summary>
+    /// <remarks>
+    /// <para>The corners must form a parallelogram (<c>c01 == c00 + c11 - c10</c>). The centre plus
+    /// semi-axis overload cannot be malformed and is the one to prefer where a caller already holds
+    /// axes; this one is for a caller that already holds corners.</para>
+    ///
+    /// <para>The default inverts the map at each pixel centre over the bounding box of the corners
+    /// and emits each run of inside pixels as one <see cref="FillRectangle"/> span, the same shape
+    /// as the default on <see cref="DrawEllipse(in RectInt, RGBAColor32, float)"/>. A GPU renderer
+    /// should override it with a single draw: interpolating a local coordinate across the quad
+    /// inverts the same map for free, which is why this needs no shader of its own.</para>
+    /// </remarks>
+    public virtual void FillEllipse((float X, float Y) c00, (float X, float Y) c10,
+                                    (float X, float Y) c11, (float X, float Y) c01,
+                                    RGBAColor32 fillColor)
+        => AffineEllipseSpans(c00, c10, c11, c01, fillColor, innerRadius: 0f);
+
+    /// <summary>
+    /// Fills an ellipse given as a centre and its two semi-axis VECTORS, the images of local
+    /// <c>(1,0)</c> and <c>(0,1)</c>. Not virtual: it expands to its own corners and reaches the
+    /// corner overload, so a backend overrides one method per shape and inherits this.
+    /// </summary>
+    public void FillEllipse((float X, float Y) centre, (float X, float Y) semiAxisU,
+                            (float X, float Y) semiAxisV, RGBAColor32 fillColor)
+        => FillEllipse(
+            (centre.X - semiAxisU.X - semiAxisV.X, centre.Y - semiAxisU.Y - semiAxisV.Y),
+            (centre.X + semiAxisU.X - semiAxisV.X, centre.Y + semiAxisU.Y - semiAxisV.Y),
+            (centre.X + semiAxisU.X + semiAxisV.X, centre.Y + semiAxisU.Y + semiAxisV.Y),
+            (centre.X - semiAxisU.X + semiAxisV.X, centre.Y - semiAxisU.Y + semiAxisV.Y),
+            fillColor);
+
+    /// <summary>
+    /// Draws a ring bounded by the image of the unit disc under the same affine map the four-corner
+    /// <c>FillEllipse</c> uses, with the hole given in LOCAL units.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>The hole is a fraction of the semi-diameter, not a pixel width.</b> <c>0</c> fills
+    /// solid and <c>1</c> draws nothing. The corners must therefore span the stroke's OUTER edge:
+    /// an ellipse of semi-axis <c>a</c> stroked with width <c>w</c> centred on its own boundary is
+    /// a quad of semi-axis <c>a + w/2</c> with <c>innerRadius = (a - w/2) / (a + w/2)</c>.</para>
+    ///
+    /// <para>One scalar can only describe a ring of constant thickness in LOCAL space, which is a
+    /// constant PIXEL width exactly when the pre-transform shape is a circle. That covers a circle
+    /// under any rotation, scale or shear, because the transform is what the corners carry. A shape
+    /// already elliptical before the transform, stroked with a constant width, has a ring thinner
+    /// across its long axis than its short one, and this draws that as uniform; a caller needing
+    /// the true variable-width ring wants a polyline walk instead.</para>
+    ///
+    /// <para>Same default, and the same advice to override, as the fill above.</para>
+    /// </remarks>
+    public virtual void DrawEllipse((float X, float Y) c00, (float X, float Y) c10,
+                                    (float X, float Y) c11, (float X, float Y) c01,
+                                    RGBAColor32 strokeColor, float innerRadius)
+        => AffineEllipseSpans(c00, c10, c11, c01, strokeColor, innerRadius);
+
+    /// <summary>
+    /// Draws a ring given as a centre and its two semi-axis vectors. The axes counterpart of the
+    /// corner overload; see it for what <paramref name="innerRadius"/> can and cannot express.
+    /// </summary>
+    public void DrawEllipse((float X, float Y) centre, (float X, float Y) semiAxisU,
+                            (float X, float Y) semiAxisV, RGBAColor32 strokeColor, float innerRadius)
+        => DrawEllipse(
+            (centre.X - semiAxisU.X - semiAxisV.X, centre.Y - semiAxisU.Y - semiAxisV.Y),
+            (centre.X + semiAxisU.X - semiAxisV.X, centre.Y + semiAxisU.Y - semiAxisV.Y),
+            (centre.X + semiAxisU.X + semiAxisV.X, centre.Y + semiAxisU.Y + semiAxisV.Y),
+            (centre.X - semiAxisU.X + semiAxisV.X, centre.Y - semiAxisU.Y + semiAxisV.Y),
+            strokeColor, innerRadius);
+
+    /// <summary>
+    /// The CPU default behind both affine entry points: invert the map at each pixel centre and
+    /// emit runs of inside pixels as horizontal spans.
+    /// </summary>
+    private void AffineEllipseSpans((float X, float Y) c00, (float X, float Y) c10,
+                                    (float X, float Y) c11, (float X, float Y) c01,
+                                    RGBAColor32 color, float innerRadius)
+    {
+        // The corners imply the axes: c10 - c00 spans 2u and c01 - c00 spans 2v, so the centre is
+        // one of each away from c00. c11 is read only for the bounding box, which is what makes a
+        // non-parallelogram draw quietly as the parallelogram its other three corners describe.
+        var ux = (c10.X - c00.X) * 0.5f;
+        var uy = (c10.Y - c00.Y) * 0.5f;
+        var vx = (c01.X - c00.X) * 0.5f;
+        var vy = (c01.Y - c00.Y) * 0.5f;
+        var cx = c00.X + ux + vx;
+        var cy = c00.Y + uy + vy;
+
+        // A collapsed map has no interior and no inverse. The determinant covers both the zero-size
+        // case the rect overloads test as rx/ry < 1 AND a sheared map flattened onto a line, which
+        // no width-and-height check would catch.
+        var det = ((double)ux * vy) - ((double)uy * vx);
+        if (Math.Abs(det) < 1e-9)
+        {
+            return;
+        }
+
+        // Rows of the inverse, so local = (m00*dx + m01*dy, m10*dx + m11*dy).
+        var inv = 1.0 / det;
+        var m00 = vy * inv;
+        var m01 = -vx * inv;
+        var m10 = -uy * inv;
+        var m11 = ux * inv;
+
+        var inner = Math.Clamp(innerRadius, 0f, 1f);
+        var innerSq = (double)inner * inner;
+
+        var minX = (int)MathF.Floor(MathF.Min(MathF.Min(c00.X, c10.X), MathF.Min(c11.X, c01.X)));
+        var maxX = (int)MathF.Ceiling(MathF.Max(MathF.Max(c00.X, c10.X), MathF.Max(c11.X, c01.X)));
+        var minY = (int)MathF.Floor(MathF.Min(MathF.Min(c00.Y, c10.Y), MathF.Min(c11.Y, c01.Y)));
+        var maxY = (int)MathF.Ceiling(MathF.Max(MathF.Max(c00.Y, c10.Y), MathF.Max(c11.Y, c01.Y)));
+
+        for (var y = minY; y <= maxY; y++)
+        {
+            // A ring row is TWO runs, so a run is closed on the first pixel that fails rather than
+            // assumed to reach the right edge.
+            var runStart = int.MinValue;
+
+            for (var x = minX; x <= maxX; x++)
+            {
+                // Sampled at the pixel centre, matching the scanline convention FillEllipse uses.
+                var dx = x + 0.5 - cx;
+                var dy = y + 0.5 - cy;
+                var lx = (m00 * dx) + (m01 * dy);
+                var ly = (m10 * dx) + (m11 * dy);
+                var r2 = (lx * lx) + (ly * ly);
+
+                if (r2 <= 1.0 && r2 >= innerSq)
+                {
+                    if (runStart == int.MinValue)
+                    {
+                        runStart = x;
+                    }
+                }
+                else if (runStart != int.MinValue)
+                {
+                    FillRectangle(new RectInt(new PointInt(x, y + 1), new PointInt(runStart, y)), color);
+                    runStart = int.MinValue;
+                }
+            }
+
+            if (runStart != int.MinValue)
+            {
+                FillRectangle(new RectInt(new PointInt(maxX + 1, y + 1), new PointInt(runStart, y)), color);
+            }
+        }
+    }
+
+    /// <summary>
     /// Midpoint ellipse algorithm: integer-only, no trig/sqrt. Traces one quadrant,
     /// accumulates horizontal spans per row, and outputs 4-way symmetric FillRectangle
     /// calls. Region 1 (top, stepping right) merges consecutive same-Y points into
