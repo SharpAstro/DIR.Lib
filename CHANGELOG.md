@@ -9,6 +9,43 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 10.3
+
+**An ellipse can be drawn at any affine placement, from the abstraction rather than from one
+backend.** `FillEllipse` and `DrawEllipse` took an axis-aligned `RectInt`, so a rotated or sheared
+ellipse had nowhere to go: a consumer wanting one either reached past the abstraction to whichever
+backend could, or kept a polyline walk of its own. That is the failure `DrawTriangles` already
+names in its own documentation, one missing primitive being enough to pin a whole UI layer to one
+renderer, and a rotated galaxy ellipse has to reach a GPU viewer, a CPU raster exporter and a
+browser alike. Additive: two new virtuals, two non-virtual convenience overloads, no existing
+signature touched.
+
+- **Four corners, or a centre and two semi-axis VECTORS.** The corners are the images of local
+  `(-1,-1)`, `(+1,-1)`, `(+1,+1)`, `(-1,+1)`, and what is drawn is the image of the unit disc under
+  that same map, so rotation, non-uniform scale and shear all fall out of the inputs. The axes form
+  cannot be malformed, where four corners must satisfy `c01 == c00 + c11 - c10`; it is non-virtual
+  and expands to the corner form, so a backend overrides one method per shape and inherits the
+  convenience.
+- **The CPU default inverts the map per pixel centre and emits runs as `FillRectangle` spans**, the
+  same shape `DrawEllipse(in RectInt, ...)`'s default already has. A GPU renderer overrides it with
+  one draw: interpolating a local coordinate across the quad inverts the same map for free, which
+  is why this needed no new shader in SdlVulkan.Renderer, only a vertex-buffer write.
+- **The ring's hole is a fraction of the semi-diameter, not a pixel width**, and that is a real
+  limit rather than an oversight: one scalar describes a ring of constant thickness in LOCAL space,
+  which is a constant PIXEL width exactly when the pre-transform shape is a circle. A shape already
+  elliptical before the transform, stroked with a constant width, is thinner across its long axis
+  than its short one, and this draws it uniform. The conversion for the common case is on the
+  declaration: semi-axis `a` stroked `w` is a quad of `a + w/2` with
+  `innerRadius = (a - w/2) / (a + w/2)`.
+- **A collapsed map draws nothing.** The guard is the determinant, not a width and height check,
+  because a sheared map flattened onto a line has neither dimension zero.
+
+`AffineEllipseTests` pins it, including the pair that makes the rotation claim falsifiable: the same
+pixel reads background for a 45-degree ellipse and ink for the circle circumscribing its corners, so
+a bounding-box implementation is ruled out by a passing test rather than by assertion. Area is
+checked against `pi * |det|`, which a bounding-box reading of the same input misses by a factor of
+three.
+
 ## 10.2
 
 **A bar of cards switches in one press, and a tab carries its own press.** Two gaps a consumer with a
