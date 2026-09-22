@@ -9,6 +9,41 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 10.4
+
+**The affine ellipse's stroke is a pixel width, and both affine defaults are anti-aliased.** 10.3
+declared `DrawEllipse(corners, colour, innerRadius)` with the ring's hole as a fraction of the
+semi-diameter, and recorded the limit that implies: one fraction is a constant thickness in LOCAL
+space, a constant PIXEL width only for a circle, so a 2:1 ellipse drew half as thick across its
+long axis as its short one. That limit was not a property of the shape, only of the parameter, and
+the parameter was the wrong one: the rect form has always taken `strokeWidth` in pixels. The
+declaration is corrected in place, `DrawEllipse(corners, colour, strokeWidth)`, before anything
+consumed it (no published package took 10.3's affine form). Additive in effect, a signature
+correction in form, and the reason this is 10.4 rather than a major.
+
+- **One rule, stated once, on the corner `DrawEllipse`.** With `r = |local|`, the signed pixel
+  distance to the boundary is `d = (r - 1) / |grad r|`; a fill covers `clamp(0.5 - d, 0, 1)`, a
+  stroke of width `w` covers `clamp(0.5 + w/2 - |d|, 0, 1)`, and the footprint is the corners grown
+  by `w/2 + 1` pixels along each axis. The CPU default computes the gradient analytically
+  (`(M^-1)^T n / r`); a GPU override reads it off the screen-space derivative of the interpolated
+  radius. Everything drawing this shape, on every backend, implements that and nothing else, which
+  is what stops two backends drawing different rings for one call.
+- **The edge is a coverage ramp.** Fully covered pixels still go out as `FillRectangle` spans;
+  a partially covered edge pixel goes out as a one-pixel fill with the colour's alpha scaled by its
+  coverage. Nothing on the abstraction needed adding for that: every backend's `FillRectangle`
+  already blends a translucent colour.
+- **`Renderer.EllipseCorners(in RectInt)`** is the one rect-to-corners expansion, public and
+  static. A backend routing its rect overloads through its affine override reaches for it rather
+  than writing its own; two backends each writing their own is how one came to size a ring's stroke
+  off the major semi-axis and the other off the minor.
+- A non-positive width draws nothing, rather than a fill or a hairline.
+
+`AffineEllipseTests` measures rather than counts: ink is opaque red over black so a pixel's red
+channel is its coverage, and area is the coverage SUM (pi times the determinant, to within the
+edge's rounding), a 2:1 ellipse's 3 px stroke reads 3 px across both axes, and a stroke turned 30
+degrees off the grid covers perimeter times width, which the hole fraction it replaced misses by a
+third. A hard-edged implementation fails the edge test outright.
+
 ## 10.3
 
 **An ellipse can be drawn at any affine placement, from the abstraction rather than from one

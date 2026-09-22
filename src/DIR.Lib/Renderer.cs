@@ -188,6 +188,24 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
     }
 
     /// <summary>
+    /// The four corners an axis-aligned rect hands the affine ellipse overloads: the ellipse
+    /// inscribed in the rect, which is what <see cref="FillEllipse(in RectInt, RGBAColor32)"/> and
+    /// <see cref="DrawEllipse(in RectInt, RGBAColor32, float)"/> draw. Public and static so a
+    /// backend that routes its rect overloads through its affine override has ONE conversion to
+    /// reach for; two backends each writing their own is how one came to size a ring's stroke off
+    /// the major semi-axis and the other off the minor, drawing different rings for the same call.
+    /// </summary>
+    public static ((float X, float Y) C00, (float X, float Y) C10, (float X, float Y) C11, (float X, float Y) C01)
+        EllipseCorners(in RectInt rect)
+    {
+        var x0 = (float)rect.UpperLeft.X;
+        var y0 = (float)rect.UpperLeft.Y;
+        var x1 = (float)rect.LowerRight.X;
+        var y1 = (float)rect.LowerRight.Y;
+        return ((x0, y0), (x1, y0), (x1, y1), (x0, y1));
+    }
+
+    /// <summary>
     /// Fills the image of the unit disc under the affine map carrying local
     /// <c>(-1,-1)</c>, <c>(+1,-1)</c>, <c>(+1,+1)</c>, <c>(-1,+1)</c> to the four corners given, in
     /// surface pixels. Rotation, non-uniform scale and shear all fall out of the corners, so this is
@@ -198,16 +216,19 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
     /// semi-axis overload cannot be malformed and is the one to prefer where a caller already holds
     /// axes; this one is for a caller that already holds corners.</para>
     ///
-    /// <para>The default inverts the map at each pixel centre over the bounding box of the corners
-    /// and emits each run of inside pixels as one <see cref="FillRectangle"/> span, the same shape
-    /// as the default on <see cref="DrawEllipse(in RectInt, RGBAColor32, float)"/>. A GPU renderer
-    /// should override it with a single draw: interpolating a local coordinate across the quad
-    /// inverts the same map for free, which is why this needs no shader of its own.</para>
+    /// <para>The edge is anti-aliased by coverage, under the ONE rule every ellipse backend follows,
+    /// stated on <see cref="DrawEllipse((float X, float Y), (float X, float Y), (float X, float Y), (float X, float Y), RGBAColor32, float)"/>.
+    /// The default evaluates that rule at each pixel centre over the corners' bounding box, emits
+    /// each run of fully covered pixels as one <see cref="FillRectangle"/> span and each partially
+    /// covered edge pixel as a one-pixel fill with the colour's alpha scaled by its coverage. A GPU
+    /// renderer should override it with a single draw: interpolating a local coordinate across the
+    /// quad inverts the same map for free, and the screen-space derivative of the interpolated radius
+    /// is the same gradient the default computes analytically.</para>
     /// </remarks>
     public virtual void FillEllipse((float X, float Y) c00, (float X, float Y) c10,
                                     (float X, float Y) c11, (float X, float Y) c01,
                                     RGBAColor32 fillColor)
-        => AffineEllipseSpans(c00, c10, c11, c01, fillColor, innerRadius: 0f);
+        => AffineEllipseCoverage(c00, c10, c11, c01, fillColor, strokeWidth: 0f);
 
     /// <summary>
     /// Fills an ellipse given as a centre and its two semi-axis VECTORS, the images of local
@@ -224,49 +245,65 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
             fillColor);
 
     /// <summary>
-    /// Draws a ring bounded by the image of the unit disc under the same affine map the four-corner
-    /// <c>FillEllipse</c> uses, with the hole given in LOCAL units.
+    /// Strokes the boundary of the image of the unit disc under the same affine map the four-corner
+    /// <c>FillEllipse</c> uses, with a stroke <paramref name="strokeWidth"/> surface pixels wide
+    /// centred on that boundary: the same unit and the same placement as
+    /// <see cref="DrawEllipse(in RectInt, RGBAColor32, float)"/>. A non-positive width draws nothing.
     /// </summary>
     /// <remarks>
-    /// <para><b>The hole is a fraction of the semi-diameter, not a pixel width.</b> <c>0</c> fills
-    /// solid and <c>1</c> draws nothing. The corners must therefore span the stroke's OUTER edge:
-    /// an ellipse of semi-axis <c>a</c> stroked with width <c>w</c> centred on its own boundary is
-    /// a quad of semi-axis <c>a + w/2</c> with <c>innerRadius = (a - w/2) / (a + w/2)</c>.</para>
+    /// <para><b>The rule, stated once.</b> For a point with local coordinate <c>n</c> under the
+    /// inverse map, <c>r = |n|</c> is 1 on the boundary. Its signed distance to the boundary in
+    /// PIXELS is <c>d = (r - 1) / |grad r|</c>, where <c>grad r</c> is the gradient of <c>r</c> with
+    /// respect to screen position: analytically <c>(M^-1)^T n / r</c> for inverse map <c>M^-1</c>,
+    /// or on a GPU the screen-space derivative of the interpolated <c>r</c>. Coverage of a fill is
+    /// <c>clamp(0.5 - d, 0, 1)</c> and of a stroke <c>clamp(0.5 + w/2 - |d|, 0, 1)</c>, and the
+    /// shape's footprint is the corners grown by <c>w/2 + 1</c> pixels along each axis, which is the
+    /// room the outer half of the stroke and its one-pixel edge need. Anything drawing this shape,
+    /// on any backend, implements that and nothing else.</para>
     ///
-    /// <para>One scalar can only describe a ring of constant thickness in LOCAL space, which is a
-    /// constant PIXEL width exactly when the pre-transform shape is a circle. That covers a circle
-    /// under any rotation, scale or shear, because the transform is what the corners carry. A shape
-    /// already elliptical before the transform, stroked with a constant width, has a ring thinner
-    /// across its long axis than its short one, and this draws that as uniform; a caller needing
-    /// the true variable-width ring wants a polyline walk instead.</para>
+    /// <para>Dividing by the gradient is what makes the stroke a PIXEL width at every point of every
+    /// ellipse. The alternative, a hole given as a fraction of the semi-diameter, describes a ring of
+    /// constant thickness in local space, which is a constant pixel width only when the pre-transform
+    /// shape is a circle; a 2:1 ellipse drawn that way is half as thick across its long axis as its
+    /// short one, and every backend converting a pixel width into that fraction picked a different
+    /// semi-axis to convert against. 10.3 declared the hole fraction here for one release and no
+    /// consumer took it; this is the declaration that should have been made.</para>
     ///
     /// <para>Same default, and the same advice to override, as the fill above.</para>
     /// </remarks>
     public virtual void DrawEllipse((float X, float Y) c00, (float X, float Y) c10,
                                     (float X, float Y) c11, (float X, float Y) c01,
-                                    RGBAColor32 strokeColor, float innerRadius)
-        => AffineEllipseSpans(c00, c10, c11, c01, strokeColor, innerRadius);
+                                    RGBAColor32 strokeColor, float strokeWidth)
+    {
+        if (strokeWidth <= 0f)
+        {
+            return;
+        }
+
+        AffineEllipseCoverage(c00, c10, c11, c01, strokeColor, strokeWidth);
+    }
 
     /// <summary>
-    /// Draws a ring given as a centre and its two semi-axis vectors. The axes counterpart of the
-    /// corner overload; see it for what <paramref name="innerRadius"/> can and cannot express.
+    /// Strokes an ellipse given as a centre and its two semi-axis vectors. The axes counterpart of
+    /// the corner overload, which holds the rule <paramref name="strokeWidth"/> is drawn under.
     /// </summary>
     public void DrawEllipse((float X, float Y) centre, (float X, float Y) semiAxisU,
-                            (float X, float Y) semiAxisV, RGBAColor32 strokeColor, float innerRadius)
+                            (float X, float Y) semiAxisV, RGBAColor32 strokeColor, float strokeWidth)
         => DrawEllipse(
             (centre.X - semiAxisU.X - semiAxisV.X, centre.Y - semiAxisU.Y - semiAxisV.Y),
             (centre.X + semiAxisU.X - semiAxisV.X, centre.Y + semiAxisU.Y - semiAxisV.Y),
             (centre.X + semiAxisU.X + semiAxisV.X, centre.Y + semiAxisU.Y + semiAxisV.Y),
             (centre.X - semiAxisU.X + semiAxisV.X, centre.Y - semiAxisU.Y + semiAxisV.Y),
-            strokeColor, innerRadius);
+            strokeColor, strokeWidth);
 
     /// <summary>
-    /// The CPU default behind both affine entry points: invert the map at each pixel centre and
-    /// emit runs of inside pixels as horizontal spans.
+    /// The CPU default behind both affine entry points: the rule on the corner
+    /// <c>DrawEllipse</c>, evaluated at each pixel centre. <paramref name="strokeWidth"/> of zero is
+    /// the fill.
     /// </summary>
-    private void AffineEllipseSpans((float X, float Y) c00, (float X, float Y) c10,
-                                    (float X, float Y) c11, (float X, float Y) c01,
-                                    RGBAColor32 color, float innerRadius)
+    private void AffineEllipseCoverage((float X, float Y) c00, (float X, float Y) c10,
+                                       (float X, float Y) c11, (float X, float Y) c01,
+                                       RGBAColor32 color, float strokeWidth)
     {
         // The corners imply the axes: c10 - c00 spans 2u and c01 - c00 spans 2v, so the centre is
         // one of each away from c00. c11 is read only for the bounding box, which is what makes a
@@ -294,18 +331,22 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
         var m10 = -uy * inv;
         var m11 = ux * inv;
 
-        var inner = Math.Clamp(innerRadius, 0f, 1f);
-        var innerSq = (double)inner * inner;
+        var isStroke = strokeWidth > 0f;
+        var halfStroke = isStroke ? strokeWidth * 0.5 : 0.0;
 
-        var minX = (int)MathF.Floor(MathF.Min(MathF.Min(c00.X, c10.X), MathF.Min(c11.X, c01.X)));
-        var maxX = (int)MathF.Ceiling(MathF.Max(MathF.Max(c00.X, c10.X), MathF.Max(c11.X, c01.X)));
-        var minY = (int)MathF.Floor(MathF.Min(MathF.Min(c00.Y, c10.Y), MathF.Min(c11.Y, c01.Y)));
-        var maxY = (int)MathF.Ceiling(MathF.Max(MathF.Max(c00.Y, c10.Y), MathF.Max(c11.Y, c01.Y)));
+        // The footprint is the corners grown by the stroke's outer half plus the one-pixel edge, in
+        // pixels along each axis: the same padding a GPU override gives its quad.
+        var pad = (float)(halfStroke + 1.0);
+        var minX = (int)MathF.Floor(MathF.Min(MathF.Min(c00.X, c10.X), MathF.Min(c11.X, c01.X)) - pad);
+        var maxX = (int)MathF.Ceiling(MathF.Max(MathF.Max(c00.X, c10.X), MathF.Max(c11.X, c01.X)) + pad);
+        var minY = (int)MathF.Floor(MathF.Min(MathF.Min(c00.Y, c10.Y), MathF.Min(c11.Y, c01.Y)) - pad);
+        var maxY = (int)MathF.Ceiling(MathF.Max(MathF.Max(c00.Y, c10.Y), MathF.Max(c11.Y, c01.Y)) + pad);
 
         for (var y = minY; y <= maxY; y++)
         {
             // A ring row is TWO runs, so a run is closed on the first pixel that fails rather than
-            // assumed to reach the right edge.
+            // assumed to reach the right edge; a partially covered pixel closes it too, and is drawn
+            // on its own with its coverage in the alpha.
             var runStart = int.MinValue;
 
             for (var x = minX; x <= maxX; x++)
@@ -315,19 +356,48 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
                 var dy = y + 0.5 - cy;
                 var lx = (m00 * dx) + (m01 * dy);
                 var ly = (m10 * dx) + (m11 * dy);
-                var r2 = (lx * lx) + (ly * ly);
+                var r = Math.Sqrt((lx * lx) + (ly * ly));
 
-                if (r2 <= 1.0 && r2 >= innerSq)
+                // (M^-1)^T n, whose length is |grad r| * r; so d = (r - 1) * r / |(M^-1)^T n|.
+                var gx = (m00 * lx) + (m10 * ly);
+                var gy = (m01 * lx) + (m11 * ly);
+                var g = Math.Sqrt((gx * gx) + (gy * gy));
+
+                // At the centre n is zero and the gradient undefined; the point is as far inside as
+                // the shorter semi-axis is long, which is deep enough for any stroke that leaves a
+                // hole and full coverage for a fill.
+                var d = g < 1e-12
+                    ? -Math.Min(Math.Sqrt((ux * ux) + (uy * uy)), Math.Sqrt((vx * vx) + (vy * vy)))
+                    : (r - 1.0) * r / g;
+
+                var coverage = isStroke
+                    ? Math.Clamp(0.5 + halfStroke - Math.Abs(d), 0.0, 1.0)
+                    : Math.Clamp(0.5 - d, 0.0, 1.0);
+
+                if (coverage >= 1.0)
                 {
                     if (runStart == int.MinValue)
                     {
                         runStart = x;
                     }
+
+                    continue;
                 }
-                else if (runStart != int.MinValue)
+
+                if (runStart != int.MinValue)
                 {
                     FillRectangle(new RectInt(new PointInt(x, y + 1), new PointInt(runStart, y)), color);
                     runStart = int.MinValue;
+                }
+
+                if (coverage > 0.0)
+                {
+                    var alpha = (byte)Math.Round(color.Alpha * coverage);
+                    if (alpha > 0)
+                    {
+                        FillRectangle(new RectInt(new PointInt(x + 1, y + 1), new PointInt(x, y)),
+                            new RGBAColor32(color.Red, color.Green, color.Blue, alpha));
+                    }
                 }
             }
 
