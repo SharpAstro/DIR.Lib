@@ -217,7 +217,7 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
     /// axes; this one is for a caller that already holds corners.</para>
     ///
     /// <para>The edge is anti-aliased by coverage, under the ONE rule every ellipse backend follows,
-    /// stated on <see cref="DrawEllipse((float X, float Y), (float X, float Y), (float X, float Y), (float X, float Y), RGBAColor32, float)"/>.
+    /// stated on the corner <c>DrawEllipse(c00, c10, c11, c01, colour, strokeWidth)</c>.
     /// The default evaluates that rule at each pixel centre over the corners' bounding box, emits
     /// each run of fully covered pixels as one <see cref="FillRectangle"/> span and each partially
     /// covered edge pixel as a one-pixel fill with the colour's alpha scaled by its coverage. A GPU
