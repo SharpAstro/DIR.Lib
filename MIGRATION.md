@@ -44,6 +44,17 @@ TextInputRenderer.Render(renderer, state, x, y, w, h, font, size,
 The parameter is a `bool` now, so a `long` passed positionally fails to compile rather than being
 read as a visibility.
 
+### `MouseMove` carries `Modifiers` (additive, nothing to port)
+
+A host that produces moves should fill it, from the same keyboard state it reads for a press:
+
+```csharp
+new InputEvent.MouseMove(x, y, MouseButton.None, currentModifiers);
+```
+
+Existing `MouseMove(x, y)` / `MouseMove(x, y, button)` calls and `MouseMove(var x, var y)` /
+`MouseMove(var x, var y, var button)` patterns keep compiling and binding; they mean "no modifiers".
+
 ## 10.0 the cuts: one dispatcher, one focus owner, a popover stack
 
 Affects anyone calling `IPixelWidget.HitTestAndDispatch`, implementing `IKeyboardClaimant` or reading

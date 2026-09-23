@@ -29,6 +29,13 @@ open. Breaking, because the frame count was public API; the port is in [MIGRATIO
   go on handing a counter to a parameter that now means visibility.
 - A field that is composing (an input method is active) still shows a steady caret.
 
+**A pointer move carries the modifiers held while moving.** `InputEvent.MouseMove` gains
+`Modifiers`, the one pointer event that did not have them, so a hover that answers to a held key (a
+highlight previewing what Ctrl+click would take) no longer has to ignore the key or read global
+keyboard state behind the event's back. The two- and three-argument constructors and the two- and
+three-element deconstructions are kept by hand, since the added parameter would otherwise remove
+the constructor a compiled host calls (the `MouseUp` precedent, 9.2).
+
 ## 10.4
 
 **The affine ellipse's stroke is a pixel width, and both affine defaults are anti-aliased.** 10.3
