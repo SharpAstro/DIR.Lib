@@ -22,8 +22,13 @@ public readonly record struct ButtonGroupOption<T>(T Value, string? Label = null
     public string? Tooltip { get; init; }
 
     /// <summary>A fill for THIS segment instead of the style's, selected or not: a warning tint on the one
-    /// choice that has consequences, say. Hover still follows the style.</summary>
+    /// choice that has consequences, say. Pair it with <see cref="HoverFill"/>, or the warning turns into the
+    /// style's neutral hover exactly when the pointer is about to press it.</summary>
     public RGBAColor32? Fill { get; init; }
+
+    /// <summary>The background this segment takes under the pointer instead of the style's
+    /// <see cref="ButtonGroupStyle.HoverFill"/>: the lit form of its own <see cref="Fill"/>.</summary>
+    public RGBAColor32? HoverFill { get; init; }
 }
 
 /// <summary>

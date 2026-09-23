@@ -108,6 +108,24 @@ public class LayoutButtonGroupTests
         var segments = Segments(Layout.Builder.ButtonGroup<Side>(options, Side.Mount, _ => { }, Style));
 
         segments[1].Background.ShouldBe(warning);
+        segments[1].HoverBackground.ShouldBe(Hover, "with no hover of its own, it lights like the rest");
+    }
+
+    // A warning fill must stay a warning under the pointer, which is when it matters.
+    [Fact]
+    public void AnOptionsOwnHoverWinsOverTheStyles()
+    {
+        var warning = new RGBAColor32(0xa0, 0x30, 0x30, 0xff);
+        var warningLit = new RGBAColor32(0xc0, 0x40, 0x40, 0xff);
+        Layout.ButtonGroupOption<Side>[] options =
+        [
+            new(Side.Mount, "On"),
+            new(Side.Profile, "Off") { Fill = warning, HoverFill = warningLit },
+        ];
+
+        var segments = Segments(Layout.Builder.ButtonGroup<Side>(options, Side.Mount, _ => { }, Style));
+
+        segments[1].HoverBackground.ShouldBe(warningLit);
     }
 
     // An inset pill keeps the whole cell pressable: the hit is on the outer cell, the fill on the band.
@@ -118,6 +136,26 @@ public class LayoutButtonGroupTests
             Options(), Side.Mount, _ => { }, Style with { InsetFraction = 0.6f }));
 
         regions[1].Height.ShouldBe(30f, 0.5f, "the press covers the full row, not only the pill");
+    }
+
+    // A group with nowhere to send a choice is a DISPLAY: nothing registers, so a press reaches the row
+    // behind it. Distinct from disabling every segment, which would swallow that press.
+    [Fact]
+    public void AGroupWithNoSelectHandlerIsADisplayThatTakesNoPress()
+    {
+        var (_, regions) = Paint(Layout.Builder.ButtonGroup<Side>(Options(), Side.Mount, null, Style));
+
+        regions.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void ADisplayGroupStillShowsWhichSegmentIsChosenButLightsNone()
+    {
+        var segments = Segments(Layout.Builder.ButtonGroup<Side>(Options(), Side.Profile, null, Style));
+
+        segments[1].Background.ShouldBe(Selected);
+        segments[0].Background.ShouldBe(Unselected);
+        segments.ShouldAllBe(s => s.HoverBackground == null, "nothing here would act on a press");
     }
 
     [Fact]
