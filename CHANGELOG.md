@@ -9,6 +9,26 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.0
+
+**The text caret blinks on the clock, not by frame count.** It blinked every 30 FRAMES, so a frame
+nobody drew could not advance it, and a host had to ask for a frame on every loop iteration for as
+long as a field had the keyboard. TianWen's GUI did exactly that, and on a swapchain that never
+waits for vblank it rendered flat out and blinked several times a second while its search box was
+open. Breaking, because the frame count was public API; the port is in [MIGRATION.md](MIGRATION.md).
+
+- **`CaretBlink`** is the blink: 530 ms a phase (the Windows default caret blink time),
+  `PhaseAt(TimeProvider)`, `PhaseAt(timestamp, ticksPerSecond)` for a host whose clock is not a
+  `TimeProvider`, `PhaseAt(milliseconds)`, and `IsVisible(phase)` (on in even phases).
+- **`PixelWidgetBase.CaretPhase`** replaces `FrameCount`. A host sets it once per frame and asks
+  for a frame only when `CaretBlink.PhaseAt(...)` differs from the phase it painted, which is two
+  frames a second while a field is focused. Measured in the TianWen GUI with a focused field:
+  3.5 frames a second (the caret's two flips plus a 1 Hz status clock) at 1.4 percent GPU.
+- **`TextInputRenderer.Render` takes `bool caretVisible`** where it took `long frameCount`. The
+  type changed on purpose: a frame count passed positionally no longer compiles, so nothing can
+  go on handing a counter to a parameter that now means visibility.
+- A field that is composing (an input method is active) still shows a steady caret.
+
 ## 10.4
 
 **The affine ellipse's stroke is a pixel width, and both affine defaults are anti-aliased.** 10.3
