@@ -27,6 +27,15 @@ DIR_LIB_UPDATE_BASELINES=1 dotnet test src/DIR.Lib.Tests --filter "FullyQualifie
 
 CI runs tests in Release config after building, before publishing NuGet packages.
 
+**Tests run on Microsoft.Testing.Platform (MTP), not VSTest** (since 11.1). The runner is declared in
+the root `global.json`, which pins no SDK; each test project is an `Exe` on xunit.v3 4.x, with no
+`Microsoft.NET.Test.Sdk` or `xunit.runner.visualstudio`. `--filter` is unchanged. VSTest options are
+not: use `--output Detailed` for `--logger "console;verbosity=detailed"`, `--report-trx
+--report-trx-filename x.trx` for a TRX logger, `--crashdump` / `--hangdump --hangdump-timeout 5min` for
+`--blame-*`, and `--minimum-expected-tests N` to fail a filter that matched nothing. A stale VSTest
+option fails the run as unknown rather than collecting less. The dump and TRX extensions are referenced
+by `DIR.Lib.Tests`; `DIR.Lib.Shaping.Tests` has TRX only.
+
 ## Architecture
 
 **Namespaces:** Core types live in the root `DIR.Lib` namespace. Two sub-namespaces host larger subsystems:

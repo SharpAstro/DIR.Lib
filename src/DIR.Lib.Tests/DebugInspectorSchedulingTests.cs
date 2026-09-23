@@ -86,7 +86,7 @@ public class DebugInspectorSchedulingTests
     // ---------------------------------------------------------------- instantaneous commands
 
     [Fact]
-    public void AnInstantCommandRunsOnTheNextPump()
+    public async Task AnInstantCommandRunsOnTheNextPump()
     {
         var host = new FakeHost();
         using var core = DebugInspectorCore.Detached(host);
@@ -97,11 +97,11 @@ public class DebugInspectorSchedulingTests
         core.Pump();
 
         pending.IsCompletedSuccessfully.ShouldBeTrue();
-        pending.Result.ShouldBe("\"state\"");
+        (await pending).ShouldBe("\"state\"");
     }
 
     [Fact]
-    public void AnUnknownMethodComesBackEmpty_WhichTheTransportReportsAsUnknown()
+    public async Task AnUnknownMethodComesBackEmpty_WhichTheTransportReportsAsUnknown()
     {
         var host = new FakeHost();
         using var core = DebugInspectorCore.Detached(host);
@@ -109,11 +109,12 @@ public class DebugInspectorSchedulingTests
         var pending = core.Submit("nope", NoParams);
         core.Pump();
 
-        pending.Result.ShouldBe("");
+        pending.IsCompletedSuccessfully.ShouldBeTrue();
+        (await pending).ShouldBe("");
     }
 
     [Fact]
-    public void PingIsAnsweredByTheCore_SoEveryHostReportsItIdentically()
+    public async Task PingIsAnsweredByTheCore_SoEveryHostReportsItIdentically()
     {
         var host = new FakeHost();
         using var core = DebugInspectorCore.Detached(host);
@@ -121,7 +122,8 @@ public class DebugInspectorSchedulingTests
         var pending = core.Submit("ping", NoParams);
         core.Pump();
 
-        pending.Result.ShouldContain("\"app\":\"Fake\"");
+        pending.IsCompletedSuccessfully.ShouldBeTrue();
+        (await pending).ShouldContain("\"app\":\"Fake\"");
         host.Invoked.ShouldBeEmpty("the host is not consulted for ping");
     }
 
@@ -132,7 +134,7 @@ public class DebugInspectorSchedulingTests
     /// happens if a real frame renders in between.
     /// </summary>
     [Fact]
-    public void ABatchRunsOneStepPerPump()
+    public async Task ABatchRunsOneStepPerPump()
     {
         var host = new FakeHost();
         using var core = DebugInspectorCore.Detached(host);
@@ -153,11 +155,11 @@ public class DebugInspectorSchedulingTests
         core.Pump();
         host.Invoked.ShouldBe(["a", "b", "c"]);
         pending.IsCompletedSuccessfully.ShouldBeTrue();
-        pending.Result.ShouldBe("[\"a\",\"b\",\"c\"]");
+        (await pending).ShouldBe("[\"a\",\"b\",\"c\"]");
     }
 
     [Fact]
-    public void ABatchStepThatFailsIsRecordedAndTheRestStillRun()
+    public async Task ABatchStepThatFailsIsRecordedAndTheRestStillRun()
     {
         var host = new FakeHost();
         using var core = DebugInspectorCore.Detached(host);
@@ -168,12 +170,12 @@ public class DebugInspectorSchedulingTests
         for (var i = 0; i < 5; i++) core.Pump();
 
         pending.IsCompletedSuccessfully.ShouldBeTrue();
-        pending.Result.ShouldBe("[\"a\",\"error: unknown method 'nope'\",\"c\"]",
+        (await pending).ShouldBe("[\"a\",\"error: unknown method 'nope'\",\"c\"]",
             "a 20-step script must say WHICH step broke, not collapse to one error");
     }
 
     [Fact]
-    public void AWaitStepBurnsFrames()
+    public async Task AWaitStepBurnsFrames()
     {
         var host = new FakeHost();
         using var core = DebugInspectorCore.Detached(host);
@@ -190,7 +192,7 @@ public class DebugInspectorSchedulingTests
         core.Pump();                       // b, and the batch completes in the same pump
         host.Invoked.ShouldBe(["a", "b"]);
         pending.IsCompletedSuccessfully.ShouldBeTrue();
-        pending.Result.ShouldBe("[\"a\",\"waited\",\"b\"]");
+        (await pending).ShouldBe("[\"a\",\"waited\",\"b\"]");
     }
 
     [Theory]
@@ -214,7 +216,7 @@ public class DebugInspectorSchedulingTests
     /// <c>Begin</c>, which would press the very button being refused.
     /// </summary>
     [Fact]
-    public void AFrameSpanningVerbCannotBeABatchStep_AndIsRefusedWithoutStartingIt()
+    public async Task AFrameSpanningVerbCannotBeABatchStep_AndIsRefusedWithoutStartingIt()
     {
         var host = new SteppedHost();
         using var core = DebugInspectorCore.Detached(host);
@@ -222,7 +224,8 @@ public class DebugInspectorSchedulingTests
         var pending = core.Submit("batch", Params("""{"steps":[{"method":"hold"}]}"""));
         for (var i = 0; i < 3; i++) core.Pump();
 
-        pending.Result.ShouldContain("spans frames");
+        pending.IsCompletedSuccessfully.ShouldBeTrue();
+        (await pending).ShouldContain("spans frames");
         host.BeginCalls.ShouldBe(0, "probing must not have side effects");
     }
 
@@ -230,7 +233,7 @@ public class DebugInspectorSchedulingTests
 
     /// <summary>An exclusive operation owns the pump: nothing queued behind it may overtake it.</summary>
     [Fact]
-    public void AnExclusiveOperationBlocksTheQueueUntilItFinishes()
+    public async Task AnExclusiveOperationBlocksTheQueueUntilItFinishes()
     {
         var host = new SteppedHost(holdAdvances: 3);
         using var core = DebugInspectorCore.Detached(host);
@@ -245,7 +248,7 @@ public class DebugInspectorSchedulingTests
 
         core.Pump();                       // third advance finishes the sweep
         sweep.IsCompletedSuccessfully.ShouldBeTrue();
-        sweep.Result.ShouldBe("\"swept\"");
+        (await sweep).ShouldBe("\"swept\"");
 
         core.Pump();                       // now the queue drains
         behind.IsCompletedSuccessfully.ShouldBeTrue();
@@ -257,7 +260,7 @@ public class DebugInspectorSchedulingTests
     /// answered mid-hold.
     /// </summary>
     [Fact]
-    public void ABackgroundOperationLetsOtherCommandsRunWhileItIsInFlight()
+    public async Task ABackgroundOperationLetsOtherCommandsRunWhileItIsInFlight()
     {
         var host = new SteppedHost(holdAdvances: 4);
         using var core = DebugInspectorCore.Detached(host);
@@ -269,11 +272,11 @@ public class DebugInspectorSchedulingTests
 
         hold.IsCompleted.ShouldBeFalse("still holding");
         observe.IsCompletedSuccessfully.ShouldBeTrue("an observe verb must be answered DURING the hold");
-        observe.Result.ShouldBe("\"state\"");
+        (await observe).ShouldBe("\"state\"");
 
         for (var i = 0; i < 4; i++) core.Pump();
         hold.IsCompletedSuccessfully.ShouldBeTrue();
-        hold.Result.ShouldBe("\"held\"");
+        (await hold).ShouldBe("\"held\"");
     }
 
     [Fact]
