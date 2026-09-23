@@ -225,14 +225,14 @@ public class LayoutTextInputTests
 
     /// <summary>
     /// One field rendered with a real face, so glyph ink actually lands on the surface. The caret is
-    /// suppressed by frame count (it blinks off on the second 30-frame half), because it is drawn in its
-    /// own colour and would otherwise count as ink at whichever column the cursor happens to sit.
+    /// suppressed by painting in an OFF phase of its blink (an odd one), because it is drawn in its own
+    /// colour and would otherwise count as ink at whichever column the cursor happens to sit.
     /// </summary>
     private static RgbaImageRenderer RenderField(TextInputState state)
     {
         var renderer = new RgbaImageRenderer(220, 44);
         renderer.Surface.Clear(new RGBAColor32(0, 0, 0, 255));
-        var widget = new TestWidget(renderer) { FrameCount = 30 };
+        var widget = new TestWidget(renderer) { CaretPhase = 1 };
         widget.Render(
             Layout.Builder.TextInput(state, 20f).Stretch(),
             new RectF32(0f, 0f, 220f, 44f),

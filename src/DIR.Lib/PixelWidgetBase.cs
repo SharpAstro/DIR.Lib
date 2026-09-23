@@ -179,8 +179,12 @@ namespace DIR.Lib
         /// </summary>
         protected void PostSignal<T>(T signal) where T : notnull => Bus?.Post(signal);
 
-        /// <summary>Frame counter for cursor blink etc.</summary>
-        public long FrameCount { get; set; }
+        /// <summary>
+        /// The caret's blink phase for the frame being painted (<see cref="CaretBlink.PhaseAt(TimeProvider)"/>),
+        /// set by the host once per frame. It replaces a frame counter that blinked every 30 frames, which
+        /// made a focused field a reason to render continuously; see <see cref="CaretBlink"/>.
+        /// </summary>
+        public long CaretPhase { get; set; }
 
         /// <summary>
         /// The window's DPI scale (device pixels per design unit), owned per widget instance -- a widget
@@ -562,7 +566,7 @@ namespace DIR.Lib
             // Nothing else reaches inside a field: the layout painter splits TEXT LEAVES per coverage run,
             // and a field's content is not a leaf.
             var caret = TextInputRenderer.Render(Renderer, state, x, y, width, height, fontPath, fontSize,
-                FrameCount, colors, FontFallback, leadingRoom);
+                CaretBlink.IsVisible(CaretPhase), colors, FontFallback, leadingRoom);
             if (state.IsActive)
             {
                 Ui.CaretRect = caret;

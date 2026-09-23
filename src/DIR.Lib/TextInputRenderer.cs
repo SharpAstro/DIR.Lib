@@ -197,7 +197,8 @@ public static class TextInputRenderer
     /// <param name="height">Field height in pixels.</param>
     /// <param name="fontFamily">Font path for text rendering.</param>
     /// <param name="fontSize">Font size in pixels.</param>
-    /// <param name="frameCount">Frame counter for cursor blink (blinks every 30 frames).</param>
+    /// <param name="caretVisible">Whether the caret is in the ON half of its blink,
+    /// <see cref="CaretBlink.IsVisible"/>. Ignored while composing, when the caret does not blink.</param>
     /// <param name="colors">Palette for THIS field, or null for the shared <see cref="Colors"/>.</param>
     /// <returns>
     /// The caret's rect in surface pixels, or <c>default</c> when the field is not active or no font is
@@ -218,7 +219,7 @@ public static class TextInputRenderer
         TextInputState state,
         int x, int y, int width, int height,
         string fontFamily, float fontSize,
-        long frameCount = 0,
+        bool caretVisible = true,
         TextInputColors? colors = null,
         FontFallbackResolver? fallback = null,
         float leadingRoom = 0f)
@@ -423,7 +424,7 @@ public static class TextInputRenderer
 
         // The caret stops blinking while composing: it is tracking the input method, and a blink there
         // reads as the field being unresponsive rather than as a text cursor.
-        if (composing || (frameCount / 30) % 2 == 0)
+        if (composing || caretVisible)
         {
             renderer.FillRectangle(caretRect, colors.Cursor);
         }
