@@ -276,6 +276,46 @@ namespace DIR.Lib
                     break;
                 }
 
+                case Layout.IconKind.Check:
+                {
+                    // Two strokes meeting low and left of centre: a short one down from the left edge, a
+                    // long one up to the top-right corner, so the ink reaches all four edges -- the contract
+                    // every kind here owes. Weighted like Plus/Minus's bars, the marks it sits beside.
+                    //
+                    // A stroke's end is SQUARE and centred on its endpoint, so on a diagonal the ink passes
+                    // the endpoint by half a pen times the other axis's share of the direction, not by half
+                    // a pen: an end inset by a flat half pen stops short of the edge. Each end is therefore
+                    // placed from its own stroke's unit direction.
+                    var checkPen = (int)MathF.Max(1f, MathF.Round(side * 0.14f));
+                    var h = checkPen / 2f;
+                    var kx = rect.X + (rect.Width - side) / 2f;
+                    var ky = rect.Y + (rect.Height - side) / 2f;
+
+                    // Directions from the nominal shape; the corrections below move the points by under a
+                    // pen, which changes these by too little to matter at any size a mark is drawn.
+                    var (sdx, sdy) = Unit(side * 0.38f, side * 0.45f);  // left edge down to the elbow
+                    var (ldx, ldy) = Unit(side * 0.62f, -side);          // elbow up to the corner
+
+                    // Lowest corner of either stroke at the elbow sits h * dx below it.
+                    var elbowX = kx + side * 0.38f;
+                    var elbowY = ky + side - h * MathF.Max(sdx, ldx);
+                    // Short stroke's left-most corner is h * dy left of its start.
+                    var startX = kx + h * sdy;
+                    // Long stroke's right-most corner is h * |dy| right of its end, top-most h * dx above.
+                    var endX = kx + side - h * -ldy;
+                    var endY = ky + h * ldx;
+
+                    DrawLine(startX, ky + side * 0.55f, elbowX, elbowY, ink, checkPen);
+                    DrawLine(elbowX, elbowY, endX, endY, ink, checkPen);
+                    break;
+
+                    static (float X, float Y) Unit(float x, float y)
+                    {
+                        var length = MathF.Sqrt(x * x + y * y);
+                        return (x / length, y / length);
+                    }
+                }
+
                 case Layout.IconKind.Search:
                 {
                     // A ring up-left, a handle running out of it to the bottom-right corner. Both extremes
