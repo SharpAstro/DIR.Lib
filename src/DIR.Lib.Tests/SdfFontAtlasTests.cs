@@ -239,6 +239,63 @@ public sealed class SdfFontAtlasTests : IDisposable
         atlas.IsDirty.ShouldBeFalse("after draining + flushing, the atlas must settle");
     }
 
+    /// <summary>Rasterizes a few glyphs inline and lands them on page 0, leaving it dirty.</summary>
+    private SdfFontAtlas AtlasWithAFreshlyInsertedPage()
+    {
+        var atlas = new SdfFontAtlas(_rasterizer, maxTextureDimension: 8192, framesInFlight: 2,
+            synchronousRasterize: true);
+        atlas.PreRasterizeBatchByGid([(FontPath, 36u, null), (FontPath, 37u, null), (FontPath, 38u, null)]);
+        atlas.BeginFrame();
+        atlas.TryGetDirtyRegion(0, out _).ShouldBeTrue("inserting glyphs dirties their page");
+        return atlas;
+    }
+
+    [Fact]
+    public void AFlushWhoseUploadNeverRanCanBePutBackInLine()
+    {
+        using var atlas = AtlasWithAFreshlyInsertedPage();
+        atlas.TryGetDirtyRegion(0, out var flushed).ShouldBeTrue();
+        atlas.MarkPageFlushed(0);
+        atlas.CompleteFlush(true);
+        atlas.IsDirty.ShouldBeFalse();
+
+        // The frame that carried the upload was dropped: the region is owed again, exactly.
+        atlas.RequeueUpload(0, flushed);
+
+        atlas.IsDirty.ShouldBeTrue();
+        atlas.TryGetDirtyRegion(0, out var owed).ShouldBeTrue();
+        owed.ShouldBe(flushed);
+    }
+
+    [Fact]
+    public void ARequeuedRegionJoinsWhateverIsAlreadyDirty()
+    {
+        using var atlas = AtlasWithAFreshlyInsertedPage();
+        atlas.TryGetDirtyRegion(0, out var dirty).ShouldBeTrue();
+
+        // A region elsewhere on the page, and one reaching past its edge, which is clamped.
+        var dim = atlas.PageDimension;
+        atlas.RequeueUpload(0, new SdfFontAtlas.DirtyRegion(dim - 8, dim - 8, dim + 100, dim + 100));
+
+        atlas.TryGetDirtyRegion(0, out var owed).ShouldBeTrue();
+        owed.ShouldBe(new SdfFontAtlas.DirtyRegion(
+            Math.Min(dirty.X0, dim - 8), Math.Min(dirty.Y0, dim - 8), dim, dim));
+    }
+
+    [Fact]
+    public void ARequeueForAPageThatIsGoneIsIgnored()
+    {
+        using var atlas = AtlasWithAFreshlyInsertedPage();
+        atlas.MarkPageFlushed(0);
+
+        atlas.RequeueUpload(atlas.PageCount, new SdfFontAtlas.DirtyRegion(0, 0, 8, 8));
+        atlas.RequeueUpload(-1, new SdfFontAtlas.DirtyRegion(0, 0, 8, 8));
+        // An empty region owes nothing either.
+        atlas.RequeueUpload(0, new SdfFontAtlas.DirtyRegion(4, 4, 4, 8));
+
+        atlas.TryGetDirtyRegion(0, out _).ShouldBeFalse();
+    }
+
     [Fact]
     public void GlyphThatCanNeverRasterize_IsGivenUpOn_AndTheAtlasSettles()
     {
