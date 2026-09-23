@@ -287,6 +287,94 @@ public static class Builder
         return Popover(anchor, list, state.Popover, side, backdrop);
     }
 
+    /// <summary>
+    /// A segmented control: one of <paramref name="options"/> is <paramref name="selected"/>, and a press on
+    /// another hands its value to <paramref name="onSelect"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This adds no mechanism</b>, like <see cref="Dropdown{T}"/>: it is the segments every consumer was
+    /// writing by hand, with the three decisions a hand-written group gets wrong stated once.
+    /// </para>
+    /// <list type="bullet">
+    /// <item><b>Which segment is chosen is the STYLE's to show</b> (<see cref="ButtonGroupStyle"/>), never a
+    /// colour picked per call site: two hand-picked fills once drifted into the same colour and the group
+    /// stopped saying which side won.</item>
+    /// <item><b>Every segment declares its hit, the chosen one included</b>, so a press on it is swallowed
+    /// rather than falling through to whatever is behind -- a row, a card -- which would then act on a press
+    /// the reader aimed at the control. The chosen segment simply has no handler.</item>
+    /// <item><b>Only a segment a press would act on lights under the pointer</b>: not the chosen one, and
+    /// not a disabled one (<see cref="ButtonGroupOption{T}.DisabledReason"/>, which swallows with
+    /// <see cref="CursorKind.NotAllowed"/> and says why).</item>
+    /// </list>
+    /// <para>
+    /// The group is a horizontal stack sized by its parent: give it a height (<c>.HFixed</c> / <c>RowH</c> on
+    /// the row it sits in). Segments share the width equally unless the style fixes one.
+    /// </para>
+    /// </remarks>
+    /// <param name="fontSize">Label size, and the icon size for an icon segment, in design units.</param>
+    public static Node ButtonGroup<T>(ReadOnlySpan<ButtonGroupOption<T>> options, T selected,
+        Action<T>? onSelect, in ButtonGroupStyle style, float fontSize = 14f)
+    {
+        var comparer = System.Collections.Generic.EqualityComparer<T>.Default;
+        var segments = new Node[options.Length];
+        var insetWeight = (1f - style.InsetFraction) * 0.5f;
+
+        for (var i = 0; i < options.Length; i++)
+        {
+            var option = options[i];
+            var isSelected = comparer.Equals(option.Value, selected);
+            var enabled = option.DisabledReason is null;
+            var contentColour = isSelected ? style.SelectedContent : style.UnselectedContent;
+
+            var face = option.Icon is { } icon
+                ? Icon(icon, fontSize, contentColour)
+                : Text(option.Label ?? string.Empty, fontSize, contentColour, TextAlign.Center, TextAlign.Center);
+            face = face.WStar().HStar();
+
+            // Background, radius and hover on the FACE, which is the whole segment or its inset band.
+            var fill = option.Fill ?? (isSelected ? style.SelectedFill : style.UnselectedFill);
+            if (fill is { } background)
+            {
+                face = face.Bg(background);
+            }
+            if (style.CornerRadius > 0f)
+            {
+                face = face.Radius(style.CornerRadius);
+            }
+            if (enabled && !isSelected)
+            {
+                face = face.BgHover(style.HoverFill);
+            }
+
+            // The press covers the whole cell even when the look is an inset pill, so the hit sits on the
+            // OUTER node: the engine binds a node's background and its hit to the same rect, so an inset
+            // background and a full-height hit cannot share one leaf.
+            var cell = style.InsetFraction < 1f
+                ? VStack(Spacer().HStar(insetWeight), face.HStar(style.InsetFraction), Spacer().HStar(insetWeight))
+                : face;
+            cell = style.SegmentWidth is { } width ? cell.WFixed(width).HStar() : cell.WStar().HStar();
+
+            var value = option.Value;
+            var hit = option.Hit ?? new HitResult.ButtonHit(option.Label ?? value?.ToString() ?? string.Empty);
+            Action<InputModifier>? press = enabled && !isSelected && onSelect is not null ? _ => onSelect(value) : null;
+            cell = cell.Clickable(hit, press);
+
+            if (!enabled)
+            {
+                cell = cell.Disabled(option.DisabledReason ?? string.Empty);
+            }
+            else if (option.Tooltip is { Length: > 0 } tooltip)
+            {
+                cell = cell.WithTooltip(tooltip);
+            }
+
+            segments[i] = cell;
+        }
+
+        return HStack(segments).WithGap(style.Gap);
+    }
+
     /// <summary>Two resizable panes plus a draggable divider; <paramref name="firstExtent"/> is consumer-owned state. See <see cref="Node.Split"/>.</summary>
     public static Node Split(Node first, Node second, Axis axis = Axis.Horizontal,
         float firstExtent = 0f, float dividerThickness = 6f,

@@ -446,4 +446,15 @@ public enum IconKind
     /// </para>
     /// </summary>
     IBeam,
+
+    /// <summary>
+    /// A tick: "this is chosen / done / assigned". The mark beside the current row of a list, and the
+    /// confirmation in a status cell.
+    /// <para>
+    /// Stroked, like <see cref="Search"/>: a filled tick is a wedge. Drawn rather than taken from a font's
+    /// U+2713, which a text face may lack and a colour emoji face would draw in its own colour, where a
+    /// drawn one takes the ink it is given.
+    /// </para>
+    /// </summary>
+    Check,
 }

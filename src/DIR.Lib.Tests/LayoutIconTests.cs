@@ -467,6 +467,30 @@ public class LayoutIconTests
             .First();
 
     /// <summary>
+    /// The tick reaches all four edges, which is the family's contract, and is OPEN where a tick is open:
+    /// nothing in the top-left or bottom-right corner, since the short stroke starts partway down the left
+    /// edge and the elbow sits left of the bottom-right. A filled square or an X would ink both corners.
+    /// </summary>
+    [Fact]
+    public void TheCheckIconReachesEveryEdgeAndLeavesTheOpenCornersBare()
+    {
+        var (inked, _) = Paint(Layout.IconKind.Check);
+        var size = (int)Surface;
+        var last = size - 1;
+
+        bool AnyInRow(int y) => Enumerable.Range(0, size).Any(x => inked(x, y));
+        bool AnyInColumn(int x) => Enumerable.Range(0, size).Any(y => inked(x, y));
+
+        AnyInRow(0).ShouldBeTrue("the long stroke reaches the top edge");
+        AnyInRow(last).ShouldBeTrue("the elbow reaches the bottom edge");
+        AnyInColumn(0).ShouldBeTrue("the short stroke reaches the left edge");
+        AnyInColumn(last).ShouldBeTrue("the long stroke reaches the right edge");
+
+        inked(1, 1).ShouldBeFalse("a tick is open at the top left");
+        inked(last - 1, last - 1).ShouldBeFalse("and at the bottom right");
+    }
+
+    /// <summary>
     /// The magnifier is a RING with a handle running out of it to the opposite corner, and the ring is what
     /// separates it from every filled kind: its middle is empty. Both extremes touch the bounding box -- the
     /// ring's arc up-left and the handle's tip down-right -- which is the contract each kind owes, and the
