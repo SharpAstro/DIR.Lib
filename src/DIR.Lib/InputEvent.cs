@@ -144,12 +144,24 @@ public abstract record InputEvent
     /// and not the other. A host that does not track the held button leaves it <c>None</c>, which is the
     /// truthful answer for a move it cannot describe.
     /// </param>
-    public sealed record MouseMove(float X, float Y, MouseButton Button = MouseButton.None) : InputEvent
+    /// <param name="Modifiers">
+    /// Modifiers held while moving. A move is the one pointer event that did not carry them, so anything
+    /// that changes on a held key while the pointer merely hovers -- a highlight that previews what
+    /// Ctrl+click would take, a cursor that changes under Alt -- had no way to know, and had to either
+    /// ignore the key or read global keyboard state behind the event's back. A host that cannot read the
+    /// keyboard leaves it default, which is the truthful answer for a move it cannot describe.
+    /// </param>
+    public sealed record MouseMove(float X, float Y, MouseButton Button = MouseButton.None,
+        InputModifier Modifiers = default) : InputEvent
     {
         /// <summary>The pre-9.2 shape, kept so an already-compiled host keeps binding -- see
         /// <see cref="MouseUp(float,float,MouseButton)"/> for why a defaulted parameter is not enough.
         /// Console.Lib and SdlVulkan.Renderer both construct a <c>MouseMove</c> with two arguments.</summary>
-        public MouseMove(float X, float Y) : this(X, Y, MouseButton.None) { }
+        public MouseMove(float X, float Y) : this(X, Y, MouseButton.None, default) { }
+
+        /// <summary>The pre-11.0 shape, kept for the same reason: adding <see cref="Modifiers"/> removed
+        /// the three-argument constructor from the assembly, and a host compiled against 9.2-10.x calls it.</summary>
+        public MouseMove(float X, float Y, MouseButton Button) : this(X, Y, Button, default) { }
 
         /// <summary>The two-element deconstruction, for the <c>MouseMove(var x, var y)</c> patterns
         /// written against it -- a positional pattern resolves by arity, so both arities must exist.</summary>
@@ -157,6 +169,15 @@ public abstract record InputEvent
         {
             x = X;
             y = Y;
+        }
+
+        /// <summary>The three-element deconstruction, for the <c>MouseMove(var x, var y, var button)</c>
+        /// patterns written against 9.2-10.x, which the fourth parameter would otherwise break.</summary>
+        public void Deconstruct(out float x, out float y, out MouseButton button)
+        {
+            x = X;
+            y = Y;
+            button = Button;
         }
     }
 
