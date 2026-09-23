@@ -33,8 +33,10 @@ the root `global.json`, which pins no SDK; each test project is an `Exe` on xuni
 not: use `--output Detailed` for `--logger "console;verbosity=detailed"`, `--report-trx
 --report-trx-filename x.trx` for a TRX logger, `--crashdump` / `--hangdump --hangdump-timeout 5min` for
 `--blame-*`, and `--minimum-expected-tests N` to fail a filter that matched nothing. A stale VSTest
-option fails the run as unknown rather than collecting less. The dump and TRX extensions are referenced
-by `DIR.Lib.Tests`; `DIR.Lib.Shaping.Tests` has TRX only.
+option fails the run as unknown rather than collecting less. **Both test projects reference the same
+three extensions (TRX, crash dump, hang dump), and must go on doing so**: a solution-wide `dotnet test`
+passes every option to every project, so one project without `--hangdump` made the whole run exit 5 with
+"zero tests ran" for that project while the other passed.
 
 ## Architecture
 
