@@ -135,10 +135,14 @@ public class TextInputState
                 {
                     DeleteSelection();
                 }
-                else if (CursorPos > 0)
+                else
                 {
-                    Text = Text.Remove(CursorPos - 1, 1);
-                    CursorPos--;
+                    ClearSelection();               // an anchor collapsed onto the caret; see DeleteSelection
+                    if (CursorPos > 0)
+                    {
+                        Text = Text.Remove(CursorPos - 1, 1);
+                        CursorPos--;
+                    }
                 }
                 return true;
 
@@ -147,9 +151,13 @@ public class TextInputState
                 {
                     DeleteSelection();
                 }
-                else if (CursorPos < Text.Length)
+                else
                 {
-                    Text = Text.Remove(CursorPos, 1);
+                    ClearSelection();               // an anchor collapsed onto the caret; see DeleteSelection
+                    if (CursorPos < Text.Length)
+                    {
+                        Text = Text.Remove(CursorPos, 1);
+                    }
                 }
                 return true;
 
@@ -190,13 +198,17 @@ public class TextInputState
                 {
                     DeleteSelection();
                 }
-                else if (CursorPos > 0)
+                else
                 {
-                    // The same boundary Ctrl+Left would have moved to, so "delete the word" and "step over
-                    // the word" can never disagree about where the word began.
-                    var wordStart = WordBoundary(CursorPos, -1);
-                    Text = Text.Remove(wordStart, CursorPos - wordStart);
-                    CursorPos = wordStart;
+                    ClearSelection();               // an anchor collapsed onto the caret; see DeleteSelection
+                    if (CursorPos > 0)
+                    {
+                        // The same boundary Ctrl+Left would have moved to, so "delete the word" and "step over
+                        // the word" can never disagree about where the word began.
+                        var wordStart = WordBoundary(CursorPos, -1);
+                        Text = Text.Remove(wordStart, CursorPos - wordStart);
+                        CursorPos = wordStart;
+                    }
                 }
                 return true;
 
@@ -484,10 +496,18 @@ public class TextInputState
         ClearComposition();
     }
 
+    /// <summary>
+    /// Removes the selected text, or -- when nothing is selected -- drops an anchor collapsed onto the caret.
+    /// A drag that ends where it began leaves one, and HasSelection reads false for it, so an edit takes its
+    /// no-selection path and moves the caret. An anchor left behind then selects the distance the caret
+    /// moved: after a Backspace that reaches past the end of the shortened text, and the next paint throws.
+    /// The delete keys' no-selection branches clear it themselves for the same reason.
+    /// </summary>
     private void DeleteSelection()
     {
         if (!HasSelection)
         {
+            ClearSelection();
             return;
         }
 
