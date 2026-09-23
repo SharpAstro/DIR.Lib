@@ -9,6 +9,42 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.1
+
+Four interactions a consumer was writing by hand are now declarations on a layout node. Additive:
+every new member is an init-only property or a new builder, so nothing already compiled changes.
+
+- **`Builder.ButtonGroup<T>`**, a segmented control (`ButtonGroupOption<T>`, `ButtonGroupStyle`).
+  Which segment is chosen is the STYLE's to show, stated once per group, because two hand-picked fills
+  once drifted into the same colour and a tie-breaker stopped saying which side won. Every segment
+  declares its hit, the chosen one included, so a press on it is swallowed rather than reaching the row
+  behind; only a segment a press would act on lights under the pointer; a disabled segment says why.
+  A null `onSelect` makes the group a DISPLAY that registers nothing, which is different from disabling
+  every segment (that swallows the press): a row whose On/Off is mid-transition wants the row to take
+  it. An option may carry its own `Fill` and `HoverFill`, so a warning tint stays a warning under the
+  pointer. `InsetFraction` draws an inset pill while the press still covers the full height.
+- **`Builder.Checkbox`** (`CheckboxStyle`): a well that carries a drawn `IconKind.Check` when checked,
+  then the label, with the whole row as the target. It replaces rows that wrote `"[x] "` into their
+  label, a mark in a text run. Same rules as the group: the style owns the look (optionally a tinted row
+  and a brighter label when checked), it lights only when a press would act, a disabled row says why, and
+  a null `onToggle` is a display.
+- **`Node.DoubleClickable(action)`** (`Node.OnDoubleClick`, `ClickableRegion.OnDoubleClick`): the
+  second press of a double-click runs it IN PLACE of the click. Previously the only route to the click
+  count was an `OnPress` handler that read `Clicks` and had to remember to decline the gesture, and the
+  click ran again on the second press, which for a toggling click undoes the first. A press claimed for
+  a drag still wins; Enter is unchanged (declare `Activatable` with the same action where Enter should
+  open).
+- **`IconKind.Check`**, a stroked tick that reaches all four edges like the rest of the family: the mark
+  for "chosen / done / assigned", drawn rather than taken from U+2713, which a text face may lack and a
+  colour emoji face draws in its own colour.
+
+**The test projects run on Microsoft.Testing.Platform.** xunit.v3 4.x, `OutputType Exe`, the runner
+declared in `global.json` (which pins no SDK), and `Microsoft.NET.Test.Sdk` / `xunit.runner.visualstudio`
+gone. `DIR.Lib.Tests` carries the TRX, crash-dump and hang-dump extensions (`--report-trx`, `--crashdump`,
+`--hangdump`); `--filter` is unchanged. The xUnit1031 warnings in `DebugInspectorSchedulingTests` are
+gone: each read of a completed request's result is an `await`, after an assertion that it completed,
+since awaiting an unfinished one would hang the test rather than fail it.
+
 ## 11.0
 
 **The text caret blinks on the clock, not by frame count.** It blinked every 30 FRAMES, so a frame
