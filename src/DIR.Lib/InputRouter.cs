@@ -396,7 +396,14 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             // exactly as a node carrying only a click would.
         }
 
-        if (region.OnClick is { } click)
+        // The second press of a double-click runs the double-click INSTEAD of the click: the first press
+        // already clicked, and a click that toggles would otherwise be undone by the gesture meant to open.
+        if (press.Clicks >= 2 && region.OnDoubleClick is { } doubleClick)
+        {
+            doubleClick(press.Modifiers);
+            acted = true;
+        }
+        else if (region.OnClick is { } click)
         {
             click(press.Modifiers);
             acted = true;

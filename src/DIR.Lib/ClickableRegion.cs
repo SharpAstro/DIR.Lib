@@ -45,6 +45,13 @@ public readonly record struct ClickableRegion(
     public Action<InputModifier>? OnActivate { get; init; }
 
     /// <summary>
+    /// What the second press of a double-click runs, in place of <see cref="OnClick"/>, bound from
+    /// <see cref="Layout.Node.OnDoubleClick"/>. Null (nearly every region) means a double-click is two
+    /// clicks.
+    /// </summary>
+    public Action<InputModifier>? OnDoubleClick { get; init; }
+
+    /// <summary>
     /// The hover text for this region, from <see cref="Layout.Node.Tooltip"/> -- or, for a disabled one,
     /// the reason it is disabled, since the answer to "why can't I press this" belongs where the press
     /// was refused rather than in a panel the reader only reaches by making the choice that just failed.

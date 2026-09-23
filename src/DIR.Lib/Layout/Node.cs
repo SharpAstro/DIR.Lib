@@ -191,6 +191,28 @@ public abstract partial record Node
     public Action<InputModifier>? OnActivate { get; init; }
 
     /// <summary>
+    /// What the SECOND press of a double-click does, set via <see cref="DoubleClickable"/>: a rig card
+    /// that selects on one click and opens on two, a file row that highlights and then loads.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It runs INSTEAD of <see cref="OnClick"/> on that press, not beside it. The first press of the pair
+    /// already ran the click, so running it again says the same thing twice at best, and for a click that
+    /// toggles it undoes the first one: a double-click on a checkbox row would open the row with the box
+    /// back where it started.
+    /// </para>
+    /// <para>
+    /// Declared because a consumer could previously only get the click count through
+    /// <see cref="OnPress"/>, and so wrote a press handler that read <see cref="PointerPress.Clicks"/>,
+    /// declined the gesture so the click still fired, and had to remember to decline, since claiming would
+    /// have swallowed the click. A press claimed for a drag still wins over both. Enter is unchanged: it
+    /// runs <see cref="OnActivate"/>, else <see cref="OnClick"/>, so a list whose Enter should open
+    /// declares <see cref="Activatable"/> with the same action.
+    /// </para>
+    /// </remarks>
+    public Action<InputModifier>? OnDoubleClick { get; init; }
+
+    /// <summary>
     /// Hover text for this node, set via <see cref="WithTooltip"/>. A node with a tooltip and no
     /// <see cref="Hit"/> still registers a region -- inert to presses -- because a statement about what
     /// is under the pointer has nowhere else to live.
