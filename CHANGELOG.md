@@ -9,6 +9,15 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.2
+
+**A flushed atlas region can be put back in line.** `SdfFontAtlas.RequeueUpload(pageIndex, region)`
+unions a region the backend already flushed back into the page's dirty rectangle, for a GPU backend
+whose upload never ran: SdlVulkan.Renderer records the page uploads into the frame, and a frame the
+driver refuses (the Adreno X1-85 does, after an engine reset) or recovery discards took them with it.
+Every glyph first drawn then stayed blank for the rest of the process. Clamped to the page; an index
+that no longer exists is ignored. Additive.
+
 ## 11.1
 
 Four interactions a consumer was writing by hand are now declarations on a layout node. Additive:

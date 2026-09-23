@@ -695,6 +695,29 @@ public sealed class SdfFontAtlas : IDisposable
         page.DirtyX1 = 0; page.DirtyY1 = 0;
     }
 
+    /// <summary>
+    /// Puts a region the backend already flushed back in line for the next flush, because the upload
+    /// that carried it never ran: on a GPU backend that records uploads into a frame, a frame the driver
+    /// refused or recovery discarded takes them with it. Unions into the page's dirty rectangle, clamped
+    /// to the page. The staging pixels are still the truth, so uploading the region again is exact, and
+    /// a region uploaded twice costs bandwidth, never correctness. A page index that no longer exists is
+    /// ignored: that page is gone and there is nothing left to upload.
+    /// </summary>
+    public void RequeueUpload(int pageIndex, DirtyRegion region)
+    {
+        if ((uint)pageIndex >= (uint)_pages.Count) return;
+        var page = _pages[pageIndex];
+        var x0 = Math.Clamp(region.X0, 0, _pageDim);
+        var y0 = Math.Clamp(region.Y0, 0, _pageDim);
+        var x1 = Math.Clamp(region.X1, 0, _pageDim);
+        var y1 = Math.Clamp(region.Y1, 0, _pageDim);
+        if (x0 >= x1 || y0 >= y1) return;
+        page.DirtyX0 = Math.Min(page.DirtyX0, x0);
+        page.DirtyY0 = Math.Min(page.DirtyY0, y0);
+        page.DirtyX1 = Math.Max(page.DirtyX1, x1);
+        page.DirtyY1 = Math.Max(page.DirtyY1, y1);
+    }
+
     /// <summary>Call once after the per-page flush loop. A glyph is "unflushed" until its page is
     /// uploaded; the backend flushes every dirty page in one pass, so if any page flushed, all
     /// pages are current and the unflushed set clears in one step (mirrors the pre-split
