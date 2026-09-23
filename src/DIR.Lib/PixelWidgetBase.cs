@@ -1202,6 +1202,7 @@ namespace DIR.Lib
                     {
                         OnPress = disabled ? null : node.OnPress,
                         OnActivate = disabled ? null : node.OnActivate,
+                        OnDoubleClick = disabled ? null : node.OnDoubleClick,
                         Tooltip = tooltip,
                         IsDisabled = disabled,
                         Scroll = node.Scroll,

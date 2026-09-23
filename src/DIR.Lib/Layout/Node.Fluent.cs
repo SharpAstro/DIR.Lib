@@ -120,6 +120,13 @@ public abstract partial record Node
     /// </summary>
     public Node Activatable(Action<InputModifier> onActivate) => this with { OnActivate = onActivate };
 
+    /// <summary>
+    /// State what a double-click does on this node: it runs on the second press in place of the click, so
+    /// one click selects and two open. Needs a <see cref="Node.Hit"/>, like any press.
+    /// See <see cref="Node.OnDoubleClick"/>.
+    /// </summary>
+    public Node DoubleClickable(Action<InputModifier> onDoubleClick) => this with { OnDoubleClick = onDoubleClick };
+
     /// <summary>Give this node hover text. Named With* like the gap setters, because a bare
     /// <c>Tooltip</c> method cannot shadow the <see cref="Node.Tooltip"/> property it sets.</summary>
     public Node WithTooltip(string text) => this with { Tooltip = text };
