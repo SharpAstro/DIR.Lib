@@ -40,8 +40,9 @@ every new member is an init-only property or a new builder, so nothing already c
 
 **The test projects run on Microsoft.Testing.Platform.** xunit.v3 4.x, `OutputType Exe`, the runner
 declared in `global.json` (which pins no SDK), and `Microsoft.NET.Test.Sdk` / `xunit.runner.visualstudio`
-gone. `DIR.Lib.Tests` carries the TRX, crash-dump and hang-dump extensions (`--report-trx`, `--crashdump`,
-`--hangdump`); `--filter` is unchanged. The xUnit1031 warnings in `DebugInspectorSchedulingTests` are
+gone. Both test projects carry the TRX, crash-dump and hang-dump extensions (`--report-trx`,
+`--crashdump`, `--hangdump`), the same set on purpose: a solution-wide run hands every option to every
+project, and one without the extension fails the whole run. `--filter` is unchanged. The xUnit1031 warnings in `DebugInspectorSchedulingTests` are
 gone: each read of a completed request's result is an `await`, after an assertion that it completed,
 since awaiting an unfinished one would hang the test rather than fail it.
 
