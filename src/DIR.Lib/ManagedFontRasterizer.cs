@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using SharpAstro.Fonts;
+using SharpAstro.Fonts.Outlines;
 using FontsHint = SharpAstro.Fonts.Tables.Cmap.GlyphMapHint;
 using Tables = SharpAstro.Fonts.Tables;
 using T1 = SharpAstro.Fonts.Type1;
@@ -774,6 +775,41 @@ public sealed class ManagedFontRasterizer : IDisposable
     {
         if (glyphName is null || !_type1Fonts.TryGetValue(fontPath, out var t1)) return default;
         return RenderType1(t1, glyphName, fontSize);
+    }
+
+    /// <summary>
+    /// Walks a glyph's OUTLINE into <paramref name="sink"/>, in the face's own design units with Y up, and
+    /// says how many of those units make an em. For a consumer that needs the geometry rather than pixels:
+    /// a vector export (XPS for a print job, PDF, SVG) draws each glyph as a path at whatever resolution
+    /// its device has. Covers both kinds of face the rasterize methods draw, an SFNT by glyph id and an
+    /// embedded Type 1 by glyph name, which a caller cannot reach on its own: the Type 1 faces live only
+    /// here. <see cref="TryGetOpenTypeFont"/> answers the SFNT half and deliberately refuses Type 1.
+    /// </summary>
+    /// <remarks>
+    /// The identity is the one <see cref="ResolveGlyphIdentity"/> returns, so a caller draws the same glyph
+    /// the atlas would. A Type 1 face's em comes from its <c>FontMatrix</c>[0], as its rasterizer's does
+    /// (<see cref="T1.Type1Font.UnitsPerEm"/>); a skewed <c>FontMatrix</c> is not applied, on either path.
+    /// </remarks>
+    /// <returns>
+    /// False, with nothing emitted, when the face is not loaded here (a <c>mem:</c> id never registered),
+    /// the identity is of the wrong kind for the face, or a Type 1 face has no glyph by that name.
+    /// </returns>
+    public bool TryDrawGlyphOutline(string fontPath, GlyphIdentity identity, IGlyphSink sink, out int unitsPerEm)
+    {
+        ArgumentNullException.ThrowIfNull(sink);
+        unitsPerEm = 0;
+
+        if (_type1Fonts.TryGetValue(fontPath, out var t1))
+        {
+            if (!identity.IsType1 || !t1.HasGlyph(identity.Type1Name!)) return false;
+            unitsPerEm = t1.UnitsPerEm;
+            return t1.DrawGlyph(identity.Type1Name!, sink);
+        }
+
+        if (identity.IsType1 || !TryGetOpenTypeFont(fontPath, out var font)) return false;
+        unitsPerEm = font.UnitsPerEm;
+        font.DrawGlyph(identity.Gid, sink);
+        return true;
     }
 
     public void Dispose()

@@ -9,6 +9,17 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.3
+
+**A glyph's outline, for a consumer that draws vectors.** `ManagedFontRasterizer.TryDrawGlyphOutline(fontPath,
+identity, sink, out unitsPerEm)` walks the glyph a `GlyphIdentity` names into an `IGlyphSink`, in the face's
+own design units with Y up, and says how many make an em. A vector export (an XPS print job, a PDF or SVG
+writer) draws text as paths at its device's resolution and needs the geometry, not a bitmap. It covers both
+faces the rasterize methods draw: an SFNT by glyph id, and an embedded Type 1 (`/FontFile`, PFB) by glyph
+name, which a caller had no way to reach, since the Type 1 faces live only inside the rasterizer
+(`TryGetOpenTypeFont` refuses them, correctly). A face that is not loaded, an identity of the wrong kind,
+or a Type 1 name the face lacks returns false with nothing emitted. Additive.
+
 ## 11.2
 
 **A flushed atlas region can be put back in line.** `SdfFontAtlas.RequeueUpload(pageIndex, region)`
