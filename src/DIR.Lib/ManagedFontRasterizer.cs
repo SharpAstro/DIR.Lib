@@ -801,9 +801,9 @@ public sealed class ManagedFontRasterizer : IDisposable
 
         if (_type1Fonts.TryGetValue(fontPath, out var t1))
         {
-            if (!identity.IsType1 || !t1.HasGlyph(identity.Type1Name!)) return false;
+            if (identity.Type1Name is not { } name || !t1.HasGlyph(name)) return false;
             unitsPerEm = t1.UnitsPerEm;
-            return t1.DrawGlyph(identity.Type1Name!, sink);
+            return t1.DrawGlyph(name, sink);
         }
 
         if (identity.IsType1 || !TryGetOpenTypeFont(fontPath, out var font)) return false;
