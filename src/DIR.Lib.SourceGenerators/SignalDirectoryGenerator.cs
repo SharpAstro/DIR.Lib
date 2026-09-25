@@ -17,7 +17,8 @@ namespace DIR.Lib.SourceGenerators;
 /// <c>*Signal</c> type in the consuming assembly -- so a live UI inspector can list + post any bus signal by
 /// name with NO runtime reflection (which is what keeps an AOT publish clean). Each factory constructs its
 /// signal from an inspector <c>post_signal</c> JSON payload via the <c>DIR.Lib.SignalJson</c> readers, binding
-/// each constructor parameter by (camelCase) name and falling back to its declared default. Only signals whose
+/// each constructor parameter by (camelCase) name in any case and falling back to its declared default, after
+/// refusing any key that names no bindable parameter (<c>SignalJson.RequireKnownKeys</c>). Only signals whose
 /// every required parameter is a bindable scalar (primitive / string / enum / Guid / their nullable forms) are
 /// emitted; one with a required complex payload is skipped (a null-default complex parameter is passed through
 /// as <c>null</c>).
@@ -94,37 +95,45 @@ public sealed class SignalDirectoryGenerator : IIncrementalGenerator
         }
 
         var args = new List<string>(ctor.Parameters.Length);
+        var keys = new List<string>(ctor.Parameters.Length);
         foreach (var p in ctor.Parameters)
         {
-            if (!TryBuildArg(p, out var argExpr))
+            if (!TryBuildArg(p, out var argExpr, out var jsonKey))
             {
                 return null; // a required, non-bindable parameter -> this signal is not postable from JSON.
             }
 
             args.Add(argExpr);
+            if (jsonKey is not null)
+            {
+                keys.Add("\"" + jsonKey + "\"");
+            }
         }
 
         var ns = symbol.ContainingNamespace.IsGlobalNamespace ? "" : symbol.ContainingNamespace.ToDisplayString();
         var fq = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         var key = symbol.Name.Substring(0, symbol.Name.Length - "Signal".Length);
 
-        return new SignalModel(ns, key, fq, string.Join(", ", args));
+        return new SignalModel(ns, key, fq, string.Join(", ", args), string.Join(", ", keys));
     }
 
-    // Builds the "paramName: SignalJson.Xxx(el, "camel", default)" fragment. Returns false when the parameter
-    // is required (no default) and not a bindable scalar -> the whole signal is skipped by the caller.
-    private static bool TryBuildArg(IParameterSymbol p, out string argExpr)
+    // Builds the "paramName: SignalJson.Xxx(el, "camel", default)" fragment, and the JSON key it binds (null for
+    // a parameter no payload can set). Returns false when the parameter is required (no default) and not a
+    // bindable scalar -> the whole signal is skipped by the caller.
+    private static bool TryBuildArg(IParameterSymbol p, out string argExpr, out string? jsonKey)
     {
         var reader = MapReader(p.Type);
         if (reader is not null)
         {
-            var camel = Camel(p.Name);
-            argExpr = $"{p.Name}: {SignalJsonType}.{reader}(el, \"{camel}\", {FormatDefault(p)})";
+            jsonKey = Camel(p.Name);
+            argExpr = $"{p.Name}: {SignalJsonType}.{reader}(el, \"{jsonKey}\", {FormatDefault(p)})";
             return true;
         }
 
         // Not a bindable scalar. If it has an explicit null default we can still construct by passing null;
-        // otherwise it cannot be built from JSON.
+        // otherwise it cannot be built from JSON. Either way no payload key reaches it, so it is not a key:
+        // a payload naming it is refused rather than ignored.
+        jsonKey = null;
         if (p.HasExplicitDefaultValue && p.ExplicitDefaultValue is null)
         {
             argExpr = $"{p.Name}: null";
@@ -224,8 +233,36 @@ public sealed class SignalDirectoryGenerator : IIncrementalGenerator
         };
     }
 
+    // System.Text.Json's camel case (JsonNamingPolicy.CamelCase), the convention a payload's author expects:
+    // the leading run of capitals is lowered, but a capital that begins the next word stays. RA -> ra,
+    // OtaIndex -> otaIndex, URLValue -> urlValue. Lowering only the first letter turned RA into rA. The key
+    // matches in any case anyway (SignalJson); this is the spelling a refusal lists and the one-lookup path.
     private static string Camel(string name)
-        => name.Length > 0 && char.IsUpper(name[0]) ? char.ToLowerInvariant(name[0]) + name.Substring(1) : name;
+    {
+        if (name.Length == 0 || !char.IsUpper(name[0]))
+        {
+            return name;
+        }
+
+        var chars = name.ToCharArray();
+        for (var i = 0; i < chars.Length; i++)
+        {
+            if (i == 1 && !char.IsUpper(chars[i]))
+            {
+                break;
+            }
+
+            // The capital before a lowercase letter starts the next word, so it stays.
+            if (i > 0 && i + 1 < chars.Length && !char.IsUpper(chars[i + 1]))
+            {
+                break;
+            }
+
+            chars[i] = char.ToLowerInvariant(chars[i]);
+        }
+
+        return new string(chars);
+    }
 
     private static string Generate(ImmutableArray<SignalModel> models)
     {
@@ -270,7 +307,14 @@ public sealed class SignalDirectoryGenerator : IIncrementalGenerator
 
         foreach (var m in ordered)
         {
-            sb.AppendLine($"        d[\"{m.Key}\"] = el => bus.Post(new {m.FullyQualifiedName}({m.Args}));");
+            // The key check first, so a payload naming anything this signal does not take is refused, never
+            // posted with that parameter silently at its default.
+            var keys = m.Keys.Length == 0 ? "" : ", " + m.Keys;
+            sb.AppendLine($"        d[\"{m.Key}\"] = el =>");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            {SignalJsonType}.RequireKnownKeys(el, \"{m.Key}\"{keys});");
+            sb.AppendLine($"            bus.Post(new {m.FullyQualifiedName}({m.Args}));");
+            sb.AppendLine("        };");
         }
 
         sb.AppendLine();
@@ -290,4 +334,5 @@ public sealed class SignalDirectoryGenerator : IIncrementalGenerator
     }
 }
 
-internal sealed record SignalModel(string Namespace, string Key, string FullyQualifiedName, string Args);
+// Keys is the emitted argument list of the payload keys the signal binds ("\"name\", \"ra\""), empty for none.
+internal sealed record SignalModel(string Namespace, string Key, string FullyQualifiedName, string Args, string Keys);
