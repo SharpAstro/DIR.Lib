@@ -26,6 +26,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DIR.Lib\DIR.Lib.csproj" />
+    <!-- A plain reference, not an analyzer: SignalDirectoryGeneratorTests drives the generator itself, with
+         DEBUG defined, because the generator emits nothing in the Release build CI tests. -->
+    <ProjectReference Include="..\DIR.Lib.SourceGenerators\DIR.Lib.SourceGenerators.csproj" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
   </ItemGroup>
 
   <ItemGroup>

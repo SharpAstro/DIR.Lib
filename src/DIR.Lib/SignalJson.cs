@@ -10,16 +10,17 @@ namespace DIR.Lib;
 /// <c>post_signal</c> payload onto a signal's constructor. Each reader returns the supplied default when the
 /// property is absent, JSON <c>null</c>, or the wrong JSON kind -- so a partial or empty payload yields the
 /// signal's declared defaults. No reflection, no dynamic code: safe for AOT-published binaries.
+/// <para>A key matches its parameter in any case, and a key that matches none is refused
+/// (<see cref="RequireKnownKeys"/>, which every generated factory calls first). Both halves are needed:
+/// the generator's own camel-casing once turned a parameter named <c>RA</c> into the key <c>rA</c>, so a
+/// payload spelling it <c>ra</c> bound nothing and the signal went out with RA 0, which looked like a
+/// working call.</para>
 /// </summary>
 public static class SignalJson
 {
     private static bool TryGet(JsonElement el, string name, out JsonElement value)
     {
-        // The inspector convention is camelCase property names (what the generator passes); accept the
-        // exact-cased name too so a PascalCase payload still binds.
-        if (el.ValueKind == JsonValueKind.Object
-            && (el.TryGetProperty(name, out value) || TryGetPascal(el, name, out value))
-            && value.ValueKind != JsonValueKind.Null)
+        if (el.ValueKind == JsonValueKind.Object && TryFind(el, name, out value) && value.ValueKind != JsonValueKind.Null)
         {
             return true;
         }
@@ -28,15 +29,72 @@ public static class SignalJson
         return false;
     }
 
-    private static bool TryGetPascal(JsonElement el, string camel, out JsonElement value)
+    // The exact name first (the key the generator emits, so the usual payload is one lookup), then any other
+    // casing: case carries no meaning to someone typing a payload, and RA, ra and rA must all reach a
+    // parameter named RA.
+    private static bool TryFind(JsonElement el, string name, out JsonElement value)
     {
-        if (camel.Length > 0 && char.IsLower(camel[0]))
+        if (el.TryGetProperty(name, out value))
         {
-            var pascal = char.ToUpperInvariant(camel[0]) + camel.Substring(1);
-            return el.TryGetProperty(pascal, out value);
+            return true;
+        }
+
+        foreach (var property in el.EnumerateObject())
+        {
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
         }
 
         value = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Refuses a payload that names anything <paramref name="signal"/> does not take, so a misspelt key is an
+    /// error at the call instead of a parameter silently left at its default. Keys match in any case, as the
+    /// readers do. No payload at all (or JSON <c>null</c>) is every parameter at its default, and passes.
+    /// </summary>
+    /// <param name="el">The payload.</param>
+    /// <param name="signal">The signal's name, for the message.</param>
+    /// <param name="keys">Every key the signal binds.</param>
+    /// <exception cref="ArgumentException">A key matches none of <paramref name="keys"/>, or the payload is not a
+    /// JSON object. The message lists the keys the signal does take, so the next call can be right.</exception>
+    public static void RequireKnownKeys(JsonElement el, string signal, params string[] keys)
+    {
+        if (el.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        {
+            return;
+        }
+
+        if (el.ValueKind != JsonValueKind.Object)
+        {
+            throw new ArgumentException($"{signal} takes a JSON object of arguments, not {el.ValueKind}");
+        }
+
+        foreach (var property in el.EnumerateObject())
+        {
+            if (!IsOneOf(property.Name, keys))
+            {
+                throw new ArgumentException(keys.Length == 0
+                    ? $"{signal} takes no arguments, so '{property.Name}' is not one"
+                    : $"{signal} takes {string.Join(", ", keys)}; '{property.Name}' is none of them");
+            }
+        }
+    }
+
+    private static bool IsOneOf(string name, string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (string.Equals(key, name, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 

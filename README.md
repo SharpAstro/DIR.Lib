@@ -99,8 +99,10 @@ Layout.Builder.HStack(
 - **`SignalDirectory` (source-generated)** — the package ships a Roslyn source generator that emits
   `SignalDirectory.BuildFactories(SignalBus bus, …overrides)`, a `name → Action<JsonElement>` map over **every
   `*Signal` type in the consuming assembly**, with **no runtime reflection**. Each factory constructs its
-  signal from a JSON payload via the reflection-free `SignalJson` scalar binders (camelCase key = parameter
-  name; missing field → the parameter's declared default) and posts it to the bus. Lets a live UI inspector
+  signal from a JSON payload via the reflection-free `SignalJson` scalar binders (the key is the parameter
+  name, camel-cased as `System.Text.Json` does it and matched in any case, so `RA` reads `ra`; a missing
+  field → the parameter's declared default; a key that names no bindable parameter is refused, with the
+  keys the signal does take) and posts it to the bus. Lets a live UI inspector
   / test harness list and post any bus signal by name. Gated on the `DEBUG` symbol (nothing generated in
   Release) and on `SignalBus` being referenced; signals with a required non-scalar parameter are skipped.
 - **`BackgroundTaskTracker`** — collects background tasks, checks completions per frame, logs errors via `ILogger`. Call `ProcessCompletions()` each frame, `DrainAsync()` at shutdown.
