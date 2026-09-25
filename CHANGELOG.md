@@ -9,6 +9,29 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.4
+
+**`BackgroundTaskTracker` is safe to use from any thread.** It was written for the render thread alone,
+and the assumption broke without anyone deciding it: `SignalBus.ProcessPending` runs an async handler
+inline only up to its first `await`, and a host with no synchronization context (TianWen's SDL loop, the
+TUI) resumes it on the thread pool, so a handler that submits work after an await submits from a pool
+thread while the render thread completes work on the same tracker. TianWen's session and flat-run
+bootstrappers both do. Over a plain `List` and `Dictionary` that could:
+
+- lose a submission, so `HasPending` answered false while the work still ran (a quit that waits on it
+  could exit in the middle of a session's `Finalise`);
+- throw "Collection was modified" out of `DrainAsync`, when work submitted a follow-up while it drained;
+- corrupt the keyed slots when two `RunExclusive` calls met on one key.
+
+The whole state is now one immutable value replaced by compare-and-swap, the lock-free shape of the org's
+`CircularBuffer`. Every effect (starting the work, cancelling or disposing a token source, logging a fault)
+happens once, after the swap, done by the caller whose swap made the change. A superseded slot is disposed
+by whichever of its displacer and its retirement settles second, so a cancel can never meet a disposed
+source. `DrainAsync` now also waits for work submitted while it drains. One ordering moved, harmlessly:
+`RunExclusive` starts the new work a moment BEFORE cancelling its predecessor rather than just after, since
+the start cannot sit inside a swap that may retry; cancellation is cooperative, so the two overlapped
+already. Three tests pin it, each seen failing on the old tracker first. No API change.
+
 ## 11.3
 
 **A glyph's outline, for a consumer that draws vectors.** `ManagedFontRasterizer.TryDrawGlyphOutline(fontPath,

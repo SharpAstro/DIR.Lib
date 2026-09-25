@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
 using System;
 using System.Collections.Generic;
@@ -307,6 +308,109 @@ public sealed class BackgroundTaskTrackerTests
 
         release.SetResult();
         await tracker.DrainAsync();
+        tracker.HasPending.ShouldBeFalse();
+    }
+
+    // The three below pin that the tracker is safe from any thread. An async signal handler runs
+    // inline only up to its first await (SignalBus.ProcessPending), and a host with no
+    // SynchronizationContext resumes it on the POOL, so a handler that submits after an await (both
+    // of TianWen's session bootstrappers do) submits from a pool thread, while the render thread
+    // completes work on the same tracker every frame. With a plain List that lost submissions, so
+    // HasPending could answer false with a session's Finalise still running.
+
+    [Fact(Timeout = 60_000)]
+    public async Task Run_FromManyThreadsWhileCompletionsAreProcessed_TracksEverySubmission()
+    {
+        var tracker = new BackgroundTaskTracker();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        const int Threads = 8, PerThread = 2_000;
+        using var stop = new CancellationTokenSource();
+
+        // The render thread's side: completions processed in a tight loop, as fast as a frame loop could.
+        var completer = Task.Run(() =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                tracker.ProcessCompletions(NullLogger.Instance);
+                _ = tracker.PendingCount;
+            }
+        }, TestContext.Current.CancellationToken);
+
+        var submitters = new Task[Threads];
+        for (var t = 0; t < Threads; t++)
+        {
+            submitters[t] = Task.Run(() =>
+            {
+                for (var i = 0; i < PerThread; i++)
+                {
+                    tracker.Run(() => gate.Task, "held");
+                }
+            }, TestContext.Current.CancellationToken);
+        }
+        await Task.WhenAll(submitters);
+        await stop.CancelAsync();
+        await completer;
+
+        // Nothing can have completed (every task waits on the gate), so every submission is pending.
+        tracker.PendingCount.ShouldBe(Threads * PerThread);
+
+        gate.SetResult();
+        await tracker.DrainAsync();
+        tracker.PendingCount.ShouldBe(0);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task DrainAsync_AwaitsWorkSubmittedWhileItDrains()
+    {
+        var tracker = new BackgroundTaskTracker();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var followUpRan = false;
+
+        // Work that, once released, submits a follow-up from its own pool thread: the drain has to wait
+        // for that too, where it used to throw "Collection was modified" out of its enumeration.
+        tracker.Run(async () =>
+        {
+            await release.Task;
+            tracker.Run(async () =>
+            {
+                await Task.Yield();
+                followUpRan = true;
+            }, "follow-up");
+        }, "first");
+
+        var drain = tracker.DrainAsync();
+        release.SetResult();
+        await drain.WaitAsync(TestContext.Current.CancellationToken);
+
+        followUpRan.ShouldBeTrue();
+        tracker.PendingCount.ShouldBe(0);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task RunExclusive_FromManyThreadsOnOneKey_LeavesOneRunningAndCancelsEveryOther()
+    {
+        var tracker = new BackgroundTaskTracker();
+        const int Count = 64;
+        var cancelled = 0;
+
+        var starters = new Task[Count];
+        for (var i = 0; i < Count; i++)
+        {
+            starters[i] = Task.Run(() => tracker.RunExclusive("key",
+                ct => new TaskCompletionSource().Task.WaitAsync(ct),
+                CancellationToken.None, NullLogger.Instance, "held",
+                onError: _ => { },
+                onCancel: () => Interlocked.Increment(ref cancelled)), TestContext.Current.CancellationToken);
+        }
+        await Task.WhenAll(starters);
+
+        // However the starts interleaved, each one superseded its predecessor: exactly one is left.
+        await WaitUntil(() => Volatile.Read(ref cancelled) == Count - 1, "every superseded run to cancel");
+        tracker.IsRunning("key").ShouldBeTrue();
+
+        tracker.Cancel("key");
+        await tracker.DrainAsync();
+        Volatile.Read(ref cancelled).ShouldBe(Count);
         tracker.HasPending.ShouldBeFalse();
     }
 }
