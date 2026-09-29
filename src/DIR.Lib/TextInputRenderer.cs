@@ -136,7 +136,9 @@ public static class TextInputRenderer
         FontFallbackResolver? fallback = null,
         float leadingRoom = 0f)
     {
-        var text = state.Text;
+        // What was DRAWN, which for a masked field is its bullets: the widths searched below have to be the
+        // widths the paint laid out, or a click on a password lands where the typed characters would be.
+        var text = state.DrawnText;
         if (text.Length == 0 || string.IsNullOrEmpty(fontFamily))
         {
             return 0;
@@ -264,10 +266,15 @@ public static class TextInputRenderer
         // land once the IME commits. It is deliberately not part of state.Text: the input method owns
         // those characters until it commits them, and merging them early would let a cancelled
         // composition survive in the field.
+        // A masked field draws bullets in place of its value, and in place of a preedit too, which is as
+        // much of the password as what is already committed.
         var composing = state.IsActive && state.IsComposing;
+        var drawn = state.DrawnText;
         var visibleText = composing
-            ? string.Concat(state.Text[..state.CursorPos], state.Composition, state.Text[state.CursorPos..])
-            : state.Text;
+            ? string.Concat(drawn[..state.CursorPos],
+                state.IsMasked ? new string(TextInputState.MaskChar, state.Composition.Length) : state.Composition,
+                drawn[state.CursorPos..])
+            : drawn;
 
         var displayText = visibleText.Length > 0 ? visibleText : (state.IsActive ? "" : state.Placeholder);
         var textColor = visibleText.Length > 0 ? colors.Text : colors.Placeholder;

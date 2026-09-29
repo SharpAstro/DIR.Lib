@@ -24,6 +24,30 @@ public class TextInputState
     /// <summary>The current text content.</summary>
     public string Text { get; set; } = "";
 
+    /// <summary>
+    /// A password field: the value is drawn as bullets and kept off the clipboard. <see cref="Text"/> still
+    /// holds what was typed; only what is DRAWN changes, and everything measured against the drawing -- the
+    /// caret, a click, the scroll that keeps the caret in view -- measures the bullets, so they cannot drift
+    /// apart. Copy and cut do nothing, and word motions cross the whole value, because stopping at a word
+    /// boundary would show where the spaces are.
+    /// </summary>
+    public bool IsMasked { get; set; }
+
+    /// <summary>
+    /// What a masked field draws for each character: U+2022 BULLET. It is General Punctuation, which a text
+    /// face carries, where U+25CF, the black circle Windows draws in a password box, is Geometric Shapes and
+    /// missing from many UI faces (Noto Sans among them), so it would draw as a missing-glyph box.
+    /// </summary>
+    public const char MaskChar = '•';
+
+    /// <summary>
+    /// The value as it is drawn: <see cref="Text"/>, or one <see cref="MaskChar"/> per UTF-16 unit of it when
+    /// <see cref="IsMasked"/>. Per unit rather than per character so that every index into Text is the same
+    /// index here, and the caret, the selection and a click need no mapping between the two; a character
+    /// outside the Basic Multilingual Plane shows as two bullets.
+    /// </summary>
+    internal string DrawnText => IsMasked ? new string(MaskChar, Text.Length) : Text;
+
     /// <summary>Cursor position (character index, 0 = before first char).</summary>
     public int CursorPos { get; set; }
 
@@ -318,6 +342,12 @@ public class TextInputState
     /// </summary>
     private int WordBoundary(int from, int direction)
     {
+        // A masked value is one word: a caret that stopped inside it would say where its spaces are.
+        if (IsMasked)
+        {
+            return direction < 0 ? 0 : Text.Length;
+        }
+
         var index = Math.Clamp(from, 0, Text.Length);
 
         if (direction < 0)
@@ -356,6 +386,13 @@ public class TextInputState
     {
         if (Text.Length == 0)
         {
+            return;
+        }
+
+        // A masked value has no words to show: selecting one would outline where the spaces are.
+        if (IsMasked)
+        {
+            SelectAll();
             return;
         }
 
