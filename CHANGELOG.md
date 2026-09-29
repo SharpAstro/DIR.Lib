@@ -9,6 +9,23 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.7
+
+**A text field can be a password field.** `TextInputState.IsMasked` draws the value as bullets (U+2022,
+`TextInputState.MaskChar`) and keeps it off the clipboard. `Text` still holds what was typed; only the
+drawing changes, and everything measured against the drawing measures the bullets, so a click, the caret and
+the scroll that keeps it in view line up with what is on screen.
+
+- Copy and cut do nothing on a masked field, cut included: deleting the selection without copying it would
+  lose what the user meant to move. Paste still works, which is how a password manager fills one.
+- Word motions and double-click cross the whole value, since stopping at a word would show where the spaces
+  are.
+- An IME preedit is masked too.
+- One bullet per UTF-16 unit, so every index into `Text` is the same index into what is drawn; a character
+  outside the Basic Multilingual Plane shows as two.
+
+Additive.
+
 ## 11.6
 
 **CFF and Type 1 text keeps its hairlines.** SharpAstro.Fonts 1.13 fixes the MTSDF of a CFF or Type 1

@@ -150,9 +150,12 @@ public static class TextInputInteraction
             return true;
         }
 
+        // A masked field keeps its value off the clipboard, where any other program could read it. Copy and
+        // cut are consumed and do nothing, cut included: deleting the selection without copying it would
+        // lose what the user meant to move.
         if (textKey == TextInputKey.Copy)
         {
-            if (activeInput.HasSelection)
+            if (activeInput.HasSelection && !activeInput.IsMasked)
             {
                 ctx.SetClipboardText?.Invoke(
                     activeInput.Text[activeInput.SelectionStart..activeInput.SelectionEnd]);
@@ -166,7 +169,7 @@ public static class TextInputInteraction
         // field's own Delete case, which already knows that a selection is what Delete removes.
         if (textKey == TextInputKey.Cut)
         {
-            if (activeInput.HasSelection)
+            if (activeInput.HasSelection && !activeInput.IsMasked)
             {
                 ctx.SetClipboardText?.Invoke(
                     activeInput.Text[activeInput.SelectionStart..activeInput.SelectionEnd]);
