@@ -9,6 +9,15 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.6
+
+**CFF and Type 1 text keeps its hairlines.** SharpAstro.Fonts 1.13 fixes the MTSDF of a CFF or Type 1
+glyph with a counter (a, e, o, d, ...): its generator read contour windings as TrueType's, so every texel
+outside such a glyph measured its distance to the counter, and each outer edge drew about half a texel
+inside the outline. At reading size that erased the top of a Times `a`. Glyphs with one contour and every
+TrueType glyph were never affected. `SdfGlyphDiskCache` moves to format 7, so a `.sdfg` written with the
+thin fields is rewritten on its next append instead of serving them. No API change.
+
 ## 11.5
 
 **An inspector payload key that binds nothing is refused, and a key matches its parameter in any case.**

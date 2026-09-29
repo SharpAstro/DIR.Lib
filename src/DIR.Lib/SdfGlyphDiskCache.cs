@@ -54,7 +54,11 @@ public sealed class SdfGlyphDiskCache : IDisposable
     // v6 (scanline winding fix): ray crossings are now counted per y-monotone piece, fixing rows
     // whose winding inverted when a texel row hit a curve joint (detached gray dashes under round
     // glyphs — o/c/e/g/b). Field bytes differ again for the affected glyphs; same re-rasterize-once.
-    private const uint FormatVersion = 6;
+    // v7 (SharpAstro.Fonts 1.13, CFF/Type 1 orientation): a CFF or Type 1 glyph with a counter had
+    // every texel outside it measured to the counter, so its outer edges sat half a texel inside the
+    // outline and hairlines (the top of a Times 'a') vanished. Field bytes differ for every such glyph;
+    // a v6 file would go on serving the thin ones, so re-rasterize once.
+    private const uint FormatVersion = 7;
     // Header: magic(4) + version(4) + rasterSize(4) + spread(4) + fontHash(8) + reserved(8) = 32 bytes.
     private const int HeaderSize = 32;
     // Fixed per-entry metadata size *after* the 4-byte length prefix, i.e. everything before the

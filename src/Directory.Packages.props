@@ -34,11 +34,11 @@
          does, and the resulting .NET stack overflow cannot be caught, so nothing above
          this could ever have defended against it. Such a glyph now falls back to its
          unhinted outline, which is what FreeType does with the same input. -->
-    <PackageVersion Include="SharpAstro.Fonts" Version="1.12.*" />
+    <PackageVersion Include="SharpAstro.Fonts" Version="1.13.*" />
     <!-- The pure-managed shaping engine, consumed by the DIR.Lib.Shaping satellite (the
          ITextShaper adapter). Same Fonts.Lib CI cadence as SharpAstro.Fonts — one
          -p:Version covers the whole repo, so the two always ship the same number. -->
-    <PackageVersion Include="SharpAstro.Fonts.Shaping" Version="1.12.*" />
+    <PackageVersion Include="SharpAstro.Fonts.Shaping" Version="1.13.*" />
     <!-- LALR.CC drives the markdown + LaTeX grammars baked into the
          DIR.Lib.Markdown subsystem. Source generator runs build-time;
          the runtime LALR.CC assembly is referenced for the Parser /
