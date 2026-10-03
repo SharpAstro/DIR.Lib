@@ -209,7 +209,21 @@ namespace DIR.Lib
         /// the rule in full.
         /// </para>
         /// </summary>
-        public virtual float DpiScale { get => Ui.DpiScale; set => Ui.DpiScale = value; }
+        /// <remarks>
+        /// Read, it is the window's DPI times this widget's own <see cref="InterfaceScale"/>: the scale everything this
+        /// widget lays out or measures by hand is at. Set, it sets the WINDOW's DPI, which every widget in the window
+        /// shares; a widget's own scale is <see cref="InterfaceScale"/> and is never part of what is set.
+        /// </remarks>
+        public virtual float DpiScale { get => Ui.DpiScale * InterfaceScale; set => Ui.DpiScale = value; }
+
+        /// <summary>
+        /// This widget's own scale over the window's DPI, 1 by default: the one dial for a host that wants one widget's
+        /// chrome a little larger or smaller than another's drawing into the same window -- a GUI's tabs a tad larger than
+        /// the image viewer they embed, whose toolbar keeps the size it has in its own application. <see cref="DpiScale"/>
+        /// and <see cref="Scale"/> both include it, so the nodes the widget declares and the sizes it works out by hand are
+        /// always at one scale; each widget the host composes is set on its own (an embedded child keeps 1 unless set).
+        /// </summary>
+        public float InterfaceScale { get; set; } = 1f;
 
         /// <summary>
         /// The design→surface mapping this widget hands to the pieces that need one — the scroll
@@ -220,8 +234,11 @@ namespace DIR.Lib
         /// drift the moment a display changes. A <see cref="DesignScale"/> also carries both axes, so a
         /// caller can no longer multiply by "the" scale and be right only because the unit happened to be
         /// square.</para>
+        /// <para>It follows <see cref="DpiScale"/>, this widget's own <see cref="InterfaceScale"/> included: read straight
+        /// off the window it would lay a widget's declared nodes out at one scale while the widget's own arithmetic, which
+        /// reads <see cref="DpiScale"/>, ran at another.</para>
         /// </summary>
-        public DesignScale Scale => new(Ui.DpiScale);
+        public DesignScale Scale => new(DpiScale);
 
         /// <summary>
         /// The window's primary text font (an absolute path or a family name the

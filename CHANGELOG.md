@@ -9,6 +9,19 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.8
+
+**A widget can be a tad larger than the window it shares.** `PixelWidgetBase.InterfaceScale` (1 by default) is a
+widget's own scale over the window's DPI: a GUI sets it on its chrome and tabs so they read a little larger than
+an image viewer they embed, whose toolbar keeps the size it has in its own application. `DpiScale` reads as the
+window's DPI times it, and `Scale` (what the layout helpers measure and arrange with) now follows `DpiScale`, so a
+widget's declared nodes and its own arithmetic are always at one scale. Setting `DpiScale` still sets the
+WINDOW's DPI, through any widget.
+
+- `Scale` used to read the window's DPI straight, past the virtual `DpiScale`: a widget overriding `DpiScale`
+  laid its nodes out at one scale and computed its own sizes at another. Nothing overrode it, so nothing
+  changes for an existing consumer.
+
 ## 11.7
 
 **A text field can be a password field.** `TextInputState.IsMasked` draws the value as bullets (U+2022,
