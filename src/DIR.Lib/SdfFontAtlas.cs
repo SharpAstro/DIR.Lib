@@ -24,7 +24,41 @@ public sealed class SdfFontAtlas : IDisposable
     // ids). Codepoint→identity is resolved once at the GetGlyph boundary via
     // ManagedFontRasterizer.ResolveGlyphIdentity — so the old (charCode, character) CID
     // workaround collapses: two codepoints that resolve to the same glyph now share one entry.
-    private readonly record struct GlyphKey(string Font, float Size, uint Gid, string? Name);
+    //
+    // FontHash is the font's own hash, computed once per font (see Key) and carried so the key never
+    // hashes the font string itself. A font is a full file path or a mem: id, and hashing it was half
+    // the cost of drawing a glyph on a text-heavy page: once per glyph per set the draw asked, on every
+    // redraw (98k glyphs on one CAD sheet). Equality still compares Font, by reference first, so the
+    // hash only decides the bucket.
+    private readonly record struct GlyphKey(string Font, int FontHash, float Size, uint Gid, string? Name)
+    {
+        public override int GetHashCode() => HashCode.Combine(FontHash, Size, Gid, Name);
+    }
+
+    /// <summary>The atlas key for a glyph of <paramref name="font"/> at this atlas's raster size.</summary>
+    private GlyphKey Key(string font, uint gid, string? name) => new(font, FontHash(font), _rasterSize, gid, name);
+
+    // The fonts hashed most recently. A draw passes the same string for every glyph of a font, so a run
+    // of glyphs finds its entry by reference; a font passed as another instance with the same text finds
+    // it by an ordinal compare, which is a fraction of a hash. Entries are immutable and replaced whole,
+    // so a background rasterize task reading the ring while the render thread replaces a slot sees either
+    // the old entry or the new one, never a path paired with another path's hash. A page alternating
+    // between more fonts than there are slots costs a hash per switch, which is what every glyph cost.
+    private sealed record FontHashEntry(string Font, int Hash);
+    private readonly FontHashEntry?[] _fontHashes = new FontHashEntry?[16];
+    private int _fontHashNext;
+
+    private int FontHash(string font)
+    {
+        var slots = _fontHashes;
+        foreach (var e in slots)
+            if (e is not null && ReferenceEquals(e.Font, font)) return e.Hash;
+        foreach (var e in slots)
+            if (e is not null && string.Equals(e.Font, font, StringComparison.Ordinal)) return e.Hash;
+        var entry = new FontHashEntry(font, StringComparer.Ordinal.GetHashCode(font));
+        slots[(int)((uint)Interlocked.Increment(ref _fontHashNext) % (uint)slots.Length)] = entry;
+        return entry.Hash;
+    }
 
     // Fallback Gid for whitespace a font has no glyph for, which therefore has no advance of its own
     // and borrows the 'n' reference glyph's. Kept off gid 0 (the shared notdef/blank entry for
@@ -95,6 +129,8 @@ public sealed class SdfFontAtlas : IDisposable
     // document near-instant after the first session.
     private readonly SdfGlyphDiskCache? _diskCache;
     private readonly HashSet<string> _diskLoadedFonts = new();
+    // The font EnsureFontLoadedFromDisk last found loaded; cleared with _diskLoadedFonts.
+    private string? _lastLoadedFont;
     // Completed background .sdfg reads awaiting render-thread insertion (DrainPendingDiskLoads).
     // Keeps the (potentially ~100ms) synchronous disk read off the render thread.
     private readonly ConcurrentQueue<(string Font, IReadOnlyList<DiskGlyphEntry> Entries)> _pendingDiskLoads = new();
@@ -399,7 +435,7 @@ public sealed class SdfFontAtlas : IDisposable
             for (; i < load.Entries.Count && budget > 0 && _frameStagedBytes < MaxUploadBytesPerFrame; i++)
             {
                 var e = load.Entries[i];
-                var key = new GlyphKey(load.Font, _rasterSize, e.Gid, e.Name);
+                var key = Key(load.Font, e.Gid, e.Name);
                 if (_glyphs.ContainsKey(key)) continue;
                 InsertRasterized(key, e.Bitmap);
                 budget--;
@@ -480,7 +516,7 @@ public sealed class SdfFontAtlas : IDisposable
         bool skipUnflushed = false, bool rasterizeOnMiss = true)
     {
         EnsureFontLoadedFromDisk(fontPath);
-        var key = new GlyphKey(fontPath, _rasterSize, gid, type1Name);
+        var key = Key(fontPath, gid, type1Name);
         return GetGlyphByKey(key, isWhitespace: false, skipUnflushed, rasterizeOnMiss);
     }
 
@@ -542,8 +578,8 @@ public sealed class SdfFontAtlas : IDisposable
         // survives only as the fallback for a face carrying no glyph for this space at all — common
         // in symbol and subset fonts, and a .notdef resolve would otherwise lay out as no gap.
         if (id.Gid == 0 && id.Type1Name is null && Rune.IsWhiteSpace(character))
-            return new GlyphKey(fontPath, _rasterSize, WhitespaceGid, null);
-        return new GlyphKey(fontPath, _rasterSize, id.Gid, id.Type1Name);
+            return Key(fontPath, WhitespaceGid, null);
+        return Key(fontPath, id.Gid, id.Type1Name);
     }
 
     // Rasterize a glyph to MTSDF by its resolved identity: Type1 by glyph name, otherwise by GID.
@@ -621,7 +657,15 @@ public sealed class SdfFontAtlas : IDisposable
     private void EnsureFontLoadedFromDisk(string fontPath)
     {
         if (_diskCache is null) return;
-        if (_diskLoadedFonts.Contains(fontPath)) return;
+        // Every glyph a draw asks for comes through here, and the same font as the call before is the
+        // common case: answered by reference, without hashing the path. Remembered only once the font
+        // is marked loaded, so a font that bailed below is asked again next time.
+        if (ReferenceEquals(fontPath, _lastLoadedFont)) return;
+        if (_diskLoadedFonts.Contains(fontPath))
+        {
+            _lastLoadedFont = fontPath;
+            return;
+        }
         // Don't commit the "loaded" guard until the cache can actually resolve this font's hash. For a
         // "mem:" subset font that means RegisterMemoryFont must have run first; if it hasn't yet (the
         // resolver registers during parse, which can race the first glyph use), bail WITHOUT marking —
@@ -630,6 +674,7 @@ public sealed class SdfFontAtlas : IDisposable
         // re-appended each session (the 2.7× .sdfg duplication + a needless ~1s cold rasterize pass).
         if (!_diskCache.HasHashFor(fontPath)) return;
         _diskLoadedFonts.Add(fontPath);
+        _lastLoadedFont = fontPath;
 
         // Read + deserialize the .sdfg on a BACKGROUND thread — a large/old UI-font cache can take
         // ~100ms, and that must never block the render thread. The decoded entries come back via
@@ -1039,7 +1084,7 @@ public sealed class SdfFontAtlas : IDisposable
         var toRasterize = new List<GlyphKey>();
         foreach (var (font, gid, name) in keys)
         {
-            var atlasKey = new GlyphKey(font, _rasterSize, gid, name);
+            var atlasKey = Key(font, gid, name);
             if (_glyphs.ContainsKey(atlasKey)) continue;
             if (!_rasterizeInFlight.TryAdd(atlasKey, 0)) continue;
             toRasterize.Add(atlasKey);
@@ -1106,6 +1151,7 @@ public sealed class SdfFontAtlas : IDisposable
         // every glyph and grew the .sdfg file — the source of the observed 2.7× disk duplication and
         // the repeated large atlas flushes that fragment the LOH.
         _diskLoadedFonts.Clear();
+        _lastLoadedFont = null;
 
         // Destroy every extra page (1..N-1); page 0 is reset in place. Those pages' GPU resources may
         // still be referenced by the previous frame's draws, so the backend gets one WillBeDestroyed
