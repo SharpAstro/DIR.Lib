@@ -9,6 +9,24 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.9
+
+**An SDF glyph lookup no longer hashes the font's path.** `SdfFontAtlas` keyed each glyph by its font,
+a full file path or a `mem:` id. Every lookup hashed that string, in each set the draw asked
+(`_glyphs`, `_unflushedGlyphs`, and the per-call `EnsureFontLoadedFromDisk` check), so on a
+text-heavy page half the cost of drawing a glyph was string hashing. That cost was paid for every
+glyph on every redraw. The key now carries the font's hash, computed once per font and remembered in
+a small ring, so equality still compares the font, by reference first. The disk-load check answers
+the same font as the last call without a lookup. No public API changes.
+
+Measured on a PDF viewer redrawing a resident page offscreen, Release, on an Adreno X1-85, minimum of
+30 redraws with the two builds run alternately:
+
+| Page | Glyphs | Text draw before | After |
+|---|---|---|---|
+| CAD floor plan | 98,425 | 16.7-17.0 ms | 8.2-8.3 ms |
+| Architectural sheet | 26,244 | 5.0 ms | 2.1 ms |
+
 ## 11.8
 
 **A widget can be a tad larger than the window it shares.** `PixelWidgetBase.InterfaceScale` (1 by default) is a
