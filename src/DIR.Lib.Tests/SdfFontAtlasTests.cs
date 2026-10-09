@@ -196,6 +196,71 @@ public sealed class SdfFontAtlasTests : IDisposable
         atlas.GetGlyphByGid(FontPath, hotGid, rasterizeOnMiss: false).Width.ShouldBeGreaterThan(0);
     }
 
+    /// <summary>
+    /// A caller that keeps glyph UVs across frames (a persistent vertex buffer of a page's text) draws
+    /// without looking glyphs up, so it keeps its pages hot with TouchPage and learns from PageStamp
+    /// when one was recycled under it. Every page but the LAST is kept hot by TouchPage alone. Pages
+    /// equally cold are recycled in index order, so if TouchPage did not count, page 0 would be the
+    /// one recycled, not the last.
+    /// </summary>
+    [Fact]
+    public void PageStamp_ChangesWhenThePageIsRecycled_AndTouchPageKeepsPagesHot()
+    {
+        using var atlas = CreateAtlas(pageDim: 64);
+        uint gid = 4;
+        for (; gid < 400 && atlas.PageCount < SdfFontAtlas.MaxPages; gid++)
+            atlas.GetGlyphByGid(FontPath, gid);
+        atlas.PageCount.ShouldBe(SdfFontAtlas.MaxPages);
+        var before = Enumerable.Range(0, atlas.PageCount).Select(atlas.PageStamp).ToArray();
+        before.Distinct().Count().ShouldBe(before.Length, "every page is stamped apart");
+
+        for (var i = 0; i < 4; i++) atlas.BeginFrame();
+        var last = atlas.PageCount - 1;
+        for (var p = 0; p < last; p++) atlas.TouchPage(p);
+
+        SdfFontAtlas.GlyphInfo recycled = default;
+        for (; gid < 800; gid++)
+        {
+            recycled = atlas.GetGlyphByGid(FontPath, gid);
+            if (recycled.Width > 0) break;
+        }
+        atlas.DecodePage(in recycled, out var page, out _, out _);
+        page.ShouldBe(last, "every other page was touched, so the last page was the cold one");
+
+        atlas.PageStamp(last).ShouldNotBe(before[last]);
+        for (var p = 0; p < last; p++)
+            atlas.PageStamp(p).ShouldBe(before[p], $"page {p} kept its glyphs, so it keeps its stamp");
+        atlas.PageStamp(atlas.PageCount).ShouldBe(-1);
+    }
+
+    /// <summary>
+    /// EvictAll resets page 0 and destroys the rest, so a later append reuses index 1 for different
+    /// glyphs. The stamp must differ from the one page 1 had before, or a buffer built against the old
+    /// page 1 would look valid against the new one.
+    /// </summary>
+    [Fact]
+    public void PageStamp_ChangesOnEvictAll_EvenForAPageAppendedAtAReusedIndex()
+    {
+        using var atlas = CreateAtlas(pageDim: 64);
+        uint gid = 4;
+        for (; gid < 400; gid++)
+        {
+            var g = atlas.GetGlyphByGid(FontPath, gid);
+            if (atlas.PageCount == SdfFontAtlas.MaxPages && g.Width == 0) break;
+        }
+        var page0 = atlas.PageStamp(0);
+        var page1 = atlas.PageStamp(1);
+
+        atlas.BeginFrame();
+        atlas.PageCount.ShouldBe(1);
+        atlas.PageStamp(0).ShouldNotBe(page0);
+
+        for (; gid < 800 && atlas.PageCount < 2; gid++)
+            atlas.GetGlyphByGid(FontPath, gid);
+        atlas.PageCount.ShouldBe(2);
+        atlas.PageStamp(1).ShouldNotBe(page1);
+    }
+
     [Fact]
     public void FrameBudget_BoundsInsertsPerFrame_AndDrainsAcrossFrames()
     {
@@ -323,7 +388,38 @@ public sealed class SdfFontAtlasTests : IDisposable
         // did, an offscreen capture waited out its whole frame budget and then reported a golden-image
         // diff — a font error arriving as a pixel difference.
         atlas.IsDirty.ShouldBeFalse("a permanently failing glyph must not pin IsDirty");
-        atlas.GetGlyphByGid(missing, 7u, rasterizeOnMiss: false).Width.ShouldBe(0);
+        var givenUp = atlas.GetGlyphByGid(missing, 7u, rasterizeOnMiss: false);
+        givenUp.Width.ShouldBe(0);
+        // And it is FINAL, though every field a miss also has is zero: a caller that rebuilds kept
+        // glyph quads until every glyph is final would otherwise rebuild a page with one broken glyph
+        // on every frame, for good.
+        givenUp.IsFinal.ShouldBeTrue("a given-up glyph is the atlas's last word on it");
+    }
+
+    /// <summary>
+    /// <see cref="SdfFontAtlas.GlyphInfo.IsFinal"/> separates a glyph that is still coming from one
+    /// that has nothing to draw, which <c>Width == 0</c> alone cannot: a miss, a glyph not yet uploaded
+    /// and a space all have it.
+    /// </summary>
+    [Fact]
+    public void IsFinal_TellsAGlyphStillComingFromOneWithNothingToDraw()
+    {
+        using var atlas = CreateAtlas(pageDim: 256);
+
+        var miss = atlas.GetGlyph(FontPath, SdfFontAtlas.SdfRasterSize, new Rune('Q'), rasterizeOnMiss: false);
+        miss.Width.ShouldBe(0);
+        miss.IsFinal.ShouldBeFalse("a miss is queued, not final");
+
+        var ink = atlas.GetGlyph(FontPath, SdfFontAtlas.SdfRasterSize, new Rune('A'));
+        ink.IsFinal.ShouldBeTrue();
+        var unflushed = atlas.GetGlyph(FontPath, SdfFontAtlas.SdfRasterSize, new Rune('A'), skipUnflushed: true);
+        unflushed.Width.ShouldBe(0, "inserted this frame and not uploaded yet");
+        unflushed.IsFinal.ShouldBeFalse("its pixels are still to come");
+
+        var space = atlas.GetGlyph(FontPath, SdfFontAtlas.SdfRasterSize, new Rune(' '));
+        space.Width.ShouldBe(0);
+        space.AdvanceX.ShouldBeGreaterThan(0f);
+        space.IsFinal.ShouldBeTrue("a space has nothing to draw, and that is final");
     }
 
     [Fact]

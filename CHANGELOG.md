@@ -9,6 +9,28 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.12
+
+**A caller can keep glyph quads across frames.** A renderer that lays a page's text out once, in a
+persistent buffer, holds glyph UVs past the frame it looked them up in. It needs three things from
+`SdfFontAtlas`, and this release adds them; all are additive.
+
+- **`PageStamp(page)`** changes whenever the glyphs on a page stop being valid: the page was recycled
+  for other glyphs, wiped with the whole atlas, or destroyed with its index reused later. The stamps are
+  drawn from one atlas-wide counter, because a counter per page could not tell a page `EvictAll`
+  destroyed from one appended later at the same index. A caller records the stamps of the pages it used
+  and lays its text out again when one differs. It is -1 for an index that names no page.
+- **`TouchPage(page)`** marks a page used this frame, as a lookup does. A draw from kept glyph data looks
+  nothing up, so without this its pages look cold to the LRU and are recycled while on screen.
+- **`GlyphInfo.IsFinal` and `GlyphInfo.IsRefused`**. `Width == 0` alone cannot tell a glyph still
+  coming (a miss now queued, or pixels not yet uploaded) from one with nothing to draw (a space).
+  `IsFinal` can, so a caller knows when to stop laying out again; `IsRefused` marks a glyph this tier
+  turned away for want of a page.
+
+A glyph the atlas gives up on is now recorded blank WITH the atlas's spread. It used to carry none,
+which read exactly like a miss, so a caller waiting for every glyph to be final would have laid out
+again, every frame, a page holding one glyph that can never rasterize.
+
 ## 11.11
 
 **A scrolled list follows its keyboard cursor, and scrolls all the way to its end.** Three defects in a
