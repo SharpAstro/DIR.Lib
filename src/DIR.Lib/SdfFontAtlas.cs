@@ -67,7 +67,22 @@ public sealed class SdfFontAtlas : IDisposable
     private const uint WhitespaceGid = uint.MaxValue;
 
     public readonly record struct GlyphInfo(float U0, float V0, float U1, float V1,
-        int Width, int Height, float AdvanceX, int BearingX, int BearingY, float Spread);
+        int Width, int Height, float AdvanceX, int BearingX, int BearingY, float Spread)
+    {
+        /// <summary>
+        /// Whether this is the glyph's last word: it has ink in the atlas (<see cref="Width"/> &gt; 0), or
+        /// it has none to draw (a space, or a glyph the atlas gave up on, both recorded blank with a
+        /// spread). False while the glyph is still coming: a miss now queued for rasterization (all
+        /// zero), a glyph in the atlas whose pixels are not uploaded yet (Width zeroed, Height kept), or
+        /// one this atlas refused for want of a page (<see cref="IsRefused"/>). A caller that keeps glyph
+        /// quads across frames builds them again until every glyph it asked for is final.
+        /// </summary>
+        public bool IsFinal => Width > 0 || (Height == 0 && Spread > 0f);
+
+        /// <summary>The atlas refused this glyph because every page is in use. A tiered caller draws it
+        /// from the other tier.</summary>
+        public bool IsRefused => Spread < 0f;
+    }
 
     /// <summary>A page's pending upload rectangle, in page-local pixels. <see cref="X1"/>/<see cref="Y1"/>
     /// are exclusive. Returned by <see cref="TryGetDirtyRegion"/> for the backend's flush loop.</summary>
@@ -235,6 +250,11 @@ public sealed class SdfFontAtlas : IDisposable
         // Undefined→ShaderReadOnly transition and its first sample otherwise share one submission,
         // which is exactly where a quirky driver (Adreno) can wedge. One frame of pop-in, invisible.
         public long CreatedTick;
+        // Changes whenever the glyphs on this page stop being the glyphs a caller saw: drawn from one
+        // atlas-wide counter at creation, when the page is recycled for other glyphs, and when the whole
+        // atlas is wiped. A counter per page would not do, because a page destroyed by EvictAll and one
+        // appended later at the same index would read alike. See PageStamp.
+        public long Stamp;
     }
 
     private readonly List<Page> _pages = new();
@@ -253,6 +273,27 @@ public sealed class SdfFontAtlas : IDisposable
     private long _lastPageAppendTick = -1;
 
     public int PageCount => _pages.Count;
+
+    private long _pageStamps;
+
+    /// <summary>
+    /// A stamp for <paramref name="page"/> that changes whenever the glyphs on it stop being valid: the
+    /// page was recycled for other glyphs, wiped with the whole atlas, or destroyed with its index reused
+    /// later. A caller that keeps glyph UVs past the frame it looked them up in, such as a persistent
+    /// vertex buffer of a page's text, records the stamps of the pages it used and rebuilds when one
+    /// differs. -1 for an index that names no page.
+    /// </summary>
+    public long PageStamp(int page) => (uint)page < (uint)_pages.Count ? _pages[page].Stamp : -1;
+
+    /// <summary>
+    /// Marks <paramref name="page"/> used this frame, as looking up a glyph on it does. A draw from glyph
+    /// data kept across frames looks nothing up, and without this its pages would look cold to the LRU
+    /// and be recycled while still on screen.
+    /// </summary>
+    public void TouchPage(int page)
+    {
+        if ((uint)page < (uint)_pages.Count) _pages[page].LastUsedFrame = _frameTick;
+    }
 
     /// <summary>The fixed square page size (power of two) every page uses — backends need it for
     /// texture allocation in <see cref="ISdfAtlasBackend.OnPageCreated"/> and row-stride math when
@@ -348,6 +389,7 @@ public sealed class SdfFontAtlas : IDisposable
         _activePageIdx = _pages.Count - 1;
         page.LastUsedFrame = _frameTick;
         page.CreatedTick = _frameTick;
+        page.Stamp = ++_pageStamps;
         _framePagesAppended++;
         _lastPageAppendTick = _frameTick;
         try
@@ -835,7 +877,11 @@ public sealed class SdfFontAtlas : IDisposable
             // cache (rather than re-offering the key for rasterization every frame) and lays text
             // out with the right gaps. Returning `default` here is what made shaped text, which
             // addresses the space by glyph id, run every word together.
-            var blank = new GlyphInfo(0, 0, 0, 0, 0, 0, bitmap.AdvanceX, 0, 0, bitmap.Spread);
+            // A give-up arrives as an empty bitmap with no spread, which would read exactly like a
+            // miss; the atlas's own spread marks it final (GlyphInfo.IsFinal). Nothing reads a blank's
+            // spread otherwise: it has no ink to place.
+            var blank = new GlyphInfo(0, 0, 0, 0, 0, 0, bitmap.AdvanceX, 0, 0,
+                bitmap.Spread > 0f ? bitmap.Spread : SdfSpread);
             _glyphs[key] = blank;
             return blank;
         }
@@ -974,6 +1020,7 @@ public sealed class SdfFontAtlas : IDisposable
         page.Keys.Clear();
         page.CursorX = 0; page.CursorY = 0; page.RowHeight = 0;
         page.LastUsedFrame = _frameTick;
+        page.Stamp = ++_pageStamps;
         _activePageIdx = pageIdx;
         PurgeRefusalSentinels();
         return true;
@@ -1174,6 +1221,7 @@ public sealed class SdfFontAtlas : IDisposable
         p0.CursorX = 0; p0.CursorY = 0; p0.RowHeight = 0;
         p0.Keys.Clear();
         p0.LastUsedFrame = _frameTick;
+        p0.Stamp = ++_pageStamps;
         Array.Clear(p0.Staging, 0, p0.Staging.Length);
         p0.DirtyX0 = 0; p0.DirtyY0 = 0;
         p0.DirtyX1 = _pageDim; p0.DirtyY1 = _pageDim;
