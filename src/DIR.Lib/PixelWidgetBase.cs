@@ -114,6 +114,14 @@ namespace DIR.Lib
         // a step per frame.
         private readonly List<ListCursor.PaintedRow> _paintedListRows = [];
 
+        // Every list row this frame's paint met inside a scrolled node, painted or clipped out of its
+        // viewport, with where it sits in what that node scrolls over: what lets the keyboard step onto a
+        // row the viewport hides, and bring the row it lands on into view. Mirrors _tracker's lifecycle.
+        private readonly List<ScrolledListRow> _scrolledListRows = [];
+
+        private readonly record struct ScrolledListRow(
+            HitResult.ListItemHit Hit, bool IsDisabled, bool IsClipped, ListScrollController Scroll, float Start, float End);
+
         // Selectable-text regions registered this frame (paint order). Mirrors _tracker's lifecycle --
         // cleared in BeginFrame, appended by DrawSelectableText, snapshotted by a host that renders the
         // text as native selectable UI (web DOM span / terminal yank). Kept OUT of the clickable tracker
@@ -301,6 +309,7 @@ namespace DIR.Lib
             _tracker.BeginFrame(Ui.FrameId);
             _selectableText.Clear();
             _capturedLayout?.Clear();
+            _scrolledListRows.Clear();
 
             // Window-level, so it is cleared once per paint CYCLE rather than once per widget: see the
             // remarks on WindowUiSettings.PointerOwner for why clearing it here unconditionally would break
@@ -416,7 +425,52 @@ namespace DIR.Lib
                 }
             }
 
-            return ListCursor.Step(delta, _paintedListRows);
+            // And the rows a scrolled list arranged but its viewport clipped out. They registered nothing,
+            // because a row nobody can see must not answer a press, but they are rows of the list all the
+            // same: the paint met them, declared. Without them the arrows stopped dead at the last row
+            // the viewport showed, half of which could be under its edge.
+            foreach (var row in _scrolledListRows)
+            {
+                if (row.IsClipped && ListCursor.Owns(row.Hit))
+                {
+                    _paintedListRows.Add(new ListCursor.PaintedRow(row.Hit.Index, row.IsDisabled));
+                }
+            }
+
+            if (!ListCursor.Step(delta, _paintedListRows))
+            {
+                return false;
+            }
+
+            RevealListCursor();
+            return true;
+        }
+
+        /// <summary>
+        /// Scrolls the cursor's row into view in the scrolled node the last paint met it in, minimally and
+        /// clear of that node's padding. A row in no scrolled node is already wherever its host put it,
+        /// and a row of a virtualised list the paint never arranged is the host's to bring into view, off
+        /// <see cref="ListCursor.Moved"/>, as before.
+        /// </summary>
+        private void RevealListCursor()
+        {
+            foreach (var row in _scrolledListRows)
+            {
+                if (ListCursor.IsOn(row.Hit))
+                {
+                    row.Scroll.RevealExtent(row.Start, row.End);
+                    return;
+                }
+            }
+        }
+
+        // Where a row sits in what its scrolled node scrolls over: its WHOLE arranged extent, not the
+        // part a clip left, since bringing it into view means all of it.
+        private void NoteScrolledListRow(HitResult.ListItemHit hit, bool isDisabled, bool isClipped,
+            ListScrollController scroll, Rect<float> bounds)
+        {
+            var (start, end) = scroll.ContentExtentOf(new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height));
+            _scrolledListRows.Add(new ScrolledListRow(hit, isDisabled, isClipped, scroll, start, end));
         }
 
         /// <summary>
@@ -1082,6 +1136,17 @@ namespace DIR.Lib
 
                 if (scrolls.Count > 0 && !Intersects(scrolls.Peek().Clip, bounds))
                 {
+                    // Not painted, captured or registered: it is off screen and must not answer a press.
+                    // A list row is still a row of its list, though, and is noted for the keyboard (see
+                    // MoveListCursor), unless it sits in a closed popover, which lists nothing. The depth
+                    // markers are read as "an ancestor's", since this skip comes before they are retired.
+                    if (node.Hit is HitResult.ListItemHit clipped
+                        && !(closedPopoverDepth >= 0 && closedPopoverDepth < arrangedNode.Depth))
+                    {
+                        NoteScrolledListRow(clipped, node.IsDisabled || (disabledDepth >= 0 && disabledDepth < arrangedNode.Depth),
+                            isClipped: true, scrolls.Peek().Scroll, bounds);
+                    }
+
                     continue;
                 }
 
@@ -1213,6 +1278,11 @@ namespace DIR.Lib
                 var region = scrolls.Count > 0 ? Intersect(scrolls.Peek().Clip, bounds) : bounds;
                 if (node.Hit is { } hit)
                 {
+                    if (hit is HitResult.ListItemHit listRow && scrolls.Count > 0)
+                    {
+                        NoteScrolledListRow(listRow, disabled, isClipped: false, scrolls.Peek().Scroll, bounds);
+                    }
+
                     RegisterClickable(new ClickableRegion(
                         region.X, region.Y, region.Width, region.Height, hit,
                         disabled ? null : node.OnClick, cursor)
