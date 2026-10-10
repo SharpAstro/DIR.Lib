@@ -9,6 +9,31 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.11
+
+**A scrolled list follows its keyboard cursor, and scrolls all the way to its end.** Three defects in a
+stack declared `WithScroll`, which together made a long list read as one whose last row was cut off for
+good:
+
+- **The arrows stopped at the edge of the viewport.** The painter registers only what the viewport
+  shows, and `MoveListCursor` walked the registered rows, so the cursor stopped at the last row the
+  viewport showed, often half under its edge, and nothing scrolled. The paint now notes every list row
+  it meets inside a scrolled node, clipped ones included (still unregistered, so they answer no
+  press), the arrows step onto them, and the row they land on is scrolled into view, minimally and
+  clear of the node's padding. A host no longer wires `ListCursor.Moved` to `EnsureVisible` or states a
+  row count for such a list; a virtualised list the paint never arranges keeps doing both, as before.
+- **A padded list could not scroll to its end.** The arrange stated the INNER rect as the viewport and
+  the painter bound the arranged one, so the paint's clamp held the offset a whole padding short of the
+  end, and the last half-row of a padded card was out of reach whatever scrolled it. The viewport is
+  now the node's own rect, and the padding at both ends is part of what it scrolls over, as CSS has it.
+- **A wheel notch moved three pixels.** `WheelStepAtoms` counts atoms, and a list fed by the layout
+  counts in surface units unless it states `AtomDesignUnits`. A notch now moves three rows of the
+  list's mean pitch (`LineExtentPx`, stated by the engine).
+
+New on `ListScrollController`: `RevealExtent(start, end)` and `ContentExtentOf(rect)`, which reveal a
+span rather than an atom index (right for rows of mixed height, or under a header), and the
+`LineExtentPx` and `ContentInsetPx` the engine states. Additive; no other public API changes.
+
 ## 11.10
 
 **No icon is painted from triangles.** The pan mark's four heads were drawn with `DrawTriangles`, the

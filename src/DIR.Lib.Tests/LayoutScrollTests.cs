@@ -131,7 +131,42 @@ public class LayoutScrollTests
         var router = Routing.Over(widget);
         router.Handle(new InputEvent.Scroll(-1f, 10f, 10f, InputModifier.None)).ShouldBeTrue();
 
-        scroll.Offset.ShouldBe(scroll.WheelStepAtoms, "a notch scrolls WheelStepAtoms surface units");
+        scroll.Offset.ShouldBe(scroll.WheelStepAtoms * RowH,
+            "a notch scrolls WheelStepAtoms ROWS: on a list counted in surface units it was three pixels");
+    }
+
+    /// <summary>
+    /// A padded list scrolls far enough to show its last row whole, clear of the padding: the viewport is
+    /// the node's own rect and the padding is part of what it scrolls over, as CSS has it.
+    /// </summary>
+    /// <remarks>
+    /// The arrange used to state the INNER rect as the viewport while the painter bound the arranged one,
+    /// so the paint's clamp held the offset a whole padding short of the end, and with the rows slid a
+    /// padding below the clip, the last half-row of a padded card was out of reach whatever scrolled it.
+    /// </remarks>
+    [Fact]
+    public void APaddedListScrollsFarEnoughToShowItsLastRowWhole()
+    {
+        const float pad = 5f;
+        var (widget, scroll) = Fixture();
+        var rows = new Layout.Node[Rows];
+        for (var i = 0; i < Rows; i++)
+        {
+            rows[i] = Layout.Builder.Spacer().RowH(RowH).Clickable(new HitResult.ListItemHit("rows", i), _ => { });
+        }
+        // In a column, as Page has it: the root takes the whole bounds whatever its clamp says.
+        var list = Layout.Builder.VStack(
+                Layout.Builder.VStack(rows).WStar().HClamp(0f, ViewportH).Pad(pad).WithScroll(scroll),
+                Layout.Builder.Spacer().RowH(30f))
+            .Stretch();
+
+        widget.Render(list, new RectF32(0, 0, 200, 200));
+        scroll.AtomOffset = 10_000;
+        widget.Render(list, new RectF32(0, 0, 200, 200));
+
+        var last = Row(widget, Rows - 1)!.Value.Bounds;
+        (last.Y + last.Height).ShouldBe(ViewportH - pad, "the last row ends where the padding begins");
+        Region(widget, Rows - 1)!.Value.Height.ShouldBe(RowH, "and all of it answers a press");
     }
 
     /// <summary>A list of uniform rows counts its offset in rows, so "scroll one" is one row and the

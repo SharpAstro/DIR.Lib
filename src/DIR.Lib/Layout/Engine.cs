@@ -131,7 +131,7 @@ public static class Engine
             case Node.Leaf:
                 break;
             case Node.Stack stack:
-                ArrangeStack(stack, inner, ctx, output, childDepth);
+                ArrangeStack(stack, rect, inner, ctx, output, childDepth);
                 break;
             case Node.Dock dock:
                 ArrangeDock(dock, inner, ctx, output, childDepth);
@@ -274,7 +274,7 @@ public static class Engine
         ArrangeNode(split.Second, secondRect, ctx, output, depth);
     }
 
-    private static void ArrangeStack<T>(Node.Stack stack, Rect<T> inner, IMeasureContext<T> ctx,
+    private static void ArrangeStack<T>(Node.Stack stack, Rect<T> rect, Rect<T> inner, IMeasureContext<T> ctx,
         ImmutableArray<ArrangedNode<T>>.Builder output, int depth) where T : INumber<T>
     {
         var children = stack.Children;
@@ -343,27 +343,44 @@ public static class Engine
             // The controller is told what it scrolls OVER here, because only the arrange knows it: the
             // viewport is the rect this stack was given and the content is what its children resolved
             // to. One surface unit per atom, so the offset is a plain distance along the axis and a
-            // wheel or a drag moves the rows by exactly what it says. SetExtent is documented as
-            // idempotent and raises nothing, which is what makes it safe to call from a layout pass.
-            var total = gap * T.CreateChecked(Math.Max(0, includedCount - 1));
+            // drag moves the rows by exactly what it says. SetExtent is documented as idempotent and
+            // raises nothing, which is what makes it safe to call from a layout pass.
+            var rows = gap * T.CreateChecked(Math.Max(0, includedCount - 1));
             for (var i = 0; i < n; i++)
             {
                 if (included[i])
                 {
-                    total += mains[i];
+                    rows += mains[i];
                 }
             }
+
+            // The viewport is the stack's OWN rect, padding and all, and what it scrolls over is the rows
+            // with that padding at both ends: the box model CSS gives an overflowing element. It was the
+            // inner rect, while the painter binds the arranged rect (it has nothing else), and the two
+            // disagreed by the padding: the paint's clamp held the offset a whole padding short of the
+            // end, the arrange slid the rows a padding further down than the clip, and the last half-row
+            // of a padded list could never be scrolled into view.
+            var padStart = axis == Axis.Vertical ? inner.Y - rect.Y : inner.X - rect.X;
+            var total = rows + padStart + padStart;
 
             // An atom is a row where the list says so (AtomDesignUnits) and one surface unit otherwise.
             var atom = scroll.AtomDesignUnits > 0f
                 ? MathF.Max(1f, float.CreateChecked(ToSurfaceOn(ctx, scroll.AtomDesignUnits, axis)))
                 : 1f;
             scroll.SetExtent(
-                new RectF32(float.CreateChecked(inner.X), float.CreateChecked(inner.Y),
-                    float.CreateChecked(inner.Width), float.CreateChecked(inner.Height)),
+                new RectF32(float.CreateChecked(rect.X), float.CreateChecked(rect.Y),
+                    float.CreateChecked(rect.Width), float.CreateChecked(rect.Height)),
                 atomExtentPx: atom,
                 totalAtoms: (int)MathF.Ceiling(float.CreateChecked(total) / atom),
                 new DesignScale(float.CreateChecked(ctx.ToSurfaceX(1f)), float.CreateChecked(ctx.ToSurfaceY(1f))));
+
+            // What the controller cannot work out from an atom of one surface unit: how far a wheel notch
+            // should go (a ROW, as WheelStepAtoms means on a list that counts rows, not a pixel), and the
+            // padding a row brought into view by the keyboard should clear.
+            scroll.LineExtentPx = includedCount > 0
+                ? float.CreateChecked(rows + gap) / includedCount
+                : 0f;
+            scroll.ContentInsetPx = float.CreateChecked(padStart);
 
             // Slid, not clipped: the children that land outside the viewport are still arranged, and it
             // is the PAINTER that clips them and declines to register what cannot be seen. Arrange has

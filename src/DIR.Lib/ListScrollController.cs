@@ -145,6 +145,26 @@ public sealed class ListScrollController
     /// </remarks>
     public float AtomDesignUnits { get; set; }
 
+    /// <summary>
+    /// How long a row is, in surface units along the scroll axis, on a list that counts in surface units
+    /// rather than rows: what one step of <see cref="WheelStepAtoms"/> moves there. Zero, the default,
+    /// is one atom. Stated by the layout engine for a stack declared <see cref="Layout.Node.WithScroll"/>
+    /// (the mean pitch of its rows), and harmless to state by hand.
+    /// </summary>
+    /// <remarks>
+    /// Without it a wheel notch over such a list moved three PIXELS: <see cref="WheelStepAtoms"/> counts
+    /// atoms, and an atom there is one surface unit. On a list of 36-pixel rows that is a twelfth of a row
+    /// a notch, which reads as a wheel that barely works.
+    /// </remarks>
+    public float LineExtentPx { get; set; }
+
+    /// <summary>
+    /// The padding between the viewport's edge and its rows, in surface units along the scroll axis: what
+    /// <see cref="RevealExtent"/> keeps clear, so a row brought into view sits inside the padding rather
+    /// than under it. Stated by the layout engine, like <see cref="LineExtentPx"/>.
+    /// </summary>
+    public float ContentInsetPx { get; set; }
+
     /// <summary>Raised whenever an input event changes the scroll position. Wire to the widget's redraw.</summary>
     public event Action? Changed;
 
@@ -399,6 +419,52 @@ public sealed class ListScrollController
         RaiseIfMoved(before);
     }
 
+    /// <summary>
+    /// Scroll the span <paramref name="start"/>..<paramref name="end"/> into view, minimally, keeping
+    /// <see cref="ContentInsetPx"/> clear at either end. The span is in surface units along the scroll
+    /// axis, measured from the start of what the list scrolls over (see <see cref="ContentExtentOf"/>),
+    /// which is what a list of rows of mixed or unstated height has to say where <see cref="EnsureVisible"/>
+    /// needs a row index. A span taller than the viewport is aligned by its start.
+    /// </summary>
+    public void RevealExtent(float start, float end)
+    {
+        var atom = _atomExtentPx;
+        var inset = MathF.Min(ContentInsetPx, ViewportExtentPx / 2f);
+        var first = _offset * atom + inset;
+        var last = _offset * atom + ViewportExtentPx - inset;
+
+        float target;
+        if (start < first || end - start > last - first)
+        {
+            target = (start - inset) / atom;
+            if (SnapToAtom) target = MathF.Floor(target);
+        }
+        else if (end > last)
+        {
+            target = (end + inset - ViewportExtentPx) / atom;
+            if (SnapToAtom) target = MathF.Ceiling(target);
+        }
+        else
+        {
+            return;
+        }
+
+        var before = _offset;
+        _offset = Math.Clamp(target, 0f, MaxOffset);
+        RaiseIfMoved(before);
+    }
+
+    /// <summary>
+    /// Where something the layout arranged at <paramref name="arranged"/> sits in what the list scrolls
+    /// over: the span <see cref="RevealExtent"/> takes. Valid against the arrangement the current
+    /// <see cref="Offset"/> slid, which is to say until the offset next moves.
+    /// </summary>
+    public (float Start, float End) ContentExtentOf(RectF32 arranged)
+    {
+        var start = MainCoord(Axis, arranged.X, arranged.Y) - MainStart + _offset * _atomExtentPx;
+        return (start, start + (Axis == ScrollAxis.Vertical ? arranged.Height : arranged.Width));
+    }
+
     /// <summary>Consume the pending tap-on-release atom index (row select), or <c>null</c> if none is queued.</summary>
     public int? TakeAtomTap()
     {
@@ -440,8 +506,10 @@ public sealed class ListScrollController
     {
         var before = _offset;
         // Positive delta = scroll up = toward the start of the list. The fractional remainder stays in
-        // _offset and IS the trackpad accumulator.
-        _offset = Math.Clamp(_offset - delta * WheelStepAtoms, 0f, MaxOffset);
+        // _offset and IS the trackpad accumulator. A step is a row: an atom where the list counts rows,
+        // and LineExtentPx of them where it counts surface units.
+        var row = LineExtentPx > 0f ? MathF.Max(1f, LineExtentPx / _atomExtentPx) : 1f;
+        _offset = Math.Clamp(_offset - delta * WheelStepAtoms * row, 0f, MaxOffset);
         RaiseIfMoved(before);
     }
 
