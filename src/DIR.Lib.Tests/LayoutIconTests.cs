@@ -622,6 +622,35 @@ public class LayoutIconTests
     }
 
     /// <summary>
+    /// No mark is painted from triangles. A triangle takes its edges from the surface's multisampling, so a
+    /// mark built from one came out stepped wherever a frame was drawn single-sampled, and differed from frame
+    /// to frame when a host chose the sample count per frame (a viewer that blits an antialiased layer
+    /// single-sampled and draws its own content at 4x). The pan mark's heads were the one case; they are
+    /// pixel strips now, as the carets always were.
+    /// </summary>
+    [Fact]
+    public void NoMarkIsPaintedFromTriangles()
+    {
+        foreach (var kind in Enum.GetValues<Layout.IconKind>())
+        {
+            var renderer = new TriangleCountingRenderer(Surface, Surface);
+            new IconWidget(renderer).Render(Layout.Builder.Icon(kind, Surface, Ink), new RectF32(0, 0, Surface, Surface));
+            renderer.Triangles.ShouldBe(0, $"{kind} draws triangles");
+        }
+    }
+
+    private sealed class TriangleCountingRenderer(uint width, uint height) : RgbaImageRenderer(width, height)
+    {
+        public int Triangles { get; private set; }
+
+        public override void DrawTriangles(ReadOnlySpan<float> vertices, RGBAColor32 color)
+        {
+            Triangles += vertices.Length / 6;
+            base.DrawTriangles(vertices, color);
+        }
+    }
+
+    /// <summary>
     /// The I-beam is a stem plus a serif at each end. Like Minus it cannot ink its full square -- it is
     /// tall and narrow by definition -- so this pins the HEIGHT reaching the box, and the serifs, which are
     /// what stop it reading as a separator.

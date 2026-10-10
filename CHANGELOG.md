@@ -9,6 +9,16 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.10
+
+**No icon is painted from triangles.** The pan mark's four heads were drawn with `DrawTriangles`, the
+one mark in `IconKind` that was: a triangle takes its edges from the surface's multisampling, so the
+heads came out stepped wherever a frame was drawn single-sampled. A host that picks the sample count
+per frame (a PDF viewer runs a frame that only blits its antialiased content layer at one sample, and
+draws content at 4x) saw the mark change from one frame to the next. The heads are now strips of whole
+pixels, as the carets always were, and come out the same at any sample count. `LayoutIconTests`
+checks that no `IconKind` draws a triangle; it names `Pan` with the old heads. No public API changes.
+
 ## 11.9
 
 **An SDF glyph lookup no longer hashes the font's path.** `SdfFontAtlas` keyed each glyph by its font,

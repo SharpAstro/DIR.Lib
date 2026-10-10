@@ -246,15 +246,14 @@ namespace DIR.Lib
                     DrawLine(pcx, pcy - shaft, pcx, pcy + shaft, ink, panPen);
 
                     // Filled heads, because a chevron of two strokes loses its point first at chip size --
-                    // the same reason the carets are filled.
-                    Span<float> heads =
-                    [
-                        pcx + panArm, pcy, pcx + shaft, pcy - head, pcx + shaft, pcy + head,
-                        pcx - panArm, pcy, pcx - shaft, pcy - head, pcx - shaft, pcy + head,
-                        pcx, pcy + panArm, pcx - head, pcy + shaft, pcx + head, pcy + shaft,
-                        pcx, pcy - panArm, pcx - head, pcy - shaft, pcx + head, pcy - shaft,
-                    ];
-                    Renderer.DrawTriangles(heads, ink);
+                    // the same reason the carets are filled. And filled the way the carets are, from strips
+                    // of whole pixels: as triangles they took their edges from the surface's multisampling,
+                    // so the mark came out stepped wherever a frame was drawn single-sampled, and differed
+                    // from one frame to the next when a host chose the sample count per frame.
+                    ArrowHeadStrips(pcx + shaft, pcy, 1, 0, head, head, ink);
+                    ArrowHeadStrips(pcx - shaft, pcy, -1, 0, head, head, ink);
+                    ArrowHeadStrips(pcx, pcy + shaft, 0, 1, head, head, ink);
+                    ArrowHeadStrips(pcx, pcy - shaft, 0, -1, head, head, ink);
                     break;
                 }
 
@@ -352,6 +351,34 @@ namespace DIR.Lib
                     var cy3 = rect.Y + rect.Height / 2f;
                     DrawLine(hx0, hy0, cx3 + far, cy3 + far, ink, (int)MathF.Round(lensPen));
                     break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Fills an arrowhead from strips of whole pixels, as the carets are filled: a base
+        /// <paramref name="half"/> either side of (<paramref name="baseX"/>, <paramref name="baseY"/>), narrowing
+        /// to a point <paramref name="length"/> away in the direction (<paramref name="dx"/>, <paramref name="dy"/>),
+        /// one of the four axes. Strips across the direction of travel, each at least a pixel wide, so the tip is
+        /// a mark rather than nothing. Built from rectangles, it comes out the same at any sample count.
+        /// </summary>
+        private void ArrowHeadStrips(float baseX, float baseY, int dx, int dy, float length, float half, RGBAColor32 ink)
+        {
+            var strips = Math.Max(1, (int)MathF.Round(length));
+            var step = length / strips;
+            for (var i = 0; i < strips; i++)
+            {
+                // The full base at the first strip, narrowing to a point at the last.
+                var w = MathF.Max(1f, MathF.Round(2f * half * (strips - i) / strips));
+                if (dx != 0)
+                {
+                    var x = dx > 0 ? baseX + i * step : baseX - (i + 1) * step;
+                    FillRect(x, MathF.Round(baseY - w / 2f), step, w, ink);
+                }
+                else
+                {
+                    var y = dy > 0 ? baseY + i * step : baseY - (i + 1) * step;
+                    FillRect(MathF.Round(baseX - w / 2f), y, w, step, ink);
                 }
             }
         }
