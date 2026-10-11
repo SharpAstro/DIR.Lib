@@ -480,7 +480,41 @@ public abstract partial record Node
         float FirstExtent = 0f,
         float DividerThickness = 6f,
         HitResult? DividerHit = null,
-        RGBAColor32? DividerColor = null) : Node;
+        RGBAColor32? DividerColor = null) : Node
+    {
+        /// <summary>
+        /// Makes the divider drag itself: its press arms the drag, and every step of it is reported here as the
+        /// first pane's new extent in design units, ready to be stored as the next frame's
+        /// <see cref="FirstExtent"/>. Null (the default) leaves the divider to the host, as before 11.18.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Why the engine and not the host.</b> A divider with a hit and no handler is silently dead under a
+        /// router, which consumes a press whether or not anything ran, so every consumer registered a second region
+        /// over the divider just to arm the drag, then converted the pointer back into an extent by hand: against a
+        /// pane origin it assumed, in a scale it read off the window, jumping by wherever inside the grab band the
+        /// press landed. The arrange pass already holds the split's origin, its scale and the extent it laid out, so
+        /// the conversion is stated once here.
+        /// </para>
+        /// <para>
+        /// The drag is RELATIVE to the press, so a press anywhere in the grab band moves nothing until the pointer
+        /// does, and the extent reported is clamped to what the split can lay out. The press reports the extent it
+        /// starts from (<see cref="SplitResize.Ended"/> false), so a consumer can light the divider as the drag
+        /// begins, and the release reports the last one with <see cref="SplitResize.Ended"/> true. The divider states
+        /// the resize cursor of its axis, and a drag keeps it wherever the pointer travels (11.16). With no
+        /// <see cref="DividerHit"/> the divider registers as <see cref="HitResult.ChromeHit"/>.
+        /// </para>
+        /// </remarks>
+        public Action<SplitResize>? OnResize { get; init; }
+
+        /// <summary>
+        /// How wide the divider's grab band is, in design units, centred on the drawn divider and never narrower than
+        /// it: a two-unit line that answers only on its own two units is one a mouse misses. Zero (the default) is the
+        /// drawn thickness. Only a divider with <see cref="OnResize"/> or a <see cref="DividerHit"/> has a band, and a
+        /// band wider than the divider is placed over both panes' edges and kept inside the split.
+        /// </summary>
+        public float GrabThickness { get; init; }
+    }
 
     /// <summary>
     /// One child placed at its own measured size somewhere INSIDE this node's rect, rather than filling it
@@ -596,6 +630,12 @@ public abstract partial record Node
     /// <summary>A terminal paintable piece.</summary>
     public sealed record Leaf(Content Content) : Node;
 }
+
+/// <summary>
+/// One step of a <see cref="Node.Split"/>'s divider drag (<see cref="Node.Split.OnResize"/>): the first pane's extent
+/// in design units, and whether this is the release that ends the drag.
+/// </summary>
+public readonly record struct SplitResize(float FirstExtent, bool Ended);
 
 /// <summary>One node placed at an absolute rect by <see cref="Engine.Arrange{T}"/>. Emitted in
 /// pre-order (parent before children, <see cref="Node.Overlay"/> base-subtree before top-subtree)

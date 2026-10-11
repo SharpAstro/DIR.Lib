@@ -298,17 +298,71 @@ public static class Engine
         // Synthesize the divider as its own draw==hit node: the painter fills DividerColor and binds
         // DividerHit to the SAME arranged rect, so the grab region cannot drift from the drawn bar.
         // Emitted only when there is something to draw or hit (otherwise the divider is a pure gap).
-        if (split.DividerColor is not null || split.DividerHit is not null)
+        var hit = split.DividerHit ?? (split.OnResize is null ? null : new HitResult.ChromeHit());
+        var onPress = split.OnResize is { } onResize ? ResizeDrag(onResize, first, maxFirst, split.Axis, ctx) : null;
+        var cursor = onPress is null ? (CursorKind?)null : horizontal ? CursorKind.ResizeEW : CursorKind.ResizeNS;
+
+        // A grab band wider than the drawn divider is its own node, placed over both panes' edges, so it is emitted
+        // AFTER the second pane: a later node wins the hit, and the band must win it over what the panes put there.
+        var grab = hit is null ? T.Zero : Max(ToSurfaceOn(ctx, split.GrabThickness, split.Axis), divider);
+        var separateGrab = grab > divider;
+        if (split.DividerColor is not null || hit is not null)
         {
             var dividerNode = new Node.Leaf(new Content.Box(0f, 0f))
             {
                 Background = split.DividerColor,
-                Hit = split.DividerHit,
+                Hit = separateGrab ? null : hit,
+                OnPress = separateGrab ? null : onPress,
+                Cursor = separateGrab ? null : cursor,
             };
             output.Add(new ArrangedNode<T>(dividerNode, dividerRect) { Depth = depth });
         }
 
         ArrangeNode(split.Second, secondRect, ctx, output, depth);
+
+        if (separateGrab)
+        {
+            var two = T.One + T.One;
+            var mainStart = (horizontal ? inner.X : inner.Y) + first + divider / two - grab / two;
+            var mainMin = horizontal ? inner.X : inner.Y;
+            var start = Max(mainStart, mainMin);
+            var end = Min(mainStart + grab, mainMin + mainAvail);
+            var grabRect = horizontal
+                ? new Rect<T>(start, inner.Y, Max(T.Zero, end - start), inner.Height)
+                : new Rect<T>(inner.X, start, inner.Width, Max(T.Zero, end - start));
+            var grabNode = new Node.Leaf(new Content.Box(0f, 0f)) { Hit = hit, OnPress = onPress, Cursor = cursor };
+            output.Add(new ArrangedNode<T>(grabNode, grabRect) { Depth = depth });
+        }
+    }
+
+    /// <summary>
+    /// The press of a divider that drags itself (<see cref="Node.Split.OnResize"/>): the drag is relative to the press,
+    /// so wherever in the grab band it landed moves nothing until the pointer does, and every extent reported is in
+    /// design units, clamped to what the split can lay out.
+    /// </summary>
+    private static Func<PointerPress, DragCapture?> ResizeDrag<T>(Action<SplitResize> onResize, T first, T maxFirst,
+        Axis axis, IMeasureContext<T> ctx) where T : INumber<T>
+    {
+        // Surface units per design unit along the axis, probed over a long run so a cell surface, which rounds a
+        // single design unit, still gives its true ratio.
+        const float probe = 4096f;
+        var perUnit = float.CreateSaturating(ToSurfaceOn(ctx, probe, axis)) / probe;
+        var startExtent = perUnit > 0f ? float.CreateSaturating(first) / perUnit : 0f;
+        var maxExtent = perUnit > 0f ? float.CreateSaturating(maxFirst) / perUnit : 0f;
+        var horizontal = axis == Axis.Horizontal;
+
+        return press =>
+        {
+            var origin = horizontal ? press.X : press.Y;
+            onResize(new SplitResize(startExtent, Ended: false));
+            return new DragCapture(
+                move => onResize(new SplitResize(ExtentAt(move), Ended: false)),
+                release => onResize(new SplitResize(ExtentAt(release), Ended: true)));
+
+            float ExtentAt(in PointerMove at) => perUnit > 0f
+                ? Math.Clamp(startExtent + ((horizontal ? at.X : at.Y) - origin) / perUnit, 0f, maxExtent)
+                : startExtent;
+        };
     }
 
     private static void ArrangeStack<T>(Node.Stack stack, Rect<T> rect, Rect<T> inner, IMeasureContext<T> ctx,

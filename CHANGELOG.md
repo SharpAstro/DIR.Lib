@@ -9,6 +9,23 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.18
+
+**A split's divider drags itself.** `Builder.Split(first, second, onResize, ...)` (`Node.Split.OnResize`) arms the drag
+from the divider's own press and reports every step as a `SplitResize`: the first pane's new extent in design units,
+ready to hand back as next frame's `FirstExtent`, and whether the step is the release. The drag is relative to the
+press, so a press anywhere in the grab band moves nothing until the pointer does, and the extent is clamped to what the
+split can lay out. The divider states the resize cursor of its axis (a drag keeps it, 11.16) and registers as a
+`ChromeHit` when it is given no hit. `grabThickness` (`Node.Split.GrabThickness`) widens the band that answers a press
+past the drawn `dividerThickness`, centred on the line and kept inside the split; a wider band is its own node, emitted
+after both panes so it wins the press over whatever they put at their edges.
+
+Before this a divider carried a hit and no handler, which a router consumes and runs nothing for, so a consumer
+registered a second region over it to arm the drag and turned the pointer back into an extent by hand: against a pane
+origin it assumed, in a scale it read off the window, and jumping by wherever inside the band the press landed.
+
+Additive: a `Split` without `OnResize` arranges and paints as before.
+
 ## 11.17
 
 **A widget can ask for a file without knowing the platform.** `IFileDialogs` is the platform's open, save and
