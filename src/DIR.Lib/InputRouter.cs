@@ -232,6 +232,13 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
 
         ApplyFocusOnOpen(widgets);
         ExpireTooltip();
+
+        // A popover opened, moved or closed during the paint, so what was painted before it was confined to the
+        // claim it no longer makes (WindowUiSettings.PointerClaim): the next frame carries the new one.
+        if (!ui.PointerClaimSettled)
+        {
+            requestRedraw();
+        }
     }
 
     /// <summary>

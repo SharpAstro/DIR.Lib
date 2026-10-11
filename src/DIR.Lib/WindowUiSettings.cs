@@ -133,6 +133,48 @@ public sealed class WindowUiSettings
     /// </remarks>
     public RectF32? PointerOwner { get; set; }
 
+    /// <summary>
+    /// The pointer claim in force for whatever is being painted NOW: <see cref="PointerOwner"/> once an open
+    /// popover has painted this cycle, and before that, the claim the last cycle ended with, for as long as the
+    /// popover that made it is still open. Hover painting confines itself to this.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A claim made by being painted reaches only what is painted after it</b>, and a popover paints LAST,
+    /// over the chrome it covers. Read from <see cref="PointerOwner"/> alone, everything painted before the
+    /// popover in a frame saw no claim: a declared button under an open menu's backdrop lit under the pointer,
+    /// which is why consumers kept a hand-written "does an overlay own the pointer" prediction beside their
+    /// chrome. Carrying the claim across the frame boundary, while its popover stays open, is that prediction
+    /// stated once.
+    /// </para>
+    /// <para>
+    /// The frame a popover OPENS in has nothing to carry, so a node painted before it can light for that one
+    /// frame; <see cref="PointerClaimSettled"/> is false then, and the router asks for the next frame, which
+    /// carries the claim.
+    /// </para>
+    /// </remarks>
+    public RectF32? PointerClaim => PointerOwner ?? _carriedPointerOwner;
+
+    /// <summary>
+    /// Whether this cycle's paint ended with the claim it started with (the carried one), so nothing painted
+    /// before the popover was confined to a different rect than the popover then claimed. False the frame a
+    /// popover opens, moves or closes; <see cref="InputRouter.AfterPaint"/> asks for another frame then.
+    /// </summary>
+    public bool PointerClaimSettled => PointerOwner == _carriedPointerOwner;
+
+    // The popover whose content set PointerOwner, so the next cycle can tell whether the claim still stands,
+    // and the claim carried into this cycle from the last one.
+    private PopoverState? _pointerOwnerPopover;
+    private RectF32? _carriedPointerOwner;
+
+    /// <summary>Records that <paramref name="popover"/>'s content, at <paramref name="content"/>, claims the
+    /// pointer this cycle. Called by the layout painter.</summary>
+    internal void ClaimPointer(RectF32 content, PopoverState popover)
+    {
+        PointerOwner = content;
+        _pointerOwnerPopover = popover;
+    }
+
     private readonly HashSet<object> _begunThisCycle = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
@@ -154,6 +196,9 @@ public sealed class WindowUiSettings
 
         _begunThisCycle.Clear();
         _begunThisCycle.Add(widget);
+        // Carried only while the popover that made it is open: one that closed simply stops claiming.
+        _carriedPointerOwner = PointerOwner is { } owner && _pointerOwnerPopover is { IsOpen: true } ? owner : null;
+        _pointerOwnerPopover = null;
         PointerOwner = null;
         _paintedPopovers.Clear();
     }

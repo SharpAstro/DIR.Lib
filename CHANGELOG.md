@@ -9,6 +9,22 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.14
+
+**An open popover's claim on the pointer confines what is painted BEFORE it too.** A popover paints last, over
+the chrome it covers, and claims the pointer by being painted, so a declared button painted earlier in the frame
+saw no claim and lit under an open menu's backdrop. Consumers kept a hand-written "does an overlay own the pointer"
+prediction beside their chrome for exactly this.
+
+- **`WindowUiSettings.PointerClaim`**: the claim in force for what is painted now. It is `PointerOwner` once a popover
+  has painted this frame; before that, it is the claim the last frame ended with, for as long as that popover is
+  still open. Hover painting confines itself to it.
+- **`WindowUiSettings.PointerClaimSettled`** is false the frame a popover opens, moves or closes, and
+  `InputRouter.AfterPaint` then asks for one more frame. Without that, a highlight painted before the popover's
+  first paint would stay up until something else repainted.
+
+Additive. `PointerOwner` keeps its meaning (this frame's record, what the router resolves events against).
+
 ## 11.13
 
 **One tooltip painter, `Layout.Builder.Tooltip`.** The router has decided which tooltip is due and where it is

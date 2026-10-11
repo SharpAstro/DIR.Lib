@@ -373,8 +373,9 @@ namespace DIR.Lib
 
         /// <summary>
         /// Whether the pointer is somewhere hover is allowed to answer: always, unless an open popover has
-        /// claimed it (<see cref="WindowUiSettings.PointerOwner"/>), in which case only inside the popover's
-        /// own content.
+        /// claimed it (<see cref="WindowUiSettings.PointerClaim"/>), in which case only inside the popover's
+        /// own content. The claim, not <see cref="WindowUiSettings.PointerOwner"/>, so a node painted BEFORE the
+        /// popover in a frame is confined too.
         /// </summary>
         /// <remarks>
         /// Written as "no owner, or inside the owner" rather than as a check on each rect, so a node cannot
@@ -384,7 +385,7 @@ namespace DIR.Lib
         /// backdrop keeps taking the click that dismisses.
         /// </remarks>
         private bool PointerIsOwned((float X, float Y) p) =>
-            Ui.PointerOwner is not { } owner
+            Ui.PointerClaim is not { } owner
             || (p.X >= owner.X && p.X < owner.X + owner.Width && p.Y >= owner.Y && p.Y < owner.Y + owner.Height);
 
         /// <summary>
@@ -1109,6 +1110,10 @@ namespace DIR.Lib
             // capture below for why the owner cannot be read off the Anchored node itself.
             var pendingOwnerDepth = -1;
 
+            // The open popover being painted, which the claim records so the next cycle can carry it while the
+            // popover stays open (WindowUiSettings.PointerClaim).
+            PopoverState? openPopover = null;
+
             // The enclosing SCROLLED nodes, by depth like the link above. A scrolled node's subtree paints
             // under a clip to the node's own rect (the arrange slid the children and clipped nothing --
             // see Engine.ArrangeStack), a child wholly outside that rect is not painted, not registered
@@ -1175,6 +1180,7 @@ namespace DIR.Lib
                     if (popover.IsOpen)
                     {
                         openPopoverDepth = arrangedNode.Depth;
+                        openPopover = popover;
 
                         // The claim is made BY BEING PAINTED, which is what makes it self-retiring: a
                         // popover that closed simply stops painting, and nothing has to remember to release
@@ -1210,9 +1216,9 @@ namespace DIR.Lib
                 //
                 // Taking the FIRST such content means a popover whose content itself anchors something, a
                 // submenu, still confines to the outer content, which is the rect being pointed at.
-                if (pendingOwnerDepth >= 0 && arrangedNode.Depth == pendingOwnerDepth)
+                if (pendingOwnerDepth >= 0 && arrangedNode.Depth == pendingOwnerDepth && openPopover is { } claimant)
                 {
-                    Ui.PointerOwner = new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+                    Ui.ClaimPointer(new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height), claimant);
                     pendingOwnerDepth = -1;
                 }
                 else if (openPopoverDepth >= 0 && node is Layout.Node.Anchored && Ui.PointerOwner is null)
