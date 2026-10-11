@@ -389,6 +389,25 @@ namespace DIR.Lib
             || (p.X >= owner.X && p.X < owner.X + owner.Width && p.Y >= owner.Y && p.Y < owner.Y + owner.Height);
 
         /// <summary>
+        /// Whether hover may answer at (<paramref name="x"/>, <paramref name="y"/>): the point is not claimed away
+        /// by an open popover (<see cref="WindowUiSettings.PointerClaim"/>). The rule a declared node's hover fill is
+        /// painted by, for chrome that still decides its own highlight, so the two cannot disagree.
+        /// </summary>
+        /// <remarks>
+        /// Before this a consumer kept its own prediction of "does an overlay own the pointer" beside such chrome,
+        /// a list of its popovers that every new one had to be added to.
+        /// </remarks>
+        protected bool HoverAllowedAt(float x, float y) => PointerIsOwned((x, y));
+
+        /// <summary>
+        /// Whether <see cref="Pointer"/> hovers <paramref name="rect"/> by the rule a declared node lights by: inside
+        /// it (top/left inclusive, bottom/right exclusive) and not claimed away by an open popover.
+        /// </summary>
+        protected bool PointerHovers(RectF32 rect) =>
+            Pointer is { } p && PointerIsOwned(p)
+            && p.X >= rect.X && p.X < rect.X + rect.Width && p.Y >= rect.Y && p.Y < rect.Y + rect.Height;
+
+        /// <summary>
         /// Where the KEYBOARD is inside a list this widget declared — the counterpart of
         /// <see cref="Pointer"/>, and resolved the same way: against the regions the last paint
         /// registered, so the rows the arrows reach and the rows a click reaches are one list.

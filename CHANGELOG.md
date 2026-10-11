@@ -9,6 +9,16 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.15
+
+**Hand-painted chrome asks the painter's hover rule.** `PixelWidgetBase.PointerHovers(rect)` answers whether the
+pointer hovers a rect the way a declared `.BgHover` node lights (inside it, and not claimed away by an open popover,
+`WindowUiSettings.PointerClaim`), and `HoverAllowedAt(x, y)` answers the claim half alone. Chrome that still decides
+its own highlight, a hand-painted list row or a picture's hover wash, used to keep its own prediction of which
+overlays were open beside it; it asks these instead, so it cannot disagree with the declared nodes around it.
+
+Additive (two protected members).
+
 ## 11.14
 
 **An open popover's claim on the pointer confines what is painted BEFORE it too.** A popover paints last, over

@@ -29,6 +29,9 @@ public class PopoverPointerClaimTests
             RenderLayout(Layout.Builder.Popover(new RectF32(60f, 40f, 20f, 10f), Layout.Builder.Box(30f, 30f), popover),
                 new RectF32(0f, 0f, 200f, 200f), fontPath: "stub.ttf", scale: DesignScale.One);
         }
+
+        /// <summary>The query hand-painted chrome asks, by the same rule.</summary>
+        public bool Hovers(RectF32 rect) => PointerHovers(rect);
     }
 
     private static bool ButtonIsLit(DeclarationStubRenderer renderer)
@@ -81,6 +84,27 @@ public class PopoverPointerClaimTests
 
         ButtonIsLit(renderer).ShouldBeTrue("a popover that closed claims nothing, carried or not");
         widget.Ui.PointerClaimSettled.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// Chrome that still decides its own highlight asks <c>PointerHovers</c> and gets the painter's answer: no under
+    /// an open popover's backdrop, yes once it has closed. Before, such chrome kept a list of its popovers beside it.
+    /// </summary>
+    [Fact]
+    public void HandPaintedChromeAsksTheSameRuleAndGetsTheSameAnswer()
+    {
+        var widget = new TwoPassWidget(new DeclarationStubRenderer(200, 200));
+        var popover = new PopoverState();
+        popover.Open();
+        widget.Paint(popover, (10f, 10f));
+        widget.Paint(popover, (10f, 10f));
+
+        widget.Hovers(ButtonRect).ShouldBeFalse("the open popover's backdrop covers it");
+
+        popover.Close();
+        widget.Paint(popover, (10f, 10f));
+        widget.Hovers(ButtonRect).ShouldBeTrue();
+        widget.Hovers(new RectF32(100f, 100f, 10f, 10f)).ShouldBeFalse("the pointer is not there");
     }
 
     [Fact]
