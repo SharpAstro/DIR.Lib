@@ -88,6 +88,10 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     private MouseButton _captureButton;
     private InputModifier _captureModifiers;
 
+    // The cursor of the region whose press armed the capture: a drag keeps the cursor it began with wherever the
+    // pointer travels, which no region under the pointer can state (see CursorAt).
+    private CursorKind? _captureCursor;
+
     private (float X, float Y)? _pointer;
     private TooltipRequest? _tooltip;
     private DateTimeOffset _tooltipSince;
@@ -248,6 +252,14 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     /// </summary>
     public CursorKind? CursorAt(float x, float y)
     {
+        // A drag in flight keeps the cursor of the region that armed it: a divider being dragged shows the resize
+        // cursor over the picture it is being dragged across, and a text selection the I-beam past its field's
+        // edge. A host used to keep a flag for this ("is the divider being dragged") beside its own cursor rule.
+        if (_capture is not null && _captureCursor is { } held)
+        {
+            return held;
+        }
+
         var widgets = Widgets();
         for (var i = widgets.Count - 1; i >= 0; i--)
         {
@@ -416,6 +428,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                 _capture = capture;
                 _captureButton = press.Button;
                 _captureModifiers = press.Modifiers;
+                _captureCursor = region.Cursor;
                 return true;
             }
 
@@ -471,6 +484,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         _capture = new DragCapture(Extend, Extend);
         _captureButton = press.Button;
         _captureModifiers = press.Modifiers;
+        _captureCursor = CursorKind.Text;
     }
 
     private bool HandleMouseMove(InputEvent.MouseMove move)

@@ -813,6 +813,33 @@ public class InputRouterTests
     // ---- tooltip and cursor -------------------------------------------------------------------
 
     /// <summary>
+    /// A drag keeps the cursor of the region that armed it wherever the pointer travels, which no region under the
+    /// pointer can state: a host used to keep a flag ("the divider is being dragged") beside its own cursor rule.
+    /// </summary>
+    [Fact]
+    public void ADragKeepsTheCursorItBeganWithUntilTheButtonComesUp()
+    {
+        var harness = new Harness();
+        var widths = new List<float>();
+        harness.Paint(front: Layout.Builder.HStack(
+                Layout.Builder.Box(10f, 200f).WFixed(10f)
+                    .Pressable(new HitResult.ButtonHit("divider"),
+                        _ => new DragCapture(move => widths.Add(move.X), _ => { }), CursorKind.ResizeEW),
+                Layout.Builder.Spacer().Stretch())
+            .Stretch());
+
+        harness.Router.CursorAt(100f, 50f).ShouldBeNull("over the content, before any drag");
+
+        harness.Press(5f, 50f);
+        harness.Move(100f, 50f);
+        harness.Router.CursorAt(100f, 50f).ShouldBe(CursorKind.ResizeEW, "the drag keeps the divider's cursor");
+        widths.ShouldBe([100f]);
+
+        harness.Release(100f, 50f);
+        harness.Router.CursorAt(100f, 50f).ShouldBeNull("the drag ended");
+    }
+
+    /// <summary>
     /// The delay is the half three hand-written tooltip painters were all missing. Without one a tooltip
     /// appears under the pointer on its way past, which is why a reader learns to steer around them.
     /// </summary>

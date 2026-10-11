@@ -9,6 +9,16 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.16
+
+**A drag keeps the cursor it began with.** While a gesture is captured, `InputRouter.CursorAt` answers the cursor
+of the region whose press armed it, wherever the pointer travels: a divider being dragged shows the resize cursor
+over the picture it crosses, a text selection the I-beam past its field's edge. A host used to keep a flag ("the
+divider is being dragged") beside its own cursor rule for exactly this, and the flag outlived the drag's own
+handling. No region under the pointer can state it, which is why it is the router's.
+
+Behaviour change only while a capture is active, and only where the arming region stated a cursor.
+
 ## 11.15
 
 **Hand-painted chrome asks the painter's hover rule.** `PixelWidgetBase.PointerHovers(rect)` answers whether the
