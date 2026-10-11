@@ -226,6 +226,18 @@ public abstract partial record Node
     public string? Tooltip { get; init; }
 
     /// <summary>
+    /// Which side of this node its <see cref="Tooltip"/> opens on, set via <see cref="WithTooltip(string, DockSide)"/>;
+    /// null (the default) is below it. A tab on a strip down the window's left edge says Right, so its
+    /// tooltip opens over the content beside the strip rather than over the next tab.
+    /// </summary>
+    /// <remarks>
+    /// Declared on the node, not decided by the painter, because only the declaration knows what it would
+    /// cover: the painter sees a rect and a window, and a rect on the left edge is as often a list row as
+    /// a rail.
+    /// </remarks>
+    public DockSide? TooltipSide { get; init; }
+
+    /// <summary>
     /// Why this node cannot be acted on, set via <see cref="Disabled(string)"/>. Null (the default) is an
     /// ordinary node and paints exactly as before.
     /// </summary>
@@ -554,6 +566,31 @@ public abstract partial record Node
             margin = Margin;
             clamp = Clamp;
         }
+
+        /// <summary>
+        /// Against an <see cref="Anchor"/>, centre the child on the edge it opens beside rather than aligning
+        /// it with the edge's start: under the middle of a narrow button, level with the middle of a tall tab.
+        /// <see cref="OffsetAlong"/> still applies on top. Inert without an anchor.
+        /// </summary>
+        /// <remarks>
+        /// An init-only property rather than another positional parameter, for the reason the 9.2 members on
+        /// the records here are: a positional parameter changes the constructor an already-compiled caller binds
+        /// to. The centring needs the child's measured size, which is why it is the engine's and not an offset
+        /// a consumer could compute when it builds the tree.
+        /// </remarks>
+        public bool CenterAlong { get; init; }
+
+        /// <summary>
+        /// Against an <see cref="Anchor"/>, open on the OPPOSITE side when the child would run past this node's
+        /// rect on <see cref="Side"/> and fits on the other: a tooltip under a control at the bottom of the
+        /// window opens above it. Where it fits on neither, it stays on <see cref="Side"/> and
+        /// <see cref="Clamp"/> keeps it on screen. Inert without an anchor or a side.
+        /// </summary>
+        /// <remarks>
+        /// Without it the clamp alone answers a cramped side by sliding the child back over the very thing it
+        /// was opened beside, which for a tooltip is the region the pointer is resting on.
+        /// </remarks>
+        public bool FlipWhenCramped { get; init; }
     }
 
     /// <summary>A terminal paintable piece.</summary>

@@ -162,4 +162,62 @@ public class LayoutAnchoredTests
 
         public float ToSurface(float designUnits) => designUnits;
     }
+    /// <summary>A 40x30 panel against a 20x20 anchor at (<paramref name="ax"/>, <paramref name="ay"/>) in the 200x200 area.</summary>
+    private static Rect<float> AgainstAnchor(Layout.DockSide side, float ax, float ay, bool center = false, bool flip = false)
+    {
+        var panel = Layout.Builder.Spacer().WFixed(40f).HFixed(30f);
+        var root = new Layout.Node.Anchored(panel, side, Margin: 2f, Anchor: new RectF32(ax, ay, 20f, 20f))
+        {
+            CenterAlong = center,
+            FlipWhenCramped = flip,
+        };
+
+        return Layout.Engine.Arrange(root, new Rect<float>(0, 0, Area, Area), new UnitContext())
+            .First(a => a.Depth > 0)
+            .Bounds;
+    }
+
+    [Theory]
+    [InlineData(Layout.DockSide.Bottom, 90f, 122f)]  // x = 100 + (20 - 40) / 2; y = 100 + 20 + 2
+    [InlineData(Layout.DockSide.Top, 90f, 68f)]      // y = 100 - 2 - 30
+    [InlineData(Layout.DockSide.Right, 122f, 95f)]   // x = 100 + 20 + 2; y = 100 + (20 - 30) / 2
+    [InlineData(Layout.DockSide.Left, 58f, 95f)]     // x = 100 - 2 - 40
+    public void CenteredAlongItsEdgeTheChildIsLevelWithTheAnchorsMiddle(Layout.DockSide side, float x, float y)
+    {
+        var r = AgainstAnchor(side, 100f, 100f, center: true);
+
+        r.X.ShouldBe(x);
+        r.Y.ShouldBe(y);
+    }
+
+    [Theory]
+    [InlineData(Layout.DockSide.Bottom, 100f, 175f, 143f)]  // no room below 175 + 20; above at 175 - 2 - 30
+    [InlineData(Layout.DockSide.Top, 100f, 5f, 27f)]        // no room above 5; below at 5 + 20 + 2
+    public void ACrampedSideFlipsToTheOtherWhenAsked(Layout.DockSide side, float ax, float ay, float y)
+    {
+        AgainstAnchor(side, ax, ay, flip: true).Y.ShouldBe(y);
+        AgainstAnchor(side, ax, ay, flip: false).Y.ShouldNotBe(y, "without the flag the clamp alone answers");
+    }
+
+    [Theory]
+    [InlineData(Layout.DockSide.Right, 175f, 100f, 133f)]   // no room right of 195; left at 175 - 2 - 40
+    [InlineData(Layout.DockSide.Left, 5f, 100f, 27f)]       // no room left of 5; right at 5 + 20 + 2
+    public void ACrampedSideFlipsAcrossToo(Layout.DockSide side, float ax, float ay, float x)
+        => AgainstAnchor(side, ax, ay, flip: true).X.ShouldBe(x);
+
+    [Fact]
+    public void ASideWithNoRoomOnEitherSideStaysAndIsClamped()
+    {
+        // A 30-tall panel beside a 20-tall anchor filling a 200-tall area's middle has room on neither side
+        // when the anchor is 190 tall; it keeps Bottom and the clamp holds it inside the area.
+        var panel = Layout.Builder.Spacer().WFixed(40f).HFixed(30f);
+        var root = new Layout.Node.Anchored(panel, Layout.DockSide.Bottom, Margin: 2f, Anchor: new RectF32(80f, 5f, 20f, 190f))
+        {
+            FlipWhenCramped = true,
+        };
+
+        var r = Layout.Engine.Arrange(root, new Rect<float>(0, 0, Area, Area), new UnitContext()).First(a => a.Depth > 0).Bounds;
+
+        r.Y.ShouldBe(Area - 2f - 30f, "clamped to the bottom, not flipped to a side with no more room");
+    }
 }

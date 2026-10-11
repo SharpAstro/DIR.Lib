@@ -182,7 +182,8 @@ public static class Engine
         // either way, which is the combination that keeps a menu under the rightmost button in a bar both
         // below its button and on screen.
         var (x, y) = anchored.Anchor is { } a
-            ? PlaceAgainstAnchor(a, anchored.Side, size, margin, along, across)
+            ? PlaceAgainstAnchor(a, anchored.FlipWhenCramped ? Roomier(a, anchored.Side, size, margin, inner) : anchored.Side,
+                size, margin, along, across, anchored.CenterAlong)
             : anchored.Side switch
             {
                 DockSide.Left => (inner.X + margin, inner.Y + along),
@@ -213,20 +214,56 @@ public static class Engine
     /// wrong for the same reason converting a pointer position would be.
     /// </remarks>
     private static (T X, T Y) PlaceAgainstAnchor<T>(RectF32 anchor, DockSide? side, Size<T> size,
-        T margin, T along, T across) where T : INumber<T>
+        T margin, T along, T across, bool center = false) where T : INumber<T>
     {
         var ax = T.CreateTruncating(anchor.X);
         var ay = T.CreateTruncating(anchor.Y);
         var aw = T.CreateTruncating(anchor.Width);
         var ah = T.CreateTruncating(anchor.Height);
 
+        // Centred, the child's start along the edge is half the difference in, which is negative for a child
+        // wider than its anchor: it overhangs both ends equally, and the clamp then keeps it on screen.
+        var two = T.CreateTruncating(2);
+        var alongX = center ? ((aw - size.Width) / two) + along : along;
+        var alongY = center ? ((ah - size.Height) / two) + along : along;
+
         return side switch
         {
-            DockSide.Left => (ax - margin - size.Width, ay + along),
-            DockSide.Right => (ax + aw + margin, ay + along),
-            DockSide.Top => (ax + along, ay - margin - size.Height),
-            DockSide.Bottom => (ax + along, ay + ah + margin),
+            DockSide.Left => (ax - margin - size.Width, ay + alongY),
+            DockSide.Right => (ax + aw + margin, ay + alongY),
+            DockSide.Top => (ax + alongX, ay - margin - size.Height),
+            DockSide.Bottom => (ax + alongX, ay + ah + margin),
             _ => (ax + along, ay + across),
+        };
+    }
+
+    /// <summary>
+    /// <paramref name="side"/>, or its opposite when the child would run past <paramref name="inner"/> on
+    /// <paramref name="side"/> and fits on the opposite one (<see cref="Node.Anchored.FlipWhenCramped"/>).
+    /// </summary>
+    private static DockSide? Roomier<T>(RectF32 anchor, DockSide? side, Size<T> size, T margin, Rect<T> inner)
+        where T : INumber<T>
+    {
+        var ax = T.CreateTruncating(anchor.X);
+        var ay = T.CreateTruncating(anchor.Y);
+        var aw = T.CreateTruncating(anchor.Width);
+        var ah = T.CreateTruncating(anchor.Height);
+        var (left, top) = (inner.X + margin, inner.Y + margin);
+        var (right, bottom) = (inner.X + inner.Width - margin, inner.Y + inner.Height - margin);
+
+        // Room for the child just outside each edge of the anchor, against the inset rect the clamp uses.
+        var fitsBelow = ay + ah + margin + size.Height <= bottom;
+        var fitsAbove = ay - margin - size.Height >= top;
+        var fitsRight = ax + aw + margin + size.Width <= right;
+        var fitsLeft = ax - margin - size.Width >= left;
+
+        return side switch
+        {
+            DockSide.Bottom when !fitsBelow && fitsAbove => DockSide.Top,
+            DockSide.Top when !fitsAbove && fitsBelow => DockSide.Bottom,
+            DockSide.Right when !fitsRight && fitsLeft => DockSide.Left,
+            DockSide.Left when !fitsLeft && fitsRight => DockSide.Right,
+            _ => side,
         };
     }
 

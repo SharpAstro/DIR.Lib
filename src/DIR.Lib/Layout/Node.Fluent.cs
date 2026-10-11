@@ -131,6 +131,11 @@ public abstract partial record Node
     /// <c>Tooltip</c> method cannot shadow the <see cref="Node.Tooltip"/> property it sets.</summary>
     public Node WithTooltip(string text) => this with { Tooltip = text };
 
+    /// <summary>Give this node hover text that opens on <paramref name="side"/> of it rather than below
+    /// (<see cref="Node.TooltipSide"/>). An overload rather than an optional parameter on the method above,
+    /// which would change the signature an already-compiled caller binds to.</summary>
+    public Node WithTooltip(string text, DockSide side) => this with { Tooltip = text, TooltipSide = side };
+
     /// <summary>
     /// Declare this node unavailable, and say WHY: the subtree paints dim, the region swallows the press
     /// with a <see cref="CursorKind.NotAllowed"/> cursor, the reason serves as the tooltip, and the list

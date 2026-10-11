@@ -159,6 +159,52 @@ public static class Builder
         => new Node.Anchored(child, side, offsetAlong, offsetAcross, margin, clamp, anchor);
 
     /// <summary>
+    /// The tooltip <paramref name="request"/> asks for: its text in a bordered box beside its anchor, on the side
+    /// the region declared, and kept inside the rect the node is arranged in. Arrange it over the whole window,
+    /// after everything else, with <c>RenderLayout(Builder.Tooltip(router.Tooltip, style), windowRect)</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the one tooltip painter.</b> Before it, the router decided which tooltip was due and where it
+    /// was anchored and nothing drew it, so each consumer painted its own: three were counted in one app, each
+    /// measuring its text and placing its box by hand, none with a hover delay, and every <c>.WithTooltip</c>
+    /// declared outside them was dead.
+    /// </para>
+    /// <para>
+    /// It registers no region and lights no hover, so painting it changes nothing the router resolves: a
+    /// tooltip that answered presses or claimed the pointer would hide the region that asked for it.
+    /// </para>
+    /// </remarks>
+    public static Node Tooltip(TooltipRequest request, TooltipStyle style)
+        => Tooltip(request.Anchor, Text(request.Text, style.FontSize, style.Text), style, request.Side);
+
+    /// <summary>
+    /// A tooltip box holding <paramref name="content"/> rather than one line of text, for a readout that is more
+    /// than a sentence: several lines, each coloured by the caller, beside <paramref name="anchor"/>. The text
+    /// form above is this with a <see cref="Text"/> leaf, so the two are placed and framed by one rule.
+    /// </summary>
+    /// <remarks>
+    /// Centred on the edge it opens beside, and flipped to the opposite side where it would run out of the rect
+    /// it is arranged in (<see cref="Node.Anchored.CenterAlong"/>, <see cref="Node.Anchored.FlipWhenCramped"/>):
+    /// a readout under a chart's band opens above the band near the bottom of the chart, rather than being
+    /// slid back up over the band the pointer is on. <see cref="TooltipStyle.Text"/> is unused here: the
+    /// content carries its own colours.
+    /// </remarks>
+    public static Node Tooltip(RectF32 anchor, Node content, TooltipStyle style, DockSide side = DockSide.Bottom)
+    {
+        var padded = VStack(content).Pad(style.PadX, style.PadY).Bg(style.Background);
+        var box = style.BorderWidth > 0f
+            ? VStack(padded).Pad(style.BorderWidth).Bg(style.Border)
+            : padded;
+
+        return new Node.Anchored(box, side, Margin: style.Margin, Anchor: anchor)
+        {
+            CenterAlong = true,
+            FlipWhenCramped = true,
+        };
+    }
+
+    /// <summary>
     /// A popover: <paramref name="content"/> floated beside <paramref name="anchor"/> over a full-bleed
     /// backdrop that closes it, displayed only while <paramref name="state"/> is open.
     /// </summary>

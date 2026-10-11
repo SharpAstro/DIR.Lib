@@ -106,11 +106,12 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
     /// so it costs the host no hit test of its own.
     /// </summary>
     /// <remarks>
-    /// This is how a host draws a tooltip for <see cref="TabItem{T}.Tooltip"/>. The BAR does not draw one,
-    /// deliberately: a tooltip is painted outside the strip, over whatever content is adjacent to it, and a
-    /// widget that clips to its own bounds — which this one does — cannot put it there. Declaring an overlay
-    /// was the alternative and it would move the decision about z-order and placement into a widget that
-    /// cannot see what it would cover.
+    /// This is no longer how a host draws a tooltip for <see cref="TabItem{T}.Tooltip"/>: each tab DECLARES its
+    /// tooltip on its region, opening away from the strip, and the host paints the router's
+    /// <see cref="InputRouter.Tooltip"/> with <see cref="Layout.Builder.Tooltip"/>, over the whole window and
+    /// after everything else. The bar still draws none itself, for the reason it never did: a tooltip is
+    /// painted outside the strip, over whatever content is adjacent to it, and a widget that clips to its own
+    /// bounds cannot put it there.
     /// </remarks>
     public int HoveredIndex { get; private set; } = -1;
 

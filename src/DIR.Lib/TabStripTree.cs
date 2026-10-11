@@ -106,6 +106,14 @@ public interface ITabStripSource
     KeyChord? Shortcut(int index) => null;
 
     /// <summary>
+    /// The tab's hover text, or null. Declared on the tab's region, opening on the side away from the strip, so
+    /// the host's one tooltip painter shows it (<see cref="Layout.Builder.Tooltip"/>); a disabled tab's is the
+    /// reason it is disabled.
+    /// </summary>
+    /// <remarks>A default member for the reason <see cref="Shortcut"/> is one.</remarks>
+    string? Tooltip(int index) => null;
+
+    /// <summary>
     /// What selecting this tab does, or null for a surface that reads the strip's registered regions back
     /// instead of being called. Default: none.
     /// </summary>
@@ -141,6 +149,9 @@ public readonly struct TabItemsSource<T>(IReadOnlyList<TabItem<T>> items) : ITab
 
     /// <inheritdoc/>
     public KeyChord? Shortcut(int index) => items[index].Shortcut;
+
+    /// <inheritdoc/>
+    public string? Tooltip(int index) => items[index].Tooltip;
 
     /// <inheritdoc/>
     /// <remarks>The item's handler is given the tab's VALUE, which is what it is for; the modifier the
@@ -305,7 +316,7 @@ public static class TabStripTree
 
             children.Add(Tab(icon, label, i, extent, iconExtent, closeBox,
                 active, enabled, hovered, closeHovered, uniform, vertical, outerAtStart, m, options, onSelect,
-                source.Shortcut(i), source.Select(i), source.Press(i), source.CloseTab(i)));
+                source.Shortcut(i), source.Select(i), source.Press(i), source.CloseTab(i), source.Tooltip(i)));
 
             used = tabStart + extent;
             tabsEnd = used;
@@ -358,7 +369,7 @@ public static class TabStripTree
         bool active, bool enabled, bool hovered, bool closeHovered, bool uniform, bool vertical, bool outerAtStart,
         TabStripMetrics m, TabStripOptions options, Action<int>? onSelect,
         KeyChord? shortcut = null, Action<InputModifier>? select = null,
-        Func<PointerPress, DragCapture?>? press = null, Action<InputModifier>? close = null)
+        Func<PointerPress, DragCapture?>? press = null, Action<InputModifier>? close = null, string? tooltip = null)
     {
         var colors = options.Colors;
 
@@ -415,6 +426,19 @@ public static class TabStripTree
         if (enabled && press is not null)
         {
             node = node with { OnPress = press };
+        }
+
+        // The tooltip opens AWAY from the strip, over the content beside it: below a strip on top, right of a
+        // strip down the left edge. Kept on a disabled tab, whose tooltip is why it is disabled.
+        if (tooltip is { Length: > 0 })
+        {
+            node = node.WithTooltip(tooltip, options.Side switch
+            {
+                TabStripSide.Left => DockSide.Right,
+                TabStripSide.Right => DockSide.Left,
+                TabStripSide.Bottom => DockSide.Top,
+                _ => DockSide.Bottom,
+            });
         }
 
         // The chord goes on only when the tab can actually be reached, so a locked tab's binding is inert

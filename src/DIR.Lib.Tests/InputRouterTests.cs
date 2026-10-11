@@ -834,6 +834,68 @@ public class InputRouterTests
         due.Anchor.Height.ShouldBe(20f, 0.01f);
     }
 
+    /// <summary>
+    /// An open popover claims the pointer for its tooltips as it does for the hover highlight: its backdrop states
+    /// no tooltip, and a lookup that looked straight through it let the button underneath explain itself.
+    /// </summary>
+    [Fact]
+    public void ATooltipUnderAnOpenPopoversBackdropIsNeverDue()
+    {
+        var harness = new Harness();
+        var popover = new PopoverState();
+        popover.Open();
+        harness.Paint(
+            back: Layout.Builder.VStack(
+                Layout.Builder.Box(200f, 20f).RowH(20f).WithTooltip("Cool the camera"),
+                Layout.Builder.Spacer().Stretch()).Stretch(),
+            front: Layout.Builder.Popover(new RectF32(40f, 100f, 20f, 10f), Layout.Builder.Box(50f, 30f), popover));
+
+        harness.Move(10f, 10f);
+        harness.Clock.Advance(harness.Router.TooltipDelay);
+
+        harness.Router.Tooltip.ShouldBeNull("the popover's backdrop covers the button");
+    }
+
+    [Fact]
+    public void ARegionsTooltipSideReachesTheRequestAndBelowIsTheDefault()
+    {
+        var harness = new Harness();
+        harness.Paint(front: Layout.Builder.VStack(
+            Layout.Builder.Box(200f, 20f).RowH(20f).WithTooltip("Home", Layout.DockSide.Right),
+            Layout.Builder.Box(200f, 20f).RowH(20f).WithTooltip("Equipment")).Stretch());
+
+        harness.Move(10f, 10f);
+        harness.Clock.Advance(harness.Router.TooltipDelay);
+        harness.Router.Tooltip.ShouldNotBeNull().Side.ShouldBe(Layout.DockSide.Right);
+
+        harness.Move(10f, 30f);
+        harness.Clock.Advance(harness.Router.TooltipDelay);
+        harness.Router.Tooltip.ShouldNotBeNull().Side.ShouldBe(Layout.DockSide.Bottom);
+    }
+
+    /// <summary>
+    /// The delay runs out while nothing happens, so a host that paints only when asked needs telling; and once a
+    /// frame has been painted with the tooltip due, it has been shown and the host is told no more.
+    /// </summary>
+    [Fact]
+    public void ATooltipAsksForAFrameOnceItIsDueAndNotAgainAfterThePaint()
+    {
+        var harness = new Harness();
+        harness.Paint(front: Layout.Builder.VStack(
+            Layout.Builder.Box(200f, 20f).RowH(20f).WithTooltip("Cool the camera"),
+            Layout.Builder.Spacer().Stretch()).Stretch());
+
+        harness.Move(10f, 10f);
+        harness.Router.TooltipNeedsFrame.ShouldBeFalse("not due yet");
+
+        harness.Clock.Advance(harness.Router.TooltipDelay);
+        harness.Router.TooltipNeedsFrame.ShouldBeTrue("due, and no frame has shown it");
+
+        harness.Router.AfterPaint();
+        harness.Router.TooltipNeedsFrame.ShouldBeFalse("the frame just painted showed it");
+        harness.Router.Tooltip.ShouldNotBeNull("still due: asking for no frame is not taking it down");
+    }
+
     [Fact]
     public void ATooltipGoesTheMomentThePointerLeavesItsRegion()
     {

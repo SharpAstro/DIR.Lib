@@ -59,6 +59,12 @@ public readonly record struct ClickableRegion(
     public string? Tooltip { get; init; }
 
     /// <summary>
+    /// Which side of the region its <see cref="Tooltip"/> opens on, from <see cref="Layout.Node.TooltipSide"/>;
+    /// null is below it.
+    /// </summary>
+    public Layout.DockSide? TooltipSide { get; init; }
+
+    /// <summary>
     /// Whether this region is inert by declaration (<see cref="Layout.Node.DisabledReason"/>). It still
     /// takes part in hit testing, which is the point: the press is SWALLOWED rather than falling through
     /// to whatever is behind it, and the list cursor steps over it.

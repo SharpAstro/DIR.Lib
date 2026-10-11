@@ -1291,6 +1291,7 @@ namespace DIR.Lib
                         OnActivate = disabled ? null : node.OnActivate,
                         OnDoubleClick = disabled ? null : node.OnDoubleClick,
                         Tooltip = tooltip,
+                        TooltipSide = node.TooltipSide,
                         IsDisabled = disabled,
                         Scroll = node.Scroll,
                         // A disabled trigger opens nothing, by the same rule that drops its handlers:
@@ -1309,6 +1310,7 @@ namespace DIR.Lib
                         null, cursor)
                     {
                         Tooltip = tooltip,
+                        TooltipSide = node.TooltipSide,
                         IsDisabled = disabled,
                         Scroll = node.Scroll,
                     });

@@ -15,7 +15,15 @@ namespace DIR.Lib;
 /// <param name="Text">What to show, from <see cref="Layout.Node.Tooltip"/> or, on a disabled node,
 /// <see cref="Layout.Node.DisabledReason"/>.</param>
 /// <param name="Anchor">The rect the pointer is resting on.</param>
-public readonly record struct TooltipRequest(string Text, RectF32 Anchor);
+public readonly record struct TooltipRequest(string Text, RectF32 Anchor)
+{
+    /// <summary>
+    /// Which side of <see cref="Anchor"/> the tooltip opens on: the region's
+    /// <see cref="ClickableRegion.TooltipSide"/>, and below it where the region names none.
+    /// <see cref="Layout.Builder.Tooltip"/> places it there.
+    /// </summary>
+    public Layout.DockSide Side { get; init; } = Layout.DockSide.Bottom;
+}
 
 /// <summary>
 /// The dispatcher every host was writing: it takes an <see cref="InputEvent"/> and hands it to the
@@ -170,6 +178,18 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     /// </summary>
     public TooltipRequest? Tooltip
         => _tooltip is { } due && Clock.GetUtcNow() - _tooltipSince >= TooltipDelay ? due : null;
+
+    /// <summary>
+    /// A tooltip has become due and no frame has been painted since: the host should paint one.
+    /// </summary>
+    /// <remarks>
+    /// The delay running out changes what the frame shows while nothing happens -- the pointer is resting,
+    /// which is the point -- so a host that paints only when something asks would never show it. A host
+    /// with a "does this window need a frame" check ORs this into it, the way it does a blinking caret.
+    /// It goes false at the next <see cref="AfterPaint"/>, by which time that frame has drawn
+    /// <see cref="Tooltip"/>.
+    /// </remarks>
+    public bool TooltipNeedsFrame => !_tooltipAnnounced && Tooltip is not null;
 
     /// <summary>
     /// Routes one event. Returns true when it was consumed, so a host loop can stop.
@@ -825,6 +845,14 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     /// </summary>
     private TooltipRequest? ResolveTooltip(float x, float y)
     {
+        // An open popover claims the pointer, here as for the hover highlight (see ResolveHoverNode): its
+        // backdrop states no tooltip, so without this a button underneath it explained itself through it.
+        if (ui.PointerOwner is { } owner
+            && !(x >= owner.X && x < owner.X + owner.Width && y >= owner.Y && y < owner.Y + owner.Height))
+        {
+            return null;
+        }
+
         var widgets = Widgets();
         for (var w = widgets.Count - 1; w >= 0; w--)
         {
@@ -836,7 +864,10 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                 var region = _regions[i];
                 if (region.Tooltip is { } text && Contains(region, x, y))
                 {
-                    return new TooltipRequest(text, new RectF32(region.X, region.Y, region.Width, region.Height));
+                    return new TooltipRequest(text, new RectF32(region.X, region.Y, region.Width, region.Height))
+                    {
+                        Side = region.TooltipSide ?? Layout.DockSide.Bottom,
+                    };
                 }
             }
         }
