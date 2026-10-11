@@ -9,6 +9,21 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.17
+
+**A widget can ask for a file without knowing the platform.** `IFileDialogs` is the platform's open, save and
+folder dialogs as a widget asks for them (`OpenAsync`, `SaveAsync`, `OpenFolderAsync` over a `FileDialogRequest`:
+title, `FileDialogFilter`s, start folder, suggested name, many), answered with a `FileDialogResult`. A host
+implements it over its windowing, and a test substitutes it, which a static helper never allowed. The contract is
+stated on the interface: the call never blocks the thread that asked, the task completes on the window's event
+thread, a token cancellation completes it as CANCELLED rather than as an empty result (so "the user said no" and
+"the caller gave up" stay apart), and a save path is given an extension when the user typed none
+(`FileDialogFilter.WithDefaultExtension`, Windows' `lpstrDefExt` applied on every platform, since GTK's portal,
+zenity and macOS append nothing). `FileDialogResult.FilterIndex` is -1 where the platform does not say, which is
+often, and is documented as not to be relied on: decide a format from the extension.
+
+Additive. SdlVulkan.Renderer implements it over SDL's dialogs.
+
 ## 11.16
 
 **A drag keeps the cursor it began with.** While a gesture is captured, `InputRouter.CursorAt` answers the cursor

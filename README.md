@@ -43,6 +43,7 @@ Platform bridges (in downstream packages):
 - **`DockLayout<T>`** — generic dock layout using `INumber<T>` (the integer / pixel layouts above are built on this)
 - **`ClickableRegion`** + **`ClickableRegionTracker`** — registered during render, walked in reverse for hit testing
 - **`HitResult`** — open discriminated union: `TextInputHit`, `ButtonHit`, `ChromeHit`, `LinkHit`, `ListItemHit`, `SlotHit<T>`, `SliderStateHit`
+- **`IFileDialogs`** — the platform's open, save and folder dialogs as a widget asks for them: `OpenAsync` / `SaveAsync` / `OpenFolderAsync` over a `FileDialogRequest` (title, `FileDialogFilter`s, start folder, suggested name, many), answered with a `FileDialogResult`. An interface so a test substitutes it; the host implements it over its windowing (SdlVulkan.Renderer's `SdlFileDialogs`). It never blocks the render thread, completes on the window's event thread, completes as cancelled when its token is, and gives a save path an extension when the user typed none (`FileDialogFilter.WithDefaultExtension`)
 - **`DropdownMenuState`** — dropdown / popup menu state machine
 - **`PopoverState`** + **`PopoverGroup`** — whether a popover is open, the Escape that closes it, and the group within which at most one is open (`new PopoverState { Group = bar }`). A node declared `.Opens(state)` is the popover's trigger: a press or its shortcut toggles it, and while it is open a press on the backdrop that lands on a trigger beneath reaches the trigger, so a bar of cards switches in one press
 
