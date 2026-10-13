@@ -213,6 +213,27 @@ public abstract partial record Node
     public Action<InputModifier>? OnDoubleClick { get; init; }
 
     /// <summary>
+    /// What a RIGHT press on this node does, set via <see cref="WithContextMenu"/>: open a menu of what can
+    /// be done to the row, the file, the cell under the pointer. Handed the whole <see cref="PointerPress"/>,
+    /// since a context menu opens where the pointer is and the node's own rect does not say where that was.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It runs INSTEAD of <see cref="OnClick"/> for that press. Before it existed the router did not look at
+    /// the button at all, so a right press on a row WAS a click -- harmless for a row that selects, a
+    /// surprise for one that toggles, and with nowhere to hang a menu. A node that declares nothing keeps
+    /// exactly that behaviour, so no existing tree changes meaning.
+    /// </para>
+    /// <para>
+    /// A right press over a part of the row that has no menu of its own -- a twirl caret, a button in a
+    /// cell -- reaches the row's menu beneath it rather than clicking the part, because what a reader
+    /// right-clicks is the row they are looking at. A popover backdrop stops that search: a right press
+    /// on the scrim is a press on the scrim.
+    /// </para>
+    /// </remarks>
+    public Action<PointerPress>? OnContextMenu { get; init; }
+
+    /// <summary>
     /// Hover text for this node, set via <see cref="WithTooltip"/>. A node with a tooltip and no
     /// <see cref="Hit"/> still registers a region -- inert to presses -- because a statement about what
     /// is under the pointer has nowhere else to live.

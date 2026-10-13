@@ -294,6 +294,14 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                     continue;
                 }
 
+                // A right press over a part with no menu of its own (a twirl caret, a cell button) belongs to
+                // the row's menu beneath it: the reader right-clicked the row. See Node.OnContextMenu.
+                if (down.Button == MouseButton.Right && region.OnContextMenu is null && region.Dismisses is null
+                    && ContextMenuBeneath(i, down.X, down.Y) is { } owning)
+                {
+                    region = owning;
+                }
+
                 bool acted;
                 var hadKeyboard = ui.Focus.Current;
 
@@ -390,6 +398,23 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         return false;
     }
 
+    /// <summary>
+    /// The nearest region below <paramref name="above"/> in the same widget that contains the point and
+    /// declares a context menu -- or null. A backdrop ends the search: what lies under a popover's scrim is
+    /// covered, and a right press there is a press on the scrim.
+    /// </summary>
+    private ClickableRegion? ContextMenuBeneath(int above, float x, float y)
+    {
+        for (var i = above - 1; i >= 0; i--)
+        {
+            var r = _regions[i];
+            if (!Contains(r, x, y)) continue;
+            if (r.Dismisses is not null) return null;
+            if (r.OnContextMenu is not null) return r;
+        }
+        return null;
+    }
+
     private bool WithinPointerOwner(float x, float y)
         => ui.PointerOwner is { } owner
            && x >= owner.X && x < owner.X + owner.Width && y >= owner.Y && y < owner.Y + owner.Height;
@@ -404,6 +429,15 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     private bool DispatchPress(IPixelWidget widget, in ClickableRegion region, in PointerPress press,
         PopoverState? dismissedByBackdrop = null)
     {
+        // A right press on a node with a context menu means the menu, and only the menu: not the click, not
+        // the drag, not the popover it may also trigger. A node without one keeps the old behaviour, in which
+        // the button was never looked at.
+        if (press.Button == MouseButton.Right && region.OnContextMenu is { } contextMenu)
+        {
+            contextMenu(press);
+            return true;
+        }
+
         if (region.Result is HitResult.TextInputHit field)
         {
             BeginFieldPress(widget, field, press);

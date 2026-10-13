@@ -1315,6 +1315,7 @@ namespace DIR.Lib
                         OnPress = disabled ? null : node.OnPress,
                         OnActivate = disabled ? null : node.OnActivate,
                         OnDoubleClick = disabled ? null : node.OnDoubleClick,
+                        OnContextMenu = disabled ? null : node.OnContextMenu,
                         Tooltip = tooltip,
                         TooltipSide = node.TooltipSide,
                         IsDisabled = disabled,
