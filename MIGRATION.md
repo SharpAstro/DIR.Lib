@@ -28,7 +28,9 @@ a fixed height for.
 
 ### An Auto-height text node grows
 
-From its ink to 1.3 em, so what is stacked after it moves down by the difference. Look at anything that measured a
+From its ink to 1.3 em, so what is stacked after it moves down by the difference. A cell-authored tree on
+`PixelMeasureContext.CellAuthored` grows to one cell per line instead (exactly `cellHeight` at `fontSize: 1f`), the
+terminal's line box; on a terminal itself nothing moves. Look at anything that measured a
 text node to size a box by hand (`PixelWidgetBase.Measure`, `Engine.Measure`): it now gets the line box. A test that
 pinned a text node's height against a stub renderer pins `TextBaseline.LineHeight` of the scaled size now, not the
 stub's ink.

@@ -136,6 +136,29 @@ public sealed class TextLeafLineBoxTests
             .ShouldBe(new Layout.Size<int>(4, 2));
     }
 
+    /// <summary>
+    /// The same tree arranged onto pixels through <see cref="PixelMeasureContext{TSurface}.CellAuthored"/> keeps the
+    /// terminal's line box, one cell: a <c>fontSize: 1f</c> leaf is exactly <c>cellHeight</c> tall whatever its ink,
+    /// as it is one row on the terminal it mirrors. 1.3 cells here and 1 there would stack a shared tree's lines
+    /// differently on the two surfaces.
+    /// </summary>
+    [Theory]
+    [InlineData(16f)]
+    [InlineData(18f)]
+    public void ACellAuthoredTreeOnPixelsMeasuresOneCellPerLine(float cellHeight)
+    {
+        using var renderer = new RgbaImageRenderer(64, 64);
+        var ctx = PixelMeasureContext<RgbaImage>.CellAuthored(renderer, Font(DejaVu), cellWidth: 8f, cellHeight: cellHeight);
+
+        ctx.MeasureText("LOG".AsSpan(), 1f).Height.ShouldBe(cellHeight);
+        ctx.MeasureText("gjpq".AsSpan(), 1f).Height.ShouldBe(cellHeight);
+        ctx.MeasureText(ReadOnlySpan<char>.Empty, 1f).Height.ShouldBe(cellHeight);
+
+        var tree = Layout.Builder.VStack(Layout.Builder.Text("LOG", 1f), Layout.Builder.Text("gjpq", 1f));
+        Layout.Engine.Measure(tree, new Layout.Size<float>(640f, 480f), ctx).Height
+            .ShouldBe(2f * cellHeight, "two lines, two cells, as on the terminal");
+    }
+
     // --- (4) a fallback-run text gets the line box too ---
 
     /// <summary>

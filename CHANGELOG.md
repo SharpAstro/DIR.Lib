@@ -28,9 +28,11 @@ per side is `(fontSize + gap - TextBaseline.LineHeight(fontSize)) / 2`.
 **Every text node's measured height moves.** A node whose height is fixed (`RowH`, `HFixed`) or star does not: the
 measure never reached it. An Auto-height one grows from its ink to 1.3 em, and what is stacked after it moves down by
 the difference: `Builder.Tooltip`'s box at 10 px is 21 tall rather than 18, and a `TextInput` leaf is one line box
-tall. A cell-authored tree arranged onto pixels (`PixelMeasureContext.CellAuthored`) gets the same line box, 1.3 cells
-per `fontSize: 1f`; a terminal's own tree measures through its cell context, which this does not touch, and does not
-move. No visual baseline here moved: none of them arranges a text node through the engine.
+tall. A cell-authored tree does not take the 1.3 em: on a terminal the line box IS one cell, so its own cell context is
+untouched, and `PixelMeasureContext.CellAuthored`, the mirror that arranges such a tree onto pixels, measures a text
+leaf exactly `fontSize` cells tall (a `fontSize: 1f` leaf is one `cellHeight`), whatever its ink. A shared tree stacks
+its lines one cell apart on both surfaces. No visual baseline here moved: none of them arranges a text node through
+the engine.
 
 ## 11.19
 

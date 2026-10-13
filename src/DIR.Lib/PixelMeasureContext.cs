@@ -40,9 +40,24 @@ public sealed class PixelMeasureContext<TSurface>(Renderer<TSurface> renderer, s
     /// a nominal 8x16 cell by default — pass the terminal's real cell size when it is known. The mirror of
     /// <c>CellMeasureContext.PixelAuthored</c>: a <c>fontSize: 1f</c> text leaf (one cell tall there) is
     /// measured and painted at <paramref name="cellHeight"/> pixels here.
+    /// <para>
+    /// <b>Its line box is one cell, not 1.3 em.</b> On a terminal the line box IS the cell --
+    /// <c>CellMeasureContext</c> gives a <c>fontSize: 1f</c> run one row -- so a text leaf here measures
+    /// exactly <c>fontSize</c> cells tall. With the pixel line box instead, the same shared tree would stack
+    /// its lines 1.3 cells apart on pixels and 1 apart on a terminal, and the two would no longer mirror.
+    /// </para>
     /// </summary>
     public static PixelMeasureContext<TSurface> CellAuthored(Renderer<TSurface> renderer, string fontPath,
-        float cellWidth = 8f, float cellHeight = 16f) => new(renderer, fontPath, cellWidth, cellHeight);
+        float cellWidth = 8f, float cellHeight = 16f) => new(renderer, fontPath, cellWidth, cellHeight)
+        {
+            LineHeightFactor = 1f,
+        };
+
+    /// <summary>
+    /// A text leaf's line box as a multiple of its scaled font size: <see cref="TextBaseline.LineHeightFactor"/>
+    /// on every pixel-authored mapping, one on <see cref="CellAuthored"/>, where a line is a cell.
+    /// </summary>
+    private float LineHeightFactor { get; init; } = TextBaseline.LineHeightFactor;
 
     /// <summary>The font the tree's text is measured against; the painter must draw with the same one.</summary>
     public string FontPath => fontPath;
@@ -87,7 +102,8 @@ public sealed class PixelMeasureContext<TSurface>(Renderer<TSurface> renderer, s
 
     /// <summary>
     /// A text leaf's intrinsic size: the run's advance width, and the face's LINE BOX for height
-    /// (<see cref="TextBaseline.LineHeight"/> at the scaled size), whatever glyphs the run holds.
+    /// (<see cref="TextBaseline.LineHeight"/> at the scaled size), whatever glyphs the run holds. On
+    /// <see cref="CellAuthored"/> the line box is one cell per unit of font size instead, the terminal's own.
     /// <para>
     /// Not the ink. Every renderer's <c>DrawText</c> lays a line out in that box, so a leaf measured to it
     /// and drawn top-aligned sits exactly where a hand-centred row would put it -- which is what lets a
@@ -100,7 +116,7 @@ public sealed class PixelMeasureContext<TSurface>(Renderer<TSurface> renderer, s
     public Layout.Size<float> MeasureText(ReadOnlySpan<char> text, float fontSize)
     {
         var px = fontSize * FontScale;
-        var lineHeight = TextBaseline.LineHeight(px);
+        var lineHeight = px * LineHeightFactor;
 
         if (string.IsNullOrEmpty(fontPath) || text.IsEmpty)
         {
