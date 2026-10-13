@@ -6,6 +6,33 @@ listed here -- [CHANGELOG.md](CHANGELOG.md) says what changed in every version, 
 Upgrading across more than one major? Work UP the file: the sections are independent, and a 9.x
 consumer taking 10.0 needs only the 10.0 section.
 
+## 11.20 a text leaf is its line box tall
+
+Affects any pixel layout with a text node whose height is Auto (no `RowH`, `HFixed` or star height), and anyone who
+gave a text control its height by hand as a line box. Nothing fails to compile; the arranged rects move.
+
+### `.RowH(fontSize + gap)` -> padding
+
+```csharp
+// Before -- the leaf measured its ink, so the row stated a line box by hand
+Builder.Text("LOG", fontSize).RowH(fontSize + gap).PadX(gap)
+
+// After -- the leaf is TextBaseline.LineHeight(fontSize) tall; the button is its padding
+Builder.Text("LOG", fontSize).Pad(gap, padY)
+```
+
+`RowH` also made the width star; keep `.WStar()` where the node should still fill its row. To keep a row exactly the
+height it had, `padY = (fontSize + gap - TextBaseline.LineHeight(fontSize)) / 2`; a gap smaller than 0.3 em gives a
+negative padding, which means the old row was shorter than the line `DrawText` lays out in it, and is the case to keep
+a fixed height for.
+
+### An Auto-height text node grows
+
+From its ink to 1.3 em, so what is stacked after it moves down by the difference. Look at anything that measured a
+text node to size a box by hand (`PixelWidgetBase.Measure`, `Engine.Measure`): it now gets the line box. A test that
+pinned a text node's height against a stub renderer pins `TextBaseline.LineHeight` of the scaled size now, not the
+stub's ink.
+
 ## 11.0 the caret blinks on the clock
 
 Affects anyone setting `PixelWidgetBase.FrameCount`, or calling `TextInputRenderer.Render` with a

@@ -9,6 +9,29 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.20
+
+**A text leaf measures its line box, not its ink.** `PixelMeasureContext.MeasureText`, the height every text node in a
+pixel layout gets, is now the face's line box at the scaled size (`TextBaseline.LineHeight`, 1.3 em) whatever glyphs
+the run holds: on the single-face path, on the fallback path (a run split across faces used to take its tallest run's
+ink, a colour emoji's bitmap included), and with no font or an empty run (which used to be one em). Width is the
+renderer's advance as before. The renderers' own `MeasureText` still answers ink, for what needs ink: a label placed
+against a shape.
+
+Measuring the ink made a node's height depend on what it said. "LOG" at 18 px measured its cap height, 13 px, and
+"gjpq" 18 px, so two buttons side by side measured differently, and every declared text control stated its height by
+hand as a line box, `.RowH(fontSize + gap)`. Every renderer's `DrawText` already lays a line out in the 1.3 em box, so a
+leaf of that height drawn top-aligned lands where a hand-centred row put it, and a text button is now its padding
+alone: `.Pad(across, down)` in place of the hand line box. To keep a row's old height exactly, the vertical padding
+per side is `(fontSize + gap - TextBaseline.LineHeight(fontSize)) / 2`.
+
+**Every text node's measured height moves.** A node whose height is fixed (`RowH`, `HFixed`) or star does not: the
+measure never reached it. An Auto-height one grows from its ink to 1.3 em, and what is stacked after it moves down by
+the difference: `Builder.Tooltip`'s box at 10 px is 21 tall rather than 18, and a `TextInput` leaf is one line box
+tall. A cell-authored tree arranged onto pixels (`PixelMeasureContext.CellAuthored`) gets the same line box, 1.3 cells
+per `fontSize: 1f`; a terminal's own tree measures through its cell context, which this does not touch, and does not
+move. No visual baseline here moved: none of them arranges a text node through the engine.
+
 ## 11.19
 
 **Data views: a virtualised list, a table whose header cannot drift from its rows, a tree, and a treemap.** None adds

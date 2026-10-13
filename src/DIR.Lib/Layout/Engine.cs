@@ -843,8 +843,9 @@ public static class Engine
     /// <para>
     /// The sample is <see cref="Content.TextInput.WidthSample"/> or the placeholder, deliberately never the
     /// live text -- see that property for why. Height is the measured line and nothing more, so the field is
-    /// exactly as tall as its text on a pixel surface and exactly one row on a cell one; a field wanting
-    /// breathing room takes it from its row's height, which is where every real call site sets it.
+    /// exactly one line box tall on a pixel surface (the context measures text to its face's line box, not
+    /// its ink) and exactly one row on a cell one; a field wanting breathing room takes it from its row's
+    /// height, which is where every real call site sets it.
     /// </para>
     /// </summary>
     private static Size<T> MeasureTextInput<T>(Content.TextInput field, IMeasureContext<T> ctx)

@@ -23,7 +23,7 @@ public class PixelWidgetMeasureSeamTests
     public void MeasureLayoutAnswersWithTheWidgetsOwnFontAndScale()
     {
         // Half the font size per character, from the widget's renderer: a 6-character run at 10 units is
-        // 30 wide and 10 tall, and the padding is added on both axes.
+        // 30 wide and one line box (13) tall, and the padding is added on both axes.
         var widget = Fixture();
 
         var size = widget.Measure(
@@ -31,7 +31,7 @@ public class PixelWidgetMeasureSeamTests
             new Layout.Size<float>(200f, 200f));
 
         size.Width.ShouldBe(38f);
-        size.Height.ShouldBe(18f);
+        size.Height.ShouldBe(21f);
     }
 
     [Fact]

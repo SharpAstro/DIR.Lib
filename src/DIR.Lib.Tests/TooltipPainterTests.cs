@@ -9,9 +9,9 @@ namespace DIR.Lib.Tests;
 /// placing a box of its own.
 /// </summary>
 /// <remarks>
-/// Geometry through <see cref="DeclarationStubRenderer"/>, which measures half the font size a character and the
-/// font size tall, so every rect below is arithmetic: "Cool" at 10 is 20 x 10, padded 6 and 3 to 32 x 16, and a
-/// one-unit border makes the box 34 x 18.
+/// Geometry through <see cref="DeclarationStubRenderer"/>, which measures half the font size a character; a text
+/// leaf is its face's line box tall (<see cref="TextBaseline.LineHeight"/>, 13 at 10), so every rect below is
+/// arithmetic: "Cool" at 10 is 20 x 13, padded 6 and 3 to 32 x 19, and a one-unit border makes the box 34 x 21.
 /// </remarks>
 public class TooltipPainterTests
 {
@@ -39,7 +39,7 @@ public class TooltipPainterTests
         var box = Box(new TooltipRequest("Cool", new RectF32(50f, 20f, 30f, 10f)));
 
         box.Width.ShouldBe(34f);
-        box.Height.ShouldBe(18f);
+        box.Height.ShouldBe(21f);
         box.X.ShouldBe(48f, "centred under the region: 50 + (30 - 34) / 2");
         box.Y.ShouldBe(34f, "below the region, with the margin between");
     }
@@ -51,7 +51,7 @@ public class TooltipPainterTests
         var box = Box(new TooltipRequest("Cool", new RectF32(0f, 50f, 40f, 40f)) { Side = Layout.DockSide.Right });
 
         box.X.ShouldBe(44f, "past the region's right edge, with the margin between");
-        box.Y.ShouldBe(61f, "centred on the region: 50 + (40 - 18) / 2");
+        box.Y.ShouldBe(59.5f, "centred on the region: 50 + (40 - 21) / 2");
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public class TooltipPainterTests
     {
         var box = Box(new TooltipRequest("Cool", new RectF32(50f, 185f, 30f, 10f)));
 
-        box.Y.ShouldBe(185f - 4f - 18f, "above the region, with the margin between");
+        box.Y.ShouldBe(185f - 4f - 21f, "above the region, with the margin between");
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public class TooltipPainterTests
             .Bounds;
 
         box.Width.ShouldBe(45f + 12f + 2f, "the widest line, padded and bordered");
-        box.Height.ShouldBe(20f + 6f + 2f, "both lines, padded and bordered");
+        box.Height.ShouldBe(26f + 6f + 2f, "both lines, padded and bordered");
         box.Y.ShouldBe(34f);
     }
 
