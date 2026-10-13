@@ -9,6 +9,38 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.19
+
+**Data views: a virtualised list, a table whose header cannot drift from its rows, a tree, and a treemap.** None adds
+a mechanism; each is the primitives arranged the way consumers were arranging them by hand, with what goes wrong
+stated once.
+
+- `Builder.VirtualList(count, rowHeight, scroll, row)` builds only the rows on screen, standing a spacer in for the
+  rest so the scroll extent is still the whole list's: a hundred thousand rows cost what thirty do. It makes an atom
+  a row (`ListScrollController.AtomDesignUnits`), and pairs with `ListCursor.Open(id, index, count)` so the arrows
+  can step past the built window.
+- `Builder.TableHeader(columns, sort, onSort, style)` and `Builder.TableRow(columns, cells, style)` take the SAME
+  span of `TableColumn`s (title, `Sizing`, alignment, `Sortable`, `DescendingFirst`) and one `TableStyle`, so a title
+  sits over its values whatever either is edited to. A press on a sortable title reports `TableSort.Next`: the same
+  column flips, another starts in its own direction. The sort itself stays the consumer's, like a split's extent.
+- `TreeExpansion<T>` holds which nodes are open, by reference, and `Flatten` turns a tree into `TreeRowItem<T>` rows
+  (item, depth, can-open, is-open, parent row) for a list to show: a tree gets the list's keyboard, scrolling and
+  virtualisation instead of a second copy of each. Children are read only for an open node, so a lazily loaded tree
+  costs nothing until it is opened. `HandleKey` adds the two keys a list does not own: Right opens or descends,
+  Left closes or ascends. `Builder.TreeRow(depth, hasChildren, isExpanded, onToggle, content, style)` draws the
+  indent and a caret that takes its own press inside the row.
+- `Builder.Treemap(weights, aspect, cell)` is a squarified treemap (`Treemap.Squarify`, Bruls et al.) built from
+  nested `Star`-weighted stacks, so every cell is a node, drawn and hit through one rect, and its area is exactly
+  proportional at any size. The aspect only decides how square the cells are, so last frame's is fine.
+
+Additive. `Builder` became `partial` to hold them, which changes nothing in the assembly.
+
+**Context menus.** `Node.WithContextMenu(Action<PointerPress>)` states what a RIGHT press does; the router runs it in
+place of the click and hands it the press, so the menu opens at the pointer (pair it with `Builder.Dropdown`). Until now
+the router never read the button, so a right press on a row WAS a click; a node that declares no menu keeps exactly
+that. A right press over a part of a row with no menu of its own (a twirl caret, a cell button) reaches the row's menu
+beneath it, and a popover backdrop stops that search.
+
 ## 11.18
 
 **A split's divider drags itself.** `Builder.Split(first, second, onResize, ...)` (`Node.Split.OnResize`) arms the drag

@@ -17,7 +17,7 @@ namespace DIR.Lib.Layout;
 /// (<c>Node</c>, <c>Content</c>, <c>Size&lt;T&gt;</c>) stay out of consumer scope that way.
 /// </para>
 /// </summary>
-public static class Builder
+public static partial class Builder
 {
     // ---- Leaf content factories (each returns a Node.Leaf wrapping the content) ----
 

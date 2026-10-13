@@ -127,6 +127,13 @@ public abstract partial record Node
     /// </summary>
     public Node DoubleClickable(Action<InputModifier> onDoubleClick) => this with { OnDoubleClick = onDoubleClick };
 
+    /// <summary>
+    /// State what a right press does on this node -- typically open a menu at the press's position. It
+    /// runs in place of the click for that press. Needs a <see cref="Node.Hit"/>, like any press.
+    /// See <see cref="Node.OnContextMenu"/>.
+    /// </summary>
+    public Node WithContextMenu(Action<PointerPress> onContextMenu) => this with { OnContextMenu = onContextMenu };
+
     /// <summary>Give this node hover text. Named With* like the gap setters, because a bare
     /// <c>Tooltip</c> method cannot shadow the <see cref="Node.Tooltip"/> property it sets.</summary>
     public Node WithTooltip(string text) => this with { Tooltip = text };

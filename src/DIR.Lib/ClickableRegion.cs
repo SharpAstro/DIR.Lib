@@ -52,6 +52,12 @@ public readonly record struct ClickableRegion(
     public Action<InputModifier>? OnDoubleClick { get; init; }
 
     /// <summary>
+    /// What a right press runs, in place of <see cref="OnClick"/>, bound from
+    /// <see cref="Layout.Node.OnContextMenu"/>. Null means a right press is handled as it always was.
+    /// </summary>
+    public Action<PointerPress>? OnContextMenu { get; init; }
+
+    /// <summary>
     /// The hover text for this region, from <see cref="Layout.Node.Tooltip"/> -- or, for a disabled one,
     /// the reason it is disabled, since the answer to "why can't I press this" belongs where the press
     /// was refused rather than in a panel the reader only reaches by making the choice that just failed.
