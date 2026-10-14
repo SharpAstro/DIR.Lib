@@ -217,6 +217,60 @@ public sealed class DebugInspectorDiscoveryTests : IDisposable
         File.Exists(foreignJson).ShouldBeTrue();
     }
 
+    /// <summary>
+    /// A start-time mismatch makes a reader SKIP a descriptor; only a dead pid gets one DELETED. On Linux .NET's
+    /// StartTime is the boot time plus the start ticks, and the boot time moves with a wall-clock step (an NTP
+    /// first sync without an RTC, WSL2 resyncing after the host slept), so after a step over the tolerance a
+    /// LIVE instance mismatches. A sweep that deleted on that would make it unfindable until it restarted, even
+    /// once a fixed reader (issue #112) could have found it again.
+    /// </summary>
+    [Fact]
+    public void A_sweep_keeps_a_live_pids_descriptor_even_when_its_start_time_mismatches()
+    {
+        Directory.CreateDirectory(_registry);
+        var (pid, started) = AnotherLiveProcess();
+
+        var mismatched = Path.Combine(_registry, $"{pid}-1.json");
+        var stepped = (started - TimeSpan.FromHours(1)).ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+        File.WriteAllText(mismatched,
+            $"{{\"app\":\"x\",\"kind\":\"test\",\"tcpPort\":1,\"pid\":{pid},\"proto\":1,\"processStart\":\"{stepped}\"}}");
+        var dead = Path.Combine(_registry, $"{int.MaxValue}-1.json");
+        File.WriteAllText(dead, "{}");
+
+        // A reader skips it ...
+        DebugInspectorRegistration.IsLive(pid, DebugInspectorRegistration.ReadProcessStart(File.ReadAllText(mismatched)))
+            .ShouldBeFalse();
+
+        // ... but the sweep a starting core runs does not delete it; it deletes only the dead pid's.
+        using var core = DebugInspectorCore.StartExactly(new Host(), DebugInspectorDiscovery.Registry, _registry);
+
+        File.Exists(mismatched).ShouldBeTrue();
+        File.Exists(dead).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// A running process other than this one, whose start time can be read: the longest-running, so it is
+    /// still there when the sweep looks (pid 1 on Linux).
+    /// </summary>
+    private static (int Pid, DateTime StartedUtc) AnotherLiveProcess()
+    {
+        (int Pid, DateTime StartedUtc)? oldest = null;
+        foreach (var process in Process.GetProcesses())
+        {
+            using (process)
+            {
+                if (process.Id == Environment.ProcessId) continue;
+                try
+                {
+                    var started = process.StartTime.ToUniversalTime();
+                    if (oldest is null || started < oldest.Value.StartedUtc) oldest = (process.Id, started);
+                }
+                catch (Exception) { /* access denied, or exited: not a candidate */ }
+            }
+        }
+        return oldest ?? throw new InvalidOperationException("no other process with a readable start time");
+    }
+
     [Fact]
     public void A_reused_pid_is_not_live()
     {
