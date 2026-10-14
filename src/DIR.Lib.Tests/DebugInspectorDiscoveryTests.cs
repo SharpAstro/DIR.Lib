@@ -94,6 +94,36 @@ public sealed class DebugInspectorDiscoveryTests : IDisposable
         File.Exists(core.RegistryFile).ShouldBeTrue();
     }
 
+    /// <summary>
+    /// On Unix, <c>GetFolderPath</c> with the default <c>SpecialFolderOption.None</c> answers "" for a folder
+    /// that does not exist yet, and <c>~/.local/share</c> does not exist on a fresh account, in a container or on
+    /// a headless board. Resolving the registry through that answer left such an instance unregistered, and with
+    /// LAN discovery off by default, not findable at all. The writer creates the folder itself; it only needs
+    /// the path. Played here with a stand-in for the Unix answer, so it runs on every OS.
+    /// </summary>
+    [Fact]
+    public void The_registry_resolves_and_registers_where_the_data_folder_does_not_exist_yet()
+    {
+        var dataHome = Path.Combine(_registry, "share");   // not created: _registry itself does not exist yet
+        string Unix(Environment.SpecialFolder folder, Environment.SpecialFolderOption option)
+            => folder == Environment.SpecialFolder.LocalApplicationData
+               && (option == Environment.SpecialFolderOption.DoNotVerify || Directory.Exists(dataHome))
+                ? dataHome
+                : "";
+
+        var directory = DebugInspectorCore.ResolveRegistryDirectory(Unix).ShouldNotBeNull();
+        directory.ShouldBe(Path.Combine(dataHome, "DIR.Lib", "inspector"));
+
+        using var core = DebugInspectorCore.StartExactly(new Host(), DebugInspectorDiscovery.Registry, directory);
+        File.Exists(core.RegistryFile.ShouldNotBeNull()).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Only_an_empty_answer_means_no_registry_folder()
+    {
+        DebugInspectorCore.ResolveRegistryDirectory((_, _) => "").ShouldBeNull();
+    }
+
     [Fact]
     public void Disabled_discovery_is_not_findable_at_all_even_with_the_lan_variable_set()
     {

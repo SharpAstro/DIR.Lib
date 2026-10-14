@@ -380,15 +380,26 @@ public sealed class DebugInspectorCore : IDisposable
     /// <see cref="Environment.SpecialFolder.LocalApplicationData"/>. That resolves to
     /// <c>%LOCALAPPDATA%\DIR.Lib\inspector</c> on Windows, <c>$XDG_DATA_HOME/DIR.Lib/inspector</c> (by default
     /// <c>~/.local/share/DIR.Lib/inspector</c>) on Linux, and <c>~/Library/Application Support/DIR.Lib/inspector</c>
-    /// on macOS (.NET 8 and later). Null where the OS gives no per-user data folder, in which case nothing
-    /// registers.
+    /// on macOS (.NET 8 and later). Null only where the OS has no per-user data folder to name at all, in
+    /// which case nothing registers.
+    /// <para>
+    /// Resolved with <see cref="Environment.SpecialFolderOption.DoNotVerify"/>. The default option answers ""
+    /// on Unix for a folder that does not exist yet, and <c>~/.local/share</c> does not exist on a fresh
+    /// account, in a container or on a headless board: such an instance registered nothing and, with LAN
+    /// discovery off by default, could not be found at all. The writer creates the folder; it needs the path.
+    /// </para>
     /// <para>
     /// Deliberately not the temp folder: Windows Storage Sense empties <c>%TEMP%</c> when the disk runs low,
     /// which would make a live instance vanish from every sidecar.
     /// </para>
     /// </summary>
-    public static string? RegistryDirectory
-        => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) is { Length: > 0 } root
+    public static string? RegistryDirectory => ResolveRegistryDirectory(Environment.GetFolderPath);
+
+    /// <summary><see cref="RegistryDirectory"/> over a given <c>GetFolderPath</c>, so tests can play another OS.</summary>
+    internal static string? ResolveRegistryDirectory(
+        Func<Environment.SpecialFolder, Environment.SpecialFolderOption, string> getFolderPath)
+        => getFolderPath(Environment.SpecialFolder.LocalApplicationData, Environment.SpecialFolderOption.DoNotVerify)
+            is { Length: > 0 } root
             ? Path.Combine(root, "DIR.Lib", "inspector")
             : null;
 
