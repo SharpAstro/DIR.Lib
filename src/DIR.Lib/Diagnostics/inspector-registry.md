@@ -88,21 +88,34 @@ reader could misread would get a new folder, never a reinterpretation of this on
    `Dispose` delete the file under you (`File.ReadAllText` shares only `Read`, which blocks it); no sharing mode lets
    a rewrite's rename through on Windows, so hold the file no longer than the read.
 3. Skip a file that does not parse, or lacks `pid` or `tcpPort`.
-4. Drop it unless the process is live: `Process.GetProcessById(pid)` succeeds and `HasExited` is false, and, when
+4. Skip it unless the process is live: `Process.GetProcessById(pid)` succeeds and `HasExited` is false, and, when
    `processStart` is present, the process's `StartTime.ToUniversalTime()` is within 2 seconds of it (otherwise the
    pid was reused by a later process). If the start time cannot be read (access denied), the pid alone decides.
+   A file skipped for a start-time mismatch is reported, not dropped silently: say `descriptor skipped: start-time
+   mismatch`, with the file name (see the Linux limit below).
 5. Filter on `kind`.
 6. Connect to `127.0.0.1:<tcpPort>`. A refused connection is an instance that exited after step 4.
 
 Readers never delete; the writers sweep.
 
+### Known limit: a wall-clock step on Linux
+
+On Linux .NET's `Process.StartTime` is the boot time plus the process's start ticks, and the boot time is derived
+from the wall clock, so it moves when the clock is stepped: an NTP first sync on a board without a real-time clock,
+WSL2 resyncing after the host slept. After a step over 2 seconds a LIVE instance's recorded `processStart` no
+longer matches, and step 4 skips it until it restarts. That is why a reader reports the skip, and why the writer's
+sweep never deletes on a mismatch (below), which would make the instance unfindable for good rather than until a
+restart. The full fix, comparing a boot-relative start instead, is DIR.Lib issue #112. Windows reports the creation
+time itself and is unaffected.
+
 ## Stale files
 
-A crash skips `Dispose` and leaves a descriptor behind. Readers drop it by the liveness rule above. Each core, when
-it starts, also sweeps the folder: it deletes every `<pid>-<port>.json` whose process fails the same rule, and every
-`<pid>-<port>.tmp` whose pid is not running. It skips its own pid (other cores in the same process are live) and
-never touches a name of any other shape. The sweep is best-effort: a file it cannot read, judge or delete is left
-for the next one.
+A crash skips `Dispose` and leaves a descriptor behind. Readers skip it by the liveness rule above. Each core, when
+it starts, also sweeps the folder: it deletes every `<pid>-<port>.json` and `<pid>-<port>.tmp` whose pid is DEAD (no
+running process has it). It never deletes on a start-time mismatch alone; a descriptor left by a pid that has since
+been reused only waits for that process to exit. It skips its own pid (other cores in the same process are live) and
+never touches a name of any other shape. The sweep is best-effort: a file it cannot judge or delete is left for the
+next one.
 
 ## LAN discovery (opt-in)
 

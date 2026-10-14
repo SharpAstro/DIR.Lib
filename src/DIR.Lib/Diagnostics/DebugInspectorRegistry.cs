@@ -46,10 +46,12 @@ public enum DebugInspectorDiscovery
 internal sealed class DebugInspectorRegistration
 {
     /// <summary>
-    /// How far apart the recorded and the observed start time of a pid may be and still be the same process.
-    /// Generous on purpose: on Linux .NET derives a start time from the boot time, which moves if the clock is
-    /// stepped, and what it guards against (a pid reused by a process started at a different moment) is
-    /// separated from the original by the dead app's whole lifetime, not by seconds.
+    /// How far apart the recorded and the observed start time of a pid may be and still be the same process,
+    /// for a reader (<see cref="IsLive"/>). It absorbs jitter, not a wall-clock step: on Linux the observed start
+    /// moves with one, so a step over this makes readers skip a live instance until it restarts (DIR.Lib issue
+    /// #112). The sweep never deletes on a mismatch for that reason. What it guards against, a pid reused by a
+    /// process started at a different moment, is separated from the original by the dead app's whole lifetime,
+    /// not by seconds.
     /// </summary>
     internal static readonly TimeSpan StartTimeTolerance = TimeSpan.FromSeconds(2);
 
@@ -175,8 +177,16 @@ internal sealed class DebugInspectorRegistration
 
     /// <summary>
     /// Deletes the descriptors (and orphaned temp files) of processes that are no longer running, which is
-    /// what a crash leaves behind. Best-effort throughout: a file that cannot be read, judged or deleted is
-    /// left for the next sweep, and files whose names this writer did not produce are never touched.
+    /// what a crash leaves behind. Best-effort throughout: a file that cannot be deleted is left for the next
+    /// sweep, and files whose names this writer did not produce are never touched.
+    /// <para>
+    /// <b>Only a DEAD pid's file is deleted</b>, never one whose recorded start time merely disagrees with the
+    /// running process's. On Linux .NET's <c>StartTime</c> is the boot time plus the start ticks, and the boot
+    /// time moves with a wall-clock step (an NTP first sync on a board without an RTC, WSL2 resyncing after the
+    /// host slept), so after a step over <see cref="StartTimeTolerance"/> a LIVE instance mismatches. A reader
+    /// then skips it, which a restart cures; a sweep that deleted it would make it unfindable for good. A file
+    /// left by a genuinely reused pid only waits for that process to exit.
+    /// </para>
     /// </summary>
     internal static void SweepStale(string directory)
     {
@@ -186,26 +196,45 @@ internal sealed class DebugInspectorRegistration
 
         foreach (var file in files)
         {
-            if (!TryParseName(System.IO.Path.GetFileName(file), out var pid, out var isTemp)
-                || pid == Environment.ProcessId)
+            if (!TryParseName(System.IO.Path.GetFileName(file), out var pid)
+                || pid == Environment.ProcessId
+                || IsRunning(pid))
             {
                 continue;
             }
 
-            try
-            {
-                // A temp file has no content worth judging; a live pid's one is mid-write.
-                var start = isTemp ? null : ReadProcessStart(File.ReadAllText(file));
-                if (!IsLive(pid, start)) File.Delete(file);
-            }
+            try { File.Delete(file); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         }
     }
 
     /// <summary>
-    /// The reader's liveness rule, which the sweep shares: the pid is running, and, when the descriptor
-    /// recorded a start time, it is the same process rather than a later one that was given the same pid.
-    /// When the start time cannot be read the pid alone decides, so an unjudgeable file is kept.
+    /// Whether any process holds <paramref name="pid"/> now: the sweep's whole rule. When it cannot tell
+    /// (access denied) it says yes, so a file it cannot judge is kept.
+    /// </summary>
+    internal static bool IsRunning(int pid)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            return !process.HasExited;
+        }
+        catch (ArgumentException) { return false; }          // no process with that pid
+        catch (InvalidOperationException) { return false; }  // it exited while being asked
+        catch (Exception) { return true; }                    // cannot tell (access denied): keep it
+    }
+
+    /// <summary>
+    /// The READER's liveness rule, as the spec states it and the sidecars implement it: the pid is running,
+    /// and, when the descriptor recorded a start time, it is the same process rather than a later one given the
+    /// same pid. When the start time cannot be read the pid alone decides. The writer never deletes on this
+    /// rule (see <see cref="SweepStale"/>); it is kept here as the reference the tests pin.
+    /// <para>
+    /// Known limit, on Linux: after a wall-clock step over <see cref="StartTimeTolerance"/> this answers false
+    /// for a live instance until it restarts, so a reader should report "descriptor skipped: start-time
+    /// mismatch" rather than drop it silently. The full fix, comparing a boot-relative start, is DIR.Lib
+    /// issue #112.
+    /// </para>
     /// </summary>
     internal static bool IsLive(int pid, DateTime? processStartUtc)
     {
@@ -222,11 +251,13 @@ internal sealed class DebugInspectorRegistration
     }
 
     /// <summary>Parses <c>&lt;pid&gt;-&lt;tcpPort&gt;.json</c> or <c>.tmp</c>.</summary>
-    internal static bool TryParseName(string name, out int pid, out bool isTemp)
+    internal static bool TryParseName(string name, out int pid)
     {
         pid = 0;
-        isTemp = name.EndsWith(".tmp", StringComparison.Ordinal);
-        if (!isTemp && !name.EndsWith(".json", StringComparison.Ordinal)) return false;
+        if (!name.EndsWith(".json", StringComparison.Ordinal) && !name.EndsWith(".tmp", StringComparison.Ordinal))
+        {
+            return false;
+        }
 
         var stem = System.IO.Path.GetFileNameWithoutExtension(name);
         var dash = stem.IndexOf('-');
@@ -235,7 +266,10 @@ internal sealed class DebugInspectorRegistration
             && int.TryParse(stem.AsSpan(dash + 1), NumberStyles.None, CultureInfo.InvariantCulture, out _);
     }
 
-    /// <summary>The <c>processStart</c> member of a descriptor, or null if it is missing or unreadable.</summary>
+    /// <summary>
+    /// The <c>processStart</c> member of a descriptor, or null if it is missing or unreadable: the reader's
+    /// half of <see cref="IsLive"/>, which the writer itself no longer needs.
+    /// </summary>
     internal static DateTime? ReadProcessStart(string descriptor)
     {
         try
