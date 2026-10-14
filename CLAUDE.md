@@ -79,6 +79,7 @@ passes every option to every project, so one project without `--hangdump` made t
 - **Framework:** xunit v3 + Shouldly assertions
 - **Visual regression tests** (`RenderAcceptanceTests.cs`, `MathLayoutBaselineTests.cs`, `MathStretchyTests.cs`, `DrawLineTests.cs`, `DrawPolylineTests.cs`): compare rendered output against baseline PNG files in `Baselines/`. Set `DIR_LIB_UPDATE_BASELINES=1` to regenerate.
 - **Markdown / LaTeX spike tests** (`MarkdownBlockSpikeTests.cs`, `MarkdownInlineSpikeTests.cs`, `MhchemTests.cs`): exercise the grammar visitors directly.
+- **Debug inspector tests** (`DebugInspectorSchedulingTests.cs`, `DebugInspectorDiscoveryTests.cs`) are `#if DEBUG`, like the inspector itself, so a Release run (CI) compiles them out: run them with `-c Debug`. The multicast test is skipped unless `DIR_LIB_INSPECTOR_LAN_TESTS=1`, because `dotnet test` hosts the suite in the worktree's own `DIR.Lib.Tests.exe` and binding `0.0.0.0:47892` there makes Windows Firewall prompt once per worktree; run it hosted by `dotnet.exe` (the command is in its doc comment). The registry format those tests pin is the sidecars' contract: `src/DIR.Lib/Diagnostics/inspector-registry.md`.
 - **Test fonts** are in `src/DIR.Lib.Tests/Fonts/` — each fixture font has a specific purpose (e.g., Merida is chess-only, subset fonts test PDF embedding scenarios).
 - The tests project declares `SharpAstro.Png` directly because the visual tests emit / decode PNG artifacts — DIR.Lib itself no longer pulls codec packages transitively.
 

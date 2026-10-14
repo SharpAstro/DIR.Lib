@@ -9,6 +9,27 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.21
+
+**The debug inspector is found through a per-user file registry, and answers LAN multicast only when asked.** A
+started `DebugInspectorCore` writes one descriptor file per instance, `<pid>-<tcpPort>.json`, under
+`LocalApplicationData/DIR.Lib/inspector` (`%LOCALAPPDATA%\DIR.Lib\inspector` on Windows), before `Start` returns,
+keeps it current from `Pump` when the host's `DiscoveryExtras` change, and deletes it on `Dispose`; each start also
+sweeps the descriptors a crash left behind. The UDP multicast responder binds `0.0.0.0:47892`, and Windows Firewall
+prompted for that once per executable path, so every DEBUG build at a new path (each git worktree) asked again. It
+now starts only for `DebugInspectorDiscovery.Lan`: from the new `Start(host, DebugInspectorDiscovery)` overload, or,
+without a consumer release, with `DIR_LIB_INSPECTOR_LAN=1`. Neither overrides `enableDiscovery: false`, which still
+means not findable at all. The format the sidecars read is specified in `src/DIR.Lib/Diagnostics/inspector-registry.md`.
+
+`Start(host, bool enableDiscovery = true)` keeps its exact signature, so a consumer compiled against 11.20 binds to it
+unchanged, and `true` now means the registry. A sidecar that only multicasts stops finding DEBUG apps built against
+11.21 until it reads the registry, or until the app runs with `DIR_LIB_INSPECTOR_LAN=1`. The multicast reply is byte
+for byte what it was, so a sidecar that does both still finds older builds. The stderr banner now ends in
+` (registry)`, ` (registry, LAN discovery on ...)` or ` (discovery off)`.
+
+A minor, not a major: no API was removed or changed, and the inspector is `#if DEBUG`, so it is absent from every
+published package and nothing a package consumer can reach behaves differently.
+
 ## 11.20
 
 **A text leaf measures its line box, not its ink.** `PixelMeasureContext.MeasureText`, the height every text node in a
