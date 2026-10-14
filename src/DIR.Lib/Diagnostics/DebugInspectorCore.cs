@@ -82,6 +82,12 @@ public interface IDebugInspectorHost
     /// (e.g. <c>"title":"Chess","startedAt":"..."</c>), or null for none. Read afresh per reply, so a value
     /// that changes while the app runs — a window title — stays current.
     /// <para>
+    /// The registry descriptor carries the same members. There it is read on the host's own thread from
+    /// <see cref="DebugInspectorCore.Pump"/>, at most once a second, and the file is rewritten only when the
+    /// fragment changed. Do not emit a member the core writes itself (<c>app</c>, <c>kind</c>, <c>tcpPort</c>,
+    /// <c>pid</c>, <c>proto</c>, <c>processStart</c>): a reader would see it twice.
+    /// </para>
+    /// <para>
     /// A raw fragment rather than a dictionary because this file never asks the framework serializer for a
     /// type (see <see cref="DebugInspectorCore.Quote"/>); build it with that method.
     /// </para>
@@ -166,6 +172,14 @@ public interface IDebugInspectorSteppedHost
 ///
 /// <para><b>DEBUG only.</b> The whole file is <c>#if DEBUG</c>, so no release artifact carries a socket
 /// server. Bound to loopback regardless.</para>
+///
+/// <para><b>Discovery.</b> By default a started core is findable on its own machine through a per-user FILE
+/// registry (<see cref="RegistryDirectory"/>): one descriptor file per instance, written at start and deleted
+/// on <see cref="Dispose"/>. That opens no socket beyond the loopback listener, and a loopback bind never
+/// makes Windows Firewall prompt. UDP multicast discovery, which binds every interface and DOES prompt once
+/// per executable path, answers only when asked for (<see cref="DebugInspectorDiscovery.Lan"/>, or the
+/// <see cref="LanDiscoveryVariable"/> environment variable). The registry's format is the contract the
+/// sidecars implement; it is specified in <c>src/DIR.Lib/Diagnostics/inspector-registry.md</c>.</para>
 /// </summary>
 public sealed class DebugInspectorCore : IDisposable
 {
@@ -219,23 +233,42 @@ public sealed class DebugInspectorCore : IDisposable
     /// <summary>The ephemeral port the command server bound to.</summary>
     public int Port { get; }
 
-    private DebugInspectorCore(IDebugInspectorHost host, TcpListener? listener, int port)
+    /// <summary>
+    /// How this core was asked to be findable, after <see cref="LanDiscoveryVariable"/> is applied. Each part
+    /// is best-effort: a registry folder that cannot be written leaves <see cref="RegistryFile"/> null, and a
+    /// multicast bind that fails is reported on stderr, and either way the command server keeps working.
+    /// </summary>
+    public DebugInspectorDiscovery Discovery { get; }
+
+    /// <summary>This core's descriptor in the registry, or null when it is not registered.</summary>
+    public string? RegistryFile => _registration?.Path;
+
+    /// <summary>Whether the UDP multicast responder was started. Only ever true with <see cref="DebugInspectorDiscovery.Lan"/>.</summary>
+    internal bool LanResponderStarted => _discovery is not null;
+
+    private DebugInspectorRegistration? _registration;
+
+    // Host thread only, inside Pump: when the registry descriptor's extras are next read.
+    private long _nextRegistryRefresh;
+
+    private DebugInspectorCore(IDebugInspectorHost host, TcpListener? listener, int port, DebugInspectorDiscovery discovery)
     {
         _host = host;
         _listener = listener;
         Port = port;
+        Discovery = discovery;
     }
 
     /// <summary>
-    /// A core with NO transport: no TCP listener, no multicast bind, no banner. Commands arrive through
-    /// <see cref="Submit"/> instead of a socket.
+    /// A core with NO transport: no TCP listener, no multicast bind, no registry file, no banner. Commands
+    /// arrive through <see cref="Submit"/> instead of a socket.
     ///
     /// <para>This exists so the SCHEDULING can be exercised without a port. What a batch or a press-and-hold
     /// does is ordinary logic — one step per pump, who owns the queue, what happens when two collide — and
     /// making each of those assertions depend on port availability and joining a multicast group would tie
     /// them to something they are not about. It is also a usable in-process driver in its own right.</para>
     /// </summary>
-    public static DebugInspectorCore Detached(IDebugInspectorHost host) => new(host, null, 0);
+    public static DebugInspectorCore Detached(IDebugInspectorHost host) => new(host, null, 0, DebugInspectorDiscovery.None);
 
     /// <summary>
     /// Queues a command exactly as an arriving request would, completing when a <see cref="Pump"/> runs it.
@@ -256,32 +289,173 @@ public sealed class DebugInspectorCore : IDisposable
     /// <summary>
     /// Starts the command server on an ephemeral loopback port and announces it on stderr. The host must
     /// then call <see cref="Pump"/> from its loop, or no command will ever run.
+    /// <para>
+    /// This overload's signature is kept exactly as it was, so already-compiled consumers keep binding to it;
+    /// only what <c>true</c> means changed (see the parameter).
+    /// </para>
     /// </summary>
     /// <param name="host">The surface being driven.</param>
     /// <param name="enableDiscovery">
-    /// Whether to answer multicast discovery. On by default, because being found without being told a port is
-    /// the point. Turning it off leaves the command server fully working and merely unadvertised — for a host
-    /// that would rather not announce itself on a shared network, or where the multicast bind is unwelcome.
+    /// Whether the instance can be found at all. On by default, because being found without being told a port
+    /// is the point. <c>true</c> registers it in the per-user file registry
+    /// (<see cref="DebugInspectorDiscovery.Registry"/>), plus LAN multicast discovery when
+    /// <see cref="LanDiscoveryVariable"/> asks for it. <c>false</c> makes it not findable at all, whatever the
+    /// environment says: the command server keeps working and is merely unadvertised.
     /// </param>
     public static DebugInspectorCore Start(IDebugInspectorHost host, bool enableDiscovery = true)
+        => Start(host, Requested(enableDiscovery));
+
+    /// <summary>
+    /// Starts the command server and makes the instance findable as <paramref name="discovery"/> asks. Use
+    /// <see cref="DebugInspectorDiscovery.Registry"/> | <see cref="DebugInspectorDiscovery.Lan"/> for a host
+    /// that must be found from another machine. <see cref="LanDiscoveryVariable"/> can add
+    /// <see cref="DebugInspectorDiscovery.Lan"/> to anything but <see cref="DebugInspectorDiscovery.None"/>.
+    /// </summary>
+    public static DebugInspectorCore Start(IDebugInspectorHost host, DebugInspectorDiscovery discovery)
+        => StartExactly(host, WithEnvironment(discovery, Environment.GetEnvironmentVariable(LanDiscoveryVariable)),
+            RegistryDirectory);
+
+    /// <summary>What <see cref="Start(IDebugInspectorHost, bool)"/> asks for, before the environment.</summary>
+    internal static DebugInspectorDiscovery Requested(bool enableDiscovery)
+        => enableDiscovery ? DebugInspectorDiscovery.Registry : DebugInspectorDiscovery.None;
+
+    /// <summary>
+    /// Applies <see cref="LanDiscoveryVariable"/>: <c>1</c> or <c>true</c> adds
+    /// <see cref="DebugInspectorDiscovery.Lan"/>. It never makes a <see cref="DebugInspectorDiscovery.None"/>
+    /// core findable, because "not findable at all" is a host's decision (an app in a local-only mode), and an
+    /// environment variable left set in a shell must not override it.
+    /// </summary>
+    internal static DebugInspectorDiscovery WithEnvironment(DebugInspectorDiscovery requested, string? lanVariable)
+        => requested != DebugInspectorDiscovery.None
+           && (lanVariable == "1" || string.Equals(lanVariable, "true", StringComparison.OrdinalIgnoreCase))
+            ? requested | DebugInspectorDiscovery.Lan
+            : requested;
+
+    /// <summary>
+    /// Starts with exactly <paramref name="discovery"/>, reading no environment, and registers in
+    /// <paramref name="registryDirectory"/>. The seam tests use, so they never touch the real per-user registry.
+    /// </summary>
+    internal static DebugInspectorCore StartExactly(
+        IDebugInspectorHost host, DebugInspectorDiscovery discovery, string? registryDirectory)
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
 
-        var core = new DebugInspectorCore(host, listener, port);
+        var core = new DebugInspectorCore(host, listener, port, discovery);
 
         // stderr, not stdout: a TUI owns stdout, and writing the banner there would corrupt the screen.
-        Console.Error.WriteLine($"[inspector] '{host.AppName}' command server on 127.0.0.1:{port}"
-            + (enableDiscovery ? "" : " (discovery off)"));
+        // Everything after the port is a parenthesised suffix, so a driver grepping the port is unaffected.
+        var suffix = discovery switch
+        {
+            DebugInspectorDiscovery.None => " (discovery off)",
+            DebugInspectorDiscovery.Lan => $" (LAN discovery on {DiscoveryGroup}:{DiscoveryPortNumber})",
+            DebugInspectorDiscovery.Registry => " (registry)",
+            _ => $" (registry, LAN discovery on {DiscoveryGroup}:{DiscoveryPortNumber})",
+        };
+        Console.Error.WriteLine($"[inspector] '{host.AppName}' command server on 127.0.0.1:{port}{suffix}");
+
+        if (discovery.HasFlag(DebugInspectorDiscovery.Registry))
+        {
+            core.Register(registryDirectory);
+        }
         Console.Error.Flush();
 
         _ = Task.Run(core.AcceptLoopAsync);
-        if (enableDiscovery)
+        if (discovery.HasFlag(DebugInspectorDiscovery.Lan))
         {
             core._discovery = Task.Run(core.DiscoveryLoopAsync);
         }
         return core;
+    }
+
+    /// <summary>
+    /// The environment variable that turns LAN multicast discovery on without a consumer release:
+    /// <c>DIR_LIB_INSPECTOR_LAN=1</c> (or <c>true</c>). Read once, when a core starts.
+    /// </summary>
+    public const string LanDiscoveryVariable = "DIR_LIB_INSPECTOR_LAN";
+
+    /// <summary>
+    /// The per-user registry folder: <c>DIR.Lib/inspector</c> under
+    /// <see cref="Environment.SpecialFolder.LocalApplicationData"/>. That resolves to
+    /// <c>%LOCALAPPDATA%\DIR.Lib\inspector</c> on Windows, <c>$XDG_DATA_HOME/DIR.Lib/inspector</c> (by default
+    /// <c>~/.local/share/DIR.Lib/inspector</c>) on Linux, and <c>~/Library/Application Support/DIR.Lib/inspector</c>
+    /// on macOS (.NET 8 and later). Null where the OS gives no per-user data folder, in which case nothing
+    /// registers.
+    /// <para>
+    /// Deliberately not the temp folder: Windows Storage Sense empties <c>%TEMP%</c> when the disk runs low,
+    /// which would make a live instance vanish from every sidecar.
+    /// </para>
+    /// </summary>
+    public static string? RegistryDirectory
+        => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) is { Length: > 0 } root
+            ? Path.Combine(root, "DIR.Lib", "inspector")
+            : null;
+
+    /// <summary>
+    /// Writes this core's descriptor. Best-effort like the multicast bind: a registry that cannot be written,
+    /// for whatever reason, is reported on stderr and the command server carries on unregistered. A debugging
+    /// aid must never be why a DEBUG app fails to start.
+    /// </summary>
+    private void Register(string? registryDirectory)
+    {
+        if (registryDirectory is null)
+        {
+            Console.Error.WriteLine("[inspector] not registered: no per-user data folder on this system");
+            return;
+        }
+
+        try
+        {
+            _registration = DebugInspectorRegistration.Create(registryDirectory, Port, Descriptor(forRegistry: true));
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[inspector] not registered in {registryDirectory}: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The JSON object that describes this instance. The multicast reply is byte-for-byte what it always
+    /// was; the registry descriptor adds <c>processStart</c>, so a reader can tell this process from a later
+    /// one that was handed the same pid.
+    /// <para>
+    /// Extras are read afresh each call, so a value that changes while the app runs (a window title) is
+    /// current. A host's own accessor that throws must not silence discovery, so it costs only the extras.
+    /// </para>
+    /// </summary>
+    private string Descriptor(bool forRegistry)
+    {
+        string extras;
+        try { extras = _host.DiscoveryExtras is { Length: > 0 } e ? "," + e : ""; }
+        catch { extras = ""; }
+
+        var processStart = forRegistry && DebugInspectorRegistration.FormatProcessStart() is { } started
+            ? $",\"processStart\":{Quote(started)}"
+            : "";
+
+        return $"{{\"app\":{Quote(_host.AppName)},\"kind\":{Quote(_host.SurfaceKind)}," +
+               $"\"tcpPort\":{Port},\"pid\":{Environment.ProcessId},\"proto\":{ProtocolVersion}" +
+               processStart + extras + "}";
+    }
+
+    /// <summary>How often <see cref="Pump"/> re-reads the extras for the registry descriptor.</summary>
+    private const long RegistryRefreshMilliseconds = 1000;
+
+    /// <summary>
+    /// Re-reads the descriptor at most once a second and hands it to the registration, which rewrites the
+    /// file only if it changed and does so off this thread. Read HERE rather than on a timer so the host's
+    /// extras accessor runs on the host's own thread, like every command.
+    /// </summary>
+    private void RefreshRegistration()
+    {
+        if (_registration is not { } registration) return;
+
+        var now = Environment.TickCount64;
+        if (now < _nextRegistryRefresh) return;
+        _nextRegistryRefresh = now + RegistryRefreshMilliseconds;
+
+        registration.Offer(Descriptor(forRegistry: true));
     }
 
     /// <summary>
@@ -295,6 +469,8 @@ public sealed class DebugInspectorCore : IDisposable
     /// </summary>
     public void Pump()
     {
+        RefreshRegistration();
+
         if (_exclusive is not null)
         {
             Advance(ref _exclusive);
@@ -571,6 +747,11 @@ public sealed class DebugInspectorCore : IDisposable
     /// if the socket cannot bind (another process holds it, or the environment forbids multicast) the command
     /// server keeps working and only discovery is lost, which is why the failure is reported rather than
     /// thrown.
+    /// <para>
+    /// Started only for <see cref="DebugInspectorDiscovery.Lan"/>. The bind below is on every interface, and
+    /// Windows Firewall prompts for that once per executable path; that prompt, raised by every DEBUG build at
+    /// a new path, is why this is opt-in and the registry is the default.
+    /// </para>
     /// </summary>
     private async Task DiscoveryLoopAsync()
     {
@@ -588,10 +769,6 @@ public sealed class DebugInspectorCore : IDisposable
             return;
         }
 
-        var fixedPart =
-            $"{{\"app\":{Quote(_host.AppName)},\"kind\":{Quote(_host.SurfaceKind)}," +
-            $"\"tcpPort\":{Port},\"pid\":{Environment.ProcessId},\"proto\":{ProtocolVersion}";
-
         while (!_stopping.IsCancellationRequested)
         {
             UdpReceiveResult recv;
@@ -604,11 +781,7 @@ public sealed class DebugInspectorCore : IDisposable
 
             // Built per reply, not once: an extra like the window title changes while the app runs, and a
             // descriptor cached at startup would answer with a stale one forever.
-            string extras;
-            try { extras = _host.DiscoveryExtras is { Length: > 0 } e ? "," + e : ""; }
-            catch { extras = ""; }   // a host's own accessor must not silence discovery
-
-            var descriptor = Encoding.UTF8.GetBytes(fixedPart + extras + "}");
+            var descriptor = Encoding.UTF8.GetBytes(Descriptor(forRegistry: false));
             try { await udp.SendAsync(descriptor, descriptor.Length, recv.RemoteEndPoint); }
             catch (SocketException) { /* reply is best-effort */ }
         }
@@ -737,9 +910,14 @@ public sealed class DebugInspectorCore : IDisposable
         }
     }
 
+    /// <summary>
+    /// Stops the command server and the multicast responder, and deletes the registry descriptor, so a sidecar
+    /// stops listing this instance the moment it is gone rather than when its pid is found dead.
+    /// </summary>
     public void Dispose()
     {
         _stopping.Cancel();
+        _registration?.Close();
         try { _listener?.Stop(); } catch (SocketException) { }
         try { _discovery?.Wait(TimeSpan.FromSeconds(1)); } catch { /* best-effort */ }
         _stopping.Dispose();
