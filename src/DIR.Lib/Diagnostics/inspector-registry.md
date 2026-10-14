@@ -14,17 +14,24 @@ there is nothing to prompt for. Multicast still exists, as opt-in LAN discovery 
 
 ## Folder
 
-`Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)`, then `DIR.Lib`, then `inspector`:
+`Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData, Environment.SpecialFolderOption.DoNotVerify)`,
+then `DIR.Lib`, then `inspector`:
 
 | OS | Resolves to |
 | --- | --- |
 | Windows | `%LOCALAPPDATA%\DIR.Lib\inspector`, i.e. `C:\Users\<user>\AppData\Local\DIR.Lib\inspector` |
-| Linux | `$XDG_DATA_HOME/DIR.Lib/inspector`, by default `~/.local/share/DIR.Lib/inspector` |
+| Linux | `$XDG_DATA_HOME/DIR.Lib/inspector` when `XDG_DATA_HOME` is set, otherwise `~/.local/share/DIR.Lib/inspector`, whether or not that folder exists yet |
 | macOS | `~/Library/Application Support/DIR.Lib/inspector` (.NET 8 and later; .NET 7 said `~/.local/share`) |
 
-A reader computes it the same way, on .NET 8 or later, and never hard-codes it. `DebugInspectorCore.RegistryDirectory`
-returns it for code that does reference DIR.Lib. Where the OS reports no per-user data folder the path is empty and
-nothing registers. A folder that does not exist means no instance is registered.
+**`DoNotVerify` is required, on both sides.** With the default `SpecialFolderOption.None`, .NET on Unix answers `""`
+for a folder that does not exist yet, and `~/.local/share` does not exist on a fresh account, in a container or on a
+headless board. A writer that took that answer registered nothing, and a reader that takes it looks nowhere. The
+writer creates the folder when it registers; it only needs the path.
+
+A reader computes the path the same way, on .NET 8 or later, and never hard-codes it.
+`DebugInspectorCore.RegistryDirectory` returns it for code that does reference DIR.Lib. Only where the OS has no
+per-user data folder to name at all is the answer empty, and then nothing registers. A folder that does not exist
+means no instance is registered.
 
 It is per user on purpose (an instance is driven by the user who runs it), and it is NOT the temp folder: Windows
 Storage Sense empties `%TEMP%` when the disk runs low, which would make a live instance vanish.
