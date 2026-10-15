@@ -88,6 +88,24 @@ public sealed class DollarRulesTests
     }
 
     [Fact]
+    public void LoneDollarInDisplayMath_IsBody()
+    {
+        // `$$` closes at the next `$$`; a single `$` before it is part of the body.
+        var math = Paragraph("$$a$b$$").ShouldHaveSingleItem().ShouldBeOfType<MdMathInline>();
+        math.Source.ShouldBe("a$b");
+        math.IsDisplay.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void DisplayMath_ClosesAtTheNextDoubleDollar()
+    {
+        var content = Paragraph("$$a$$$");
+        content.Count.ShouldBe(2);
+        content[0].ShouldBeOfType<MdMathInline>().Source.ShouldBe("a");
+        content[1].ShouldBeOfType<MdLiteral>().Text.ShouldBe("$");
+    }
+
+    [Fact]
     public void BracketDisplay_InProse_StaysDisplay()
     {
         var math = Paragraph(@"so \[x\] then").OfType<MdMathInline>().ShouldHaveSingleItem();

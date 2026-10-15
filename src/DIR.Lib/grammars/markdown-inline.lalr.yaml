@@ -202,9 +202,12 @@ lexer:
     - { symbol: dollar,   match: '\$',         pop: true }
     - { symbol: mathbody, match: '([^$\\]|\\(.|\n))+' }
 
+  # `$$` closes at the next `$$`, so a display body also takes a lone
+  # `$`: each piece may carry one `$` in front of it. The body can then
+  # never hold `$$` or end in `$`, which leaves the closer to the pop rule.
   math_dollar2:
     - { symbol: dollar2,    match: '\$\$',     pop: true }
-    - { symbol: mathbody2,  match: '([^$\\]|\\(.|\n))+' }
+    - { symbol: mathbody2,  match: '(\$?([^$\\]|\\(.|\n)))+' }
 
   math_paren:
     - { symbol: latex_rparen, match: '\\\)',   pop: true }

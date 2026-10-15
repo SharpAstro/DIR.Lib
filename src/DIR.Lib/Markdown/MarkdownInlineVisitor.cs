@@ -188,10 +188,10 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     }
 
     /// <summary>End (exclusive) of the <c>$$..$$</c> span opening at
-    /// <paramref name="i"/>, or -1. math_dollar2 lexes a body of one or
-    /// more pieces (a non-dollar, or <c>\</c> and the character after it)
-    /// and then <c>$$</c>; a lone <c>$</c> in the body matches none of its
-    /// rules.</summary>
+    /// <paramref name="i"/>, or -1. The closer is the next unescaped
+    /// <c>$$</c>: math_dollar2 lexes a body of one or more pieces (a
+    /// non-dollar, or <c>\</c> and the character after it), each of which
+    /// may carry one <c>$</c> in front, and then <c>$$</c>.</summary>
     private static int DisplayDollarEnd(string s, int i)
     {
         for (int k = i + 2; k < s.Length; k++)
@@ -199,8 +199,8 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
             switch (s[k])
             {
                 case '$':
-                    if (k == i + 2 || At(s, k + 1) != '$') return -1;
-                    return CodeSpanCrosses(s, i + 2, k) ? -1 : k + 2;
+                    if (At(s, k + 1) != '$') break;   // a lone `$` is body
+                    return k == i + 2 || CodeSpanCrosses(s, i + 2, k) ? -1 : k + 2;
                 case '\\':
                     if (k + 1 >= s.Length) return -1;
                     k++;
