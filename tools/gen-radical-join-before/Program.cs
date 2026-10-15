@@ -32,15 +32,18 @@ var fonts = new Dictionary<string, string>
     ["DejaVuSans"] = Path.Combine(args[0], "DejaVuSans.ttf"),
 };
 
-// The dense sweep: the ranges Console.Lib's shrink loop walks continuously (down to two thirds of its
-// 10 px half-block, 12 px sextant and 32 px Sixel sizes), plus four large sizes. Sizes are computed in
+// The sweep: every integer size from 8 to 40 px and, densely, the ranges Console.Lib's shrink loop walks
+// continuously (down to two thirds of its 10 px half-block, 12 px sextant and 32 px Sixel sizes), plus four
+// large sizes. Sizes are computed in
 // double and rounded, exactly as RadicalJoinTests computes them, so the floats compare equal.
 string[] sweepScenes = ["sqrt-2", "sqrt-x", "sqrt-paren-frac", "sqrt-nested-frac", "sqrt-frac-a-b"];
 float[] sweepSizes =
 [
-    .. Enumerable.Range(0, 109).Select(i => (float)Math.Round(6.6 + i * 0.05, 2)),
-    .. Enumerable.Range(0, 108).Select(i => (float)Math.Round(21.3 + i * 0.1, 1)),
-    48f, 64f, 72f, 96f,
+    .. Enumerable.Range(8, 33).Select(i => (float)i)
+        .Concat(Enumerable.Range(0, 109).Select(i => (float)Math.Round(6.6 + i * 0.05, 2)))
+        .Concat(Enumerable.Range(0, 108).Select(i => (float)Math.Round(21.3 + i * 0.1, 1)))
+        .Concat([48f, 64f, 72f, 96f])
+        .Distinct(),
 ];
 
 // The exact-pixel join cases, and the points the review rounds named outside the sweep.

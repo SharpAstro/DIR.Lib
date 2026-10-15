@@ -133,18 +133,20 @@ public sealed partial class RadicalJoinTests
     }
 
     /// <summary>
-    /// The sizes the layout invariants are swept over: densely, the ranges Console.Lib's shrink loop walks
-    /// continuously (it shrinks math by at least half a pixel a step, down to two thirds of the size it
-    /// starts from: about 6.7 to 10 px half-block, 8 to 12 px sextant, 21.3 to 32 px Sixel), plus 48, 64,
-    /// 72 and 96. Review round 2 found its bugs at fractional and sub-8 px sizes that an integer sweep
-    /// never reached. Computed in double and rounded, exactly as tools/gen-radical-join-before computes
+    /// The sizes the layout invariants are swept over: every integer size from 8 to 40 px, and densely, in
+    /// addition, the ranges Console.Lib's shrink loop walks continuously (it shrinks math by at least half a
+    /// pixel a step, down to two thirds of the size it starts from: about 6.7 to 10 px half-block, 8 to 12 px
+    /// sextant, 21.3 to 32 px Sixel), plus 48, 64, 72 and 96. Review round 2 found its bugs at fractional
+    /// and sub-8 px sizes that the integer sweep never reached. Computed in double and rounded, exactly as tools/gen-radical-join-before computes
     /// them, so the floats compare equal. The exact-pixel join assertions above stay at 24, 32 and 96 px.
     /// </summary>
     private static readonly float[] SweepSizes =
     [
-        .. Enumerable.Range(0, 109).Select(i => (float)Math.Round(6.6 + i * 0.05, 2)),
-        .. Enumerable.Range(0, 108).Select(i => (float)Math.Round(21.3 + i * 0.1, 1)),
-        48f, 64f, 72f, 96f,
+        .. Enumerable.Range(8, 33).Select(i => (float)i)
+            .Concat(Enumerable.Range(0, 109).Select(i => (float)Math.Round(6.6 + i * 0.05, 2)))
+            .Concat(Enumerable.Range(0, 108).Select(i => (float)Math.Round(21.3 + i * 0.1, 1)))
+            .Concat([48f, 64f, 72f, 96f])
+            .Distinct(),
     ];
 
     private static readonly string[] SweepScenes =
