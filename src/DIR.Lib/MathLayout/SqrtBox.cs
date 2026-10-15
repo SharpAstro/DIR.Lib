@@ -57,6 +57,7 @@ public sealed class SqrtBox : Box
     private readonly float _hookWidth;
     private readonly float _gap;
     private readonly float _ruleThickness;
+    private readonly float _fontSize;
 
     /// <summary>X offset (relative to <c>penX</c>) where the index draws.
     /// Zero when there's no index. May be negative-equivalent (i.e. small)
@@ -151,6 +152,7 @@ public sealed class SqrtBox : Box
         _hookWidth = style.FontSize * 0.45f;
         _gap = style.FontSize * 0.12f;
         _ruleThickness = style.RadicalRuleThickness;
+        _fontSize = style.FontSize;
 
         // Required radical height = radicand TotalHeight + gap above + a sliver
         // of vinculum thickness. The MATH glyph centres itself on the math
@@ -477,6 +479,10 @@ public sealed class SqrtBox : Box
     /// <summary>Which of the three rendering paths drew the radical (see the
     /// class summary): 1 MATH-stretchy, 2 scaled base glyph, 3 parametric.</summary>
     internal int Path => _radicalFont is not null ? 1 : HasScaledGlyph ? 2 : 3;
+
+    /// <summary>The pixels-per-em the radical's glyph was rasterized at: the
+    /// box's font size on path 1, that size times the scale on path 2.</summary>
+    internal float RadicalGlyphSize => _radicalFont is not null ? _fontSize : _fontSize * _radicalScaledFactor;
 
     /// <summary>Width of whichever radical-rendering path is active.</summary>
     private float RadicalWidth =>
