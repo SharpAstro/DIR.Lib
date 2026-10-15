@@ -31,9 +31,9 @@ namespace DIR.Lib.Markdown;
 /// <c>\mathrm{H}_{2}\mathrm{O}</c>. <see cref="BoxBuildingVisitor"/> sets
 /// a bare letter in math italic, as TeX does, and the letters inside
 /// <c>\mathrm</c> upright; on the Unicode path <c>\mathrm{X}</c> is just
-/// <c>X</c>. A LaTeX command in the body (<c>\alpha</c>,
-/// <c>\text{...}</c>) is copied through untouched, with any brace
-/// arguments that follow its name.</para>
+/// <c>X</c>. A LaTeX command's name in the body (<c>\alpha</c>) is copied
+/// through untouched, and so is a <c>\text{...}</c> argument; any other
+/// command's arguments are chemistry like the rest of the body.</para>
 ///
 /// <para>Wired into the markdown pipeline by
 /// <see cref="MarkdownMacros.ExpandLatexMacros"/> and by Console.Lib's
@@ -169,9 +169,9 @@ public static class Mhchem
 
             if (ch == '\\' && i + 1 < body.Length && IsAsciiLetter(body[i + 1]))
             {
-                // A LaTeX command (\alpha, \text{aq}) goes through as
-                // written. Without this its name would be read as letters:
-                // wrapped in \mathrm, or, for \Gamma, cut at the element Ga.
+                // A LaTeX command's name (\alpha, and \text{aq} whole) goes
+                // through as written. Without this its name would be read as
+                // letters: wrapped in \mathrm, or, for \Gamma, cut at Ga.
                 CopyCommand(body, ref i, sb);
                 atTermStart = false;
                 justSawSymbol = false;
@@ -329,16 +329,20 @@ public static class Mhchem
 
     /// <summary>
     /// Copies the LaTeX command at <paramref name="i"/> (a backslash and its
-    /// letters) and every brace group straight after its name, balanced and
-    /// as written, so <c>\text{aq}</c> reaches the <c>\text</c> expansion
-    /// whole. Leaves <paramref name="i"/> past what it copied.
+    /// letters). For <c>\text</c> it also copies the brace groups straight
+    /// after the name, balanced and as written, so <c>\text{aq}</c> reaches
+    /// the <c>\text</c> expansion whole. Any other command's arguments are
+    /// chemistry and go back through the caller's loop: <c>\sqrt{H2}</c> is
+    /// <c>\sqrt{\mathrm{H}_{2}}</c>. Leaves <paramref name="i"/> past what it
+    /// copied.
     /// </summary>
     private static void CopyCommand(string s, ref int i, StringBuilder sb)
     {
         int start = i;
         i++;
         while (i < s.Length && IsAsciiLetter(s[i])) i++;
-        while (i < s.Length && s[i] == '{')
+        var isText = s.AsSpan(start, i - start).SequenceEqual(@"\text");
+        while (isText && i < s.Length && s[i] == '{')
         {
             int depth = 1;
             int j = i + 1;

@@ -125,10 +125,10 @@ public sealed class MhchemTests
 
     // ── LaTeX commands in the body ─────────────────────────────────────
     //
-    // A command goes through as written, with the brace groups straight
-    // after its name. Its letters are not chem letters: wrapping them in
-    // \mathrm would break the command, and before this \Gamma was cut at
-    // the element Ga.
+    // A command's name goes through as written, and so does a \text
+    // argument. Its letters are not chem letters: wrapping them in \mathrm
+    // would break the command, and before this \Gamma was cut at the
+    // element Ga. Other commands' arguments are chemistry.
 
     [Theory]
     [InlineData(@"\alpha",            @"\alpha")]
@@ -258,6 +258,9 @@ public sealed class MhchemTests
     // A blank before the brace: Mhchem copies only `\text` and wraps the
     // `aq` after it, so the \text body itself must shed the \mathrm.
     [InlineData(@"H2O(\text {aq})",  "H₂O(aq)")]
+    // A command's brace argument other than \text's is chemistry, as on main.
+    [InlineData(@"\sqrt{H2}",        "√H₂")]
+    [InlineData(@"\frac{H2O}{2}",    "H₂O⁄2")]
     [InlineData(@"\Gamma",           "Γ")]
     public void Roundtrip_UprightTextAndCommands(string body, string expected)
         => MarkdownMacros.RenderMathUnicode(@"\ce{" + body + "}").ShouldBe(expected);
