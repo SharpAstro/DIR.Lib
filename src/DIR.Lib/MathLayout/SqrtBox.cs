@@ -537,9 +537,9 @@ public sealed class SqrtBox : Box
     internal RadicalJoin? LastJoin { get; private set; }
 
     /// <summary>The flag's top row and band height, its rightmost
-    /// full-coverage column, and one past the vinculum's last column, all in
-    /// surface pixels.</summary>
-    internal sealed record RadicalJoin(int FlagTopY, int FlagRows, int FlagLastFullX, int BarEndX);
+    /// full-coverage column, the vinculum's first column (the glyph's right
+    /// edge) and one past its last, all in surface pixels.</summary>
+    internal sealed record RadicalJoin(int FlagTopY, int FlagRows, int FlagLastFullX, int BarStartX, int BarEndX);
 
     /// <summary>Draw the radical glyph, its flag's end filled in (see
     /// <see cref="JoinFlag"/>), at the floored pen position, and return that
@@ -574,7 +574,7 @@ public sealed class SqrtBox : Box
                 new RectInt(new PointInt(barRight, barTop + r + 1), new PointInt(barLeft, barTop + r)),
                 new RGBAColor32(fg.Red, fg.Green, fg.Blue, a));
         }
-        LastJoin = new RadicalJoin(barTop, _flagProfile.Length, x0 + _flagLastFullCol, Math.Max(barLeft, barRight));
+        LastJoin = new RadicalJoin(barTop, _flagProfile.Length, x0 + _flagLastFullCol, barLeft, Math.Max(barLeft, barRight));
     }
 
     /// <summary>
