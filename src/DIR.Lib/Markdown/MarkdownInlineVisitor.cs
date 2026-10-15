@@ -383,7 +383,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
         BuildMath((string)node.Arg1.Content);
 
     public object Visit(MarkdownInline.MathDisplaySpan node) =>
-        BuildMath((string)node.Arg1.Content);
+        BuildMath((string)node.Arg1.Content, isDisplay: true);
 
     // ── Math: LaTeX-backslash forms (\(..\), \[..\]) ──────────────────
 
@@ -391,7 +391,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
         BuildMath((string)node.Arg1.Content);
 
     public object Visit(MarkdownInline.MathBracketSpan node) =>
-        BuildMath((string)node.Arg1.Content);
+        BuildMath((string)node.Arg1.Content, isDisplay: true);
 
     // ── Math: \boxed{..} with balanced braces ─────────────────────────
     //
@@ -452,10 +452,11 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
 
     // ── LaTeX sub-parser invocation ───────────────────────────────────
 
-    private static MdMathInline BuildMath(string body) =>
+    private static MdMathInline BuildMath(string body, bool isDisplay = false) =>
         new(Source: body,
             Unicode: ParseMathUnicode(body),
-            Builder: null);
+            Builder: null)
+        { IsDisplay = isDisplay };
 
     private static readonly LatexUnicodeVisitor s_unicodeVisitor = new();
     private static readonly global::LALR.CC.Parser s_unicodeParser = Latex.BuildParser(s_unicodeVisitor);

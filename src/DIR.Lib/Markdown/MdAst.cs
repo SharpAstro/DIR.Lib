@@ -88,7 +88,16 @@ public sealed record MdMathInline(
     string Source,
     string Unicode,
     System.Func<BoxStyle, Box>? Builder
-) : MdInline;
+) : MdInline
+{
+    /// <summary>True when the span was written with a display delimiter
+    /// (<c>$$..$$</c> or <c>\[..\]</c>), false for <c>$..$</c>,
+    /// <c>\(..\)</c> and <c>\boxed{..}</c>. A renderer can use it to set
+    /// display math that sits inside a paragraph as a block of its own.
+    /// An init-only property rather than a constructor parameter, so the
+    /// primary constructor and its <c>Deconstruct</c> keep their arity.</summary>
+    public bool IsDisplay { get; init; }
+}
 
 /// <summary>Inline code span — text wrapped in single backticks. Emitted
 /// for `` `code` `` patterns; the renderer paints <see cref="Content"/>
