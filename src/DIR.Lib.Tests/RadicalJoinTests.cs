@@ -280,6 +280,26 @@ public sealed partial class RadicalJoinTests
             $"clear rows between the bar (rows {r.Join.FlagTopY}..{r.Join.FlagTopY + r.Join.FlagRows - 1}) and the radicand");
     }
 
+    /// <summary>
+    /// Review round 1, B2. The 1.1x overshoot cap that sends a radical to path 1 (a MATH size variant) or
+    /// path 2 (the scaled base glyph) was tested on the SNAPPED bitmap, and the snap can drop a row, so it
+    /// flipped radicals across that cap. STIX Two Math <c>\sqrt{\left(\frac{a}{b}\right)}</c> at 72 px:
+    /// the variant is 172 rows against a cap of 171.03, so the base took path 2 (height 96.14, depth
+    /// 57.86); snapped it is 171 rows, path 1 won, and the depth grew by 21 px.
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math", "sqrt-paren-frac", 72f)]
+    [InlineData("STIX2Math", "sqrt-paren-frac", 10f)]
+    [InlineData("STIX2Math", "sqrt-frac-a-b", 13f)]
+    public void ReviewedCasesKeepTheirPathAndMetrics(string font, string scene, float size)
+    {
+        var before = BeforeAt(font, scene, size);
+        var r = Render(font, size, scene);
+        r.Sqrt.Path.ShouldBe(before.Path, "the rendering path the base took");
+        r.Sqrt.Height.ShouldBe(before.Height, 2f, "radical height");
+        r.Sqrt.Depth.ShouldBe(before.Depth, 2f, "radical depth");
+    }
+
     private static BeforePoint BeforeAt(string font, string scene, float size) =>
         BeforePoints.Single(p => p.Font == font && p.Scene == scene && p.Size == size);
 
