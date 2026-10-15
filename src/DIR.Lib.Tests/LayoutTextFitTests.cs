@@ -59,6 +59,38 @@ public class LayoutTextFitTests
 
     // "abcdefghij" at 10f measures 10 * 10 * 0.5 = 50; a 30-wide rect fits six characters.
 
+    /// <summary>The label as a content-capped Star beside a fixed block and a plain Star (the hint that
+    /// gives way), painted into a row <paramref name="width"/> wide.</summary>
+    private static (string Text, float FontSize) PaintStarUpToContent(float width, TextTrim trim)
+    {
+        using var renderer = new FitRenderer(400, 40);
+        new Widget(renderer).Render(
+            Layout.Builder.HStack(
+                Layout.Builder.Text("abcdefghij", 10f, trim: trim).WStarUpToContent(min: 5f).HStar(),
+                Layout.Builder.Spacer().WFixed(20f),
+                Layout.Builder.Spacer().WStar()),
+            new RectF32(0, 0, width, 40));
+        return renderer.Runs.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void AContentCappedStarWithRoom_IsDrawnWhole()
+    {
+        // 80 wide: a plain Star label would get (80 - 20) / 2 = 30 and be trimmed to "abcde…" with the hint
+        // still holding 30 of empty row. Capped at its content it gets its full 50.
+        PaintStarUpToContent(80f, TextTrim.End).ShouldBe(("abcdefghij", 10f));
+    }
+
+    [Fact]
+    public void AContentCappedStarInAShortRow_TrimsThroughItsOwnTextTrim()
+    {
+        // 50 wide: 20 fixed leaves 30, all of it the label's, so it trims exactly like a 30-wide rect.
+        PaintStarUpToContent(50f, TextTrim.End).ShouldBe(("abcde…", 10f));
+        var (text, fontSize) = PaintStarUpToContent(50f, TextTrim.Shrink);
+        text.ShouldBe("abcdefghij");
+        fontSize.ShouldBe(6f, 0.01);
+    }
+
     [Fact]
     public void ARunThatFits_IsDrawnExactlyAsAuthored()
     {

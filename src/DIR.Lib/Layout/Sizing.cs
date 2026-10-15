@@ -44,6 +44,30 @@ public readonly record struct Sizing(SizeKind Kind, float Value, float Min = 0f,
     public static Sizing Star(float weight = 1f, float min = 0f, float max = 0f)
         => new(SizeKind.Star, weight, min, max);
 
+    /// <summary>
+    /// A Star whose share is capped at its own measured content: it sits at its natural extent while the
+    /// row has room for it, and shrinks -- by <paramref name="weight"/> against its content-capped
+    /// siblings, down to <paramref name="min"/> design units -- only when the row is short, its text
+    /// fitting through the run's own <see cref="TextTrim"/>. See <see cref="UpToContent"/> for how a Stack
+    /// resolves it.
+    /// </summary>
+    public static Sizing StarUpToContent(float weight = 1f, float min = 0f)
+        => new(SizeKind.Star, weight, min) { UpToContent = true };
+
+    /// <summary>
+    /// Set by <see cref="StarUpToContent"/>: a Star capped at the node's measured content (its
+    /// <c>WidthSample</c>, if it has one). Along a Stack's axis the content-capped Stars are served
+    /// BEFORE the plain ones: they split the leftover by weight with their content as their max and
+    /// <see cref="Min"/> as their floor, and the plain Stars share what they leave (a plain Star's own
+    /// <see cref="Min"/> is reserved first). So a plain Star is the one that gives way, and with no plain
+    /// Star the rest of the row stays unused, exactly as it does for Stars that hit a <see cref="Max"/>.
+    /// A content-capped Star counts its content in its Stack's natural size, and across a Stack it takes
+    /// its content rather than stretching. Elsewhere (a Dock strip, a Grid column, a Wrap) it acts as a
+    /// plain Star. An init-only property rather than a constructor parameter, so the struct's
+    /// constructor and <c>Deconstruct</c> keep their published shape.
+    /// </summary>
+    public bool UpToContent { get; init; }
+
     public bool IsFixed => Kind == SizeKind.Fixed;
     public bool IsAuto => Kind == SizeKind.Auto;
     public bool IsStar => Kind == SizeKind.Star;

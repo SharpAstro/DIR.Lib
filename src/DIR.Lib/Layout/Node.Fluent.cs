@@ -27,6 +27,10 @@ public abstract partial record Node
     /// clamped to [<paramref name="min"/>, <paramref name="max"/>] design units (0 = unclamped bound).</summary>
     public Node WStar(float weight = 1f, float min = 0f, float max = 0f) => this with { Width = Sizing.Star(weight, min, max) };
 
+    /// <summary>Content-capped Star width: natural width while there is room, shrinking toward
+    /// <paramref name="min"/> design units only when the row is short. See <see cref="Sizing.StarUpToContent"/>.</summary>
+    public Node WStarUpToContent(float weight = 1f, float min = 0f) => this with { Width = Sizing.StarUpToContent(weight, min) };
+
     /// <summary>Shrink the width to content.</summary>
     public Node WAuto() => this with { Width = Sizing.Auto };
 
@@ -36,6 +40,10 @@ public abstract partial record Node
     /// <summary>Make the height proportional (star) with the given <paramref name="weight"/>, optionally
     /// clamped to [<paramref name="min"/>, <paramref name="max"/>] design units (0 = unclamped bound).</summary>
     public Node HStar(float weight = 1f, float min = 0f, float max = 0f) => this with { Height = Sizing.Star(weight, min, max) };
+
+    /// <summary>Content-capped Star height: natural height while there is room, shrinking toward
+    /// <paramref name="min"/> design units only when the column is short. See <see cref="Sizing.StarUpToContent"/>.</summary>
+    public Node HStarUpToContent(float weight = 1f, float min = 0f) => this with { Height = Sizing.StarUpToContent(weight, min) };
 
     /// <summary>Shrink the height to content.</summary>
     public Node HAuto() => this with { Height = Sizing.Auto };
