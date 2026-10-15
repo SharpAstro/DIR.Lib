@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using LALR.CC.LexicalGrammar;
 using DIR.Lib;
 using DIR.Lib.MathLayout;
+using SharpAstro.Fonts;
 using static DIR.Lib.Latex;
 
 namespace DIR.Lib.Markdown;
@@ -24,8 +25,9 @@ namespace DIR.Lib.Markdown;
 /// kern, <see cref="FracBox"/>, <see cref="BracketBox"/>, etc. inside the
 /// closure then picks up the smaller size automatically.</para>
 ///
-/// <para>Atoms (Number / Variable / Command) build a <see cref="GlyphBox"/> at
-/// the supplied style. Composites (Add / Sub / Eq / Mul / Div / Juxt) combine
+/// <para>Atoms build a glyph box at the supplied style: a Variable a
+/// math-italic <see cref="MathGlyphBox"/> (upright inside <c>\mathrm</c>),
+/// a Number or a Command an upright <see cref="GlyphBox"/>. Composites (Add / Sub / Eq / Mul / Div / Juxt) combine
 /// child builders with <see cref="HBox"/> + small inter-token kerns sized off
 /// the supplied style. Scripts use <see cref="SupSubBox"/> with the script
 /// builder invoked at <c>style.Smaller()</c>. <see cref="Frac"/>, <see cref="Sqrt"/>,
@@ -171,10 +173,56 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
         return style => new GlyphBox(text, style);
     }
 
+    /// <summary>
+    /// A single-letter variable, set in math italic as TeX sets it: a
+    /// <see cref="MathGlyphBox"/> remaps the letter to its U+1D400-block
+    /// italic (or ℎ U+210E for h) when the font's cmap has it, and leaves it
+    /// upright in a font that lacks the block. Inside <c>\mathrm{...}</c>
+    /// (see <see cref="Visit(MathRm)"/>) the letter stays upright.
+    /// </summary>
     public Func<BoxStyle, Box> Visit(Variable node)
     {
         var text = (string)node.Arg0.Content;
-        return style => new GlyphBox(text, style);
+        return style => t_upright
+            ? new GlyphBox(text, style)
+            : new MathGlyphBox(text, style, MathStyle.Italic);
+    }
+
+    /// <summary>
+    /// True while a <c>\mathrm</c> argument is being built. TeX's
+    /// <c>\mathrm</c> switches the math family for the rest of its group,
+    /// which is a dynamic scope, and so is this: the flag is set around the
+    /// argument builder's call, so every variable that builder reaches, at
+    /// any depth (<c>\mathrm{Na}</c>, <c>\mathrm{e^{x}}</c>), is set upright.
+    /// It is read only when a builder runs, never while parsing, and it is
+    /// per thread because a builder runs to completion on the thread that
+    /// calls it.
+    /// </summary>
+    [ThreadStatic]
+    private static bool t_upright;
+
+    /// <summary>
+    /// <c>\mathrm{...}</c>: the argument builds exactly as it would bare,
+    /// except that its variables stay upright. Digits, operator names and
+    /// Greek are untouched, since they never were italic here; that matches
+    /// TeX, whose <c>\mathrm</c> changes only the Latin letters.
+    /// </summary>
+    public Func<BoxStyle, Box> Visit(MathRm node)
+    {
+        var inner = Builder(node.Arg1);
+        return style =>
+        {
+            var outer = t_upright;
+            t_upright = true;
+            try
+            {
+                return inner(style);
+            }
+            finally
+            {
+                t_upright = outer;
+            }
+        };
     }
 
     /// <summary>
