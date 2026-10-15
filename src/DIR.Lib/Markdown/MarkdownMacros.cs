@@ -210,11 +210,14 @@ public static class MarkdownMacros
         // rather than carrying the LaTeX explicit-space "\ " through to the
         // final output). The math grammar's whitespace-skip can't touch the
         // captured-text region because it never sees those bytes — it only
-        // sees the opaque placeholder.
+        // sees the opaque placeholder. Any \mathrm{X} in the body becomes X:
+        // the \ce pass above runs first, so the body can hold the wrappers
+        // Mhchem puts on chem letters (\text{\ce{H2O}}, or the `aq` of
+        // \ce{H2O(\text {aq})}, which Mhchem reads past the blank).
         source = ExpandBalancedMacro(source, "text", inner =>
         {
             var key = NewPlaceholder();
-            replacements.Add(new KeyValuePair<string, string>(key, ResolveBackslashEscapes(inner)));
+            replacements.Add(new KeyValuePair<string, string>(key, ResolveBackslashEscapes(UnwrapMathrm(inner))));
             return key;
         });
 
