@@ -199,6 +199,20 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
         }
     }
 
+    /// <summary>The inline content of a paragraph, heading, list item or
+    /// table cell. When the inline parse fails (a lone <c>[</c> or an
+    /// unclosed backtick, which the inline grammar has no rule for), the
+    /// text stays as one literal rather than leaving the block empty. The
+    /// inline parser itself keeps returning an empty list on failure;
+    /// only a block knows its text has to show.</summary>
+    private IReadOnlyList<MdInline> ParseInline(string text)
+    {
+        var spans = _inline.Parse(text);
+        return spans.Count == 0 && !string.IsNullOrWhiteSpace(text)
+            ? new MdInline[] { new MdLiteral(text) }
+            : spans;
+    }
+
     private MdBlock ClassifyBlock(IReadOnlyList<string> lines)
     {
         if (lines.Count == 0) return new MdParagraph(Array.Empty<MdInline>());
@@ -212,7 +226,7 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
             var level = headingMatch.Groups[1].Value.Length;
             var text = headingMatch.Groups[2].Value
                 .TrimEnd().TrimEnd('#').TrimEnd();
-            return new MdHeading(level, _inline.Parse(text));
+            return new MdHeading(level, ParseInline(text));
         }
 
         // Thematic break — single-line construct.
@@ -253,7 +267,7 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
         // Default: paragraph. Join lines (newlines become soft breaks
         // via the inline grammar's `soft_break` token).
         var joined = string.Join("\n", lines);
-        return new MdParagraph(_inline.Parse(joined));
+        return new MdParagraph(ParseInline(joined));
     }
 
     private bool TryClassifyMathBlock(IReadOnlyList<string> lines, out MdBlock? result)
@@ -328,7 +342,7 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
             // a nested MdList. Otherwise they're additional paragraph
             // lines.
             var body = new List<MdBlock>();
-            body.Add(new MdParagraph(_inline.Parse(firstLine)));
+            body.Add(new MdParagraph(ParseInline(firstLine)));
             if (indentedContinuation.Count > 0)
             {
                 var firstCont = indentedContinuation[0];
@@ -360,10 +374,10 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
         for (int i = 2; i < lines.Count; i++)
         {
             var cells = SplitTableRow(lines[i]);
-            rows.Add(cells.Select(c => _inline.Parse(c)).ToArray());
+            rows.Add(cells.Select(ParseInline).ToArray());
         }
         return new MdTable(
-            headerCells.Select(c => _inline.Parse(c)).ToArray(),
+            headerCells.Select(ParseInline).ToArray(),
             rows,
             alignments);
     }
