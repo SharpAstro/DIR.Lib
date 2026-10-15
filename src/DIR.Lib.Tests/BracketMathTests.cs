@@ -1,6 +1,7 @@
 using DIR.Lib.Markdown;
 using DIR.Lib.MathLayout;
 using LALR.CC.LexicalGrammar;
+using SharpAstro.Fonts;
 using SharpAstro.Png;
 using Shouldly;
 using Xunit;
@@ -65,7 +66,8 @@ public sealed class BracketMathTests
     /// <c>\sqrt[3]{x}</c> is a <see cref="SqrtBox"/> whose index is the "3" at
     /// script-script style: it paints pixel for pixel what a hand-built
     /// <c>new SqrtBox(x, 3 at Smaller().Smaller(), style)</c> paints, and not
-    /// what the index-less <c>\sqrt{x}</c> paints.
+    /// what the index-less <c>\sqrt{x}</c> paints. The parsed x is a variable,
+    /// so math italic.
     /// </summary>
     [Fact]
     public void BoxPath_CubeRoot_IsSqrtBoxWithScriptScriptIndex()
@@ -73,7 +75,7 @@ public sealed class BracketMathTests
         var box = BuildBox(@"\sqrt[3]{x}").ShouldBeOfType<SqrtBox>();
 
         var handBuilt = new SqrtBox(
-            new GlyphBox("x", Style),
+            new MathGlyphBox("x", Style, MathStyle.Italic),
             new GlyphBox("3", Style.Smaller().Smaller()),
             Style);
         Render(box).ShouldBe(Render(handBuilt), "\\sqrt[3]{x} should carry a script-script \"3\" index");
@@ -86,7 +88,7 @@ public sealed class BracketMathTests
     /// <c>\sqrt[n]{x^2+1}</c>: a composite radicand under a letter index. The
     /// radicand is whatever the parser makes of <c>x^2+1</c> on its own; the
     /// root must paint what a <see cref="SqrtBox"/> of that radicand with a
-    /// script-script "n" paints.
+    /// script-script "n" paints (a math-italic n, being a variable).
     /// </summary>
     [Fact]
     public void BoxPath_NthRootOfComposite_IsSqrtBoxWithIndex()
@@ -94,7 +96,8 @@ public sealed class BracketMathTests
         var box = BuildBox(@"\sqrt[n]{x^2+1}").ShouldBeOfType<SqrtBox>();
 
         var radicand = BuildBox(@"x^2+1").ShouldNotBeNull();
-        var handBuilt = new SqrtBox(radicand, new GlyphBox("n", Style.Smaller().Smaller()), Style);
+        var handBuilt = new SqrtBox(radicand,
+            new MathGlyphBox("n", Style.Smaller().Smaller(), MathStyle.Italic), Style);
         Render(box).ShouldBe(Render(handBuilt));
 
         var plain = BuildBox(@"\sqrt{x^2+1}").ShouldBeOfType<SqrtBox>();

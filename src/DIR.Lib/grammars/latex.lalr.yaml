@@ -14,6 +14,7 @@
 #   \sin(\alpha + \beta) = \sin\alpha \cos\beta + \cos\alpha \sin\beta
 #   \sqrt[3]{x}, \sqrt[n]{x^2+1}           (n-th root: optional index)
 #   [a, b], [0, 1), (0, 1]                 (brackets, half-open intervals)
+#   \mathrm{d}x, \mathrm{H}_{2}\mathrm{O}   (upright letters, as TeX's \mathrm)
 #
 # Things that don't:
 #   - \begin{...}\end{...} environments, alignments, multi-line displays.
@@ -36,7 +37,7 @@
 #                                                         doesn't parse as 1·(-2))
 #   P:  ^ _                                              (postfix scripts, leftmost)
 #   A:  atoms (numbers, identifiers, commands, groups, parens, brackets,
-#       \frac, \sqrt)
+#       \frac, \sqrt, \mathrm)
 #   A0: every atom except the ones that open with `[`
 #
 # Why A0 exists: LaTeX reads a `[` straight after \sqrt as the start of the
@@ -88,6 +89,7 @@ symbols:
   - '['        # 26
   - ']'        # 27
   - ','        # 28  punctuation atom: [a, b], f(x, y), x_{i,j}
+  - cmdmathrm  # 29  \mathrm (binds one atom argument, which it sets upright)
 
 productions:
   # Start production. Single-non-terminal so it trims at parse time and the
@@ -168,8 +170,9 @@ productions:
       - { lhs: A0, rhs: [cmdsqrt, A0],     action: sqrt }
       - { lhs: A0, rhs: [cmdsqrt, '[', E, ']', A], action: nthRoot }
       - { lhs: A0, rhs: [cmdfrac, A, A],   action: frac }
+      - { lhs: A0, rhs: [cmdmathrm, A],    action: mathRm }
 
-# Single lexer state. Ordering matters: `\frac` and `\sqrt` (and the explicit
+# Single lexer state. Ordering matters: `\frac`, `\sqrt`, `\mathrm` (and the explicit
 # multiplication aliases `\cdot` / `\times`) must come before the `\\[a-zA-Z]+`
 # catchall so first-rule-wins picks them on identical-length matches. (Longer
 # real names like `\fraction` would still win via longest-match — they fall
@@ -178,6 +181,7 @@ lexer:
   root:
     - { symbol: cmdfrac, match: '\\frac' }
     - { symbol: cmdsqrt, match: '\\sqrt' }
+    - { symbol: cmdmathrm, match: '\\mathrm' }
     - { symbol: '*',     match: '\\cdot' }
     - { symbol: '*',     match: '\\times' }
     # Binary relations. Must precede the `\\[a-zA-Z]+` catchall so on the
