@@ -286,11 +286,23 @@ public sealed partial class RadicalJoinTests
     /// flipped radicals across that cap. STIX Two Math <c>\sqrt{\left(\frac{a}{b}\right)}</c> at 72 px:
     /// the variant is 172 rows against a cap of 171.03, so the base took path 2 (height 96.14, depth
     /// 57.86); snapped it is 171 rows, path 1 won, and the depth grew by 21 px.
+    /// <para>Review round 1, Q1. At small sizes the flag's column ends in antialiasing tail rows (STIX
+    /// <c>\sqrt{2}</c> at 10 px: 158, 112, 46, 1), and the layout reserved a whole row for each: height
+    /// 3 px over the base there and for DejaVu Sans at 14 to 17 px, depth 2.2 to 3 px under it for STIX at
+    /// 13 to 19 px.</para>
     /// </summary>
     [Theory]
     [InlineData("STIX2Math", "sqrt-paren-frac", 72f)]
     [InlineData("STIX2Math", "sqrt-paren-frac", 10f)]
     [InlineData("STIX2Math", "sqrt-frac-a-b", 13f)]
+    [InlineData("STIX2Math", "sqrt-2", 10f)]
+    [InlineData("STIX2Math", "sqrt-2", 15f)]
+    [InlineData("STIX2Math", "sqrt-2", 17f)]
+    [InlineData("STIX2Math", "sqrt-x", 13f)]
+    [InlineData("STIX2Math", "sqrt-x", 19f)]
+    [InlineData("DejaVuSans", "sqrt-2", 14f)]
+    [InlineData("DejaVuSans", "sqrt-x", 16f)]
+    [InlineData("DejaVuSans", "sqrt-x", 17f)]
     public void ReviewedCasesKeepTheirPathAndMetrics(string font, string scene, float size)
     {
         var before = BeforeAt(font, scene, size);
