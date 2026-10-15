@@ -140,12 +140,6 @@ public sealed class SqrtBox : Box
     /// of it, in the bitmap and beyond, is drawn with that profile.</summary>
     private readonly int _flagLastFullCol;
 
-    /// <summary>The flag's thickness in pixels: its profile's coverage
-    /// summed, so a half-covered bottom row counts as half a pixel. The
-    /// vinculum is drawn with exactly this thickness; the layout counts it to
-    /// the nearest whole pixel (see <see cref="VinculumThickness"/>).</summary>
-    private readonly float _flagThickness;
-
     public SqrtBox(Box radicand, BoxStyle style)
         : this(radicand, null, style)
     { }
@@ -219,7 +213,6 @@ public sealed class SqrtBox : Box
                 _joinedRadical = JoinFlag(_radicalScaled, _flagTopRow, _flagProfile, _flagLastFullCol);
             }
         }
-        foreach (var a in _flagProfile) _flagThickness += a / 255f;
 
         // Radical metrics. The radical is asymmetric (flag at top, tip at
         // bottom). We TOP-anchor: the flag-top row of the bitmap lands at
@@ -464,16 +457,19 @@ public sealed class SqrtBox : Box
         _hookWidth;
 
     /// <summary>Vinculum thickness for the active path's layout. Paths 1 and 2
-    /// draw the vinculum as the flag's own column repeated, so it is the
-    /// flag's thickness (see <see cref="_flagProfile"/> for why not the V's
-    /// diagonal), counted here to the nearest whole pixel. The radical is
-    /// placed from a floored pixel row, so a fraction of a pixel in its
-    /// height only decides which row the floor lands on, and with whole
-    /// pixels the radical's height and depth stay where the integer-row
-    /// rule this replaced had them. Path 3 (parametric) has no glyph to take
-    /// it from, so it falls back to <see cref="BoxStyle.RadicalRuleThickness"/>.</summary>
+    /// draw the vinculum as the flag's own column repeated (see
+    /// <see cref="_flagProfile"/> for why not the V's diagonal), and the
+    /// layout counts every pixel row that bar touches, its partially covered
+    /// bottom row included. Counting the coverage instead, or rounding it,
+    /// lets that bottom row sit in the gap: at 24 px the radicand's own
+    /// antialiased top then lands on the row directly under it, and the two
+    /// touch. Whole rows also keep the radical's height an integer away from
+    /// the integer-row rule this replaced, so its floored placement moves
+    /// by whole rows and the flag still starts on its snapped row. Path 3
+    /// (parametric) has no glyph to take it from, so it falls back to
+    /// <see cref="BoxStyle.RadicalRuleThickness"/>.</summary>
     private float VinculumThickness =>
-        _flagProfile.Length > 0 ? MathF.Max(1f, MathF.Round(_flagThickness)) : _ruleThickness;
+        _flagProfile.Length > 0 ? _flagProfile.Length : _ruleThickness;
 
     public override float Width => _radicalShiftX + RadicalWidth + _radicand.Width + _gap;
     public override float Height => _heightWithIndex;
