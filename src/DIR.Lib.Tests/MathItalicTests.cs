@@ -143,6 +143,19 @@ public sealed class MathItalicTests
     public void Mathrm_PaintsThePlainGlyphTree()
         => Render(Build(@"\mathrm{x + y}", Stix), Stix).ShouldBe(Render(PlainXPlusY(Stix), Stix));
 
+    // ── \mathrm on the Unicode path ────────────────────────────────────
+
+    /// <summary>
+    /// On the Unicode path <c>\mathrm{X}</c> is <c>X</c>, and so it stays
+    /// when the formula around it fails to parse for another reason (here a
+    /// trailing <c>+</c>) and falls back to its source text.
+    /// </summary>
+    [Theory]
+    [InlineData(@"\mathrm{d}x", "dx")]
+    [InlineData(@"\mathrm{d}x +", "dx +")]
+    public void UnicodePath_MathrmIsItsArgument(string latex, string expected)
+        => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
+
     // ── Chemistry stays upright ────────────────────────────────────────
 
     [Theory]

@@ -258,4 +258,17 @@ public sealed class MhchemTests
     [InlineData(@"\Gamma",           "Γ")]
     public void Roundtrip_UprightTextAndCommands(string body, string expected)
         => MarkdownMacros.RenderMathUnicode(@"\ce{" + body + "}").ShouldBe(expected);
+
+    // A body the math grammar cannot parse (a bare trailing charge, the
+    // hydrate dot) falls back to its expanded LaTeX as text. That text must
+    // not show the \mathrm wrappers the chem letters now carry: main printed
+    // H+ and e- here, and {Na}+ / {Cu}SO_{4}... where the wrapper was braces.
+    [Theory]
+    [InlineData("H+",                   "H+")]
+    [InlineData("e-",                   "e-")]
+    [InlineData("Na+",                  "Na+")]
+    [InlineData("2H+ + 2e- -> H2",      @"2H+ + 2e- \to  H_{2}")]
+    [InlineData("CuSO4.5H2O",           "CuSO_{4}.5H_{2}O")]
+    public void Roundtrip_UnparseableBodyFallsBackWithoutMathrm(string body, string expected)
+        => MarkdownMacros.RenderMathUnicode(@"\ce{" + body + "}").ShouldBe(expected);
 }
