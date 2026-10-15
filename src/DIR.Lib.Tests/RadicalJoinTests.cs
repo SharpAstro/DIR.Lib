@@ -25,7 +25,7 @@ namespace DIR.Lib.Tests;
 /// radicands by more than 10%), so two more scenes reach path 1: a size variant
 /// (<c>sqrt-paren-frac</c> at 32 and 24 px) and the assembly (<c>sqrt-nested-frac</c>).</para>
 /// </summary>
-public sealed class RadicalJoinTests
+public sealed partial class RadicalJoinTests
 {
     /// <summary>How far, in alpha, the bar may differ from the flag's column on any row.</summary>
     private const int AlphaTolerance = 8;
@@ -259,6 +259,30 @@ public sealed class RadicalJoinTests
         r.Sqrt.Depth.ShouldBe(depth, 2.002f, "radical depth");
     }
 
+    /// <summary>
+    /// Review round 1, B1. On path 1 (a MATH size variant or assembly, or a base glyph tall enough to need
+    /// neither) the layout placed the flag by the font's rule thickness and never reserved the rows the bar
+    /// is drawn on, so the bar sat in the gap. DejaVu Sans <c>\sqrt{x}</c> at 20 px draws a three-row bar
+    /// where the base drew one, and the x's top merged into it: no clear row, where the base had one.
+    /// </summary>
+    [Theory]
+    [InlineData("DejaVuSans", "sqrt-x", 20f)]
+    [InlineData("DejaVuSans", "sqrt-x", 22.7f)]
+    [InlineData("DejaVuSans", "sqrt-x", 26f)]
+    [InlineData("DejaVuSans", "sqrt-x", 28f)]
+    [InlineData("STIX2Math", "sqrt-frac-a-b", 10f)]
+    [InlineData("STIX2Math", "sqrt-frac-a-b", 11f)]
+    public void ReviewedCasesKeepTheirClearRows(string font, string scene, float size)
+    {
+        var before = BeforeAt(font, scene, size);
+        var r = Render(font, size, scene);
+        r.ClearRowsUnderBar().ShouldBeGreaterThanOrEqualTo(before.ClearRows,
+            $"clear rows between the bar (rows {r.Join.FlagTopY}..{r.Join.FlagTopY + r.Join.FlagRows - 1}) and the radicand");
+    }
+
+    private static BeforePoint BeforeAt(string font, string scene, float size) =>
+        BeforePoints.Single(p => p.Font == font && p.Scene == scene && p.Size == size);
+
     private sealed record Rendered(RgbaImage Image, SqrtBox Sqrt, SqrtBox.RadicalJoin Join)
     {
         public int Alpha(int x, int y) =>
@@ -289,13 +313,14 @@ public sealed class RadicalJoinTests
         }
     }
 
-    private static Rendered Render(string font, int size, string scene)
+    private static Rendered Render(string font, float size, string scene)
     {
         var style = new BoxStyle(FontPaths[font], size, new RGBAColor32(0, 0, 0, 255));
         var box = scene switch
         {
             "sqrt-x2-plus-y2" => Parse(@"\sqrt{x^2+y^2}", style),
             "sqrt-2" => Parse(@"\sqrt{2}", style),
+            "sqrt-x" => Parse(@"\sqrt{x}", style),
             "sqrt-frac-a-b" => Parse(@"\sqrt{\frac{a}{b}}", style),
             "quadratic-formula" => Parse(@"\frac{-b \pm \sqrt{b^2-4ac}}{2a}", style),
             // The index goes through the Box API: the grammar's \sqrt takes no optional argument.

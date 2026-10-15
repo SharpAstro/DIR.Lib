@@ -231,8 +231,14 @@ public sealed class SqrtBox : Box
             //     radicand.Height + gap + ruleThickness + flagTopRow
             // _radicalGlyphDepth (= bitmap-bottom-Y − baselineY) =
             //     bitmap.Height − _radicalH
+            // The thickness reserved is the font's rule or the rows the bar
+            // is drawn on, whichever is more, as path 2 reserves them: the
+            // bar is the flag's own column, and where that is thicker than
+            // the rule (DejaVu Sans \sqrt{x} at 20 px: three rows against
+            // one) reserving only the rule puts the bar in the gap and the
+            // radicand's top against it.
             var bitmapHeight = _radicalFont.Bitmap.Height;
-            _radicalH = radicand.Height + _gap + _ruleThickness + _flagTopRow;
+            _radicalH = radicand.Height + _gap + MathF.Max(_ruleThickness, VinculumThickness) + _flagTopRow;
             // Draw uses (baselineY + _radicalGlyphDepth − bitmap.Height) for
             // glyph top, so this MUST equal (bitmap.Height − _radicalH) to
             // keep top-anchor invariant. If the picked variant overshoots,
