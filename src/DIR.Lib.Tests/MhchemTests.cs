@@ -255,9 +255,18 @@ public sealed class MhchemTests
     [InlineData("abc",               "abc")]
     [InlineData(@"\gamma + e^-",     "γ + e⁻")]
     [InlineData(@"H2O(\text{aq})",   "H₂O(aq)")]
+    // A blank before the brace: Mhchem copies only `\text` and wraps the
+    // `aq` after it, so the \text body itself must shed the \mathrm.
+    [InlineData(@"H2O(\text {aq})",  "H₂O(aq)")]
     [InlineData(@"\Gamma",           "Γ")]
     public void Roundtrip_UprightTextAndCommands(string body, string expected)
         => MarkdownMacros.RenderMathUnicode(@"\ce{" + body + "}").ShouldBe(expected);
+
+    // \ce expands before \text, so a \text body can hold chem's \mathrm
+    // wrappers; it renders as main's did, with the letters bare.
+    [Fact]
+    public void Roundtrip_CeInsideTextShedsMathrm()
+        => MarkdownMacros.RenderMathUnicode(@"\text{\ce{H2O}}").ShouldBe("H_{2}O");
 
     // A body the math grammar cannot parse (a bare trailing charge, the
     // hydrate dot) falls back to its expanded LaTeX as text. That text must
