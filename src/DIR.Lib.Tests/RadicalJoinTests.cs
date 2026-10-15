@@ -122,28 +122,71 @@ public sealed partial class RadicalJoinTests
     }
 
     /// <summary>
-    /// The sizes the two layout invariants are swept over: every integer size from 8 to 40 px, which covers
-    /// where Console.Lib draws math (Sixel at 32 px shrinking to about 21, sextant at 12 down to 8,
-    /// half-block at 10 down to about 7, the last below the sweep), plus 48, 64, 72 and 96. The exact-pixel
-    /// join assertions above stay at 24, 32 and 96 px; the review found its bugs at sizes in between.
+    /// The sizes the layout invariants are swept over: densely, the ranges Console.Lib's shrink loop walks
+    /// continuously (it shrinks math by at least half a pixel a step, down to two thirds of the size it
+    /// starts from: about 6.7 to 10 px half-block, 8 to 12 px sextant, 21.3 to 32 px Sixel), plus 48, 64,
+    /// 72 and 96. Review round 2 found its bugs at fractional and sub-8 px sizes that an integer sweep
+    /// never reached. Computed in double and rounded, exactly as tools/gen-radical-join-before computes
+    /// them, so the floats compare equal. The exact-pixel join assertions above stay at 24, 32 and 96 px.
     /// </summary>
-    private static readonly float[] SweepSizes = [.. Enumerable.Range(8, 33).Select(i => (float)i), 48f, 64f, 72f, 96f];
+    private static readonly float[] SweepSizes =
+    [
+        .. Enumerable.Range(0, 109).Select(i => (float)Math.Round(6.6 + i * 0.05, 2)),
+        .. Enumerable.Range(0, 108).Select(i => (float)Math.Round(21.3 + i * 0.1, 1)),
+        48f, 64f, 72f, 96f,
+    ];
 
-    private static readonly string[] SweepScenes = ["sqrt-2", "sqrt-x", "sqrt-paren-frac"];
+    private static readonly string[] SweepScenes =
+        ["sqrt-2", "sqrt-x", "sqrt-paren-frac", "sqrt-nested-frac", "sqrt-frac-a-b"];
+
+    /// <summary>From this size up the clearance invariant holds point by point; below it, as a count
+    /// (see <see cref="TouchingIsNoMoreCommonThanBeforeBelow21Px"/>).</summary>
+    private const float ClearancePerPointFrom = 21.3f;
+
+    /// <summary>
+    /// The radical flag's stroke thickness in em, measured without SqrtBox: down the rightmost full column
+    /// of the font's own radical glyph rendered at 1000 px, its coverage summed. STIX Two Math's base glyph,
+    /// its four size variants and its assembly's top part all measure 0.068 em, DejaVu Sans's 0.047.
+    /// </summary>
+    private static readonly Dictionary<string, float> FlagStrokeEm =
+        FontPaths.ToDictionary(kv => kv.Key, kv => MeasureFlagStrokeEm(kv.Value));
+
+    private static float MeasureFlagStrokeEm(string fontPath)
+    {
+        const float pixelsPerEm = 1000f;
+        var bm = new ManagedFontRasterizer().RasterizeGlyph(fontPath, pixelsPerEm, new System.Text.Rune(0x221A));
+        int Alpha(int x, int y) => bm.Rgba[(y * bm.Width + x) * 4 + 3];
+        var top = 0;
+        while (Enumerable.Range(0, bm.Width).All(x => Alpha(x, top) == 0)) top++;
+        var plateau = Enumerable.Range(0, bm.Width).Max(x => Alpha(x, top));
+        var last = bm.Width - 1;
+        while (Alpha(last, top) < plateau - AlphaTolerance) last--;
+        var coverage = 0f;
+        for (var y = top; y < bm.Height && Alpha(last, y) > 0; y++) coverage += Alpha(last, y) / 255f;
+        return coverage / pixelsPerEm;
+    }
 
     /// <summary>Every point of <see cref="BeforePoints"/> rendered once, for the sweep facts: the sweep, the
-    /// review's named points, and the 42 join cases.</summary>
+    /// review rounds' named points, and the join cases.</summary>
     private static readonly Lazy<Swept[]> SweptPoints = new(() =>
     [
         .. BeforePoints.Select(p =>
         {
             var r = Render(p.Font, p.Size, p.Scene);
-            return new Swept(p, r.Sqrt.Height, r.Sqrt.Depth, r.ClearRowsUnderBar());
+            return new Swept(p, r.Sqrt.Height, r.Sqrt.Depth, r.ClearRowsUnderBar(), r.Join.FlagRows, MaxBandRows(p.Font, r));
         }),
     ]);
 
-    private sealed record Swept(BeforePoint Before, float Height, float Depth, int ClearRows)
+    /// <summary>The most rows the flag's own stroke touches at the size this radical's glyph was drawn at.
+    /// A stroke t px thick whose top is snapped to a row touches ceil(t) rows; 0.1 px absorbs the 1000 px
+    /// measurement's error, and a hinter rounding the stroke to whole pixels never exceeds it.</summary>
+    private static int MaxBandRows(string font, Rendered r) =>
+        (int)MathF.Ceiling(FlagStrokeEm[font] * r.Sqrt.RadicalGlyphSize + 0.1f);
+
+    private sealed record Swept(BeforePoint Before, float Height, float Depth, int ClearRows, int BandRows, int MaxBandRows)
     {
+        public bool Touches => ClearRows == 0;
+
         public override string ToString() => $"{Before.Font} {Before.Scene} {Before.Size} px";
     }
 
@@ -160,25 +203,24 @@ public sealed partial class RadicalJoinTests
     }
 
     /// <summary>
-    /// Across the sweep the radicand never comes closer to the bar than it was before: the layout reserves
-    /// every row the bar is drawn on, on both glyph paths, so no bar row lands in the gap. Every failing point
-    /// is listed in the one message.
+    /// Across the sweep the bar's band is never more rows than the flag's own stroke touches. Where the flag
+    /// is no wider than the stem (review round 2, B1) the band ran down the whole stem, 19 to 31 rows drawn
+    /// over the radicand; where the stroke is under a pixel (B3) it kept four soft rows. Every failing
+    /// point is listed in the one message.
     /// </summary>
     [Fact]
-    public void SweepNeverHasFewerClearRowsThanBefore()
+    public void SweepBandIsNeverMoreRowsThanTheFlagsStroke()
     {
         var failures = SweptPoints.Value
-            .Where(s => s.ClearRows < s.Before.ClearRows)
-            .Select(s => $"{s}: {s.ClearRows} clear rows under the bar, before {s.Before.ClearRows}")
+            .Where(s => s.BandRows > s.MaxBandRows)
+            .Select(s => $"{s}: band {s.BandRows} rows, the flag's stroke touches at most {s.MaxBandRows}")
             .ToList();
         failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
     }
 
     /// <summary>
     /// Across the sweep the radical's height and depth, which a parent fraction or row lays out against,
-    /// move at most 2 px from before. The snap moves the glyph by under half a pixel and the layout now
-    /// counts the rows the bar is drawn on; a path flip (review round 1, B2) or a reserved antialiasing tail
-    /// (Q1) shows here first. Every failing point is listed in the one message.
+    /// move at most 2 px from before. Every failing point is listed in the one message.
     /// </summary>
     [Fact]
     public void SweepHeightAndDepthDriftAtMostTwoPixels()
@@ -186,6 +228,40 @@ public sealed partial class RadicalJoinTests
         var failures = SweptPoints.Value
             .Where(s => MathF.Abs(s.Height - s.Before.Height) > 2f || MathF.Abs(s.Depth - s.Before.Depth) > 2f)
             .Select(s => $"{s}: height {s.Before.Height} -> {s.Height}, depth {s.Before.Depth} -> {s.Depth}")
+            .ToList();
+        failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
+    }
+
+    /// <summary>
+    /// From 21.3 px up (the Sixel range and above) the radicand never has fewer clear rows under the bar than
+    /// before, point by point. Every failing point is listed in the one message.
+    /// </summary>
+    [Fact]
+    public void SweepNeverHasFewerClearRowsThanBeforeFrom21Px()
+    {
+        var failures = SweptPoints.Value
+            .Where(s => s.Before.Size >= ClearancePerPointFrom && s.ClearRows < s.Before.ClearRows)
+            .Select(s => $"{s}: {s.ClearRows} clear rows under the bar, before {s.Before.ClearRows}")
+            .ToList();
+        failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
+    }
+
+    /// <summary>
+    /// Below 21.3 px the clearance is a count. The gap is 0.12 em, under two pixels there, and whether a row
+    /// of it stays clear depends on the float phase of the floored placement, the old code's as much as the
+    /// new: review round 2 found a point the base kept clear only because 9.14f - 7.14f is 1.9999995. So per
+    /// (font, scene) the number of points where the radicand touches the bar may not grow. Every failing
+    /// pair is listed in the one message.
+    /// </summary>
+    [Fact]
+    public void TouchingIsNoMoreCommonThanBeforeBelow21Px()
+    {
+        var failures = SweptPoints.Value
+            .Where(s => s.Before.Size < ClearancePerPointFrom)
+            .GroupBy(s => (s.Before.Font, s.Before.Scene))
+            .Select(g => (g.Key, Before: g.Count(s => s.Before.ClearRows == 0), After: g.Count(s => s.Touches), Points: g.Count()))
+            .Where(c => c.After > c.Before)
+            .Select(c => $"{c.Key.Font} {c.Key.Scene}: the radicand touches the bar at {c.After} of {c.Points} points below {ClearancePerPointFrom} px, before {c.Before}")
             .ToList();
         failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
     }
@@ -261,6 +337,51 @@ public sealed partial class RadicalJoinTests
         var before = BeforeAt(font, scene, size);
         var r = Render(font, size, scene);
         r.Sqrt.Path.ShouldBe(before.Path, "the rendering path the base took");
+        r.Sqrt.Height.ShouldBe(before.Height, 2f, "radical height");
+        r.Sqrt.Depth.ShouldBe(before.Depth, 2f, "radical depth");
+    }
+
+    /// <summary>
+    /// Review round 2, B1. At sextant and half-block sizes STIX Two Math's flag is no wider than the stem, so
+    /// the flag's last full column was the stem's and the band ran down the whole stem: at 12 px
+    /// <c>\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}</c> drew a 30-row block over the radicand and grew from
+    /// 30.42 to 59.42 px tall.
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math", "sqrt-nested-frac", 12f)]
+    [InlineData("STIX2Math", "sqrt-nested-frac", 9f)]
+    [InlineData("STIX2Math", "sqrt-nested-frac", 7f)]
+    [InlineData("STIX2Math", "sqrt-paren-frac", 7.1f)]
+    [InlineData("STIX2Math", "sqrt-paren-frac", 7.25f)]
+    public void TheStemIsNotDrawnAsTheBar(string font, string scene, float size)
+        => AssertBandAndMetrics(font, scene, size);
+
+    /// <summary>
+    /// Review round 2, B3. Where the flag's stroke is under a pixel its last full column crossed the flag's
+    /// end over four soft rows, and the layout reserved all four where the base reserved one: STIX
+    /// <c>\sqrt{2}</c> at 10.25 px grew from 9.23 to 12.23 px tall.
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math", "sqrt-2", 10.25f)]
+    [InlineData("STIX2Math", "sqrt-2", 9.6f)]
+    [InlineData("STIX2Math", "sqrt-x", 11.5f)]
+    [InlineData("STIX2Math", "index-box-api", 10.85f)]
+    [InlineData("STIX2Math", "index-box-api", 11.5f)]
+    [InlineData("STIX2Math", "index-box-api", 12.05f)]
+    [InlineData("STIX2Math", "sqrt-frac-a-b", 8f)]
+    [InlineData("DejaVuSans", "sqrt-x", 8.5f)]
+    [InlineData("DejaVuSans", "sqrt-x", 9.6f)]
+    [InlineData("DejaVuSans", "sqrt-x", 9.8f)]
+    [InlineData("DejaVuSans", "sqrt-2", 7.75f)]
+    [InlineData("DejaVuSans", "sqrt-2", 7.95f)]
+    public void ASubPixelStrokeKeepsItsOwnRows(string font, string scene, float size)
+        => AssertBandAndMetrics(font, scene, size);
+
+    private static void AssertBandAndMetrics(string font, string scene, float size)
+    {
+        var before = BeforeAt(font, scene, size);
+        var r = Render(font, size, scene);
+        r.Join.FlagRows.ShouldBeLessThanOrEqualTo(MaxBandRows(font, r), "rows of the bar's band");
         r.Sqrt.Height.ShouldBe(before.Height, 2f, "radical height");
         r.Sqrt.Depth.ShouldBe(before.Depth, 2f, "radical depth");
     }
