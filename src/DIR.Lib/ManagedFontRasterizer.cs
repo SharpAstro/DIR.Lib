@@ -109,6 +109,25 @@ public sealed class ManagedFontRasterizer : IDisposable
     }
 
     /// <summary>
+    /// <see cref="RasterizeGlyph"/> with the glyph moved vertically, by at most half a pixel, so the top of
+    /// its outline lands exactly on a pixel row and the bitmap's first row is fully covered rather than
+    /// antialiased. Opt-in, and used only by <see cref="MathLayout.SqrtBox"/>: the radical's flag is the
+    /// topmost part of the glyph, and the vinculum continuing it can only share a crisp top edge with it if
+    /// that edge is on a row (see <see cref="RenderTopSnapped"/>).
+    /// </summary>
+    /// <param name="inkTopRow">The bitmap row the outline's top begins at (0 after a snap), or -1 when
+    /// nothing was snapped: a colour glyph, or an embedded Type 1 face.</param>
+    internal GlyphBitmap RasterizeGlyphTopSnapped(string fontPath, float fontSize, Rune codepoint, out int inkTopRow)
+    {
+        inkTopRow = -1;
+        if (_type1Fonts.ContainsKey(fontPath)) return RasterizeGlyph(fontPath, fontSize, codepoint);
+        var font = GetOrLoad(fontPath);
+        var gid = font.GetGlyphId((uint)codepoint.Value);
+        if (gid == 0) return default;
+        return RenderTopSnapped(font, gid, fontSize, out inkTopRow);
+    }
+
+    /// <summary>
     /// Look up the OpenType MATH vertical-stretch construction for a Unicode
     /// codepoint — the recipe used to build a scalable radical, paren, brace,
     /// or other delimiter at an arbitrary height. Returns null if the font
@@ -332,8 +351,24 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// </summary>
     public GlyphBitmap RasterizeStretchyVertical(string fontPath, float fontSize,
         Rune codepoint, float requiredHeightPx, out uint variantGlyphId)
+        => RasterizeStretchyVertical(fontPath, fontSize, codepoint, requiredHeightPx,
+            snapTop: false, out variantGlyphId, out _);
+
+    /// <summary>
+    /// <see cref="RasterizeStretchyVertical(string, float, Rune, float, out uint)"/> with an opt-in
+    /// <paramref name="snapTop"/>: the chosen glyph is moved vertically by at most half a pixel so the top
+    /// of its outline lands on a pixel row, as <see cref="RasterizeGlyphTopSnapped"/> does. Of an assembly
+    /// only the topmost part is snapped (see <see cref="ComposeVerticalAssembly"/> for why). Which glyph is
+    /// chosen does not depend on <paramref name="snapTop"/>; with it false the result is the public
+    /// method's, byte for byte, which is what every caller but the radical gets.
+    /// </summary>
+    /// <param name="inkTopRow">The bitmap row the outline's top begins at, or -1 when nothing was
+    /// snapped (<paramref name="snapTop"/> false, or a colour glyph).</param>
+    internal GlyphBitmap RasterizeStretchyVertical(string fontPath, float fontSize,
+        Rune codepoint, float requiredHeightPx, bool snapTop, out uint variantGlyphId, out int inkTopRow)
     {
         variantGlyphId = 0;
+        inkTopRow = -1;
         var font = GetOrLoad(fontPath);
         var baseGid = font.GetGlyphId((uint)codepoint.Value);
         if (baseGid == 0) return default;
@@ -341,11 +376,13 @@ public sealed class ManagedFontRasterizer : IDisposable
         // 0) Base glyph already covers the request — no stretching needed.
         //    This branch fires for short content even on math-less fonts and
         //    is the cheap path: just render the unstretched glyph and return.
+        //    The decision is taken on the unsnapped bitmap, so snapping never
+        //    changes which glyph a request gets.
         var baseGlyph = Render(font, baseGid, fontSize);
         if (baseGlyph.Height >= requiredHeightPx)
         {
             variantGlyphId = baseGid;
-            return baseGlyph;
+            return snapTop ? RenderTopSnapped(font, baseGid, fontSize, out inkTopRow) : baseGlyph;
         }
 
         // The base glyph isn't tall enough. From here we need MATH data — if
@@ -368,7 +405,7 @@ public sealed class ManagedFontRasterizer : IDisposable
             if (v.AdvanceMeasurement >= requiredFUnits)
             {
                 variantGlyphId = v.GlyphId;
-                return Render(font, v.GlyphId, fontSize);
+                return RenderMaybeTopSnapped(font, v.GlyphId, fontSize, snapTop, out inkTopRow);
             }
         }
 
@@ -378,7 +415,8 @@ public sealed class ManagedFontRasterizer : IDisposable
         if (construction.Assembly is { } asm)
         {
             variantGlyphId = baseGid;
-            return ComposeVerticalAssembly(font, asm, math.MinConnectorOverlap, unitsPerEm, fontSize, requiredFUnits);
+            return ComposeVerticalAssembly(font, asm, math.MinConnectorOverlap, unitsPerEm, fontSize, requiredFUnits,
+                snapTop, out inkTopRow);
         }
 
         // 3) Largest variant if any (still possibly short of the request, but
@@ -387,9 +425,16 @@ public sealed class ManagedFontRasterizer : IDisposable
         if (construction.Variants.Count > 0)
         {
             variantGlyphId = construction.Variants[^1].GlyphId;
-            return Render(font, construction.Variants[^1].GlyphId, fontSize);
+            return RenderMaybeTopSnapped(font, construction.Variants[^1].GlyphId, fontSize, snapTop, out inkTopRow);
         }
         return default;
+    }
+
+    private static GlyphBitmap RenderMaybeTopSnapped(OpenTypeFont font, uint gid, float pixelsPerEm, bool snapTop, out int inkTopRow)
+    {
+        if (snapTop) return RenderTopSnapped(font, gid, pixelsPerEm, out inkTopRow);
+        inkTopRow = -1;
+        return Render(font, gid, pixelsPerEm);
     }
 
     /// <summary>
@@ -408,8 +453,10 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// </summary>
     private static GlyphBitmap ComposeVerticalAssembly(
         OpenTypeFont font, Tables.OpenTypeMath.MathGlyphAssembly asm,
-        ushort minOverlap, ushort unitsPerEm, float fontSize, int requiredFUnits)
+        ushort minOverlap, ushort unitsPerEm, float fontSize, int requiredFUnits,
+        bool snapTop, out int inkTopRow)
     {
+        inkTopRow = -1;
         if (asm.Parts.Count == 0) return default;
 
         // Compute the total FUnit-space advance with one copy of each part
@@ -454,9 +501,24 @@ public sealed class ManagedFontRasterizer : IDisposable
 
         var bitmapCache = new Dictionary<ushort, GlyphBitmap>();
         var bitmaps = new GlyphBitmap[sequence.Length];
+
+        // Snapping: only the topmost part (drawn last, at canvas row 0, and the
+        // one carrying the radical's flag) is snapped. Moving the other parts by
+        // the same shift would not keep them in one sub-pixel phase anyway: the
+        // stacking below places each part by its bitmap's height, not by where
+        // its outline sits in it. And it would change those heights. STIX Two
+        // Math's radical extender (FullAdvance 651, connectors 650) overlaps
+        // itself by its whole bitmap height, so the loop above repeats it to the
+        // 64-copy cap and each copy adds nothing; a shift that gives it one more
+        // row adds 63 rows to the radical.
         for (var i = 0; i < sequence.Length; i++)
         {
             var gid = sequence[i].GlyphId;
+            if (snapTop && i == sequence.Length - 1)
+            {
+                bitmaps[i] = RenderTopSnapped(font, gid, fontSize, out inkTopRow);
+                continue;
+            }
             if (!bitmapCache.TryGetValue(gid, out var bm))
             {
                 bm = Render(font, gid, fontSize);
@@ -870,9 +932,15 @@ public sealed class ManagedFontRasterizer : IDisposable
 
         var gray = font.RenderGlyphHinted(gid, pixelsPerEm);
         if (gray.IsEmpty) return Blank(advanceX);
+        return FromGray(gray, advanceX);
+    }
 
-        // Expand grayscale alpha to white-RGBA for compositing parity with
-        // FreeType's grayscale path in the existing renderer.
+    /// <summary>
+    /// Expand grayscale alpha to white-RGBA for compositing parity with
+    /// FreeType's grayscale path in the existing renderer.
+    /// </summary>
+    private static GlyphBitmap FromGray(Rast.GlyphBitmap gray, float advanceX)
+    {
         var rgba = new byte[gray.Width * gray.Height * 4];
         for (var i = 0; i < gray.Alpha.Length; i++)
         {
@@ -884,6 +952,154 @@ public sealed class ManagedFontRasterizer : IDisposable
         }
         return new GlyphBitmap(rgba, gray.Width, gray.Height,
             gray.Left, gray.Top, advanceX, IsColored: false);
+    }
+
+    /// <summary>How far below a row boundary a snapped top is placed, in pixels. Exactly on the
+    /// boundary, float error in the shift can leave the top a hair above it, and the rasterizer then
+    /// opens an extra, empty row. 1/256 px is far inside the first of its four vertical subsamples
+    /// (at 1/8 px), so the row is still fully covered.</summary>
+    private const float SnapInsetPx = 1f / 256f;
+
+    /// <summary>
+    /// <see cref="Render"/>, with the outline moved vertically so its top lands on a pixel row.
+    /// <para>The outline is the one <see cref="Render"/> would rasterize: the hinted one where the face
+    /// hints this glyph (already in pixels), the design outline scaled to pixels otherwise. Its top is
+    /// the outline's own maximum Y, read with a bounds sink rather than scanned from a bitmap, so it is
+    /// exact. The shift moves that top to the nearest row, so it is never more than half a pixel, and a
+    /// top already on a row is rendered unshifted, which keeps a hinted glyph byte-identical to
+    /// <see cref="Render"/>.</para>
+    /// <para>A colour glyph is returned unsnapped, with <paramref name="inkTopRow"/> -1.</para>
+    /// </summary>
+    private static GlyphBitmap RenderTopSnapped(OpenTypeFont font, uint gid, float pixelsPerEm, out int inkTopRow)
+    {
+        inkTopRow = -1;
+        if (font.RenderColor(gid, pixelsPerEm) is { IsEmpty: false })
+            return Render(font, gid, pixelsPerEm);
+
+        Action<IGlyphSink> walk;
+        float scale;
+        if (font.LoadHintedOutline(gid, pixelsPerEm) is { IsEmpty: false } hinted)
+        {
+            walk = hinted.Walk;
+            scale = 1f;
+        }
+        else
+        {
+            walk = sink => font.DrawGlyph(gid, sink);
+            scale = pixelsPerEm / font.UnitsPerEm;
+        }
+
+        var bounds = new TopEdgeSink();
+        walk(bounds);
+        if (!bounds.HasPoints) return Render(font, gid, pixelsPerEm);
+        var topPx = bounds.YMax * scale;
+
+        var row = MathF.Round(topPx);
+        if (row - topPx is >= 0f and <= SnapInsetPx)
+        {
+            // Already on a row (the hinter put it there): nothing to move.
+            var plain = Render(font, gid, pixelsPerEm);
+            inkTopRow = plain.BearingY - (int)row;
+            return plain;
+        }
+        var shift = row - SnapInsetPx - topPx;
+
+        var gray = Rast.SmoothRasterizer.Rasterize(
+            sink => walk(new ScaleShiftSink(sink, scale, shift)), pixelsPerEm: 1f, unitsPerEm: 1);
+        var advanceX = AdvancePx(font, gid, pixelsPerEm);
+        if (gray.IsEmpty) return Blank(advanceX);
+
+        // The shifted top sits just under the row boundary `row`, so the bitmap's Top is that row.
+        inkTopRow = gray.Top - (int)row;
+        return FromGray(gray, advanceX);
+    }
+
+    /// <summary>Collects the highest Y an outline reaches: its on-curve points and the interior
+    /// extrema of its curves (a control point above the curve is not ink).</summary>
+    private sealed class TopEdgeSink : IGlyphSink
+    {
+        private float _y;
+
+        public float YMax { get; private set; } = float.NegativeInfinity;
+
+        public bool HasPoints => !float.IsNegativeInfinity(YMax);
+
+        public void MoveTo(float x, float y) => Note(y);
+
+        public void LineTo(float x, float y) => Note(y);
+
+        public void QuadTo(float cx, float cy, float x, float y)
+        {
+            // B'(t) = 0 at t = (p0 - p1) / (p0 - 2 p1 + p2).
+            var d = _y - 2f * cy + y;
+            if (d != 0f)
+            {
+                var t = (_y - cy) / d;
+                if (t is > 0f and < 1f)
+                {
+                    var u = 1f - t;
+                    Note(u * u * _y + 2f * u * t * cy + t * t * y, keepCurrent: true);
+                }
+            }
+            Note(y);
+        }
+
+        public void CubicTo(float c1x, float c1y, float c2x, float c2y, float x, float y)
+        {
+            // B'(t) / 3 = A t^2 + B t + C with a = c1 - p0, b = c2 - c1, c = p3 - c2.
+            var a = c1y - _y;
+            var b = c2y - c1y;
+            var c = y - c2y;
+            var qa = a - 2f * b + c;
+            var qb = 2f * (b - a);
+            if (MathF.Abs(qa) < 1e-6f)
+            {
+                if (qb != 0f) NoteCubic(-a / qb, c1y, c2y, y);
+            }
+            else
+            {
+                var disc = qb * qb - 4f * qa * a;
+                if (disc >= 0f)
+                {
+                    var sq = MathF.Sqrt(disc);
+                    NoteCubic((-qb + sq) / (2f * qa), c1y, c2y, y);
+                    NoteCubic((-qb - sq) / (2f * qa), c1y, c2y, y);
+                }
+            }
+            Note(y);
+        }
+
+        public void Close() { }
+
+        private void NoteCubic(float t, float c1y, float c2y, float y)
+        {
+            if (t is not (> 0f and < 1f)) return;
+            var u = 1f - t;
+            Note(u * u * u * _y + 3f * u * u * t * c1y + 3f * u * t * t * c2y + t * t * t * y, keepCurrent: true);
+        }
+
+        private void Note(float y, bool keepCurrent = false)
+        {
+            if (y > YMax) YMax = y;
+            if (!keepCurrent) _y = y;
+        }
+    }
+
+    /// <summary>Scales an outline to pixels and moves it up by <c>dy</c> pixels (Y is up here), for the
+    /// rasterizer to draw at identity scale.</summary>
+    private sealed class ScaleShiftSink(IGlyphSink inner, float scale, float dy) : IGlyphSink
+    {
+        public void MoveTo(float x, float y) => inner.MoveTo(x * scale, y * scale + dy);
+
+        public void LineTo(float x, float y) => inner.LineTo(x * scale, y * scale + dy);
+
+        public void QuadTo(float cx, float cy, float x, float y)
+            => inner.QuadTo(cx * scale, cy * scale + dy, x * scale, y * scale + dy);
+
+        public void CubicTo(float c1x, float c1y, float c2x, float c2y, float x, float y)
+            => inner.CubicTo(c1x * scale, c1y * scale + dy, c2x * scale, c2y * scale + dy, x * scale, y * scale + dy);
+
+        public void Close() => inner.Close();
     }
 
     private static SdfGlyphBitmap RenderSdf(OpenTypeFont font, uint gid, float pixelsPerEm, float spread)
