@@ -384,6 +384,15 @@ public sealed class SqrtBox : Box
     /// top row's maximum and still count as the flag at full coverage.</summary>
     private const int FlagProfileTolerance = 8;
 
+    /// <summary>The faintest trailing row the flag's band keeps. At small sizes
+    /// the flag's column ends in antialiasing tail rows (STIX Two Math
+    /// <c>\sqrt{2}</c> at 10 px: 158, 112, 46, 1), and each row kept is a row
+    /// the vinculum is drawn on and the layout reserves, so a near-invisible
+    /// tail pushes the radical a whole pixel taller. Trailing rows fainter than
+    /// this are left out of both; the top row never is. It must stay at or
+    /// below 32, where a dropped row would start to show as a thinner bar.</summary>
+    private const int FlagTailMinAlpha = 16;
+
     /// <summary>
     /// Find the radical's flag in its rasterized glyph: the row its top
     /// begins at, its alpha profile down that row band, and the rightmost
@@ -433,6 +442,7 @@ public sealed class SqrtBox : Box
 
         var bottom = top;
         while (bottom < h && Alpha(last, bottom) > 0) bottom++;
+        while (bottom - 1 > top && Alpha(last, bottom - 1) < FlagTailMinAlpha) bottom--;
 
         var profile = new byte[bottom - top];
         for (var y = top; y < bottom; y++) profile[y - top] = Alpha(last, y);
