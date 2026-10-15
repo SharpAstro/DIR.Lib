@@ -49,7 +49,7 @@ public sealed class RadicalJoinTests
     /// <summary>
     /// The radical's <see cref="Box.Height"/> and <see cref="Box.Depth"/> before the join was reworked,
     /// recorded from commit 619f0e4 by a probe that built these same scenes. Printed to three decimals,
-    /// so the comparison allows 0.002 px for that rounding on top of its one pixel.
+    /// so the comparison allows 0.002 px for that rounding on top of its two pixels.
     /// </summary>
     private static readonly Dictionary<(string Font, int Size, string Scene), (float Height, float Depth)> Before = new()
     {
@@ -95,6 +95,59 @@ public sealed class RadicalJoinTests
         [("DejaVuSans", 24, "index-box-api")] = (16.935f, 3.065f),
         [("DejaVuSans", 24, "sqrt-paren-frac")] = (58.380f, 38.500f),
         [("DejaVuSans", 24, "sqrt-nested-frac")] = (60.422f, 39.542f),
+    };
+
+    /// <summary>
+    /// Clear pixel rows between the bar's last row and the radicand's first inked row, under the bar, before
+    /// the join was reworked. Recorded from commit 619f0e4 by the measurement <see cref="Rendered.ClearRowsUnderBar"/>
+    /// makes, on these same full scenes, with a temporary field in that commit's SqrtBox reporting where its
+    /// opaque bar ended (the bar was then as many rows as the V's diagonal was wide). The one 0, the 24 px
+    /// index scene, was a radicand touching the bar.
+    /// </summary>
+    private static readonly Dictionary<(string Font, int Size, string Scene), int> ClearRowsBefore = new()
+    {
+        [("STIX2Math", 96, "sqrt-x2-plus-y2")] = 11,
+        [("STIX2Math", 96, "sqrt-2")] = 10,
+        [("STIX2Math", 96, "sqrt-frac-a-b")] = 10,
+        [("STIX2Math", 96, "quadratic-formula")] = 11,
+        [("STIX2Math", 96, "index-box-api")] = 10,
+        [("STIX2Math", 96, "sqrt-paren-frac")] = 11,
+        [("STIX2Math", 96, "sqrt-nested-frac")] = 10,
+        [("STIX2Math", 32, "sqrt-x2-plus-y2")] = 3,
+        [("STIX2Math", 32, "sqrt-2")] = 3,
+        [("STIX2Math", 32, "sqrt-frac-a-b")] = 3,
+        [("STIX2Math", 32, "quadratic-formula")] = 3,
+        [("STIX2Math", 32, "index-box-api")] = 3,
+        [("STIX2Math", 32, "sqrt-paren-frac")] = 3,
+        [("STIX2Math", 32, "sqrt-nested-frac")] = 2,
+        [("STIX2Math", 24, "sqrt-x2-plus-y2")] = 2,
+        [("STIX2Math", 24, "sqrt-2")] = 1,
+        [("STIX2Math", 24, "sqrt-frac-a-b")] = 1,
+        [("STIX2Math", 24, "quadratic-formula")] = 2,
+        [("STIX2Math", 24, "index-box-api")] = 0,
+        [("STIX2Math", 24, "sqrt-paren-frac")] = 2,
+        [("STIX2Math", 24, "sqrt-nested-frac")] = 1,
+        [("DejaVuSans", 96, "sqrt-x2-plus-y2")] = 11,
+        [("DejaVuSans", 96, "sqrt-2")] = 10,
+        [("DejaVuSans", 96, "sqrt-frac-a-b")] = 11,
+        [("DejaVuSans", 96, "quadratic-formula")] = 10,
+        [("DejaVuSans", 96, "index-box-api")] = 10,
+        [("DejaVuSans", 96, "sqrt-paren-frac")] = 11,
+        [("DejaVuSans", 96, "sqrt-nested-frac")] = 11,
+        [("DejaVuSans", 32, "sqrt-x2-plus-y2")] = 3,
+        [("DejaVuSans", 32, "sqrt-2")] = 2,
+        [("DejaVuSans", 32, "sqrt-frac-a-b")] = 2,
+        [("DejaVuSans", 32, "quadratic-formula")] = 3,
+        [("DejaVuSans", 32, "index-box-api")] = 2,
+        [("DejaVuSans", 32, "sqrt-paren-frac")] = 3,
+        [("DejaVuSans", 32, "sqrt-nested-frac")] = 2,
+        [("DejaVuSans", 24, "sqrt-x2-plus-y2")] = 3,
+        [("DejaVuSans", 24, "sqrt-2")] = 1,
+        [("DejaVuSans", 24, "sqrt-frac-a-b")] = 2,
+        [("DejaVuSans", 24, "quadratic-formula")] = 2,
+        [("DejaVuSans", 24, "index-box-api")] = 2,
+        [("DejaVuSans", 24, "sqrt-paren-frac")] = 2,
+        [("DejaVuSans", 24, "sqrt-nested-frac")] = 2,
     };
 
     public static IEnumerable<TheoryDataRow<string, int, string>> Cases()
@@ -168,18 +221,42 @@ public sealed class RadicalJoinTests
     }
 
     /// <summary>
-    /// The snap moves the glyph by under half a pixel and the bar now has the flag's thickness; neither
-    /// may move the radical's height or depth, which a parent fraction or row lays out against, by more
-    /// than a pixel.
+    /// The radicand never comes closer to the bar than it was before: the layout counts every row the bar
+    /// touches, its partial bottom row included, so that row never eats into the gap. Rounding the bar's
+    /// thickness instead left 24 px <c>\sqrt{2}</c> with no clear row, its "2" touching the bar.
     /// </summary>
     [Theory]
     [MemberData(nameof(Cases))]
-    public void HeightAndDepthStayWithinAPixelOfBefore(string font, int size, string scene)
+    public void ClearRowsUnderTheBarAreNeverFewerThanBefore(string font, int size, string scene)
+    {
+        var r = Render(font, size, scene);
+        r.ClearRowsUnderBar().ShouldBeGreaterThanOrEqualTo(ClearRowsBefore[(font, size, scene)],
+            $"clear rows between the bar (rows {r.Join.FlagTopY}..{r.Join.FlagTopY + r.Join.FlagRows - 1}) and the radicand");
+    }
+
+    /// <summary>
+    /// The case that decided how the layout counts the bar: STIX Two Math's <c>\sqrt{2}</c> at 24 px, where
+    /// the terminal lands when it shrinks math to fit. The radicand keeps the clear row it had.
+    /// </summary>
+    [Fact]
+    public void Sqrt2At24PxKeepsAClearRowUnderTheBar()
+        => Render("STIX2Math", 24, "sqrt-2").ClearRowsUnderBar().ShouldBeGreaterThanOrEqualTo(1);
+
+    /// <summary>
+    /// The snap moves the glyph by under half a pixel and the layout now counts the rows the flag's bar
+    /// touches; neither may move the radical's height or depth, which a parent fraction or row lays out
+    /// against, by more than two pixels. The one case past a pixel is the 32 px quadratic formula, whose
+    /// flag is three rows where the old rule reserved two: its radical is a pixel taller and its depth two
+    /// pixels less.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Cases))]
+    public void HeightAndDepthDriftAtMostTwoPixels(string font, int size, string scene)
     {
         var r = Render(font, size, scene);
         var (height, depth) = Before[(font, size, scene)];
-        r.Sqrt.Height.ShouldBe(height, 1.002f, "radical height");
-        r.Sqrt.Depth.ShouldBe(depth, 1.002f, "radical depth");
+        r.Sqrt.Height.ShouldBe(height, 2.002f, "radical height");
+        r.Sqrt.Depth.ShouldBe(depth, 2.002f, "radical depth");
     }
 
     private sealed record Rendered(RgbaImage Image, SqrtBox Sqrt, SqrtBox.RadicalJoin Join)
@@ -192,6 +269,23 @@ public sealed class RadicalJoinTests
             var sum = 0;
             for (var y = Join.FlagTopY; y < Join.FlagTopY + Join.FlagRows; y++) sum += Alpha(x, y);
             return sum;
+        }
+
+        /// <summary>Rows with no ink at all, under the bar's columns (from the glyph's right edge to the bar's
+        /// end), between the bar's last row and the first row below it that has ink: the radicand's top.</summary>
+        public int ClearRowsUnderBar()
+        {
+            var below = Join.FlagTopY + Join.FlagRows;
+            var y = below;
+            while (y < Image.Height && !RowHasInk(y)) y++;
+            return y - below;
+        }
+
+        private bool RowHasInk(int y)
+        {
+            for (var x = Join.BarStartX; x < Join.BarEndX; x++)
+                if (Alpha(x, y) > 0) return true;
+            return false;
         }
     }
 
