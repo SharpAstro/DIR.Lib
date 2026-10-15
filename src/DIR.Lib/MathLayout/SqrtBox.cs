@@ -179,12 +179,20 @@ public sealed class SqrtBox : Box
         // The snap moves the glyph within its own bitmap, and every placement
         // below anchors on the flag's top row in that bitmap, so the radical's
         // height and depth follow the shifted glyph rather than drifting.
+        //
+        // The cap is tested on the UNSNAPPED glyph: the snap can drop a row,
+        // and a radical one row over the cap would otherwise flip from path 2
+        // to path 1 (STIX Two Math \sqrt{\left(\frac{a}{b}\right)} at 72 px:
+        // 172 rows unsnapped, 171 snapped, against a cap of 171.03; the
+        // variant's tail then hangs 21 px deeper). The snapped glyph is built
+        // only once path 1 has been chosen.
         const float pathOneOvershootCap = 1.1f;
-        var radical = new StretchyVerticalBox(RadicalCodepoint, requiredHeight, style, snapTopEdge: true);
-        var pathOneOk = radical.IsAvailable
-                        && radical.Bitmap.Height <= requiredHeight * pathOneOvershootCap;
+        var unsnapped = new StretchyVerticalBox(RadicalCodepoint, requiredHeight, style);
+        var pathOneOk = unsnapped.IsAvailable
+                        && unsnapped.Bitmap.Height <= requiredHeight * pathOneOvershootCap;
         if (pathOneOk)
         {
+            var radical = new StretchyVerticalBox(RadicalCodepoint, requiredHeight, style, snapTopEdge: true);
             _radicalFont = radical;
             (_flagTopRow, _flagProfile, _flagLastFullCol) = MeasureFlag(radical.Bitmap, radical.InkTopRow);
             _joinedRadical = JoinFlag(radical.Bitmap, _flagTopRow, _flagProfile, _flagLastFullCol);
@@ -455,6 +463,10 @@ public sealed class SqrtBox : Box
     }
 
     private bool HasScaledGlyph => _radicalScaled.Rgba is not null && _radicalScaled.Width > 0;
+
+    /// <summary>Which of the three rendering paths drew the radical (see the
+    /// class summary): 1 MATH-stretchy, 2 scaled base glyph, 3 parametric.</summary>
+    internal int Path => _radicalFont is not null ? 1 : HasScaledGlyph ? 2 : 3;
 
     /// <summary>Width of whichever radical-rendering path is active.</summary>
     private float RadicalWidth =>
