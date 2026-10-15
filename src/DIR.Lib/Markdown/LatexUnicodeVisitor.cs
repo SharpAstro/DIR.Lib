@@ -56,7 +56,36 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
     public string Visit(Paren node) => $"({node.Arg1.Content})";
     public string Visit(Group node) => (string)node.Arg1.Content;
 
+    // [E], [E) and (E]: Arg0 and Arg2 are the delimiters as written.
+    public string Visit(Bracket node) => $"{node.Arg0.Content}{node.Arg1.Content}{node.Arg2.Content}";
+
+    // `,` as written. Before the grammar lexed it, a comma reached the parser
+    // as a placeholder atom and came back verbatim, so this keeps every
+    // formula with a comma rendering exactly as it did.
+    public string Visit(Punct node) => (string)node.Arg0.Content;
+
     public string Visit(Sqrt node) => $"√{Wrap((string)node.Arg1.Content)}";
+
+    /// <summary>
+    /// <c>\sqrt[n]{x}</c>. Unicode has dedicated cube and fourth roots
+    /// (∛ ∜); any other index that maps to superscripts is written before
+    /// the radical (ⁿ√y, ¹⁰√x). An index with no superscript form keeps the
+    /// bracketed LaTeX shape after the radical, √[a + b]x, which is how such
+    /// a root read before the grammar knew the index.
+    /// </summary>
+    public string Visit(NthRoot node)
+    {
+        var index = (string)node.Arg2.Content;
+        var radicand = Wrap((string)node.Arg4.Content);
+        return index switch
+        {
+            "3" => $"∛{radicand}",
+            "4" => $"∜{radicand}",
+            _ when TryUnicodeScript(index, Superscripts, out var sup) => $"{sup}√{radicand}",
+            _ => $"√[{index}]{radicand}",
+        };
+    }
+
     public string Visit(Frac node) => $"{Wrap((string)node.Arg1.Content)}⁄{Wrap((string)node.Arg2.Content)}";
 
     private static string Wrap(string s)
