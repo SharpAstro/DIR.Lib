@@ -38,6 +38,7 @@ public sealed class StretchyVerticalBox : Box
     private readonly float _depth;
     private readonly uint _variantGlyphId;
     private readonly int _inkRightX;
+    private readonly int _inkTopRow;
 
     /// <summary>
     /// Compose a stretchy delimiter for <paramref name="codepoint"/> covering
@@ -47,9 +48,21 @@ public sealed class StretchyVerticalBox : Box
     /// caller should pick another rendering path.
     /// </summary>
     public StretchyVerticalBox(int codepoint, float requiredHeightPx, BoxStyle style)
+        : this(codepoint, requiredHeightPx, style, snapTopEdge: false)
+    { }
+
+    /// <summary>
+    /// As the public constructor, and with <paramref name="snapTopEdge"/> the glyph is moved vertically
+    /// by under half a pixel so the top of its outline lands on a pixel row (see
+    /// <see cref="ManagedFontRasterizer.RasterizeStretchyVertical(string, float, Rune, float, bool, out uint, out int)"/>).
+    /// Only <see cref="SqrtBox"/> asks for it: the radical's flag is the glyph's top, and the vinculum
+    /// continuing it needs that edge crisp. Brackets and every other delimiter keep the unsnapped glyph.
+    /// </summary>
+    internal StretchyVerticalBox(int codepoint, float requiredHeightPx, BoxStyle style, bool snapTopEdge)
     {
         var rune = new Rune(codepoint);
-        _bitmap = SharedRasterizer.RasterizeStretchyVertical(style.FontPath, style.FontSize, rune, requiredHeightPx, out _variantGlyphId);
+        _bitmap = SharedRasterizer.RasterizeStretchyVertical(style.FontPath, style.FontSize, rune, requiredHeightPx,
+            snapTopEdge, out _variantGlyphId, out _inkTopRow);
 
         if (_bitmap.Rgba is null || _bitmap.Width == 0 || _bitmap.Height == 0)
         {
@@ -122,6 +135,10 @@ public sealed class StretchyVerticalBox : Box
     /// bounding-box top edge (which usually has a row or two of transparent
     /// padding).</summary>
     internal GlyphBitmap Bitmap => _bitmap;
+
+    /// <summary>The bitmap row the outline's top begins at, taken from the outline when the box was
+    /// built with <c>snapTopEdge</c>; -1 when it was not, or when the glyph could not be snapped.</summary>
+    internal int InkTopRow => _inkTopRow;
 
     /// <summary>One past the rightmost column index that contains non-
     /// transparent ink across the whole bitmap. Equals <see cref="Width"/>
