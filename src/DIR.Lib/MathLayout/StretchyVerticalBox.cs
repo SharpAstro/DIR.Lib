@@ -38,7 +38,7 @@ public sealed class StretchyVerticalBox : Box
     private readonly float _depth;
     private readonly uint _variantGlyphId;
     private readonly int _inkRightX;
-    private readonly int _inkTopRow;
+    private readonly ManagedFontRasterizer.TopSnap _topSnap;
 
     /// <summary>
     /// Compose a stretchy delimiter for <paramref name="codepoint"/> covering
@@ -62,7 +62,7 @@ public sealed class StretchyVerticalBox : Box
     {
         var rune = new Rune(codepoint);
         _bitmap = SharedRasterizer.RasterizeStretchyVertical(style.FontPath, style.FontSize, rune, requiredHeightPx,
-            snapTopEdge, out _variantGlyphId, out _inkTopRow);
+            snapTopEdge, out _variantGlyphId, out _topSnap);
 
         if (_bitmap.Rgba is null || _bitmap.Width == 0 || _bitmap.Height == 0)
         {
@@ -136,9 +136,11 @@ public sealed class StretchyVerticalBox : Box
     /// padding).</summary>
     internal GlyphBitmap Bitmap => _bitmap;
 
-    /// <summary>The bitmap row the outline's top begins at, taken from the outline when the box was
-    /// built with <c>snapTopEdge</c>; -1 when it was not, or when the glyph could not be snapped.</summary>
-    internal int InkTopRow => _inkTopRow;
+    /// <summary>What the snap learned from the outline when the box was built with <c>snapTopEdge</c>:
+    /// the bitmap row the outline's top begins at and the rows the stroke at its top-right touches;
+    /// <see cref="ManagedFontRasterizer.TopSnap.None"/> when it was not, or when the glyph could not be
+    /// snapped.</summary>
+    internal ManagedFontRasterizer.TopSnap TopSnap => _topSnap;
 
     /// <summary>One past the rightmost column index that contains non-
     /// transparent ink across the whole bitmap. Equals <see cref="Width"/>

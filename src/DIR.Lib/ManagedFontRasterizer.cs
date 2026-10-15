@@ -115,16 +115,17 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// topmost part of the glyph, and the vinculum continuing it can only share a crisp top edge with it if
     /// that edge is on a row (see <see cref="RenderTopSnapped"/>).
     /// </summary>
-    /// <param name="inkTopRow">The bitmap row the outline's top begins at (0 after a snap), or -1 when
-    /// nothing was snapped: a colour glyph, or an embedded Type 1 face.</param>
-    internal GlyphBitmap RasterizeGlyphTopSnapped(string fontPath, float fontSize, Rune codepoint, out int inkTopRow)
+    /// <param name="snap">Where the outline's top begins in the bitmap (row 0 after a snap) and how many
+    /// rows the stroke at its top-right touches; <see cref="TopSnap.None"/> when nothing was snapped: a
+    /// colour glyph, or an embedded Type 1 face.</param>
+    internal GlyphBitmap RasterizeGlyphTopSnapped(string fontPath, float fontSize, Rune codepoint, out TopSnap snap)
     {
-        inkTopRow = -1;
+        snap = TopSnap.None;
         if (_type1Fonts.ContainsKey(fontPath)) return RasterizeGlyph(fontPath, fontSize, codepoint);
         var font = GetOrLoad(fontPath);
         var gid = font.GetGlyphId((uint)codepoint.Value);
         if (gid == 0) return default;
-        return RenderTopSnapped(font, gid, fontSize, out inkTopRow);
+        return RenderTopSnapped(font, gid, fontSize, out snap);
     }
 
     /// <summary>
@@ -362,13 +363,14 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// chosen does not depend on <paramref name="snapTop"/>; with it false the result is the public
     /// method's, byte for byte, which is what every caller but the radical gets.
     /// </summary>
-    /// <param name="inkTopRow">The bitmap row the outline's top begins at, or -1 when nothing was
-    /// snapped (<paramref name="snapTop"/> false, or a colour glyph).</param>
+    /// <param name="snap">Where the outline's top begins in the bitmap and how many rows the stroke at
+    /// its top-right touches; <see cref="TopSnap.None"/> when nothing was snapped
+    /// (<paramref name="snapTop"/> false, or a colour glyph).</param>
     internal GlyphBitmap RasterizeStretchyVertical(string fontPath, float fontSize,
-        Rune codepoint, float requiredHeightPx, bool snapTop, out uint variantGlyphId, out int inkTopRow)
+        Rune codepoint, float requiredHeightPx, bool snapTop, out uint variantGlyphId, out TopSnap snap)
     {
         variantGlyphId = 0;
-        inkTopRow = -1;
+        snap = TopSnap.None;
         var font = GetOrLoad(fontPath);
         var baseGid = font.GetGlyphId((uint)codepoint.Value);
         if (baseGid == 0) return default;
@@ -382,7 +384,7 @@ public sealed class ManagedFontRasterizer : IDisposable
         if (baseGlyph.Height >= requiredHeightPx)
         {
             variantGlyphId = baseGid;
-            return snapTop ? RenderTopSnapped(font, baseGid, fontSize, out inkTopRow) : baseGlyph;
+            return snapTop ? RenderTopSnapped(font, baseGid, fontSize, out snap) : baseGlyph;
         }
 
         // The base glyph isn't tall enough. From here we need MATH data — if
@@ -405,7 +407,7 @@ public sealed class ManagedFontRasterizer : IDisposable
             if (v.AdvanceMeasurement >= requiredFUnits)
             {
                 variantGlyphId = v.GlyphId;
-                return RenderMaybeTopSnapped(font, v.GlyphId, fontSize, snapTop, out inkTopRow);
+                return RenderMaybeTopSnapped(font, v.GlyphId, fontSize, snapTop, out snap);
             }
         }
 
@@ -416,7 +418,7 @@ public sealed class ManagedFontRasterizer : IDisposable
         {
             variantGlyphId = baseGid;
             return ComposeVerticalAssembly(font, asm, math.MinConnectorOverlap, unitsPerEm, fontSize, requiredFUnits,
-                snapTop, out inkTopRow);
+                snapTop, out snap);
         }
 
         // 3) Largest variant if any (still possibly short of the request, but
@@ -425,15 +427,15 @@ public sealed class ManagedFontRasterizer : IDisposable
         if (construction.Variants.Count > 0)
         {
             variantGlyphId = construction.Variants[^1].GlyphId;
-            return RenderMaybeTopSnapped(font, construction.Variants[^1].GlyphId, fontSize, snapTop, out inkTopRow);
+            return RenderMaybeTopSnapped(font, construction.Variants[^1].GlyphId, fontSize, snapTop, out snap);
         }
         return default;
     }
 
-    private static GlyphBitmap RenderMaybeTopSnapped(OpenTypeFont font, uint gid, float pixelsPerEm, bool snapTop, out int inkTopRow)
+    private static GlyphBitmap RenderMaybeTopSnapped(OpenTypeFont font, uint gid, float pixelsPerEm, bool snapTop, out TopSnap snap)
     {
-        if (snapTop) return RenderTopSnapped(font, gid, pixelsPerEm, out inkTopRow);
-        inkTopRow = -1;
+        if (snapTop) return RenderTopSnapped(font, gid, pixelsPerEm, out snap);
+        snap = TopSnap.None;
         return Render(font, gid, pixelsPerEm);
     }
 
@@ -454,9 +456,9 @@ public sealed class ManagedFontRasterizer : IDisposable
     private static GlyphBitmap ComposeVerticalAssembly(
         OpenTypeFont font, Tables.OpenTypeMath.MathGlyphAssembly asm,
         ushort minOverlap, ushort unitsPerEm, float fontSize, int requiredFUnits,
-        bool snapTop, out int inkTopRow)
+        bool snapTop, out TopSnap snap)
     {
-        inkTopRow = -1;
+        snap = TopSnap.None;
         if (asm.Parts.Count == 0) return default;
 
         // Compute the total FUnit-space advance with one copy of each part
@@ -516,7 +518,7 @@ public sealed class ManagedFontRasterizer : IDisposable
             var gid = sequence[i].GlyphId;
             if (snapTop && i == sequence.Length - 1)
             {
-                bitmaps[i] = RenderTopSnapped(font, gid, fontSize, out inkTopRow);
+                bitmaps[i] = RenderTopSnapped(font, gid, fontSize, out snap);
                 continue;
             }
             if (!bitmapCache.TryGetValue(gid, out var bm))
@@ -968,25 +970,31 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// exact. The shift moves that top to the nearest row, so it is never more than half a pixel, and a
     /// top already on a row is rendered unshifted, which keeps a hinted glyph byte-identical to
     /// <see cref="Render"/>.</para>
-    /// <para>A colour glyph is returned unsnapped, with <paramref name="inkTopRow"/> -1.</para>
+    /// <para>It also measures, on the same outline, the stroke at the glyph's top-right: down a vertical
+    /// line just inside the outline's rightmost point, where the topmost run of ink ends. For the radical
+    /// that is its flag, and the count of rows it touches below the snapped top is exact at any size, where
+    /// the bitmap cannot tell a flag thinner than a pixel from the stem or the curve it runs into.</para>
+    /// <para>A colour glyph is returned unsnapped, with <paramref name="snap"/> <see cref="TopSnap.None"/>.</para>
     /// </summary>
-    private static GlyphBitmap RenderTopSnapped(OpenTypeFont font, uint gid, float pixelsPerEm, out int inkTopRow)
+    private static GlyphBitmap RenderTopSnapped(OpenTypeFont font, uint gid, float pixelsPerEm, out TopSnap snap)
     {
-        inkTopRow = -1;
+        snap = TopSnap.None;
         if (font.RenderColor(gid, pixelsPerEm) is { IsEmpty: false })
             return Render(font, gid, pixelsPerEm);
 
         Action<IGlyphSink> walk;
-        float scale;
+        float scale, em;
         if (font.LoadHintedOutline(gid, pixelsPerEm) is { IsEmpty: false } hinted)
         {
             walk = hinted.Walk;
             scale = 1f;
+            em = pixelsPerEm;
         }
         else
         {
             walk = sink => font.DrawGlyph(gid, sink);
             scale = pixelsPerEm / font.UnitsPerEm;
+            em = font.UnitsPerEm;
         }
 
         var bounds = new TopEdgeSink();
@@ -994,12 +1002,17 @@ public sealed class ManagedFontRasterizer : IDisposable
         if (!bounds.HasPoints) return Render(font, gid, pixelsPerEm);
         var topPx = bounds.YMax * scale;
 
+        // A hundredth of an em inside the right end: on the flag, clear of any rounding at its corner.
+        var stroke = new TopStrokeSink();
+        walk(stroke);
+        var strokeBottomPx = stroke.TopRunBottom(stroke.XMax - 0.01f * em) * scale;
+
         var row = MathF.Round(topPx);
         if (row - topPx is >= 0f and <= SnapInsetPx)
         {
             // Already on a row (the hinter put it there): nothing to move.
             var plain = Render(font, gid, pixelsPerEm);
-            inkTopRow = plain.BearingY - (int)row;
+            snap = new TopSnap(plain.BearingY - (int)row, StrokeRows(row, strokeBottomPx));
             return plain;
         }
         var shift = row - SnapInsetPx - topPx;
@@ -1010,8 +1023,99 @@ public sealed class ManagedFontRasterizer : IDisposable
         if (gray.IsEmpty) return Blank(advanceX);
 
         // The shifted top sits just under the row boundary `row`, so the bitmap's Top is that row.
-        inkTopRow = gray.Top - (int)row;
+        snap = new TopSnap(gray.Top - (int)row, StrokeRows(row, strokeBottomPx + shift));
         return FromGray(gray, advanceX);
+    }
+
+    /// <summary>Rows a stroke touches from the row boundary <paramref name="topRow"/> down to
+    /// <paramref name="bottomPx"/> (both Y-up pixels), or 0 when there was no stroke to measure.</summary>
+    private static int StrokeRows(float topRow, float bottomPx) =>
+        float.IsNaN(bottomPx) ? 0 : Math.Max(1, (int)MathF.Ceiling(topRow - bottomPx - 1e-3f));
+
+    /// <summary>
+    /// What a top-snapped rasterization learned from the outline: the bitmap row the outline's top begins
+    /// at, and how many rows from there the stroke at the glyph's top-right touches (the radical's flag),
+    /// 0 when the outline gave no measure.
+    /// </summary>
+    internal readonly record struct TopSnap(int InkTopRow, int TopStrokeRows)
+    {
+        /// <summary>Nothing was snapped: a colour glyph, an embedded Type 1 face, or no snap asked for.</summary>
+        public static TopSnap None => new(-1, 0);
+    }
+
+    /// <summary>Flattens an outline into line segments, to follow a vertical line through it: where the
+    /// topmost run of ink on that line ends tells how thick the stroke at the outline's top is there.</summary>
+    private sealed class TopStrokeSink : IGlyphSink
+    {
+        private const int CurveSteps = 16;
+        private readonly List<(float X0, float Y0, float X1, float Y1)> _segments = [];
+        private float _x, _y, _startX, _startY;
+
+        public float XMax { get; private set; } = float.NegativeInfinity;
+
+        public void MoveTo(float x, float y)
+        {
+            (_x, _y, _startX, _startY) = (x, y, x, y);
+            XMax = MathF.Max(XMax, x);
+        }
+
+        public void LineTo(float x, float y) => Segment(x, y);
+
+        public void QuadTo(float cx, float cy, float x, float y)
+        {
+            float x0 = _x, y0 = _y;
+            for (var i = 1; i <= CurveSteps; i++)
+            {
+                var t = i / (float)CurveSteps;
+                var u = 1f - t;
+                Segment(u * u * x0 + 2f * u * t * cx + t * t * x, u * u * y0 + 2f * u * t * cy + t * t * y);
+            }
+        }
+
+        public void CubicTo(float c1x, float c1y, float c2x, float c2y, float x, float y)
+        {
+            float x0 = _x, y0 = _y;
+            for (var i = 1; i <= CurveSteps; i++)
+            {
+                var t = i / (float)CurveSteps;
+                var u = 1f - t;
+                Segment(u * u * u * x0 + 3f * u * u * t * c1x + 3f * u * t * t * c2x + t * t * t * x,
+                    u * u * u * y0 + 3f * u * u * t * c1y + 3f * u * t * t * c2y + t * t * t * y);
+            }
+        }
+
+        public void Close()
+        {
+            if (_x != _startX || _y != _startY) Segment(_startX, _startY);
+        }
+
+        /// <summary>The Y where the topmost run of ink down the vertical line at <paramref name="x"/> ends,
+        /// by the non-zero winding rule the rasterizer fills with; NaN when the line meets no ink.</summary>
+        public float TopRunBottom(float x)
+        {
+            var crossings = new List<(float Y, int Wind)>();
+            foreach (var (x0, y0, x1, y1) in _segments)
+            {
+                if ((x0 <= x && x < x1) || (x1 <= x && x < x0))
+                    crossings.Add((y0 + (x - x0) * (y1 - y0) / (x1 - x0), x1 > x0 ? 1 : -1));
+            }
+            crossings.Sort((a, b) => b.Y.CompareTo(a.Y));
+            var winding = 0;
+            foreach (var (y, wind) in crossings)
+            {
+                var was = winding;
+                winding += wind;
+                if (was != 0 && winding == 0) return y;
+            }
+            return float.NaN;
+        }
+
+        private void Segment(float x, float y)
+        {
+            _segments.Add((_x, _y, x, y));
+            (_x, _y) = (x, y);
+            XMax = MathF.Max(XMax, x);
+        }
     }
 
     /// <summary>Collects the highest Y an outline reaches: its on-curve points and the interior

@@ -196,7 +196,7 @@ public sealed class SqrtBox : Box
         {
             var radical = new StretchyVerticalBox(RadicalCodepoint, requiredHeight, style, snapTopEdge: true);
             _radicalFont = radical;
-            (_flagTopRow, _flagProfile, _flagLastFullCol) = MeasureFlag(radical.Bitmap, radical.InkTopRow);
+            (_flagTopRow, _flagProfile, _flagLastFullCol) = MeasureFlag(radical.Bitmap, radical.TopSnap);
             _joinedRadical = JoinFlag(radical.Bitmap, _flagTopRow, _flagProfile, _flagLastFullCol);
         }
         else
@@ -217,9 +217,9 @@ public sealed class SqrtBox : Box
             if (native.Rgba is not null && native.Height > 0)
             {
                 var scale = MathF.Max(0.5f, requiredHeight / native.Height);
-                _radicalScaled = rasterizer.RasterizeGlyphTopSnapped(style.FontPath, style.FontSize * scale, rune, out var inkTopRow);
+                _radicalScaled = rasterizer.RasterizeGlyphTopSnapped(style.FontPath, style.FontSize * scale, rune, out var snap);
                 _radicalScaledFactor = scale;
-                (_flagTopRow, _flagProfile, _flagLastFullCol) = MeasureFlag(_radicalScaled, inkTopRow);
+                (_flagTopRow, _flagProfile, _flagLastFullCol) = MeasureFlag(_radicalScaled, snap);
                 _joinedRadical = JoinFlag(_radicalScaled, _flagTopRow, _flagProfile, _flagLastFullCol);
             }
         }
@@ -401,11 +401,11 @@ public sealed class SqrtBox : Box
     /// column that still has that profile (the flag at full coverage, before
     /// its antialiased right end).
     /// <para>
-    /// <paramref name="inkTopRow"/> is where the outline's top lands, from
+    /// <paramref name="snap"/> carries where the outline's top lands, from
     /// the snapped rasterization; the flag's top is the glyph's top, so that
-    /// is the flag's top row and nothing is scanned for it. It is -1 only
-    /// when the glyph could not be snapped (a colour glyph), and the first
-    /// inked row is used instead.
+    /// is the flag's top row and nothing is scanned for it. Its row is -1
+    /// only when the glyph could not be snapped (a colour glyph), and the
+    /// first inked row is used instead.
     /// </para>
     /// <para>
     /// The last full column is the rightmost one whose top-row alpha is on
@@ -415,10 +415,17 @@ public sealed class SqrtBox : Box
     /// column furthest from the V's diagonal, which on a narrow glyph (a
     /// small size, or a MATH size variant) reaches almost to the right edge
     /// a few rows down. The band runs down that column while it has ink, so
-    /// a partially covered bottom row belongs to it.
+    /// a partially covered bottom row belongs to it, but never past the rows
+    /// the flag's own stroke touches, which <paramref name="snap"/> measured on
+    /// the outline. At sextant and half-block sizes the flag is no wider than
+    /// the stem (STIX Two Math below about 12 px), so that column is the
+    /// stem's and its ink runs 19 to 31 rows down; or the stroke is under a
+    /// pixel and the column crosses the flag's end and the curve beneath it
+    /// over four soft rows. Either way the band is the stroke's rows of that
+    /// column: one row, at those sizes, as the old one-row rule drew.
     /// </para>
     /// </summary>
-    private static (int TopRow, byte[] Profile, int LastFullCol) MeasureFlag(GlyphBitmap bm, int inkTopRow)
+    private static (int TopRow, byte[] Profile, int LastFullCol) MeasureFlag(GlyphBitmap bm, ManagedFontRasterizer.TopSnap snap)
     {
         if (bm.Rgba is null || bm.Width <= 0 || bm.Height <= 0)
             return (0, [], bm.Width - 1);
@@ -434,7 +441,7 @@ public sealed class SqrtBox : Box
             return max;
         }
 
-        var top = Math.Max(0, inkTopRow);
+        var top = Math.Max(0, snap.InkTopRow);
         while (top < h && RowMax(top) == 0) top++;
         if (top == h) return (0, [], w - 1);
 
@@ -444,6 +451,7 @@ public sealed class SqrtBox : Box
 
         var bottom = top;
         while (bottom < h && Alpha(last, bottom) > 0) bottom++;
+        if (snap.TopStrokeRows > 0) bottom = Math.Min(bottom, top + snap.TopStrokeRows);
         while (bottom - 1 > top && Alpha(last, bottom - 1) < FlagTailMinAlpha) bottom--;
 
         var profile = new byte[bottom - top];
