@@ -243,7 +243,7 @@ public static class MarkdownMacros
         source = spaceSb.ToString();
 
         // Any char the latex.lalr.yaml lexer has no rule for (Unicode operators
-        // like ÷ ≈ ≤ ≥ × −, punctuation like ; ! |, …) — wrap each in a
+        // like ÷ ≈ ≤ ≥ × −, punctuation like ; ! |, …): wrap each in a
         // placeholder so the lexer keeps going. Without this, a single stray
         // U+2248 in "\sqrt{131} ≈ 11.45" kills the lex pass and \sqrt never
         // gets to render. The placeholder lexes as a cmd atom; the visitor
