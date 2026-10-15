@@ -139,7 +139,7 @@ productions:
       - { lhs: P, rhs: [P, '_', A], action: subscript }
       - { lhs: P, rhs: [A] }
 
-  # Atoms — leaves of the expression tree. \frac takes A-typed arguments and
+  # Atoms: leaves of the expression tree. \frac takes A-typed arguments and
   # \sqrt an A0 (an A that does not open with `[`), which means both
   # `\frac 1 2` and `\frac{1}{2}` parse: in the
   # second case each `{ E }` is itself an A via the `group` rule. That's the
