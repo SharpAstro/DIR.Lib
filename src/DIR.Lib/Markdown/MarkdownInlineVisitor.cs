@@ -78,8 +78,8 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     /// when every opener pairs.
     /// <para>A <c>$</c> follows Pandoc's <c>tex_math_dollars</c>: it opens
     /// only with a non-space to its right, and its closer is the next
-    /// <c>$</c>, which needs a non-space to its left and no digit to its
-    /// right. <c>$$</c> closes at the next <c>$$</c>. <c>\(</c>,
+    /// unescaped <c>$</c>, which needs a non-space to its left and no digit
+    /// to its right. <c>$$</c> closes at the next unescaped <c>$$</c>. <c>\(</c>,
     /// <c>\[</c> and <c>\boxed{</c> close where their lexer state pops.
     /// One departure from Pandoc: a closer inside a code span that opens
     /// after the opener does not count, so the <c>$</c> in
@@ -159,26 +159,55 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     }
 
     /// <summary>End (exclusive) of the <c>$..$</c> span opening at
-    /// <paramref name="i"/>, or -1. The closer is the next <c>$</c>, the
-    /// same one math_dollar's <c>[^$]+</c> body stops at.</summary>
+    /// <paramref name="i"/>, or -1. The closer is the next <c>$</c> that
+    /// is not escaped, the same one math_dollar's body stops at: that body
+    /// takes <c>\</c> and the character after it as one piece. An escaped
+    /// space before the closer is such a piece, not a bare space.</summary>
     private static int InlineDollarEnd(string s, int i)
     {
         if (i + 1 >= s.Length || char.IsWhiteSpace(s[i + 1])) return -1;
-        int close = s.IndexOf('$', i + 1);
-        if (close < 0 || char.IsWhiteSpace(s[close - 1]) || char.IsAsciiDigit(At(s, close + 1))) return -1;
-        return CodeSpanCrosses(s, i + 1, close) ? -1 : close + 1;
+        bool bareSpaceBefore = false;
+        for (int k = i + 1; k < s.Length; k++)
+        {
+            switch (s[k])
+            {
+                case '$':
+                    if (bareSpaceBefore || char.IsAsciiDigit(At(s, k + 1))) return -1;
+                    return CodeSpanCrosses(s, i + 1, k) ? -1 : k + 1;
+                case '\\':
+                    if (k + 1 >= s.Length) return -1;
+                    k++;
+                    bareSpaceBefore = false;
+                    break;
+                default:
+                    bareSpaceBefore = char.IsWhiteSpace(s[k]);
+                    break;
+            }
+        }
+        return -1;
     }
 
     /// <summary>End (exclusive) of the <c>$$..$$</c> span opening at
     /// <paramref name="i"/>, or -1. math_dollar2 lexes a body of one or
-    /// more non-dollars and then <c>$$</c>; a lone <c>$</c> in the body
-    /// matches none of its rules.</summary>
+    /// more pieces (a non-dollar, or <c>\</c> and the character after it)
+    /// and then <c>$$</c>; a lone <c>$</c> in the body matches none of its
+    /// rules.</summary>
     private static int DisplayDollarEnd(string s, int i)
     {
-        int close = i + 2;
-        while (close < s.Length && s[close] != '$') close++;
-        if (close == i + 2 || At(s, close + 1) != '$') return -1;
-        return CodeSpanCrosses(s, i + 2, close) ? -1 : close + 2;
+        for (int k = i + 2; k < s.Length; k++)
+        {
+            switch (s[k])
+            {
+                case '$':
+                    if (k == i + 2 || At(s, k + 1) != '$') return -1;
+                    return CodeSpanCrosses(s, i + 2, k) ? -1 : k + 2;
+                case '\\':
+                    if (k + 1 >= s.Length) return -1;
+                    k++;
+                    break;
+            }
+        }
+        return -1;
     }
 
     /// <summary>End (exclusive) of a <c>\(..\)</c> or <c>\[..\]</c> body

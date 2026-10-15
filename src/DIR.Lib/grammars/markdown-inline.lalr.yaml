@@ -195,13 +195,16 @@ lexer:
     - { symbol: escape,           match: '\\[^a-zA-Z]' }
     - { symbol: text,             match: '\\[a-zA-Z]+' }
 
+  # A dollar body lexes `\` and the character after it as one piece, so
+  # an escaped `\$` is body rather than the closer (Pandoc reads it the
+  # same way). The body stays a single token.
   math_dollar:
     - { symbol: dollar,   match: '\$',         pop: true }
-    - { symbol: mathbody, match: '[^$]+' }
+    - { symbol: mathbody, match: '([^$\\]|\\(.|\n))+' }
 
   math_dollar2:
     - { symbol: dollar2,    match: '\$\$',     pop: true }
-    - { symbol: mathbody2,  match: '[^$]+' }
+    - { symbol: mathbody2,  match: '([^$\\]|\\(.|\n))+' }
 
   math_paren:
     - { symbol: latex_rparen, match: '\\\)',   pop: true }

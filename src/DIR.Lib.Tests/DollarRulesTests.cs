@@ -118,6 +118,50 @@ public sealed class DollarRulesTests
     public void EscapedDollar_IsALiteralDollar() =>
         ShouldRenderLiterally(@"\$5", "$5");
 
+    // ── An escaped dollar inside math is body, not a closer ──────────
+
+    [Fact]
+    public void EscapedDollarInInlineMath_DoesNotClose()
+    {
+        // The `\$` must not close the span. Taken as the closer, a digit follows it, so the
+        // opener would not pair at all and the paragraph would lose its math.
+        var content = Paragraph(@"$x = \$5$ each");
+        content.Count.ShouldBe(2);
+        content[0].ShouldBeOfType<MdMathInline>().Source.ShouldBe(@"x = \$5");
+        content[1].ShouldBeOfType<MdLiteral>().Text.ShouldBe(" each");
+    }
+
+    [Fact]
+    public void EscapedDollarOpeningInlineMath_IsBody()
+    {
+        var content = Paragraph(@"$\$42$.");
+        content.Count.ShouldBe(2);
+        content[0].ShouldBeOfType<MdMathInline>().Source.ShouldBe(@"\$42");
+        content[1].ShouldBeOfType<MdLiteral>().Text.ShouldBe(".");
+    }
+
+    [Fact]
+    public void EscapedDollarMidInlineMath_IsBody()
+    {
+        var math = Paragraph(@"$a\$b$").ShouldHaveSingleItem().ShouldBeOfType<MdMathInline>();
+        math.Source.ShouldBe(@"a\$b");
+    }
+
+    [Fact]
+    public void EscapedSpaceBeforeTheCloser_StillCloses()
+    {
+        // Pandoc reads `\ ` as one escaped item, so the closer has no bare space to its left.
+        Paragraph(@"$x\ $").ShouldHaveSingleItem().ShouldBeOfType<MdMathInline>().Source.ShouldBe(@"x\ ");
+    }
+
+    [Fact]
+    public void EscapedDollarInDisplayMath_DoesNotClose()
+    {
+        var math = Paragraph(@"$$a = \$5$$").ShouldHaveSingleItem().ShouldBeOfType<MdMathInline>();
+        math.Source.ShouldBe(@"a = \$5");
+        math.IsDisplay.ShouldBeTrue();
+    }
+
     // ── Unmatched delimiters render as text ──────────────────────────
 
     [Theory]
