@@ -152,6 +152,12 @@ lexer:
   # lookahead whether the bracket span has a link, color, or no tail.
   # A bare `]` (followed by anything other than `(` / `{`) tokenises
   # as the lone `rbracket` rule.
+  #
+  # Every math opener below pushes unconditionally, so one that never
+  # closed would strand the lexer in its math state. None reaches it:
+  # MarkdownInlineVisitor.MarkUnpairedMath pairs the openers first (by
+  # Pandoc's dollar rule for `$`) and swaps an unpaired one for stand-in
+  # characters this lexer reads as text.
   root:
     - { symbol: lboxed,           match: '\\boxed\{',  push: math_boxed }
     - { symbol: dollar2,          match: '\$\$',       push: math_dollar2 }

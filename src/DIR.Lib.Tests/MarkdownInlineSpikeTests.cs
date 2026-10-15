@@ -448,12 +448,13 @@ public sealed class MarkdownInlineSpikeTests
     }
 
     [Fact]
-    public void UnterminatedMath_ParseFailsCleanly()
+    public void UnterminatedMath_RendersAsText()
     {
-        // Spike scope: malformed input returns empty rather than throwing.
-        // Phase B-extension may tighten error recovery (preserve the
-        // literal up to the unmatched delimiter); for now "fail closed"
-        // is enough.
-        _visitor.Parse("text $unterminated").ShouldBeEmpty();
+        // An opener with no closer is text, not a parse failure: the
+        // pairing pass hands it to the lexer as a stand-in, so the span
+        // list keeps everything, the `$` included. (This used to pin
+        // "fail closed", which blanked the whole paragraph.)
+        _visitor.Parse("text $unterminated")
+            .ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("text $unterminated");
     }
 }

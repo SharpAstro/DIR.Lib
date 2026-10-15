@@ -27,12 +27,15 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
 {
     /// <summary>Parses an inline-only markdown string and returns the
     /// produced span list with transient nodes (MdGroup, MdStarMarker)
-    /// resolved. Returns an empty list on parse error so the caller
-    /// can fall through to a literal-text render of the source.</summary>
+    /// resolved. A math delimiter that does not pair is text (see
+    /// <see cref="MarkUnpairedMath"/>). Returns an empty list on any
+    /// other parse error so the caller can fall through to a
+    /// literal-text render of the source.</summary>
     public IReadOnlyList<MdInline> Parse(string source)
     {
         if (string.IsNullOrEmpty(source)) return Array.Empty<MdInline>();
 
+        source = MarkUnpairedMath(source);
         try
         {
             using var lexer = global::LALR.CC.LexicalGrammar.BytesLexer.FromString(source, s_lexerTable);
@@ -47,6 +50,227 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
             return Array.Empty<MdInline>();
         }
     }
+
+    // ── Math delimiter pairing (runs before the lexer) ───────────────
+    //
+    // The lexer pushes a math state on every `$`, `$$`, `\(`, `\[` and
+    // `\boxed{` it meets in root, so one that never closes used to leave
+    // it in that state, fail the parse and blank the whole paragraph. A
+    // regular lexer cannot see whether a closer is coming, and Pandoc's
+    // dollar rule looks one character past the closer, so the pairing is
+    // decided here instead. The pass walks the source the way the root
+    // lexer would, finds each opener's closer by the same rules its math
+    // state uses, and replaces every character of an opener that does
+    // not pair with a stand-in the lexer reads as plain text.
+    // LiteralSpan turns the stand-ins back. The grammar is unchanged,
+    // so a delimiter that reaches the lexer always pairs.
+
+    /// <summary>Stand-ins for the characters of an unpaired delimiter:
+    /// Unicode noncharacters, which are reserved for a program's internal
+    /// use and so do not occur in text. They are outside every special
+    /// byte the root lexer knows, so they lex as part of a text run.</summary>
+    private const char UnpairedDollar = '\uFDD0';
+    private const char UnpairedBackslash = '\uFDD1';
+    private const char UnpairedBracket = '\uFDD2';
+
+    /// <summary>Returns <paramref name="s"/> with every math opener that
+    /// does not pair replaced by stand-ins, or <paramref name="s"/> itself
+    /// when every opener pairs.
+    /// <para>A <c>$</c> follows Pandoc's <c>tex_math_dollars</c>: it opens
+    /// only with a non-space to its right, and its closer is the next
+    /// <c>$</c>, which needs a non-space to its left and no digit to its
+    /// right. <c>$$</c> closes at the next <c>$$</c>. <c>\(</c>,
+    /// <c>\[</c> and <c>\boxed{</c> close where their lexer state pops.
+    /// One departure from Pandoc: a closer inside a code span that opens
+    /// after the opener does not count, so the <c>$</c> in
+    /// <c>$5 to run `echo $PATH`</c> stays with the code span (code spans
+    /// bind tighter, as in CommonMark).</para></summary>
+    private static string MarkUnpairedMath(string s)
+    {
+        char[]? marked = null;
+        void Mark(int at, char standIn) => (marked ??= s.ToCharArray())[at] = standIn;
+
+        int i = 0;
+        while (i < s.Length)
+        {
+            switch (s[i])
+            {
+                case '$' when At(s, i + 1) == '$':
+                {
+                    int end = DisplayDollarEnd(s, i);
+                    if (end > 0) { i = end; break; }
+                    Mark(i, UnpairedDollar);
+                    Mark(i + 1, UnpairedDollar);
+                    i += 2;
+                    break;
+                }
+                case '$':
+                {
+                    int end = InlineDollarEnd(s, i);
+                    if (end > 0) { i = end; break; }
+                    Mark(i, UnpairedDollar);
+                    i++;
+                    break;
+                }
+                case '\\' when s.AsSpan(i).StartsWith(@"\boxed{"):
+                {
+                    int end = BoxedEnd(s, i + 7);
+                    if (end > 0) { i = end; break; }
+                    Mark(i, UnpairedBackslash);   // `boxed{` after it is plain text
+                    i++;
+                    break;
+                }
+                case '\\' when At(s, i + 1) is '(' or '[':
+                {
+                    char open = s[i + 1];
+                    int end = LatexEnd(s, i + 2, open == '(' ? ')' : ']');
+                    if (end > 0) { i = end; break; }
+                    Mark(i, UnpairedBackslash);
+                    if (open == '[') Mark(i + 1, UnpairedBracket);   // a bare `[` would open a bracket span
+                    i += 2;
+                    break;
+                }
+                case '\\':
+                    // Any other `\X` is one token (escape, command or hard
+                    // break), so X opens nothing: `\$` is a literal dollar.
+                    i += 2;
+                    break;
+                case '`':
+                {
+                    // A code span is opaque. One that never closes fails
+                    // the parse whatever this pass does; step past its fence.
+                    int end = CodeSpanEnd(s, i);
+                    i = end > 0 ? end : i + FenceLength(s, i);
+                    break;
+                }
+                case ']' when At(s, i + 1) is '(' or '{':
+                {
+                    // A link URL or a colour runs to the next `)` or `}`.
+                    int close = s.IndexOf(s[i + 1] == '(' ? ')' : '}', i + 2);
+                    i = close < 0 ? s.Length : close + 1;
+                    break;
+                }
+                default:
+                    i++;
+                    break;
+            }
+        }
+        return marked is null ? s : new string(marked);
+    }
+
+    /// <summary>End (exclusive) of the <c>$..$</c> span opening at
+    /// <paramref name="i"/>, or -1. The closer is the next <c>$</c>, the
+    /// same one math_dollar's <c>[^$]+</c> body stops at.</summary>
+    private static int InlineDollarEnd(string s, int i)
+    {
+        if (i + 1 >= s.Length || char.IsWhiteSpace(s[i + 1])) return -1;
+        int close = s.IndexOf('$', i + 1);
+        if (close < 0 || char.IsWhiteSpace(s[close - 1]) || char.IsAsciiDigit(At(s, close + 1))) return -1;
+        return CodeSpanCrosses(s, i + 1, close) ? -1 : close + 1;
+    }
+
+    /// <summary>End (exclusive) of the <c>$$..$$</c> span opening at
+    /// <paramref name="i"/>, or -1. math_dollar2 lexes a body of one or
+    /// more non-dollars and then <c>$$</c>; a lone <c>$</c> in the body
+    /// matches none of its rules.</summary>
+    private static int DisplayDollarEnd(string s, int i)
+    {
+        int close = i + 2;
+        while (close < s.Length && s[close] != '$') close++;
+        if (close == i + 2 || At(s, close + 1) != '$') return -1;
+        return CodeSpanCrosses(s, i + 2, close) ? -1 : close + 2;
+    }
+
+    /// <summary>End (exclusive) of a <c>\(..\)</c> or <c>\[..\]</c> body
+    /// starting at <paramref name="from"/>, or -1. math_paren and
+    /// math_bracket lex every <c>\X</c> as one fragment and pop on
+    /// <c>\)</c> / <c>\]</c>; a <c>\</c> at the very end matches nothing.</summary>
+    private static int LatexEnd(string s, int from, char close)
+    {
+        for (int k = from; k < s.Length; k++)
+        {
+            if (s[k] != '\\') continue;
+            if (k + 1 >= s.Length) return -1;
+            if (s[k + 1] == close) return CodeSpanCrosses(s, from, k) ? -1 : k + 2;
+            k++;
+        }
+        return -1;
+    }
+
+    /// <summary>End (exclusive) of a <c>\boxed{..}</c> body starting at
+    /// <paramref name="from"/>, or -1. math_boxed nests on <c>{</c> and
+    /// <c>}</c>, lexes <c>\X</c> as one fragment, and has no rule for
+    /// <c>\{</c> or <c>\}</c>.</summary>
+    private static int BoxedEnd(string s, int from)
+    {
+        int depth = 1;
+        for (int k = from; k < s.Length; k++)
+        {
+            switch (s[k])
+            {
+                case '{':
+                    depth++;
+                    break;
+                case '}':
+                    if (--depth == 0) return CodeSpanCrosses(s, from, k) ? -1 : k + 1;
+                    break;
+                case '\\':
+                    if (k + 1 >= s.Length || s[k + 1] is '{' or '}') return -1;
+                    k++;
+                    break;
+            }
+        }
+        return -1;
+    }
+
+    /// <summary>End (exclusive) of the code span whose fence starts at
+    /// <paramref name="i"/>, or -1 when it never closes. A <c>``</c>
+    /// fence closes at the next <c>``</c> (a single backtick inside lexes
+    /// with the character after it); a <c>`</c> fence at the next
+    /// <c>`</c>.</summary>
+    private static int CodeSpanEnd(string s, int i)
+    {
+        if (FenceLength(s, i) == 1)
+        {
+            int close = s.IndexOf('`', i + 1);
+            return close < 0 ? -1 : close + 1;
+        }
+        for (int k = i + 2; k < s.Length; k++)
+        {
+            if (s[k] != '`') continue;
+            if (At(s, k + 1) == '`') return k + 2;
+            k++;
+        }
+        return -1;
+    }
+
+    private static int FenceLength(string s, int i) => At(s, i + 1) == '`' ? 2 : 1;
+
+    /// <summary>Whether a code span opening in
+    /// [<paramref name="from"/>, <paramref name="closer"/>) is still open
+    /// at <paramref name="closer"/>, which makes that closer code rather
+    /// than math.</summary>
+    private static bool CodeSpanCrosses(string s, int from, int closer)
+    {
+        for (int k = from; k < closer; k++)
+        {
+            if (s[k] == '\\') { k++; continue; }
+            if (s[k] != '`') continue;
+            int end = CodeSpanEnd(s, k);
+            if (end > closer) return true;
+            k = end > 0 ? end - 1 : k + FenceLength(s, k) - 1;
+        }
+        return false;
+    }
+
+    private static char At(string s, int i) => i < s.Length ? s[i] : '\0';
+
+    /// <summary>Turns <see cref="MarkUnpairedMath"/>'s stand-ins back into
+    /// the delimiter characters they replaced.</summary>
+    private static string RestoreUnpaired(string text) =>
+        text.AsSpan().IndexOfAny(UnpairedDollar, UnpairedBackslash, UnpairedBracket) < 0
+            ? text
+            : text.Replace(UnpairedDollar, '$').Replace(UnpairedBackslash, '\\').Replace(UnpairedBracket, '[');
 
     /// <summary>Post-pass over the raw span list: flatten <see cref="MdGroup"/>
     /// wrappers (transient containers produced by plain-bracket spans)
@@ -235,7 +459,8 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
             if (s_looseLatexCommands.TryGetValue(name, out var glyph))
                 return new MdLiteral(glyph);
         }
-        return new MdLiteral(raw);
+        // Text runs are the only tokens a stand-in can land in.
+        return new MdLiteral(RestoreUnpaired(raw));
     }
 
     private static bool IsAsciiLetter(char c) => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');

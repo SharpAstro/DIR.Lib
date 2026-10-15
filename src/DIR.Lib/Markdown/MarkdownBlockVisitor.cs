@@ -284,14 +284,11 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
         return true;
     }
 
-    private string RenderMathBody(string body)
-    {
-        // Re-use the inline visitor's math sub-parser by wrapping the
-        // body in `$..$` and pulling the resulting MdMathInline.
-        var spans = _inline.Parse("$" + body + "$");
-        var math = spans.OfType<MdMathInline>().FirstOrDefault();
-        return math?.Unicode ?? body;
-    }
+    // The same renderer the inline visitor gives a math span's body. This
+    // used to wrap the body in `$..$` and reparse it inline, which the
+    // dollar rule would reject for a body with a space at either end.
+    private static string RenderMathBody(string body) =>
+        MarkdownMacros.RenderMathUnicode(body);
 
     private MdList BuildList(IReadOnlyList<string> lines, bool ordered)
     {
