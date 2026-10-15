@@ -35,6 +35,10 @@ public sealed partial class RadicalJoinTests
     /// <summary>How far, in alpha, the bar may differ from the flag's column on any row.</summary>
     private const int AlphaTolerance = 8;
 
+    /// <summary>The most the radical's height or depth may move from before: 2 px, plus a thousandth for
+    /// float noise, since a drift of exactly two pixels can come out as 8.798f - 6.798f = 2.0000005.</summary>
+    private const float DriftLimitPx = 2.001f;
+
     private static readonly Dictionary<string, string> FontPaths = new()
     {
         ["STIX2Math"] = Path.Combine(AppContext.BaseDirectory, "Fonts", "STIX2Math.otf"),
@@ -226,7 +230,7 @@ public sealed partial class RadicalJoinTests
     public void SweepHeightAndDepthDriftAtMostTwoPixels()
     {
         var failures = SweptPoints.Value
-            .Where(s => MathF.Abs(s.Height - s.Before.Height) > 2f || MathF.Abs(s.Depth - s.Before.Depth) > 2f)
+            .Where(s => MathF.Abs(s.Height - s.Before.Height) > DriftLimitPx || MathF.Abs(s.Depth - s.Before.Depth) > DriftLimitPx)
             .Select(s => $"{s}: height {s.Before.Height} -> {s.Height}, depth {s.Before.Depth} -> {s.Depth}")
             .ToList();
         failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
@@ -337,8 +341,8 @@ public sealed partial class RadicalJoinTests
         var before = BeforeAt(font, scene, size);
         var r = Render(font, size, scene);
         r.Sqrt.Path.ShouldBe(before.Path, "the rendering path the base took");
-        r.Sqrt.Height.ShouldBe(before.Height, 2f, "radical height");
-        r.Sqrt.Depth.ShouldBe(before.Depth, 2f, "radical depth");
+        r.Sqrt.Height.ShouldBe(before.Height, DriftLimitPx, "radical height");
+        r.Sqrt.Depth.ShouldBe(before.Depth, DriftLimitPx, "radical depth");
     }
 
     /// <summary>
@@ -382,8 +386,8 @@ public sealed partial class RadicalJoinTests
         var before = BeforeAt(font, scene, size);
         var r = Render(font, size, scene);
         r.Join.FlagRows.ShouldBeLessThanOrEqualTo(MaxBandRows(font, r), "rows of the bar's band");
-        r.Sqrt.Height.ShouldBe(before.Height, 2f, "radical height");
-        r.Sqrt.Depth.ShouldBe(before.Depth, 2f, "radical depth");
+        r.Sqrt.Height.ShouldBe(before.Height, DriftLimitPx, "radical height");
+        r.Sqrt.Depth.ShouldBe(before.Depth, DriftLimitPx, "radical depth");
     }
 
     private static BeforePoint BeforeAt(string font, string scene, float size) =>
