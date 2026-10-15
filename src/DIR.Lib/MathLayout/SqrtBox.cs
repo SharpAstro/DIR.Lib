@@ -11,18 +11,21 @@ namespace DIR.Lib.MathLayout;
 ///   OpenType MATH table with a vertical-stretch construction for U+221A
 ///   (the radical sign). Pulls the radical glyph (hook + vinculum-start) at
 ///   the right size via <see cref="StretchyVerticalBox"/>, then extends the
-///   vinculum rightward across the radicand as a thin rectangle of the
-///   font's <c>RadicalRuleThickness</c> via <see cref="BoxStyle.RadicalRuleThickness"/>,
-///   which falls back to the generic <see cref="BoxStyle.RuleThickness"/> when
-///   the font has no MATH table. STIX Two Math, Latin Modern Math,
-///   Cambria Math etc. take this path.</item>
+///   vinculum rightward across the radicand as the glyph's own flag
+///   continued (see <see cref="DrawVinculum"/>). The font's
+///   <see cref="BoxStyle.RadicalRuleThickness"/> sets the gap above the
+///   radicand. Taken by STIX Two Math, Latin Modern Math, Cambria Math etc.
+///   for tall radicands, where a size variant fits within 10% or the
+///   assembly is needed.</item>
 ///
 ///   <item><b>Scaled base glyph (good)</b> — when the font has the U+221A
-///   glyph but no MATH stretch coverage (e.g. DejaVu Sans). The √ is
-///   re-rasterized at a font size scaled so the glyph height roughly
-///   matches the radicand; vinculum extends from the glyph's top-right.
-///   Bitmap-scaling the font's own radical glyph beats hand-drawn lines for
-///   any moderate stretch ratio.</item>
+///   glyph but no MATH stretch coverage (e.g. DejaVu Sans), or when the
+///   MATH size variant would overshoot the radicand by more than 10% (STIX
+///   Two Math for most everyday radicands). The √ is re-rasterized at a
+///   font size scaled so the glyph height roughly matches the radicand;
+///   the vinculum continues the glyph's flag the same way. Bitmap-scaling
+///   the font's own radical glyph beats hand-drawn lines for any moderate
+///   stretch ratio.</item>
 ///
 ///   <item><b>Parametric fallback (last resort)</b> — when neither MATH nor
 ///   the base glyph is available, the radical is drawn as two straight
@@ -107,25 +110,41 @@ public sealed class SqrtBox : Box
     /// <summary>Scale factor applied to the base √ glyph in path 2.</summary>
     private readonly float _radicalScaledFactor;
 
-    /// <summary>Top row of the scaled glyph's "flag" (the horizontal stroke
-    /// at the top-right where the vinculum continues), measured in pixels
-    /// from the bitmap's top edge. Used to align the vinculum's top edge
-    /// pixel-perfectly with the flag.</summary>
+    /// <summary>The radical glyph as paths 1 and 2 draw it: the rasterized
+    /// bitmap with the flag's antialiased right end filled in, so the flag
+    /// runs at full coverage to the bitmap's right edge and the vinculum
+    /// carries on from there (see <see cref="JoinFlag"/>).</summary>
+    private readonly GlyphBitmap _joinedRadical;
+
+    /// <summary>Top row of the glyph's "flag" (the horizontal stroke at the
+    /// top-right where the vinculum continues), in pixels from the bitmap's
+    /// top edge. Taken from the outline, not scanned: the radical is
+    /// rasterized with its top snapped to a pixel row, and the flag is the
+    /// top of the glyph, so this is the row the outline's top begins at.</summary>
     private readonly int _flagTopRow;
 
-    /// <summary>Pixel thickness of the V's diagonal stroke just below the
-    /// flag. Used as the vinculum thickness — the flag itself is usually
-    /// drawn thicker by the font designer (a localized cap at the join),
-    /// but extending that heavier stroke across the whole vinculum looks
-    /// out of proportion vs the rest of the radical. The V's diagonal
-    /// thickness is what we want the vinculum to match visually.</summary>
-    private readonly int _vDiagonalThickness;
+    /// <summary>The flag's own column, row by row from <see cref="_flagTopRow"/>:
+    /// the alpha of its rightmost full-coverage column. The vinculum is this
+    /// column repeated, not a rule of some thickness of its own. A rule
+    /// matched to the V's diagonal (what this used to do, on the grounds
+    /// that the flag is a heavier cap the long bar should not copy) meets
+    /// the flag with a step: a bar thinner or thicker than the flag, or an
+    /// opaque row against the flag's antialiased one, reads at the join as
+    /// the two being out of line, which is what was reported. Repeating the
+    /// flag's column makes the bar the flag's own stroke, so the two share
+    /// a top edge, a bottom edge and a weight, and nothing marks the join.</summary>
+    private readonly byte[] _flagProfile = [];
 
-    /// <summary>Rightmost inked column of the flag, used as the vinculum's
-    /// left edge so the rule starts where the flag ends, not where the
-    /// bitmap's bounding box ends (which often has a few pixels of right
-    /// padding past the last ink).</summary>
-    private readonly int _flagRightCol;
+    /// <summary>The flag's rightmost full-coverage column, in bitmap pixels:
+    /// the column <see cref="_flagProfile"/> is read from. Everything right
+    /// of it, in the bitmap and beyond, is drawn with that profile.</summary>
+    private readonly int _flagLastFullCol;
+
+    /// <summary>The flag's thickness in pixels: its profile's coverage
+    /// summed, so a half-covered bottom row counts as half a pixel. The
+    /// vinculum is drawn with exactly this thickness; the layout counts it to
+    /// the nearest whole pixel (see <see cref="VinculumThickness"/>).</summary>
+    private readonly float _flagThickness;
 
     public SqrtBox(Box radicand, BoxStyle style)
         : this(radicand, null, style)
@@ -157,20 +176,24 @@ public sealed class SqrtBox : Box
         // rasterise the natural glyph at a slightly bigger font size),
         // which gives a snug, crisp fit. Threshold tuned to ~1.1 — accept
         // only up to 10% overshoot before preferring scaled-glyph path.
+        //
+        // Both glyph paths rasterize the radical with its top snapped to a
+        // pixel row (an opt-in in ManagedFontRasterizer: nothing else asks for
+        // it). The flag is the glyph's top, so its top edge is then a crisp,
+        // fully covered row the vinculum can share; unsnapped, it lands
+        // wherever the outline puts it and its first row is a partial one.
+        // The snap moves the glyph within its own bitmap, and every placement
+        // below anchors on the flag's top row in that bitmap, so the radical's
+        // height and depth follow the shifted glyph rather than drifting.
         const float pathOneOvershootCap = 1.1f;
-        var radical = new StretchyVerticalBox(RadicalCodepoint, requiredHeight, style);
+        var radical = new StretchyVerticalBox(RadicalCodepoint, requiredHeight, style, snapTopEdge: true);
         var pathOneOk = radical.IsAvailable
                         && radical.Bitmap.Height <= requiredHeight * pathOneOvershootCap;
         if (pathOneOk)
         {
             _radicalFont = radical;
-            // Path 1 uses the same flag-measurement trick as path 2: scan the
-            // composed bitmap to find where the radical's flag actually sits,
-            // so the rightward vinculum continuation aligns to the glyph's
-            // ink rather than to the bitmap's bounding-box top (which often
-            // has a row or two of transparent padding above the flag, putting
-            // the vinculum visibly above the V's hook).
-            (_flagTopRow, _vDiagonalThickness, _flagRightCol) = MeasureTopFlag(radical.Bitmap);
+            (_flagTopRow, _flagProfile, _flagLastFullCol) = MeasureFlag(radical.Bitmap, radical.InkTopRow);
+            _joinedRadical = JoinFlag(radical.Bitmap, _flagTopRow, _flagProfile, _flagLastFullCol);
         }
         else
         {
@@ -190,11 +213,13 @@ public sealed class SqrtBox : Box
             if (native.Rgba is not null && native.Height > 0)
             {
                 var scale = MathF.Max(0.5f, requiredHeight / native.Height);
-                _radicalScaled = rasterizer.RasterizeGlyph(style.FontPath, style.FontSize * scale, rune);
+                _radicalScaled = rasterizer.RasterizeGlyphTopSnapped(style.FontPath, style.FontSize * scale, rune, out var inkTopRow);
                 _radicalScaledFactor = scale;
-                (_flagTopRow, _vDiagonalThickness, _flagRightCol) = MeasureTopFlag(_radicalScaled);
+                (_flagTopRow, _flagProfile, _flagLastFullCol) = MeasureFlag(_radicalScaled, inkTopRow);
+                _joinedRadical = JoinFlag(_radicalScaled, _flagTopRow, _flagProfile, _flagLastFullCol);
             }
         }
+        foreach (var a in _flagProfile) _flagThickness += a / 255f;
 
         // Radical metrics. The radical is asymmetric (flag at top, tip at
         // bottom). We TOP-anchor: the flag-top row of the bitmap lands at
@@ -226,10 +251,11 @@ public sealed class SqrtBox : Box
         {
             // Path 2 (scaled glyph): the bitmap's flag-top row lands at
             // glyphTop + flagTopRow (see DrawWithScaledGlyph). For the
-            // vinculum to sit a `gap` above the radicand-top, the
-            // glyph-top must be at radicand.Height + gap + VinculumThickness
-            // − flagTopRow above baseline. So _radicalH = that:
-            _radicalH = radicand.Height + _gap + VinculumThickness;
+            // vinculum to sit a `gap` above the radicand-top, the flag's top
+            // must be radicand.Height + gap + VinculumThickness above the
+            // baseline, and the glyph's top flagTopRow above that (zero
+            // whenever the snap applied). So _radicalH = that:
+            _radicalH = radicand.Height + _gap + VinculumThickness + _flagTopRow;
             // The V-tip is at glyphTop + scaled.Height = baselineY −
             // _radicalH + scaled.Height below baseline. Reporting that
             // depth lets a parent FracBox leave room for the V tail —
@@ -347,103 +373,86 @@ public sealed class SqrtBox : Box
     /// a fraction bar can cut through a deep V tail.</summary>
     private readonly float _depthValue;
 
+    /// <summary>How far, in alpha, a column's top row may fall short of the
+    /// top row's maximum and still count as the flag at full coverage.</summary>
+    private const int FlagProfileTolerance = 8;
+
     /// <summary>
-    /// Scan the rasterized √ glyph to figure out (a) where the flag's top
-    /// edge is — that's where the vinculum should start vertically, (b) the
-    /// V's diagonal stroke thickness — that's how thick the vinculum should
-    /// be, and (c) the rightmost inked column of the flag — that's where
-    /// the vinculum should start horizontally.
+    /// Find the radical's flag in its rasterized glyph: the row its top
+    /// begins at, its alpha profile down that row band, and the rightmost
+    /// column that still has that profile (the flag at full coverage, before
+    /// its antialiased right end).
     /// <para>
-    /// Why measure the V diagonal instead of the flag itself: the flag is
-    /// usually drawn thicker by the font designer (a localised cap that
-    /// terminates the V into a horizontal stroke at the radicand's top).
-    /// Extending that heavier weight across the whole vinculum looks
-    /// out-of-proportion vs the V; the eye reads the long horizontal as
-    /// "the same stroke" as the V diagonals, so it should match THEIR
-    /// weight, not the cap's.
+    /// <paramref name="inkTopRow"/> is where the outline's top lands, from
+    /// the snapped rasterization; the flag's top is the glyph's top, so that
+    /// is the flag's top row and nothing is scanned for it. It is -1 only
+    /// when the glyph could not be snapped (a colour glyph), and the first
+    /// inked row is used instead.
+    /// </para>
+    /// <para>
+    /// The last full column is the rightmost one whose top-row alpha is on
+    /// the top row's plateau: right of it is only the antialiased right end.
+    /// The flag's right end is square (checked for STIX Two Math and DejaVu
+    /// Sans), so that column is full on every row of the band, and it is the
+    /// column furthest from the V's diagonal, which on a narrow glyph (a
+    /// small size, or a MATH size variant) reaches almost to the right edge
+    /// a few rows down. The band runs down that column while it has ink, so
+    /// a partially covered bottom row belongs to it.
     /// </para>
     /// </summary>
-    private static (int flagTop, int vDiagonalThickness, int flagRight) MeasureTopFlag(GlyphBitmap bm)
+    private static (int TopRow, byte[] Profile, int LastFullCol) MeasureFlag(GlyphBitmap bm, int inkTopRow)
     {
         if (bm.Rgba is null || bm.Width <= 0 || bm.Height <= 0)
-            return (0, (int)MathF.Max(1f, bm.Height * 0.05f), bm.Width);
+            return (0, [], bm.Width - 1);
 
-        const byte alphaThreshold = 32;  // ignore faint AA pixels
         var w = bm.Width;
         var h = bm.Height;
         var data = bm.Rgba;
-
-        // Step 1: find the flag's vertical bounds by sampling the rightmost
-        // few columns. Far enough right that the V's diagonal hasn't reached
-        // — that area is pure flag.
-        var sampleCol = MathF.Min(w - 2, w * 0.92f);
-        var x = (int)sampleCol;
-        if (x < 0) x = 0;
-
-        int flagTop = -1, flagBottom = -1;
-        for (var y = 0; y < h; y++)
+        byte Alpha(int col, int row) => data[(row * w + col) * 4 + 3];
+        int RowMax(int row)
         {
-            var alpha = data[(y * w + x) * 4 + 3];
-            if (alpha >= alphaThreshold)
-            {
-                if (flagTop < 0) flagTop = y;
-                flagBottom = y + 1;
-            }
-            else if (flagTop >= 0)
-            {
-                break;
-            }
-        }
-        if (flagTop < 0) return (0, (int)MathF.Max(1f, h * 0.05f), w);
-
-        // Step 2: rightmost inked column of the flag — the vinculum starts
-        // here so it joins the flag's right end without a gap.
-        var flagRight = 0;
-        for (var y = flagTop; y < flagBottom; y++)
-        for (var col = w - 1; col >= 0; col--)
-        {
-            if (data[(y * w + col) * 4 + 3] >= alphaThreshold)
-            {
-                if (col + 1 > flagRight) flagRight = col + 1;
-                break;
-            }
-        }
-        if (flagRight == 0) flagRight = w;
-
-        // Step 3: V diagonal thickness — sample the row immediately below
-        // the flag, find the leftmost contiguous inked stripe (that's the
-        // V's diagonal continuing down from the flag's left underside).
-        // Width of that stripe ≈ the diagonal stroke thickness, which is
-        // what the vinculum should match. Falls back to flag thickness if
-        // there's no row below the flag (tiny glyphs).
-        var diagonalThickness = flagBottom - flagTop;
-        if (flagBottom < h)
-        {
-            int dStart = -1, dEnd = -1;
-            for (var col = 0; col < w; col++)
-            {
-                if (data[(flagBottom * w + col) * 4 + 3] >= alphaThreshold)
-                {
-                    if (dStart < 0) dStart = col;
-                    dEnd = col;
-                }
-                else if (dStart >= 0)
-                {
-                    break;  // end of the first (left-side) inked stripe
-                }
-            }
-            if (dStart >= 0)
-            {
-                var width = dEnd - dStart + 1;
-                // Guard against pathological measurements (e.g. flagBottom
-                // landing on the V's tip row where two diagonals merge):
-                // never report a diagonal thicker than the flag itself.
-                if (width > 0 && width <= flagBottom - flagTop)
-                    diagonalThickness = width;
-            }
+            var max = 0;
+            for (var col = 0; col < w; col++) max = Math.Max(max, Alpha(col, row));
+            return max;
         }
 
-        return (flagTop, diagonalThickness, flagRight);
+        var top = Math.Max(0, inkTopRow);
+        while (top < h && RowMax(top) == 0) top++;
+        if (top == h) return (0, [], w - 1);
+
+        var topMax = RowMax(top);
+        var last = w - 1;
+        while (last > 0 && Alpha(last, top) < topMax - FlagProfileTolerance) last--;
+
+        var bottom = top;
+        while (bottom < h && Alpha(last, bottom) > 0) bottom++;
+
+        var profile = new byte[bottom - top];
+        for (var y = top; y < bottom; y++) profile[y - top] = Alpha(last, y);
+        return (top, profile, last);
+    }
+
+    /// <summary>
+    /// The radical bitmap with its flag's right end filled in: every column
+    /// right of the flag's last full-coverage column gets that column's
+    /// pixels down the flag's band, so the flag runs at full coverage to the
+    /// bitmap's right edge, where the vinculum (the same column, repeated)
+    /// takes over. Filling the end inside the bitmap, rather than drawing the
+    /// bar over it, writes each pixel of the join once: blending the bar over
+    /// the antialiased end would darken it past the flag's own coverage.
+    /// </summary>
+    private static GlyphBitmap JoinFlag(GlyphBitmap bm, int topRow, byte[] profile, int lastFullCol)
+    {
+        if (bm.Rgba is null || profile.Length == 0 || lastFullCol >= bm.Width - 1) return bm;
+        var w = bm.Width;
+        var rgba = (byte[])bm.Rgba.Clone();
+        for (var y = topRow; y < topRow + profile.Length; y++)
+        {
+            var src = (y * w + lastFullCol) * 4;
+            for (var col = lastFullCol + 1; col < w; col++)
+                Array.Copy(rgba, src, rgba, (y * w + col) * 4, 4);
+        }
+        return bm with { Rgba = rgba };
     }
 
     private bool HasScaledGlyph => _radicalScaled.Rgba is not null && _radicalScaled.Width > 0;
@@ -454,14 +463,17 @@ public sealed class SqrtBox : Box
         HasScaledGlyph ? _radicalScaled.Width :
         _hookWidth;
 
-    /// <summary>Vinculum thickness for the active path. Paths 1 and 2 both
-    /// use the measured V-diagonal thickness (from <see cref="MeasureTopFlag"/>)
-    /// so the vinculum visually matches the V's strokes — see that method's
-    /// docstring for why we don't use the (heavier) flag thickness. Path 3
-    /// (parametric) has no bitmap to measure, so it falls back to
-    /// <see cref="BoxStyle.RadicalRuleThickness"/>.</summary>
+    /// <summary>Vinculum thickness for the active path's layout. Paths 1 and 2
+    /// draw the vinculum as the flag's own column repeated, so it is the
+    /// flag's thickness (see <see cref="_flagProfile"/> for why not the V's
+    /// diagonal), counted here to the nearest whole pixel. The radical is
+    /// placed from a floored pixel row, so a fraction of a pixel in its
+    /// height only decides which row the floor lands on, and with whole
+    /// pixels the radical's height and depth stay where the integer-row
+    /// rule this replaced had them. Path 3 (parametric) has no glyph to take
+    /// it from, so it falls back to <see cref="BoxStyle.RadicalRuleThickness"/>.</summary>
     private float VinculumThickness =>
-        _vDiagonalThickness > 0 ? _vDiagonalThickness : _ruleThickness;
+        _flagProfile.Length > 0 ? MathF.Max(1f, MathF.Round(_flagThickness)) : _ruleThickness;
 
     public override float Width => _radicalShiftX + RadicalWidth + _radicand.Width + _gap;
     public override float Height => _heightWithIndex;
@@ -510,44 +522,68 @@ public sealed class SqrtBox : Box
         // Height — the latter includes any index lift and would float the
         // radical glyph upward when an index extends above.
         var glyphTop = baselineY - _radicalH;
-        renderer.DrawGlyphBitmap(
-            (int)MathF.Floor(penX),
-            (int)MathF.Floor(glyphTop),
-            _radicalScaled,
-            style.Foreground);
+        var (x0, y0) = DrawRadicalGlyph(renderer, penX, glyphTop, style);
 
         var radicandX = penX + _radicalScaled.Width;
         _radicand.Draw(renderer, radicandX, baselineY, style);
 
-        // Vinculum continuation: pixel-aligned to the glyph.
-        //   Y-top    = the flag's measured top row, so the vinculum sits
-        //              flush with the top edge of the flag.
-        //   Thickness = V's diagonal stroke thickness (NOT the flag's full
-        //              thickness — see MeasureTopFlag for why).
-        //   X-left   = the flag's rightmost inked column, so the rule is
-        //              contiguous with the flag's right end (no gap, no
-        //              overlap step).
-        // Net effect: the long horizontal vinculum reads as "the same
-        // stroke" as the V diagonals, while the font's heavier flag
-        // remains as a small visible cap at the join.
-        var vincTop = (int)MathF.Floor(glyphTop) + _flagTopRow;
-        var vincBottom = vincTop + _vDiagonalThickness;
-        var vincLeft = (int)MathF.Floor(penX) + _flagRightCol;
-        var vincRight = (int)MathF.Ceiling(radicandX + _radicand.Width + _gap);
-        var vinc = new RectInt(
-            new PointInt(vincRight, vincBottom),
-            new PointInt(vincLeft, vincTop));
-        renderer.FillRectangle(vinc, style.Foreground);
+        DrawVinculum(renderer, x0, y0, radicandX, style);
+    }
+
+    /// <summary>Where the last <see cref="Draw"/> put the radical's flag and
+    /// the vinculum continuing it, in surface pixels; null before the first
+    /// draw and on the parametric path. Lets a test find the join from the
+    /// layout's own numbers instead of searching the image for it.</summary>
+    internal RadicalJoin? LastJoin { get; private set; }
+
+    /// <summary>The flag's top row and band height, its rightmost
+    /// full-coverage column, and one past the vinculum's last column, all in
+    /// surface pixels.</summary>
+    internal sealed record RadicalJoin(int FlagTopY, int FlagRows, int FlagLastFullX, int BarEndX);
+
+    /// <summary>Draw the radical glyph, its flag's end filled in (see
+    /// <see cref="JoinFlag"/>), at the floored pen position, and return that
+    /// position for <see cref="DrawVinculum"/>.</summary>
+    private (int X0, int Y0) DrawRadicalGlyph(RgbaImageRenderer renderer, float penX, float glyphTop, BoxStyle style)
+    {
+        var x0 = (int)MathF.Floor(penX);
+        var y0 = (int)MathF.Floor(glyphTop);
+        renderer.DrawGlyphBitmap(x0, y0, _joinedRadical, style.Foreground);
+        return (x0, y0);
+    }
+
+    /// <summary>
+    /// The vinculum of paths 1 and 2: the flag's column repeated, row by row,
+    /// from the glyph's right edge (where the filled-in flag ends) to past
+    /// the radicand. Each row is the flag's own coverage on that row, so the
+    /// bar has the flag's top edge, bottom edge and weight.
+    /// </summary>
+    private void DrawVinculum(RgbaImageRenderer renderer, int x0, int y0, float radicandX, BoxStyle style)
+    {
+        var fg = style.Foreground;
+        var barTop = y0 + _flagTopRow;
+        var barLeft = x0 + _joinedRadical.Width;
+        var barRight = (int)MathF.Ceiling(radicandX + _radicand.Width + _gap);
+        for (var r = 0; r < _flagProfile.Length; r++)
+        {
+            // The same tint the glyph blit applies to its own alpha, so a bar
+            // row and the flag row beside it come out identical.
+            var a = (byte)((_flagProfile[r] * fg.Alpha + 127) / 255);
+            if (a == 0) continue;
+            renderer.FillRectangle(
+                new RectInt(new PointInt(barRight, barTop + r + 1), new PointInt(barLeft, barTop + r)),
+                new RGBAColor32(fg.Red, fg.Green, fg.Blue, a));
+        }
+        LastJoin = new RadicalJoin(barTop, _flagProfile.Length, x0 + _flagLastFullCol, Math.Max(barLeft, barRight));
     }
 
     /// <summary>
     /// MATH-driven path: blit the stretchy radical glyph to the left of the
-    /// radicand, then extend the vinculum across the radicand's width as a
-    /// thin horizontal rule continuous with the glyph's own top stroke.
-    /// Vinculum Y/thickness/left-edge are measured from the composed bitmap
-    /// (see <see cref="MeasureTopFlag"/>) so the rule visually joins the
-    /// glyph's flag without a step or gap, regardless of how many transparent
-    /// rows the bitmap has above the actual ink.
+    /// radicand, then extend the vinculum across the radicand's width as the
+    /// glyph's own top stroke continued (see <see cref="DrawVinculum"/>):
+    /// its top row comes from the snapped outline and its profile from the
+    /// flag's last full-coverage column (see <see cref="MeasureFlag"/>), so
+    /// the bar joins the flag without a step or gap.
     /// </summary>
     private void DrawWithFontGlyph(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style)
     {
@@ -557,29 +593,13 @@ public sealed class SqrtBox : Box
         // even when the picked variant overshoots requiredHeight. The
         // bitmap top therefore sits at (radicalGlyphDepth - bitmap.Height)
         // pixels relative to baseline.
-        var bitmap = _radicalFont!.Bitmap;
-        var glyphTop = baselineY + _radicalGlyphDepth - bitmap.Height;
-        renderer.DrawGlyphBitmap(
-            (int)MathF.Floor(penX),
-            (int)MathF.Floor(glyphTop),
-            bitmap,
-            style.Foreground);
+        var glyphTop = baselineY + _radicalGlyphDepth - _joinedRadical.Height;
+        var (x0, y0) = DrawRadicalGlyph(renderer, penX, glyphTop, style);
 
-        var radicandX = penX + _radicalFont.Width;
+        var radicandX = penX + _radicalFont!.Width;
         _radicand.Draw(renderer, radicandX, baselineY, style);
 
-        // Vinculum continuation: aligned to the bitmap's measured flag —
-        // top edge at flag's first inked row, thickness matched to the V's
-        // diagonal stroke, left edge at the flag's rightmost inked column
-        // so the rule joins the flag's right end without a gap or step.
-        var vincTop = (int)MathF.Floor(glyphTop) + _flagTopRow;
-        var vincBottom = vincTop + _vDiagonalThickness;
-        var vincLeft = (int)MathF.Floor(penX) + _flagRightCol;
-        var vincRight = (int)MathF.Ceiling(radicandX + _radicand.Width + _gap);
-        var vinc = new RectInt(
-            new PointInt(vincRight, vincBottom),
-            new PointInt(vincLeft, vincTop));
-        renderer.FillRectangle(vinc, style.Foreground);
+        DrawVinculum(renderer, x0, y0, radicandX, style);
     }
 
     /// <summary>
