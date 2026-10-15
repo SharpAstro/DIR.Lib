@@ -92,6 +92,11 @@ public static class MarkdownMacros
             rendered = expanded;
         }
 
+        // A formula that did not parse falls back to its source text, where
+        // \mathrm{X} must still read as X: Mhchem wraps every chem letter in
+        // one, so \ce{H+} (a bare charge, no right operand) printed \mathrm{H}+.
+        if (!parsed) rendered = UnwrapMathrm(rendered);
+
         // Substitute placeholders back. Multiple passes because a replacement
         // for an outer macro can itself contain a placeholder for an inner one
         // (e.g. \boxed{\text{X}} — the boxed-replacement is the rendered X
@@ -105,6 +110,10 @@ public static class MarkdownMacros
         }
         return parsed;
     }
+
+    /// <summary>Replaces every <c>\mathrm{X}</c> in <paramref name="text"/>
+    /// with X, a nested one included.</summary>
+    private static string UnwrapMathrm(string text) => ExpandBalancedMacro(text, "mathrm", UnwrapMathrm);
 
     /// <summary>
     /// Expands the LaTeX macros that the math-only grammar can't represent.
