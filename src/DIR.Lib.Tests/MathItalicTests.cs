@@ -173,6 +173,7 @@ public sealed class MathItalicTests
     [Theory]
     [InlineData("HCl(aq) + NaOH(aq) -> NaCl(aq) + H2O(l)")]
     [InlineData("Fe^{3+} + e^- -> Fe^{2+}")]
+    [InlineData(@"\frac{H2O}{2}")]
     public void Chemistry_NoLetterIsItalic(string body)
     {
         var painted = Painted(@"\ce{" + body + "}", Stix);
