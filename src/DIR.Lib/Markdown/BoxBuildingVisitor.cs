@@ -207,10 +207,53 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
     /// <summary>{ E } in LaTeX is an invisible group — render the inner E unchanged.</summary>
     public Func<BoxStyle, Box> Visit(Group node) => Builder(node.Arg1);
 
+    /// <summary>
+    /// [E], and the half-open mixes [E) and (E]. A matched pair is a
+    /// <see cref="BracketBox"/>, stretchy like <see cref="Visit(Paren)"/>'s
+    /// parens (<c>\left[ … \right]</c> arrives here too, since
+    /// <see cref="MarkdownMacros.NormalizeLatexAliases"/> reduces it to the
+    /// bare brackets). <see cref="BracketBox"/> draws one kind on both sides,
+    /// so a mixed pair gets a <see cref="DelimiterPairBox"/> instead.
+    /// </summary>
+    public Func<BoxStyle, Box> Visit(Bracket node)
+    {
+        var open = ((string)node.Arg0.Content)[0];
+        var close = ((string)node.Arg2.Content)[0];
+        var inner = Builder(node.Arg1);
+        if (open == '[' && close == ']')
+            return style => new BracketBox(inner(style), BracketKind.Square, style);
+        return style => new DelimiterPairBox(inner(style), open, close, style);
+    }
+
+    /// <summary>
+    /// <c>,</c> as an atom. TeX sets a comma as punctuation: no space before
+    /// it and a thin space (3 mu, a sixth of an em) after, which is what
+    /// keeps <c>[a, b]</c> from reading as <c>[a,b]</c>.
+    /// </summary>
+    public Func<BoxStyle, Box> Visit(Punct node)
+    {
+        var text = (string)node.Arg0.Content;
+        return style => new HBox(new GlyphBox(text, style), new KernBox(style.FontSize / 6f));
+    }
+
     public Func<BoxStyle, Box> Visit(Sqrt node)
     {
         var radicand = Builder(node.Arg1);
         return style => new SqrtBox(radicand(style), style);
+    }
+
+    /// <summary>
+    /// <c>\sqrt[n]{x}</c>. TeX sets a root's index in script-script style,
+    /// two script steps below the radical, so the index builder runs at
+    /// <c>style.Smaller().Smaller()</c>, the way <see cref="Visit(Sup)"/>
+    /// runs an exponent's at <c>style.Smaller()</c>.
+    /// <see cref="SqrtBox"/> tucks it into the radical's hook.
+    /// </summary>
+    public Func<BoxStyle, Box> Visit(NthRoot node)
+    {
+        var index = Builder(node.Arg2);
+        var radicand = Builder(node.Arg4);
+        return style => new SqrtBox(radicand(style), index(style.Smaller().Smaller()), style);
     }
 
     public Func<BoxStyle, Box> Visit(Frac node)
@@ -343,5 +386,54 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
 
         public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style)
             => Materialize().Draw(renderer, penX, baselineY, style);
+    }
+
+    /// <summary>
+    /// Two different delimiters around content, for the half-open intervals
+    /// <c>[a, b)</c> and <c>(a, b]</c>. Laid out like <see cref="BracketBox"/>'s
+    /// MATH-driven path: each side is a <see cref="StretchyVerticalBox"/> sized
+    /// to the content's extent, centred on the math axis, with the same 0.15 em
+    /// of padding either side of the content. A font with no MATH variant for
+    /// either codepoint gets the plain glyphs, unstretched.
+    /// </summary>
+    private sealed class DelimiterPairBox : Box
+    {
+        private readonly Box _inner;
+        private readonly Box _left;
+        private readonly Box _right;
+        private readonly float _padding;
+
+        public DelimiterPairBox(Box inner, char open, char close, BoxStyle style)
+        {
+            _inner = inner;
+            _padding = style.FontSize * 0.15f;
+            var left = new StretchyVerticalBox(open, inner.TotalHeight, style);
+            var right = new StretchyVerticalBox(close, inner.TotalHeight, style);
+            if (left.IsAvailable && right.IsAvailable)
+            {
+                _left = left;
+                _right = right;
+            }
+            else
+            {
+                _left = new GlyphBox(open.ToString(), style);
+                _right = new GlyphBox(close.ToString(), style);
+            }
+        }
+
+        public override float Width => _left.Width + _padding + _inner.Width + _padding + _right.Width;
+
+        public override float Height =>
+            MathF.Max(_inner.Height + _padding * 0.5f, MathF.Max(_left.Height, _right.Height));
+
+        public override float Depth =>
+            MathF.Max(_inner.Depth + _padding * 0.5f, MathF.Max(_left.Depth, _right.Depth));
+
+        public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style)
+        {
+            _left.Draw(renderer, penX, baselineY, style);
+            _inner.Draw(renderer, penX + _left.Width + _padding, baselineY, style);
+            _right.Draw(renderer, penX + _left.Width + _padding + _inner.Width + _padding, baselineY, style);
+        }
     }
 }

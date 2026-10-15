@@ -12,9 +12,10 @@
 #   \sqrt{x^2 + y^2}
 #   \sum_{i=0}^{n} i = \frac{n(n+1)}{2}
 #   \sin(\alpha + \beta) = \sin\alpha \cos\beta + \cos\alpha \sin\beta
+#   \sqrt[3]{x}, \sqrt[n]{x^2+1}           (n-th root: optional index)
+#   [a, b], [0, 1), (0, 1]                 (brackets, half-open intervals)
 #
 # Things that don't:
-#   - Optional \sqrt[n]{x} (n-th root) — square brackets aren't atoms here.
 #   - \begin{...}\end{...} environments, alignments, multi-line displays.
 #   - Macro definitions (\def, \newcommand) and any TeX programming.
 #   - String content inside \text{...} (treated as opaque \cmd).
@@ -34,7 +35,18 @@
 #                                                         juxtaposition so that "1-2"
 #                                                         doesn't parse as 1·(-2))
 #   P:  ^ _                                              (postfix scripts, leftmost)
-#   A:  atoms (numbers, identifiers, commands, groups, parens, \frac, \sqrt)
+#   A:  atoms (numbers, identifiers, commands, groups, parens, brackets,
+#       \frac, \sqrt)
+#   A0: every atom except the ones that open with `[`
+#
+# Why A0 exists: LaTeX reads a `[` straight after \sqrt as the start of the
+# optional index, never as a bracket group that is the radicand. A bare
+# \sqrt therefore takes an A0 radicand, which cannot start with `[`, so on
+# a `[` after cmdsqrt the only item that can shift is the index rule's. With
+# an A radicand the parser reaches `\sqrt [ E ]` holding both "reduce the
+# bracket atom" and "shift the radicand after an index", which is 9 S/R
+# conflicts, one per token that can start an atom. A radicand that really
+# is a bracket group goes in braces, as in LaTeX: \sqrt{[a, b]}.
 #
 # The split between F (unary minus allowed) and F2 (no unary) is what keeps
 # LALR(1) happy. Juxtaposition uses F2 so the parser can never "see" a leading
@@ -72,6 +84,10 @@ symbols:
                     # atoms (which would lose surrounding whitespace and
                     # render "γ≈1" instead of "γ ≈ 1" downstream).
   - WS         # 24  whitespace (ignored)
+  - A0         # 25  atom that does not open with '[' (a bare \sqrt's radicand)
+  - '['        # 26
+  - ']'        # 27
+  - ','        # 28  punctuation atom: [a, b], f(x, y), x_{i,j}
 
 productions:
   # Start production. Single-non-terminal so it trims at parse time and the
@@ -123,21 +139,35 @@ productions:
       - { lhs: P, rhs: [P, '_', A], action: subscript }
       - { lhs: P, rhs: [A] }
 
-  # Atoms — leaves of the expression tree. \frac and \sqrt take A-typed
-  # arguments, which means both `\frac 1 2` and `\frac{1}{2}` parse: in the
+  # Atoms — leaves of the expression tree. \frac takes A-typed arguments and
+  # \sqrt an A0 (an A that does not open with `[`), which means both
+  # `\frac 1 2` and `\frac{1}{2}` parse: in the
   # second case each `{ E }` is itself an A via the `group` rule. That's the
   # same "single token or braced group" rule LaTeX itself uses for command
   # arguments — kept verbatim so this example can stress-test the parser
   # against grammars where two non-terminals sit adjacent in an RHS.
+  #
+  # The atoms that open with `[` are A's own; everything else is an A0 (see
+  # the header for why). `bracket` covers the matched [E] and both half-open
+  # mixes, [E) and (E]; the visitor reads which delimiters it got from Arg0
+  # and Arg2. `,` is an atom rather than an operator so it can sit wherever a
+  # \name could, which is exactly where the Unicode path's placeholder for an
+  # unlexed comma used to sit: a trailing "x = 1," still parses.
   - derivation: none
     rules:
-      - { lhs: A, rhs: [n],                action: number }
-      - { lhs: A, rhs: [id],               action: variable }
-      - { lhs: A, rhs: [cmd],              action: command }
-      - { lhs: A, rhs: ['(', E, ')'],      action: paren }
-      - { lhs: A, rhs: ['{', E, '}'],      action: group }
-      - { lhs: A, rhs: [cmdsqrt, A],       action: sqrt }
-      - { lhs: A, rhs: [cmdfrac, A, A],    action: frac }
+      - { lhs: A,  rhs: [A0] }
+      - { lhs: A,  rhs: ['[', E, ']'],     action: bracket }
+      - { lhs: A,  rhs: ['[', E, ')'],     action: bracket }
+      - { lhs: A0, rhs: [n],               action: number }
+      - { lhs: A0, rhs: [id],              action: variable }
+      - { lhs: A0, rhs: [cmd],             action: command }
+      - { lhs: A0, rhs: [','],             action: punct }
+      - { lhs: A0, rhs: ['(', E, ')'],     action: paren }
+      - { lhs: A0, rhs: ['(', E, ']'],     action: bracket }
+      - { lhs: A0, rhs: ['{', E, '}'],     action: group }
+      - { lhs: A0, rhs: [cmdsqrt, A0],     action: sqrt }
+      - { lhs: A0, rhs: [cmdsqrt, '[', E, ']', A], action: nthRoot }
+      - { lhs: A0, rhs: [cmdfrac, A, A],   action: frac }
 
 # Single lexer state. Ordering matters: `\frac` and `\sqrt` (and the explicit
 # multiplication aliases `\cdot` / `\times`) must come before the `\\[a-zA-Z]+`
@@ -190,4 +220,7 @@ lexer:
     - { symbol: ')',     match: '\)' }
     - { symbol: '{',     match: '\{' }
     - { symbol: '}',     match: '\}' }
+    - { symbol: '[',     match: '\[' }
+    - { symbol: ']',     match: '\]' }
+    - { symbol: ',',     match: ',' }
     - { symbol: WS,      match: '[ \t\r\n]+', action: ignore }

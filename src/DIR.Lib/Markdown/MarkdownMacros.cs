@@ -58,20 +58,37 @@ public static class MarkdownMacros
     {
         if (string.IsNullOrWhiteSpace(source)) return string.Empty;
 
-        var (expanded, replacements) = ExpandLatexMacros(source);
+        // Square brackets are grammar atoms, so an unbalanced one ("[0, 1[",
+        // or "\left[ x \right." once the aliases are normalised) no longer
+        // parses. Such a formula gets the treatment every bracket had before
+        // the grammar lexed them: a placeholder atom, spliced back verbatim.
+        // A formula that fails both ways falls back to its own text, which is
+        // the same string either way.
+        if (TryRenderMathUnicode(source, lexBrackets: true, out var rendered)
+            || source.AsSpan().IndexOfAny('[', ']') < 0)
+            return rendered;
+        TryRenderMathUnicode(source, lexBrackets: false, out rendered);
+        return rendered;
+    }
 
-        string rendered;
+    private static bool TryRenderMathUnicode(string source, bool lexBrackets, out string rendered)
+    {
+        var (expanded, replacements) = ExpandLatexMacros(source, lexBrackets);
+
+        bool parsed;
         try
         {
             using var lexer = BytesLexer.FromString(expanded, MathLexerTable);
             using var tokens = new SyncLATokenIterator(lexer);
             var item = MathParser.ParseInput(tokens, debugger: null);
+            parsed = !item.IsError;
             rendered = item.IsError
                 ? expanded
                 : (item.Content as string ?? expanded);
         }
         catch
         {
+            parsed = false;
             rendered = expanded;
         }
 
@@ -86,7 +103,7 @@ public static class MarkdownMacros
             foreach (var kv in replacements)
                 rendered = rendered.Replace(kv.Key, kv.Value);
         }
-        return rendered;
+        return parsed;
     }
 
     /// <summary>
@@ -118,7 +135,8 @@ public static class MarkdownMacros
     ///         <c>\boxed</c> frame.</item>
     /// </list>
     /// </summary>
-    private static (string expanded, List<KeyValuePair<string, string>> replacements) ExpandLatexMacros(string source)
+    private static (string expanded, List<KeyValuePair<string, string>> replacements) ExpandLatexMacros(
+        string source, bool lexBrackets = true)
     {
         var replacements = new List<KeyValuePair<string, string>>();
         var counter = 0;
@@ -225,7 +243,7 @@ public static class MarkdownMacros
         source = spaceSb.ToString();
 
         // Any char the latex.lalr.yaml lexer has no rule for (Unicode operators
-        // like ÷ ≈ ≤ ≥ × −, punctuation like , ; !, …) — wrap each in a
+        // like ÷ ≈ ≤ ≥ × −, punctuation like ; ! |, …) — wrap each in a
         // placeholder so the lexer keeps going. Without this, a single stray
         // U+2248 in "\sqrt{131} ≈ 11.45" kills the lex pass and \sqrt never
         // gets to render. The placeholder lexes as a cmd atom; the visitor
@@ -233,7 +251,7 @@ public static class MarkdownMacros
         var sb = new StringBuilder(source.Length);
         foreach (var ch in source)
         {
-            if (IsLexerSafe(ch))
+            if (IsLexerSafe(ch) && (lexBrackets || ch is not ('[' or ']')))
             {
                 sb.Append(ch);
             }
@@ -253,16 +271,16 @@ public static class MarkdownMacros
     /// True iff the latex.lalr.yaml lexer has a tokenisation rule that matches
     /// a single occurrence of <paramref name="c"/>. ASCII letters, digits, dot
     /// (number fraction), whitespace, the seven operator chars + - * / = ^ _,
-    /// brackets ( ) { }, and backslash (command lead-in) — anything else
-    /// aborts the lex pass and so needs a placeholder substitution.
+    /// brackets ( ) [ ] { }, the comma, and backslash (command lead-in);
+    /// anything else aborts the lex pass and so needs a placeholder substitution.
     /// </summary>
 
     /// <summary>
     /// True iff the latex.lalr.yaml lexer has a tokenisation rule that matches
     /// a single occurrence of <paramref name="c"/>. ASCII letters, digits, dot
     /// (number fraction), whitespace, the seven operator chars + - * / = ^ _,
-    /// brackets ( ) { }, and backslash (command lead-in) — anything else
-    /// aborts the lex pass and so needs a placeholder substitution.
+    /// brackets ( ) [ ] { }, the comma, and backslash (command lead-in);
+    /// anything else aborts the lex pass and so needs a placeholder substitution.
     /// </summary>
     private static bool IsLexerSafe(char c)
     {
@@ -271,7 +289,7 @@ public static class MarkdownMacros
         if (c == '.') return true;
         if (IsAsciiLetter(c)) return true;
         return c is '+' or '-' or '*' or '/' or '=' or '^' or '_'
-                or '(' or ')' or '{' or '}' or '\\';
+                or '(' or ')' or '[' or ']' or '{' or '}' or ',' or '\\';
     }
 
     /// <summary>
