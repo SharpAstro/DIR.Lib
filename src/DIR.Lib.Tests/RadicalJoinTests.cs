@@ -39,6 +39,10 @@ public sealed partial class RadicalJoinTests
     /// float noise, since a drift of exactly two pixels can come out as 8.798f - 6.798f = 2.0000005.</summary>
     private const float DriftLimitPx = 2.001f;
 
+    /// <summary>How far a radical may shrink below 21.3 px where its band is within the flag's stroke (see
+    /// <see cref="SweepHeightAndDepthDriftAtMostTwoPixels"/>), with the same thousandth for float noise.</summary>
+    private const float SmallSizeShrinkLimitPx = 3.001f;
+
     private static readonly Dictionary<string, string> FontPaths = new()
     {
         ["STIX2Math"] = Path.Combine(AppContext.BaseDirectory, "Fonts", "STIX2Math.otf"),
@@ -224,14 +228,30 @@ public sealed partial class RadicalJoinTests
 
     /// <summary>
     /// Across the sweep the radical's height and depth, which a parent fraction or row lays out against,
-    /// move at most 2 px from before. Every failing point is listed in the one message.
+    /// grow at most 2 px from before at every size, and from 21.3 px up shrink at most 2 px too. Below
+    /// 21.3 px a radical may shrink by up to 3 px, but only where its band is within the flag's own stroke,
+    /// so a shrink for any other reason still fails: there the old code could reserve three opaque rows for
+    /// a flag 0.52 px thick (STIX <c>\sqrt{x}</c> at 7.6 to 7.7 px), and the review round 2 B3 fix draws and
+    /// reserves the flag's own one row, so the radical is up to three rows shorter. Every failing point is
+    /// listed in the one message.
     /// </summary>
     [Fact]
     public void SweepHeightAndDepthDriftAtMostTwoPixels()
     {
+        bool Drifts(float before, float after, Swept s)
+        {
+            var delta = after - before;
+            if (delta > DriftLimitPx) return true;
+            var shrinkLimit = s.Before.Size < ClearancePerPointFrom && s.BandRows <= s.MaxBandRows
+                ? SmallSizeShrinkLimitPx
+                : DriftLimitPx;
+            return delta < -shrinkLimit;
+        }
+
         var failures = SweptPoints.Value
-            .Where(s => MathF.Abs(s.Height - s.Before.Height) > DriftLimitPx || MathF.Abs(s.Depth - s.Before.Depth) > DriftLimitPx)
-            .Select(s => $"{s}: height {s.Before.Height} -> {s.Height}, depth {s.Before.Depth} -> {s.Depth}")
+            .Where(s => Drifts(s.Before.Height, s.Height, s) || Drifts(s.Before.Depth, s.Depth, s))
+            .Select(s => $"{s}: height {s.Before.Height} -> {s.Height}, depth {s.Before.Depth} -> {s.Depth}, " +
+                         $"band {s.BandRows} rows (stroke at most {s.MaxBandRows})")
             .ToList();
         failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
     }
