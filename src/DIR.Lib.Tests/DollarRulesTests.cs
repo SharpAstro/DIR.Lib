@@ -220,6 +220,45 @@ public sealed class DollarRulesTests
             .Content.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("costs $5");
     }
 
+    // ── A block whose inline parse fails keeps its text ──────────────
+    //
+    // Two prose dollars used to swallow a lone `[`, `]` or backtick into a math span. Now that
+    // they are text, that character reaches the root lexer, which fails on it, so the block falls
+    // back to its source as one literal instead of rendering empty.
+
+    [Theory]
+    [InlineData("$5 for a [discount and $10")]
+    [InlineData("Prices: $5 for [0, 1) and $10 otherwise.")]
+    [InlineData("$a ] $")]
+    [InlineData("costs $5 (the ` key) and $10")]
+    public void LoneBracketOrBacktick_BetweenProseDollars_KeepsTheParagraph(string source) =>
+        ShouldRenderLiterally(source, source);
+
+    [Fact]
+    public void Heading_WithALoneBracket_KeepsItsText()
+    {
+        var heading = _visitor.Parse("# see a[0 here").ShouldHaveSingleItem().ShouldBeOfType<MdHeading>();
+        heading.Level.ShouldBe(1);
+        heading.Content.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("see a[0 here");
+    }
+
+    [Fact]
+    public void ListItem_WithALoneBracket_KeepsItsText()
+    {
+        var list = _visitor.Parse("- see a[0 here\n- next").ShouldHaveSingleItem().ShouldBeOfType<MdList>();
+        list.Items.Count.ShouldBe(2);
+        list.Items[0].Body.ShouldHaveSingleItem().ShouldBeOfType<MdParagraph>()
+            .Content.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("see a[0 here");
+    }
+
+    [Fact]
+    public void TableCells_WithALoneBracket_KeepTheirText()
+    {
+        var table = _visitor.Parse("| a[0 | b |\n|---|---|\n| x[1 | y |").ShouldHaveSingleItem().ShouldBeOfType<MdTable>();
+        table.Headers[0].ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("a[0");
+        table.Rows.ShouldHaveSingleItem()[0].ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("x[1");
+    }
+
     // ── Code spans are opaque ────────────────────────────────────────
 
     [Fact]
