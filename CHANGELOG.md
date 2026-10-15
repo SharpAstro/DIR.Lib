@@ -9,6 +9,25 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.22
+
+**A content-capped Star: `Sizing.StarUpToContent(weight = 1, min = 0)`**, with the fluent `.WStarUpToContent` /
+`.HStarUpToContent`. A plain Star's share is set by its weight and never by its text, so a trimming Star label was
+trimmed whenever its share fell under its text, even with room in the row (TianWen's orrery strip gave a 170 px time
+label about 140 px at 1.0x, and at 1.5x overflowed because the labels could only be Auto, which never shrinks;
+tianwen#1584). A content-capped Star is capped at its own measured content, width sample included, and along a
+Stack's axis it is served before the plain Stars: with room it sits at exactly its content and the surplus goes to
+the plain Stars; in a short row the plain Stars give way first, then the content-capped ones shrink by weight toward
+`min` (water-filling: one whose share exceeds its content hands the excess to the others), and their text fits
+through its own `TextTrim` as before. A plain Star's `Min` is reserved before they are served; with no plain Star
+the rest of the row stays unused, the rule a `Max`-capped Star already follows. It counts its content in an Auto
+Stack's natural size, and across a Stack it takes its content instead of stretching. In a Dock strip, a Grid column
+or a Wrap it acts as a plain Star.
+
+A minor: `Sizing.UpToContent` is an init-only property, not a constructor parameter, so `Sizing`'s constructor and
+`Deconstruct` keep their published shape, and every existing tree (no Star carries the flag) arranges exactly as it
+did.
+
 ## 11.21
 
 **The debug inspector is found through a per-user file registry, and answers LAN multicast only when asked.** A
