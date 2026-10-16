@@ -845,6 +845,21 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
         return new MdColor(text, color);
     }
 
+    // An empty tail: `[a]()` is a link with an empty URL (CommonMark's
+    // reading), `![a]()` an image with an empty source, and `[a]{}` names
+    // no colour, so it is its label, which is how an unknown colour shows
+    // too. The label is processed here, on its own, before it joins the
+    // spans around it.
+
+    public object Visit(MarkdownInline.LinkSpanEmpty node) =>
+        new MdLink(Process((IReadOnlyList<MdInline>)node.Arg1.Content), string.Empty);
+
+    public object Visit(MarkdownInline.ImageSpanEmpty node) =>
+        new MdImage(Process((IReadOnlyList<MdInline>)node.Arg1.Content), string.Empty);
+
+    public object Visit(MarkdownInline.ColorSpanEmpty node) =>
+        new MdGroup(Process((IReadOnlyList<MdInline>)node.Arg1.Content));
+
     // ── Math: dollar forms ($..$, $$..$$) ─────────────────────────────
     //
     // A dollar body can hold stand-ins: the `$` inside a `\text{..}`

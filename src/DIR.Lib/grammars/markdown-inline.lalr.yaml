@@ -120,6 +120,11 @@ productions:
       - { lhs: Span, rhs: [lbracket, Spans, link_tail_open,  urlbody,   rparen],        action: linkSpan }
       - { lhs: Span, rhs: [lbracket, Spans, color_tail_open, colorbody, rbrace],        action: colorSpan }
       - { lhs: Span, rhs: [image_open, Spans, link_tail_open, urlbody,  rparen],        action: imageSpan }
+      # An empty tail: url_body and color_body pop at once, so no body
+      # token comes between the tail and its close.
+      - { lhs: Span, rhs: [lbracket, Spans, link_tail_open,  rparen],                   action: linkSpanEmpty }
+      - { lhs: Span, rhs: [lbracket, Spans, color_tail_open, rbrace],                   action: colorSpanEmpty }
+      - { lhs: Span, rhs: [image_open, Spans, link_tail_open, rparen],                  action: imageSpanEmpty }
 
   - derivation: leftmost
     rules:
