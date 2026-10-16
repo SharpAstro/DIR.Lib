@@ -61,6 +61,10 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
     // sees it, which is what keeps an unbalanced one ("\{x") rendering.
     public string Visit(Brace node) => $"{{{node.Arg1.Content}}}";
 
+    // (), [] or \{\} as written, an escaped brace without its backslash.
+    public string Visit(EmptyPair node) =>
+        ((string)node.Arg0.Content).TrimStart('\\') + ((string)node.Arg1.Content).TrimStart('\\');
+
     // \mathrm{X} is X: a terminal row has no italic to switch off, so the
     // argument renders exactly as it would bare.
     public string Visit(MathRm node) => (string)node.Arg1.Content;
