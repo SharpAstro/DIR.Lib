@@ -202,15 +202,33 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
     /// <summary>The inline content of a paragraph, heading, list item or
     /// table cell. When the inline parse fails (a lone <c>[</c> or an
     /// unclosed backtick, which the inline grammar has no rule for), the
-    /// text stays as one literal rather than leaving the block empty. The
+    /// text stays literal (<see cref="LiteralLines"/>) rather than leaving
+    /// the block empty. The
     /// inline parser itself keeps returning an empty list on failure;
     /// only a block knows its text has to show.</summary>
     private IReadOnlyList<MdInline> ParseInline(string text)
     {
         var spans = _inline.Parse(text);
         return spans.Count == 0 && !string.IsNullOrWhiteSpace(text)
-            ? new MdInline[] { new MdLiteral(text) }
+            ? LiteralLines(text)
             : spans;
+    }
+
+    /// <summary>The fallback literal, split at each newline into a soft
+    /// break as the inline grammar's <c>soft_break</c> would. A newline
+    /// left inside one literal would not reflow, and a consumer would draw
+    /// it as a hard break.</summary>
+    private static IReadOnlyList<MdInline> LiteralLines(string text)
+    {
+        if (text.IndexOf('\n') < 0) return new MdInline[] { new MdLiteral(text) };
+        var lines = text.Split('\n');
+        var spans = new List<MdInline>(2 * lines.Length - 1);
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (i > 0) spans.Add(new MdLineBreak(Hard: false));
+            if (lines[i].Length > 0) spans.Add(new MdLiteral(lines[i]));
+        }
+        return spans;
     }
 
     private MdBlock ClassifyBlock(IReadOnlyList<string> lines)
