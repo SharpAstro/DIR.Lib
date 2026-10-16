@@ -185,21 +185,6 @@ public static class MarkdownMacros
     ///         <c>\boxed</c> frame.</item>
     /// </list>
     /// </summary>
-
-    /// <summary>
-    /// Expands the LaTeX macros that the math-only grammar can't represent.
-    /// Each match is replaced with a synthetic <c>\PHxxx</c> command (which the
-    /// lexer accepts as a generic <c>cmd</c> atom and the Unicode visitor emits
-    /// verbatim, so we can splice the expansion back in after rendering).
-    ///
-    /// Macros handled:
-    /// <list type="bullet">
-    ///   <item><c>\text{X}</c> — X is captured verbatim, preserving whitespace.</item>
-    ///   <item><c>\boxed{X}</c> — X is recursively math-rendered, then wrapped in
-    ///         square brackets as a Unicode-friendly stand-in for the LaTeX
-    ///         <c>\boxed</c> frame.</item>
-    /// </list>
-    /// </summary>
     private static (string expanded, List<KeyValuePair<string, string>> replacements) ExpandLatexMacros(
         string source, bool lexBrackets = true)
     {
@@ -342,14 +327,6 @@ public static class MarkdownMacros
     /// brackets ( ) [ ] { }, the comma, and backslash (command lead-in);
     /// anything else aborts the lex pass and so needs a placeholder substitution.
     /// </summary>
-
-    /// <summary>
-    /// True iff the latex.lalr.yaml lexer has a tokenisation rule that matches
-    /// a single occurrence of <paramref name="c"/>. ASCII letters, digits, dot
-    /// (number fraction), whitespace, the seven operator chars + - * / = ^ _,
-    /// brackets ( ) [ ] { }, the comma, and backslash (command lead-in);
-    /// anything else aborts the lex pass and so needs a placeholder substitution.
-    /// </summary>
     private static bool IsLexerSafe(char c)
     {
         if (c == ' ' || c == '\t' || c == '\r' || c == '\n') return true;
@@ -359,14 +336,6 @@ public static class MarkdownMacros
         return c is '+' or '-' or '*' or '/' or '=' or '^' or '_'
                 or '(' or ')' or '[' or ']' or '{' or '}' or ',' or '\\';
     }
-
-    /// <summary>
-    /// Walks <paramref name="source"/> looking for <c>\<paramref name="commandName"/>{…}</c>
-    /// with balanced braces, replacing each occurrence with the result of
-    /// <paramref name="onMatch"/> applied to the inner body. Skips matches
-    /// where the command name has trailing letters (so <c>\textit</c> doesn't
-    /// match a <c>\text</c> rule) or where the trailing brace can't be located.
-    /// </summary>
 
     /// <summary>
     /// Walks <paramref name="source"/> looking for <c>\<paramref name="commandName"/>{…}</c>
@@ -412,12 +381,6 @@ public static class MarkdownMacros
 
     private static bool IsAsciiLetter(char c) =>
         (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-
-    /// <summary>
-    /// Pre-substitutes LaTeX aliases / size hints that the math grammar doesn't
-    /// natively understand, into forms it does. Conservative whitelist — only
-    /// substitutions where the rendered text is identical to the canonical form.
-    /// </summary>
 
     /// <summary>
     /// Pre-substitutes LaTeX aliases / size hints that the math grammar doesn't
@@ -530,17 +493,6 @@ public static class MarkdownMacros
     /// character. Unknown <c>\?</c> falls through as the literal two-char
     /// sequence so it's visible in output for debugging.
     /// </summary>
-
-    /// <summary>
-    /// Renders a single LaTeX backslash-non-letter macro to its plain-Unicode
-    /// equivalent. <c>\,</c> <c>\;</c> <c>\:</c> and <c>\ </c> (explicit space)
-    /// render as a regular space; <c>\!</c> (negative thin space) renders as
-    /// empty; <c>\\</c> is a line break in math mode (rendered as a space here
-    /// for inline contexts); the typesetter-escapes <c>\&amp;</c> <c>\$</c>
-    /// <c>\#</c> <c>\%</c> <c>\_</c> <c>\{</c> <c>\}</c> render as the bare
-    /// character. Unknown <c>\?</c> falls through as the literal two-char
-    /// sequence so it's visible in output for debugging.
-    /// </summary>
     private static string RenderBackslashEscape(char next) => next switch
     {
         ',' or ';' or ':' or ' ' => " ",
@@ -549,15 +501,6 @@ public static class MarkdownMacros
         '&' or '$' or '#' or '%' or '_' or '{' or '}' => next.ToString(),
         _                         => "\\" + next,
     };
-
-    /// <summary>
-    /// Scans a captured <c>\text{...}</c> body and resolves any
-    /// backslash-non-letter macros to their Unicode equivalent in-place.
-    /// Differs from the outer-source pass in <see cref="ExpandLatexMacros"/>:
-    /// no placeholder substitution is needed because the body never reaches
-    /// the lexer — it's stashed in the replacement map and spliced back in
-    /// after the rest of the formula has rendered.
-    /// </summary>
 
     /// <summary>
     /// Scans a captured <c>\text{...}</c> body and resolves any
@@ -604,14 +547,6 @@ public static class MarkdownMacros
     /// outer regex eats any number of positional argument groups (the <c>{ll}</c>
     /// column spec in <c>\begin{array}{ll}</c>, the optional <c>[t]</c>, etc.).
     /// </summary>
-
-    /// <summary>
-    /// Walks <paramref name="source"/> looking for <c>\begin{NAME}[args]...\end{NAME}</c>
-    /// environments (matched names, balanced braces ignored — non-greedy body),
-    /// replacing each with <paramref name="onMatch"/> applied to the body. The
-    /// outer regex eats any number of positional argument groups (the <c>{ll}</c>
-    /// column spec in <c>\begin{array}{ll}</c>, the optional <c>[t]</c>, etc.).
-    /// </summary>
     private static string ExpandBalancedEnvironment(string source, Func<string, string> onMatch)
     {
         if (source.IndexOf(@"\begin{", StringComparison.Ordinal) < 0) return source;
@@ -642,12 +577,6 @@ public static class MarkdownMacros
         for (int r = 0; r < rows.Length; r++) rows[r] = rows[r].TrimEnd();
         return string.Join("\n", rows).Trim('\n', ' ', '\t');
     }
-
-    /// <summary>
-    /// Returns true if <paramref name="source"/> contains a <c>\<paramref name="commandName"/></c>
-    /// token, i.e. the literal name preceded by a backslash and not followed by
-    /// another ASCII letter (so <c>\text</c> matches but <c>\textbf</c> doesn't).
-    /// </summary>
 
     /// <summary>
     /// Returns true if <paramref name="source"/> contains a <c>\<paramref name="commandName"/></c>
@@ -691,17 +620,6 @@ public static class MarkdownMacros
         }
         return -1;
     }
-
-
-    /// <summary>
-    /// Parse + lay out + raster-render a math expression as pixels via
-    /// <see cref="BoxBuildingVisitor"/> + <see cref="BoxRasterizer"/>. Returns
-    /// false (without writing to <paramref name="result"/>) if any step
-    /// fails — font resolution, parse, layout, or render — so the caller
-    /// can fall through to the Unicode path. The mode-specific font size
-    /// matches what the LatexConsole example uses (sixel renders larger
-    /// because its sub-pixels are smaller).
-    /// </summary>
 
     /// <summary>
     /// Pick a font with good math/Greek coverage. STIX Two Math is the
@@ -751,10 +669,4 @@ public static class MarkdownMacros
         s_mathFontResolved = true;
         return s_mathFontPath;
     }
-
-    // ── Inline rendering ──────────────────────────────────────────────
-
-    /// <summary>
-    /// Formats a string containing inline Markdown (bold, italic, links) into VT-styled text.
-    /// </summary>
 }
