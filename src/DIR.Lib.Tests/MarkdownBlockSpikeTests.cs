@@ -237,4 +237,55 @@ public sealed class MarkdownBlockSpikeTests
     {
         _visitor.Parse("\n\n\n").ShouldBeEmpty();
     }
+
+    // ── Line endings ─────────────────────────────────────────────────
+    //
+    // `\r\n`, a lone `\r` and `\n` all end a line, as in CommonMark. A lone
+    // `\r` used to match no block lexer rule, so Parse threw LexerException.
+
+    [Theory]
+    [InlineData("\r")]
+    [InlineData("\r\n")]
+    public void LineEndings_ParseLikeTheirLfTwin(string newline)
+    {
+        const string lf = "# Head\n\npara one\nline two\n\n- a\n- b\n\nlast";
+        Describe(_visitor.Parse(lf)).ShouldBe("H1[L(Head)] | P[L(para one) SB L(line two)] | List[P[L(a)] ; P[L(b)]] | P[L(last)]");
+        Describe(_visitor.Parse(lf.Replace("\n", newline))).ShouldBe(Describe(_visitor.Parse(lf)));
+    }
+
+    [Fact]
+    public void Parse_NeverThrows_OnRandomDocuments()
+    {
+        string[] alphabet =
+        [
+            "[", "]", "(", ")", "{", "}", "!", "$", "\\", "`", "*", " ", "a", "5", "_",
+            @"\boxed{", @"\text{", @"\(", @"\)", @"\[", @"\]", "$$", "``", "```", "](", "]{", "![", @"\$",
+            "#", "# ", "-", "- ", "1. ", ">", "> ", "|", "| ", "|---|", "\n", "\r", "\r\n", "\n\n", "\r\r",
+        ];
+        var rng = new System.Random(20261017);
+        for (int n = 0; n < 2000; n++)
+        {
+            var source = string.Concat(Enumerable.Range(0, rng.Next(1, 25)).Select(_ => alphabet[rng.Next(alphabet.Length)]));
+            Should.NotThrow(() => _visitor.Parse(source), $"source: [{source.Replace("\r", "\\r").Replace("\n", "\\n")}]");
+        }
+    }
+
+    private static string Describe(System.Collections.Generic.IEnumerable<MdBlock> blocks) =>
+        string.Join(" | ", blocks.Select(Describe));
+
+    private static string Describe(MdBlock block) => block switch
+    {
+        MdParagraph p => $"P[{Describe(p.Content)}]",
+        MdHeading h => $"H{h.Level}[{Describe(h.Content)}]",
+        MdList l => $"List[{string.Join(" ; ", l.Items.Select(i => string.Join(" ", i.Body.Select(Describe))))}]",
+        _ => block.GetType().Name,
+    };
+
+    private static string Describe(System.Collections.Generic.IEnumerable<MdInline> spans) =>
+        string.Join(" ", spans.Select(s => s switch
+        {
+            MdLiteral l => $"L({l.Text})",
+            MdLineBreak b => b.Hard ? "HB" : "SB",
+            _ => s.GetType().Name,
+        }));
 }
