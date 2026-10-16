@@ -153,14 +153,15 @@ public sealed class BracketBox : Box
             }
             case BracketKind.Curly:
             {
-                // Two-stroke S: top half curls in to a centre tip, bottom
-                // half curls back out. Approximated as four straight strokes
+                // Two-stroke S: the ends turn in towards the content, and the
+                // centre tip points away from it, so the left one reads as {
+                // and the right one as }. Approximated as four straight strokes
                 // (the renderer doesn't expose Bezier curves; if it ever
                 // does, swap these for a proper cubic).
                 float midY = (top + bottom) / 2;
-                float tipX = openLeft ? xOrigin + bw * 0.85f : xOrigin + bw * 0.15f;
-                float farX = openLeft ? xOrigin + bw * 0.30f : xOrigin + bw * 0.70f;
-                float spineX = openLeft ? xOrigin + bw * 0.55f : xOrigin + bw * 0.45f;
+                float tipX = openLeft ? xOrigin + bw * 0.15f : xOrigin + bw * 0.85f;
+                float farX = openLeft ? xOrigin + bw * 0.70f : xOrigin + bw * 0.30f;
+                float spineX = openLeft ? xOrigin + bw * 0.45f : xOrigin + bw * 0.55f;
                 renderer.DrawLine(farX, top, spineX, top + (midY - top) * 0.3f, color, curveThickness);
                 renderer.DrawLine(spineX, top + (midY - top) * 0.3f, tipX, midY, color, curveThickness);
                 renderer.DrawLine(tipX, midY, spineX, midY + (bottom - midY) * 0.7f, color, curveThickness);
