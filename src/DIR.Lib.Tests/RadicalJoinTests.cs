@@ -554,8 +554,8 @@ public sealed partial class RadicalJoinTests
 
     private static Box Parse(string latex, BoxStyle style)
     {
-        MarkdownMacros.TryPrepareMathBoxSource(latex, out var prepared);
-        var src = prepared.ShouldNotBeNull($"'{latex}' was turned away from the box path");
+        if (!MarkdownMacros.TryPrepareMathBoxSource(latex, out var src))
+            Assert.Fail($"'{latex}' was turned away from the box path");
         var parser = Latex.BuildParser(new BoxBuildingVisitor(style));
         using var lexer = BytesLexer.FromString(src, MarkdownMacros.MathLexerTable);
         using var tokens = new SyncLATokenIterator(lexer);
