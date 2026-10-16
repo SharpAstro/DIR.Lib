@@ -81,6 +81,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     private const char UnpairedBracket = '\uFDD2';
     private const char UnpairedCloseBracket = '\uFDD3';
     private const char UnpairedBacktick = '\uFDD4';
+    private const char UnpairedBang = '\uFDD5';
 
     /// <summary>Returns <paramref name="s"/> with every math opener that
     /// does not pair, every bracket with no partner and every backtick run
@@ -107,8 +108,10 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     /// <c>See [the </c> + math <c>5 plan](https://x) or pay 5</c> +
     /// <c> later.</c>. Here a link label bounds the math inside it, and
     /// math that opens before the <c>[</c> still takes the bracket.</para>
-    /// <para>A <c>[</c> or <c>]</c> with no partner, and a backtick run
-    /// with no closing run, are literal, as in CommonMark and Pandoc.</para>
+    /// <para>A <c>[</c> or <c>]</c> with no partner, a backtick run with no
+    /// closing run and a link or colour tail that never closes are literal,
+    /// as in CommonMark and Pandoc. So is the <c>!</c> of an image opener
+    /// that no <c>](url)</c> closes; its <c>[</c> is then a plain bracket.</para>
     /// <para>One departure from Pandoc: a closer inside a code span that
     /// opens after the opener does not count, so the <c>$</c> in
     /// <c>$5 to run `echo $PATH`</c> stays with the code span (code spans
@@ -126,7 +129,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
         {
             // Each `[` here that opens no label (a plain bracket, or one
             // with no partner), innermost last; a `]` closes the last one.
-            List<int>? open = null;
+            List<(int At, bool Image)>? open = null;
             int i = from;
             while (i < bound)
             {
@@ -189,9 +192,16 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                         bool image = s[i] == '!';
                         int label = i + (image ? 2 : 1);
                         int close = LabelEnd(s, label);
-                        int tailEnd = close > 0 && close < bound && (At(s, close + 1) == '(' || (!image && At(s, close + 1) == '{'))
-                            ? TailEnd(s, close)
-                            : -1;
+                        char tail = close > 0 && close < bound ? At(s, close + 1) : '\0';
+                        if (image && tail == '{')
+                        {
+                            // No image takes a colour: this is a `!` and
+                            // then a colour label.
+                            Mark(i, UnpairedBang);
+                            i++;
+                            break;
+                        }
+                        int tailEnd = tail is '(' or '{' ? TailEnd(s, close) : -1;
                         if (tailEnd > 0)
                         {
                             Walk(label, close);
@@ -201,7 +211,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                         {
                             // Not a label, so it bounds nothing; a math
                             // span may still close past its `]`.
-                            (open ??= new()).Add(label - 1);
+                            (open ??= new()).Add((label - 1, image));
                             i = label;
                         }
                         break;
@@ -219,7 +229,12 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                             i++;
                             break;
                         }
+                        var (at, image) = open[^1];
                         open.RemoveAt(open.Count - 1);
+                        // An image needs `](url)`. Closed any other way, its
+                        // `!` is text and its `[` a plain bracket, which
+                        // pairs with this `]` just the same.
+                        if (image && !(hasTail && s[i + 1] == '(')) Mark(at - 1, UnpairedBang);
                         i = hasTail ? tailEnd : i + 1;
                         break;
                     }
@@ -232,7 +247,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
             // A `[` that nothing closed is text. No pairing above depended
             // on it, since nothing ever paired with it.
             if (open is not null)
-                foreach (int at in open) Mark(at, UnpairedBracket);
+                foreach (var (at, _) in open) Mark(at, UnpairedBracket);
         }
 
         void MarkTextDollars()
@@ -477,11 +492,11 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     /// <summary>Turns <see cref="MarkUnpaired"/>'s stand-ins back into
     /// the delimiter characters they replaced.</summary>
     private static string RestoreUnpaired(string text) =>
-        text.AsSpan().IndexOfAnyInRange(UnpairedDollar, UnpairedBacktick) < 0
+        text.AsSpan().IndexOfAnyInRange(UnpairedDollar, UnpairedBang) < 0
             ? text
             : text.Replace(UnpairedDollar, '$').Replace(UnpairedBackslash, '\\')
                 .Replace(UnpairedBracket, '[').Replace(UnpairedCloseBracket, ']')
-                .Replace(UnpairedBacktick, '`');
+                .Replace(UnpairedBacktick, '`').Replace(UnpairedBang, '!');
 
     /// <summary>Post-pass over the raw span list: flatten <see cref="MdGroup"/>
     /// wrappers (transient containers produced by plain-bracket spans)
