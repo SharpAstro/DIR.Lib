@@ -187,7 +187,8 @@ public sealed partial class RadicalJoinTests
         {
             var r = Render(p.Font, p.Size, p.Scene);
             return new Swept(p, r.Sqrt.Height, r.Sqrt.Depth, r.ClearRowsUnderBar(), r.Join.FlagRows, MaxBandRows(p.Font, r),
-                r.Sqrt.StrokeCapTrimmedBand);
+                r.Sqrt.StrokeCapTrimmedBand,
+                r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY), r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY - 1));
         }),
     ]);
 
@@ -199,8 +200,10 @@ public sealed partial class RadicalJoinTests
 
     /// <param name="CapTrimmed">Whether the cap at the flag's own stroke trimmed the band
     /// (<see cref="SqrtBox.StrokeCapTrimmedBand"/>).</param>
+    /// <param name="FlagTopAlpha">The flag's top row at its last full column.</param>
+    /// <param name="AboveFlagAlpha">The row above it, at the same column.</param>
     private sealed record Swept(BeforePoint Before, float Height, float Depth, int ClearRows, int BandRows, int MaxBandRows,
-        bool CapTrimmed)
+        bool CapTrimmed, int FlagTopAlpha, int AboveFlagAlpha)
     {
         public bool Touches => ClearRows == 0;
 
@@ -231,6 +234,24 @@ public sealed partial class RadicalJoinTests
         var failures = SweptPoints.Value
             .Where(s => s.BandRows > s.MaxBandRows)
             .Select(s => $"{s}: band {s.BandRows} rows, the flag's stroke touches at most {s.MaxBandRows}")
+            .ToList();
+        failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
+    }
+
+    /// <summary>
+    /// Across the sweep the flag's top row is fully covered at its last full column and the row above it is
+    /// empty, as <see cref="FlagTopRowIsFullyCovered"/> asserts at 24, 32 and 96 px. Below about 19 px the
+    /// flag's stroke is thinner than a pixel (under 0.9 px in both fonts), so its snapped top covered only
+    /// part of its row: 510 of the 2401 points had a top row of 83 to 238 alpha, a grey bar where the old
+    /// rule drew an opaque one. A one-row band short of full coverage is now drawn one pixel thick. Every
+    /// failing point is listed in the one message.
+    /// </summary>
+    [Fact]
+    public void SweepFlagTopRowIsFullyCovered()
+    {
+        var failures = SweptPoints.Value
+            .Where(s => s.FlagTopAlpha < 240 || s.AboveFlagAlpha != 0)
+            .Select(s => $"{s}: flag's top row {s.FlagTopAlpha}, the row above {s.AboveFlagAlpha}, band {s.BandRows} rows")
             .ToList();
         failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
     }
