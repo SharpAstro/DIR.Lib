@@ -346,6 +346,16 @@ public sealed class DollarRulesTests
         content[2].ShouldBeOfType<MdLiteral>().Text.ShouldBe("here");
     }
 
+    [Fact]
+    public void ClassifyFallback_KeepsItsSoftBreaks()
+    {
+        // ClassifyBlockSafe's catch builds the same literals as the inline fallback. An inline
+        // parser that throws forces that path whatever the input.
+        var visitor = new MarkdownBlockVisitor(_ => throw new System.InvalidOperationException("forced"));
+        var content = visitor.Parse("see more\nhere").ShouldHaveSingleItem().ShouldBeOfType<MdParagraph>().Content;
+        Dump(content).ShouldBe("L(see more) SB L(here)");
+    }
+
     [Theory]
     [InlineData("see [a](b\nhere\nand more\nthere", "see [a](b\nhere\nand more\nthere")]
     [InlineData("# see [a](b here\n\nmore [c](d\nhere", "more [c](d\nhere")]   // a heading is one line by construction
