@@ -192,7 +192,8 @@ public sealed partial class RadicalJoinTests
             var r = Render(p.Font, p.Size, p.Scene);
             return new Swept(p, r.Sqrt.Height, r.Sqrt.Depth, r.ClearRowsUnderBar(), r.Join.FlagRows, MaxBandRows(p.Font, r),
                 r.Sqrt.StrokeCapTrimmedBand,
-                r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY), r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY - 1));
+                r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY), r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY - 1),
+                r.GlyphPastDepth);
         }),
     ]);
 
@@ -206,8 +207,10 @@ public sealed partial class RadicalJoinTests
     /// (<see cref="SqrtBox.StrokeCapTrimmedBand"/>).</param>
     /// <param name="FlagTopAlpha">The flag's top row at its last full column.</param>
     /// <param name="AboveFlagAlpha">The row above it, at the same column.</param>
+    /// <param name="GlyphPastDepth">How far the glyph's last row reaches past the reported depth
+    /// (<see cref="Rendered.GlyphPastDepth"/>).</param>
     private sealed record Swept(BeforePoint Before, float Height, float Depth, int ClearRows, int BandRows, int MaxBandRows,
-        bool CapTrimmed, int FlagTopAlpha, int AboveFlagAlpha)
+        bool CapTrimmed, int FlagTopAlpha, int AboveFlagAlpha, float GlyphPastDepth)
     {
         public bool Touches => ClearRows == 0;
 
@@ -350,6 +353,32 @@ public sealed partial class RadicalJoinTests
     }
 
     /// <summary>
+    /// Raising the bar to keep its whole rows moves the glyph up, never down: across the sweep, and with the
+    /// radical in a fraction's numerator at every swept size, the glyph's bitmap ends at or above the
+    /// bottom the radical reports, <c>baselineY + Depth</c>, as the floored placement always kept it. A
+    /// parent lays out against that bottom (a fraction keeps it a gap above its rule), so a glyph drawn a
+    /// row below its layout hangs its tip into the gap: placing the bar a fixed number of rows above the
+    /// radicand's top row, wherever the floor had put the glyph, did that to <c>\frac{\sqrt{\pi}}{2}</c>
+    /// at 96 px. Every failing point is listed in the one message.
+    /// </summary>
+    [Fact]
+    public void TheGlyphNeverReachesPastTheReportedDepth()
+    {
+        const float floatNoise = 2e-3f;
+        var numerator = from font in FontPaths.Keys
+                        from size in SweepSizes
+                        let r = Render(font, size, "frac-sqrt-x")
+                        select (Name: $"{font} frac-sqrt-x {size} px", r.GlyphPastDepth, r.Sqrt.Depth);
+        var failures = SweptPoints.Value
+            .Select(s => (Name: s.ToString(), s.GlyphPastDepth, s.Depth))
+            .Concat(numerator)
+            .Where(p => p.GlyphPastDepth > floatNoise)
+            .Select(p => $"{p.Name}: the glyph reaches {p.GlyphPastDepth} px past its depth {p.Depth}")
+            .ToList();
+        failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
+    }
+
+    /// <summary>
     /// The two points the relaxations named: STIX Two Math <c>\sqrt{\frac{a}{b}}</c> at 22.2 px and
     /// <c>\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}</c> at 31.7 px had 3 clear rows before the rework
     /// (e6778fc) and 2 after it (fe09d4a), lost to the float phase of the bar's floored row.
@@ -487,8 +516,12 @@ public sealed partial class RadicalJoinTests
     private static BeforePoint BeforeAt(string font, string scene, float size) =>
         BeforePoints.Single(p => p.Font == font && p.Scene == scene && p.Size == size);
 
-    private sealed record Rendered(RgbaImage Image, SqrtBox Sqrt, SqrtBox.RadicalJoin Join)
+    private sealed record Rendered(RgbaImage Image, SqrtBox Sqrt, SqrtBox.RadicalJoin Join, float BaselineY)
     {
+        /// <summary>How far, in pixels, the glyph's bitmap reaches below the radical's reported bottom,
+        /// <c>baselineY + Depth</c>; zero or less when it stays inside.</summary>
+        public float GlyphPastDepth => Join.GlyphY + Join.GlyphRows - (BaselineY + Sqrt.Depth);
+
         public int Alpha(int x, int y) =>
             x < 0 || y < 0 || x >= Image.Width || y >= Image.Height ? 0 : Image.Pixels[(y * Image.Width + x) * 4 + 3];
 
@@ -534,16 +567,19 @@ public sealed partial class RadicalJoinTests
                 style),
             "sqrt-paren-frac" => Parse(@"\sqrt{\left(\frac{a}{b}\right)}", style),
             "sqrt-nested-frac" => Parse(@"\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}", style),
+            // A radical whose baseline its parent places: a fraction keeps its numerator a gap above the
+            // rule by the depth the numerator reports.
+            "frac-sqrt-x" => Parse(@"\frac{\sqrt{x}}{2}", style),
             _ => throw new ArgumentException($"unknown scene '{scene}'"),
         };
 
         var (root, probe) = ProbeSqrt(box);
         var image = BoxRasterizer.RenderToRgba(root, style);
-        var (penX, baselineY) = probe.Pen.ShouldNotBeNull("the scene never drew its radical");
-        var join = probe.Sqrt.JoinAt(penX, baselineY).ShouldNotBeNull("the radical has no flag and bar (parametric path?)");
+        var (penX, baselineY, drawnStyle) = probe.Pen.ShouldNotBeNull("the scene never drew its radical");
+        var join = probe.Sqrt.JoinAt(penX, baselineY, drawnStyle).ShouldNotBeNull("the radical has no flag and bar (parametric path?)");
         join.FlagRows.ShouldBeGreaterThan(0);
         join.BarEndX.ShouldBeGreaterThan(join.FlagLastFullX);
-        return new Rendered(image, probe.Sqrt, join);
+        return new Rendered(image, probe.Sqrt, join, baselineY);
     }
 
     private static Box Parse(string latex, BoxStyle style)
@@ -559,16 +595,16 @@ public sealed partial class RadicalJoinTests
     }
 
     /// <summary>
-    /// Stands in for the scene's radical in its parent's slot and records the pen the parent draws it at,
-    /// so the test can ask the radical where its join is for that pen. It forwards the radical's metrics
-    /// and its draw unchanged, so the scene lays out and paints exactly as it does without it; the record
-    /// is the test's own, and the radical's draw writes none.
+    /// Stands in for the scene's radical in its parent's slot and records the pen and style the parent
+    /// draws it with, so the test can ask the radical where its join is for that draw. It forwards the
+    /// radical's metrics and its draw unchanged, so the scene lays out and paints exactly as it does
+    /// without it; the record is the test's own, and the radical's draw writes none.
     /// </summary>
     private sealed class PenProbe(SqrtBox sqrt) : Box
     {
         public SqrtBox Sqrt => sqrt;
 
-        public (float PenX, float BaselineY)? Pen { get; private set; }
+        public (float PenX, float BaselineY, BoxStyle Style)? Pen { get; private set; }
 
         public override float Width => sqrt.Width;
         public override float Height => sqrt.Height;
@@ -576,7 +612,7 @@ public sealed partial class RadicalJoinTests
 
         public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style)
         {
-            Pen = (penX, baselineY);
+            Pen = (penX, baselineY, style);
             sqrt.Draw(renderer, penX, baselineY, style);
         }
     }

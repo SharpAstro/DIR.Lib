@@ -35,7 +35,9 @@ namespace DIR.Lib.MathLayout;
 /// </list>
 ///
 /// Layout in all three paths: vinculum sits a small gap above the
-/// radicand's top; the radical sits to the radicand's left and reaches
+/// radicand's top (whole pixel rows of it on the glyph paths, with at least
+/// one clear row above the radicand's ink; see <see cref="JoinAt"/>); the
+/// radical sits to the radicand's left and reaches
 /// down to roughly <c>baselineY + radicand.Depth</c> so any descender
 /// inside the radicand still fits.
 ///
@@ -56,6 +58,15 @@ public sealed class SqrtBox : Box
     private readonly Box? _index;
     private readonly float _hookWidth;
     private readonly float _gap;
+
+    /// <summary>The gap between the bar and the radicand's top as whole pixel
+    /// rows, on the glyph paths: <see cref="_gap"/> rounded up, and at least
+    /// one. See <see cref="JoinAt"/>.</summary>
+    private readonly int _gapRows;
+
+    /// <summary>The row the layout reserves on top of <see cref="_gap"/> for
+    /// <see cref="_gapRows"/>: one, or none when the gap is whole already.</summary>
+    private readonly int _gapRowReserve;
     private readonly float _ruleThickness;
     private readonly float _fontSize;
 
@@ -156,6 +167,8 @@ public sealed class SqrtBox : Box
         _index = index;
         _hookWidth = style.FontSize * 0.45f;
         _gap = style.FontSize * 0.12f;
+        _gapRows = Math.Max(1, (int)MathF.Ceiling(_gap - RowSlack));
+        _gapRowReserve = _gapRows - (int)MathF.Floor(_gap + RowSlack);
         _ruleThickness = style.RadicalRuleThickness;
         _fontSize = style.FontSize;
 
@@ -237,13 +250,27 @@ public sealed class SqrtBox : Box
         // dangle below the radicand's bottom — that's what TeX and MathJax
         // do; the alternative (bottom-anchor) leaves a visibly large gap
         // above the radicand when the variant overshoots requiredHeight.
+        //
+        // On the glyph paths the gap is drawn as whole pixel rows: at least
+        // _gapRows (the gap rounded up) between the bar and the row the
+        // radicand's top starts in, and at least one clear row above the
+        // radicand's ink (see JoinAt). Rounded up, the gap can take up to a
+        // row more than its float, so the layout reserves the gap plus that
+        // row (_gapRowReserve: one, or none when the gap is whole already);
+        // Draw floors that as before, so the glyph lands at or above where
+        // the layout puts it, and raises the bar only past what the floor
+        // left. It is a whole row, not ceil(gap) - gap, so the radicand
+        // keeps the subpixel phase it had: the row its own antialiased top
+        // starts on follows that phase, and moving it by a fraction of a
+        // pixel moved the radicand's ink up a row at 22 points of
+        // RadicalJoinTests' sweep, which cost the very row this adds.
         float radicalD;
         if (_radicalFont is not null)
         {
-            // flag-top-Y = baselineY − radicand.Height − gap − ruleThickness
+            // flag-top-Y = baselineY − radicand.Height − gap − reserve − ruleThickness
             // bitmap-top-Y = flag-top-Y − flagTopRow
             // _radicalH (= baselineY − bitmap-top-Y) =
-            //     radicand.Height + gap + ruleThickness + flagTopRow
+            //     radicand.Height + gap + ruleThickness + flagTopRow + reserve
             // _radicalGlyphDepth (= bitmap-bottom-Y − baselineY) =
             //     bitmap.Height − _radicalH
             // The thickness reserved is the font's rule or the rows the bar
@@ -253,7 +280,7 @@ public sealed class SqrtBox : Box
             // one) reserving only the rule puts the bar in the gap and the
             // radicand's top against it.
             var bitmapHeight = _radicalFont.Bitmap.Height;
-            _radicalH = radicand.Height + _gap + MathF.Max(_ruleThickness, VinculumThickness) + _flagTopRow;
+            _radicalH = radicand.Height + _gap + MathF.Max(_ruleThickness, VinculumThickness) + _flagTopRow + _gapRowReserve;
             // Draw uses (baselineY + _radicalGlyphDepth − bitmap.Height) for
             // glyph top, so this MUST equal (bitmap.Height − _radicalH) to
             // keep top-anchor invariant. If the picked variant overshoots,
@@ -267,9 +294,10 @@ public sealed class SqrtBox : Box
             // glyphTop + flagTopRow (see GlyphTop). For the vinculum to
             // sit a `gap` above the radicand-top, the flag's top
             // must be radicand.Height + gap + VinculumThickness above the
-            // baseline, and the glyph's top flagTopRow above that (zero
-            // whenever the snap applied). So _radicalH = that:
-            _radicalH = radicand.Height + _gap + VinculumThickness + _flagTopRow;
+            // baseline, plus the reserved row, and the glyph's top
+            // flagTopRow above that (zero whenever the snap applied). So
+            // _radicalH = that:
+            _radicalH = radicand.Height + _gap + VinculumThickness + _flagTopRow + _gapRowReserve;
             // The V-tip is at glyphTop + scaled.Height = baselineY −
             // _radicalH + scaled.Height below baseline. Reporting that
             // depth lets a parent FracBox leave room for the V tail —
@@ -576,7 +604,7 @@ public sealed class SqrtBox : Box
 
         // Everything radical-side shifts right by _radicalShiftX (zero in the
         // no-index case), which JoinAt and RadicandX fold in.
-        if (JoinAt(penX, baselineY) is { } join)
+        if (JoinAt(penX, baselineY, style) is { } join)
         {
             DrawWithGlyph(renderer, join, RadicandX(penX), baselineY, style);
             return;
@@ -587,34 +615,116 @@ public sealed class SqrtBox : Box
     /// <summary>
     /// Where <see cref="Draw"/> puts the radical's glyph, its flag and the
     /// vinculum continuing it, for the box drawn at <paramref name="penX"/>
-    /// and <paramref name="baselineY"/>, in surface pixels; null on the
-    /// parametric path, which has no flag. Draw takes its geometry from here
-    /// and records nothing, so a test that asks for the join at the pen a
-    /// scene drew the box at gets the numbers Draw drew with, and finds the
-    /// join from the layout's own numbers instead of searching the image.
+    /// and <paramref name="baselineY"/> with <paramref name="style"/>, in
+    /// surface pixels; null on the parametric path, which has no flag. Draw
+    /// takes its geometry from here and records nothing, so a test that asks
+    /// for the join at the pen a scene drew the box at gets the numbers Draw
+    /// drew with, and finds the join from the layout's own numbers instead of
+    /// searching the image.
+    /// <para>
+    /// The bar's rows are decided here in whole rows. The glyph goes where the
+    /// layout puts it, floored as every box's pixels are, so it never lands
+    /// below its own box; but the floor of a float alone left whether a row of
+    /// the gap stayed clear to the float phase (STIX Two Math
+    /// <c>\sqrt{\frac{a}{b}}</c> at 22.2 px kept 2 clear rows of a 2.66 px
+    /// gap where 3 fit). So the bar is raised, where it has to be, until the
+    /// row under it is <see cref="_gapRows"/> whole rows above the row the
+    /// radicand's layout height starts in; the layout reserved that row (see
+    /// <see cref="_gapRowReserve"/>), so the raise only ever undoes float
+    /// noise. The radicand's own ink can start a row or two above that row
+    /// too (an antialiased top above its layout height, at sizes below 12 px),
+    /// so the bar goes higher still where it would otherwise leave no clear
+    /// row: <see cref="RadicandInkTop"/> finds the radicand's top inked row
+    /// under the bar by drawing it, which is why this takes the style.
+    /// </para>
     /// </summary>
-    internal RadicalJoin? JoinAt(float penX, float baselineY)
+    internal RadicalJoin? JoinAt(float penX, float baselineY, BoxStyle style)
     {
         if (Path == 3) return null;
         var x0 = (int)MathF.Floor(penX + _radicalShiftX);
-        var y0 = (int)MathF.Floor(GlyphTop(baselineY));
         var barLeft = x0 + _joinedRadical.Width;
-        var barRight = (int)MathF.Ceiling(RadicandX(penX) + _radicand.Width + _gap);
-        return new RadicalJoin(x0, y0, y0 + _flagTopRow, _flagProfile.Length, x0 + _flagLastFullCol, barLeft, Math.Max(barLeft, barRight));
+        var barRight = Math.Max(barLeft, (int)MathF.Ceiling(RadicandX(penX) + _radicand.Width + _gap));
+        var below = Math.Min(
+            (int)MathF.Floor(GlyphTop(baselineY) + RowSlack) + _flagTopRow + _flagProfile.Length,
+            (int)MathF.Floor(baselineY - _radicand.Height) - _gapRows);
+        if (RadicandInkTop(RadicandX(penX), baselineY, barLeft, barRight, below, style) is { } inkTop)
+            below = inkTop - 1;
+        var flagTopY = below - _flagProfile.Length;
+        return new RadicalJoin(x0, flagTopY - _flagTopRow, flagTopY, _flagProfile.Length, x0 + _flagLastFullCol, barLeft, barRight, _joinedRadical.Height);
+    }
+
+    /// <summary>How far a float may fall short of, or run past, a whole row and
+    /// still count as on it, so float noise never decides a row: 0.12 em at
+    /// 25 px is 3 px, which must not come out as 3.0000002 and take a fourth
+    /// row; and a radical drawn at the baseline its own height put it at
+    /// (<see cref="BoxRasterizer.RenderToRgba"/> does) has its glyph's top on a
+    /// row boundary, where <c>margin + h - h</c> can floor to the row above.</summary>
+    private const float RowSlack = 1e-3f;
+
+    /// <summary>Scratch renderers for <see cref="RadicandInkTop"/>, one per
+    /// measurement in flight (a radicand holding a radical measures its own
+    /// radicand while the outer one is being measured). Pooled so each keeps
+    /// its glyph and font caches: a renderer parses every font it draws with.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentBag<RgbaImageRenderer> InkScratch = new();
+
+    /// <summary>
+    /// The topmost pixel row the radicand inks, drawn at <paramref name="radicandX"/>
+    /// and <paramref name="baselineY"/>, within columns [<paramref name="x0"/>,
+    /// <paramref name="x1"/>), if that row is at or above <paramref name="bottomRow"/>;
+    /// null when the radicand inks nothing there. The radicand is drawn into a
+    /// scratch surface whose content transform is an integer translation, so it
+    /// computes every position exactly as the real draw does and only its pixel
+    /// writes move: the rows found are the rows the real draw inks.
+    /// </summary>
+    private int? RadicandInkTop(float radicandX, float baselineY, int x0, int x1, int bottomRow, BoxStyle style)
+    {
+        if (x1 <= x0) return null;
+        // Any coverage counts as ink, whatever the foreground's own alpha.
+        var measure = style with { Foreground = new RGBAColor32(0, 0, 0, 255) };
+        var maxRows = (int)MathF.Ceiling(_radicand.TotalHeight + _fontSize) + 4;
+        if (!InkScratch.TryTake(out var scratch)) scratch = new RgbaImageRenderer(1, 1);
+        try
+        {
+            for (var rows = 8; ; rows *= 2)
+            {
+                var top = bottomRow - rows + 1;
+                scratch.Resize((uint)(x1 - x0), (uint)rows);
+                scratch.ContentTransform = new ContentTransform(Rotation90.None, 1f, -x0, -top);
+                _radicand.Draw(scratch, radicandX, baselineY, measure);
+                var first = FirstInkedRow(scratch.Surface);
+                // Ink on the window's top row may go on above it: look again, taller.
+                if (first != 0 || rows >= maxRows) return first < 0 ? null : top + first;
+            }
+        }
+        finally
+        {
+            scratch.ContentTransform = ContentTransform.Identity;
+            InkScratch.Add(scratch);
+        }
+    }
+
+    /// <summary>The first row of <paramref name="image"/> with any alpha, or -1.</summary>
+    private static int FirstInkedRow(RgbaImage image)
+    {
+        var px = image.Pixels;
+        for (var y = 0; y < image.Height; y++)
+            for (var i = y * image.Width * 4 + 3; i < (y + 1) * image.Width * 4; i += 4)
+                if (px[i] != 0) return y;
+        return -1;
     }
 
     /// <summary>The radical glyph's top-left corner, the flag's top row and
     /// band height, its rightmost full-coverage column, the vinculum's first
-    /// column (the glyph's right edge) and one past its last, all in surface
-    /// pixels.</summary>
-    internal sealed record RadicalJoin(int GlyphX, int GlyphY, int FlagTopY, int FlagRows, int FlagLastFullX, int BarStartX, int BarEndX);
+    /// column (the glyph's right edge) and one past its last, and the glyph's
+    /// height in rows, all in surface pixels.</summary>
+    internal sealed record RadicalJoin(int GlyphX, int GlyphY, int FlagTopY, int FlagRows, int FlagLastFullX, int BarStartX, int BarEndX, int GlyphRows);
 
     /// <summary>The radicand's pen position for the box drawn at
     /// <paramref name="penX"/>: past the index's shift and the radical.</summary>
     private float RadicandX(float penX) => penX + _radicalShiftX + RadicalWidth;
 
-    /// <summary>The radical glyph's top edge for the box's baseline at
-    /// <paramref name="baselineY"/>, on paths 1 and 2.</summary>
+    /// <summary>The radical glyph's top edge as the layout places it, for the
+    /// box's baseline at <paramref name="baselineY"/>, on paths 1 and 2.</summary>
     private float GlyphTop(float baselineY)
     {
         // Path 1 is bottom-anchored: the bitmap's bottom edge lands at
