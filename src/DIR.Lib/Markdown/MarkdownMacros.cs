@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -120,6 +121,37 @@ public static class MarkdownMacros
     /// resolved. The math pass and an environment body's pass both render
     /// <c>\text</c> through this, so the two cannot disagree.</summary>
     private static string RenderTextBody(string inner) => ResolveBackslashEscapes(UnwrapMathrm(inner));
+
+    /// <summary>
+    /// Prepares raw math source for the box (raster) path: the result is what
+    /// <see cref="Latex"/>'s parser, bound to a <see cref="BoxBuildingVisitor"/>,
+    /// should read. False when the box path cannot build the formula, which
+    /// the caller then renders with <see cref="RenderMathUnicode"/>: a
+    /// <c>\text{...}</c> or a <c>\begin{...}...\end{...}</c> environment, for
+    /// which there is no box yet.
+    ///
+    /// <para>The steps, in order: turn away <c>\text</c> and environments;
+    /// <see cref="NormalizeLatexAliases"/>; <c>\boxed{X}</c> to X (there is no
+    /// boxed frame); <c>\ce{X}</c> to <see cref="Mhchem.ToLatex"/> of X; turn
+    /// away again, since either expansion can bring one in; then
+    /// <see cref="ResolveBackslashEscapes"/>.</para>
+    /// </summary>
+    public static bool TryPrepareMathBoxSource(string source, [NotNullWhen(true)] out string? prepared)
+    {
+        prepared = null;
+        if (!BoxPathCanBuild(source)) return false;
+        source = NormalizeLatexAliases(source);
+        source = ExpandBalancedMacro(source, "boxed", inner => inner);
+        source = ExpandBalancedMacro(source, "ce", inner => Mhchem.ToLatex(inner));
+        if (!BoxPathCanBuild(source)) return false;
+        prepared = ResolveBackslashEscapes(source);
+        return true;
+    }
+
+    /// <summary>False when <paramref name="source"/> holds what only the
+    /// Unicode path can draw: <c>\text</c> or an environment.</summary>
+    private static bool BoxPathCanBuild(string source)
+        => !ContainsMacro(source, "text") && !source.Contains(@"\begin", StringComparison.Ordinal);
 
     /// <summary>
     /// Expands the LaTeX macros that the math-only grammar can't represent.
