@@ -293,7 +293,8 @@ public sealed class DollarRulesTests
     //
     // `[a]()` is a link with an empty URL, as in CommonMark, and `![a]()` an image with an empty
     // source (a renderer that cannot resolve it shows the alt). `[a]{}` names no colour, so it is
-    // the label itself, which is how an unknown colour renders too.
+    // the label itself, which is how an unknown colour renders too; `[]{}` has no label either,
+    // so it stays its own text rather than vanishing.
 
     [Theory]
     [InlineData("[a]()", "Link[L(a)]()")]
@@ -303,6 +304,9 @@ public sealed class DollarRulesTests
     [InlineData("see [*a*]{} now", "L(see ) E1[L(a)] L( now)")]
     [InlineData("*x [a*]{}", "L(*x a*)")]   // the label's star does not pair with one outside it
     [InlineData("[a](b) [c]() [d]{red}", "Link[L(a)](b) L( ) Link[L(c)]() L( ) Col[L(d)]{red}")]
+    [InlineData("[]()", "Link[]()")]   // CommonMark's empty link
+    [InlineData("[]{}", "L([]{})")]   // no label and no colour: nothing to show but its text
+    [InlineData("see []{} now", "L(see []{} now)")]
     public void EmptyTail_Parses(string source, string expected)
     {
         var blocks = ParseCountingFallbacks(source, out int fallbacks);
@@ -421,6 +425,7 @@ public sealed class DollarRulesTests
     [InlineData("[a]()", "L(@ ) Link[L(a)]()")]
     [InlineData("![a]()", "L(@ ) Img[L(a)]()")]
     [InlineData("[a]{}", "L(@ a)")]
+    [InlineData("[]{}")]
     public void StrayDelimiter_NeverTakesTheFallback(string stray, string? shown = null)
     {
         // `shown` is how the block renders after its leading word, which stands in for `@`; by
