@@ -361,8 +361,23 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
         return style => new BracketBox(inner(style), BracketKind.Paren, style);
     }
 
-    /// <summary>{ E } in LaTeX is an invisible group — render the inner E unchanged.</summary>
-    public Func<BoxStyle, Box> Visit(Group node) => Builder(node.Arg1);
+    /// <summary>
+    /// { E } in LaTeX is an invisible group — render the inner E unchanged.
+    /// To its neighbours it is one Ord atom, as in TeX, whatever its own ends
+    /// are, so <c>{\sin} x</c> is set tight; a group whose ends are ordinary
+    /// already is returned as it is.
+    /// </summary>
+    public Func<BoxStyle, Box> Visit(Group node)
+    {
+        var inner = Builder(node.Arg1);
+        return style =>
+        {
+            var box = inner(style);
+            return LeftClass(box) == AtomClass.Ord && RightClass(box) == AtomClass.Ord
+                ? box
+                : new AtomBox(box, AtomClass.Ord);
+        };
+    }
 
     /// <summary>
     /// \{ E \}, a set: a curly <see cref="BracketBox"/>, stretchy like
@@ -549,8 +564,9 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
 
     /// <summary>
     /// A box set as one atom of a class the box itself does not show: an
-    /// operator name, which is an Op, or punctuation with its own space after
-    /// it. It draws and measures exactly as the box it wraps.
+    /// operator name, which is an Op, punctuation with its own space after
+    /// it, or a braced group, an Ord. It draws and measures exactly as the
+    /// box it wraps.
     /// </summary>
     private sealed class AtomBox(Box inner, AtomClass atomClass) : Box
     {

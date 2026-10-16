@@ -159,7 +159,14 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
     }
 
     public string Visit(Paren node) => $"({node.Arg1.Content})";
-    public string Visit(Group node) => (string)node.Arg1.Content;
+    // { E } is E, and to its neighbours one ordinary atom, as in TeX: a copy
+    // of an operator name's string carries none of its ends, so {\sin} x is
+    // sinx.
+    public string Visit(Group node)
+    {
+        var inner = (string)node.Arg1.Content;
+        return StartsWithOp(inner) || EndsWithOp(inner) ? new string(inner.AsSpan()) : inner;
+    }
 
     // \{E\}, a set, keeps its braces. MarkdownMacros.RenderMathUnicode never
     // gets here: it turns each \{ and \} into a placeholder before the lexer
