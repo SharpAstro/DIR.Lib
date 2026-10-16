@@ -169,13 +169,15 @@ public sealed class MarkdownInlineSpikeTests
     }
 
     [Fact]
-    public void UnclosedLinkUrl_ParseFailsCleanly()
+    public void GrammarError_ParseFailsCleanly()
     {
-        // A link URL that never closes has no rule in the grammar. The
-        // parser fails closed with an empty list, and the block visitor
-        // falls back to the source text. (This used `` foo, an unclosed
-        // fence, until an unclosed backtick run became text.)
-        _visitor.Parse("see [a](b foo").ShouldBeEmpty();
+        // A grammar error fails closed with an empty list, and the block
+        // visitor falls back to the source text. The pairing pass turns
+        // every ordinary stray delimiter into text first, so this goes
+        // through the seam that skips it: a link URL that never closes has
+        // no rule in the grammar. (This used `` foo, then the same URL
+        // through Parse, until each became text.)
+        _visitor.ParseWithoutPairing("see [a](b foo").ShouldBeEmpty();
     }
 
     [Fact]

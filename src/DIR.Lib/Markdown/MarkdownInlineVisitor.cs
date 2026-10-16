@@ -31,11 +31,14 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     /// pair is text (see <see cref="MarkUnpaired"/>). Returns an empty
     /// list on any other parse error so the caller can fall through to a
     /// literal-text render of the source.</summary>
-    public IReadOnlyList<MdInline> Parse(string source)
-    {
-        if (string.IsNullOrEmpty(source)) return Array.Empty<MdInline>();
+    public IReadOnlyList<MdInline> Parse(string source) =>
+        string.IsNullOrEmpty(source) ? Array.Empty<MdInline>() : ParseWithoutPairing(MarkUnpaired(source));
 
-        source = MarkUnpaired(source);
+    /// <summary>Test seam: lexes and parses <paramref name="source"/> with
+    /// no pairing pass, so a test can reach the grammar's own error path,
+    /// which <see cref="Parse"/> is meant never to.</summary>
+    internal IReadOnlyList<MdInline> ParseWithoutPairing(string source)
+    {
         try
         {
             using var lexer = global::LALR.CC.LexicalGrammar.BytesLexer.FromString(source, s_lexerTable);
