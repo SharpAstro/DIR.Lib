@@ -736,6 +736,8 @@ public sealed class SqrtBox : Box
         // A whole-pixel shift moves the ink by the same whole pixels, so the
         // measurement is kept by sub-pixel phase, relative to the pixel the
         // radicand's pen and baseline fall in.
+        if (BypassInkMemo.Value)
+            return MeasureInkTop(radicandX, baselineY, x0, x1, style) is { } measured && measured <= bottomRow ? measured : null;
         var originX = (int)MathF.Floor(radicandX);
         var originY = (int)MathF.Floor(baselineY);
         var key = new InkKey(radicandX - originX, baselineY - originY, x0 - originX, x1 - originX, style.FontPath, style.FontSize);
@@ -794,6 +796,13 @@ public sealed class SqrtBox : Box
     private const int InkTopsKept = 64;
 
     private const int NoInk = int.MinValue;
+
+    /// <summary>A test's switch: while it is true on the current flow,
+    /// <see cref="RadicandInkTop"/> measures every time and keeps nothing, as
+    /// before <see cref="_inkTops"/> was kept, so a test can compare the two
+    /// draws byte for byte. An <see cref="AsyncLocal{T}"/>, so a test that sets
+    /// it changes nothing for tests running beside it.</summary>
+    internal static readonly AsyncLocal<bool> BypassInkMemo = new();
 
     /// <summary>Where the radicand was measured: the sub-pixel phase of its pen
     /// and baseline, the columns measured relative to the pen's pixel, and the

@@ -199,7 +199,7 @@ public sealed partial class RadicalJoinTests
                 r.Sqrt.StrokeCapTrimmedBand,
                 r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY), r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY - 1),
                 r.GlyphPastDepth, r.RowsAboveHeight, r.RadicalOnCanvas, InkCutOff(p.Font, p.Size, p.Scene, r.Image),
-                r.JoinBreak());
+                r.JoinBreak(), RgbaHash(r.Image));
         }),
     ]);
 
@@ -221,10 +221,11 @@ public sealed partial class RadicalJoinTests
     /// (<see cref="Rendered.RadicalOnCanvas"/>).</param>
     /// <param name="InkCutOff">Alpha the canvas edge cut off (<see cref="InkCutOff(string, float, string, RgbaImage)"/>).</param>
     /// <param name="JoinBreak">Where the bar fails to continue the flag, or null (<see cref="Rendered.JoinBreak"/>).</param>
+    /// <param name="RgbaHash">The rendered scene's size and pixels, hashed (<see cref="RgbaHash"/>).</param>
     /// <param name="ClearAbove">Clear rows between the bar and the ink above it (<see cref="Rendered.ClearRowsAboveBar"/>).</param>
     private sealed record Swept(BeforePoint Before, float Height, float Depth, int ClearRows, int ClearAbove, int BandRows, int MaxBandRows,
         bool CapTrimmed, int FlagTopAlpha, int AboveFlagAlpha, float GlyphPastDepth, int RowsAboveHeight,
-        bool RadicalOnCanvas, long InkCutOff, string? JoinBreak)
+        bool RadicalOnCanvas, long InkCutOff, string? JoinBreak, ulong RgbaHash)
     {
         public bool Touches => ClearRows == 0;
 
@@ -474,6 +475,32 @@ public sealed partial class RadicalJoinTests
         for (var i = 0; i < depth; i++) box = new SqrtBox(box, style);
         BoxRasterizer.RenderToRgba(box, style);
         innermost.Draws.ShouldBe(depth + 1, $"draws of the innermost radicand of \\sqrt{{x}} nested {depth} deep");
+    }
+
+    /// <summary>
+    /// Keeping each radical's measured radicand ink per position changes no pixel: every point of the sweep
+    /// (its scenes, the named points, the join cases and the context scenes) renders byte for byte as it
+    /// does when every radical measures afresh (<see cref="SqrtBox.BypassInkMemo"/>). Every differing point
+    /// is listed in the one message.
+    /// </summary>
+    [Fact]
+    public void KeepingTheMeasuredInkChangesNoPixel()
+    {
+        // Rendered with the measurements kept, before the switch is set on this flow.
+        var swept = SweptPoints.Value;
+        SqrtBox.BypassInkMemo.Value = true;
+        try
+        {
+            var failures = swept
+                .Where(s => RgbaHash(Render(s.Before.Font, s.Before.Size, s.Before.Scene).Image) != s.RgbaHash)
+                .Select(s => $"{s}: renders differently when every radical measures afresh")
+                .ToList();
+            failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
+        }
+        finally
+        {
+            SqrtBox.BypassInkMemo.Value = false;
+        }
     }
 
     /// <summary>Forwards a box's metrics and draw, counting the draws.</summary>
@@ -759,6 +786,17 @@ public sealed partial class RadicalJoinTests
         renderer.ContentTransform = new ContentTransform(Rotation90.None, 1f, pad, pad);
         box.Draw(renderer, margin, margin + box.Height, style);
         return InkSum(renderer.Surface) - InkSum(canvas);
+    }
+
+    /// <summary>FNV-1a over an image's size and RGBA bytes.</summary>
+    private static ulong RgbaHash(RgbaImage image)
+    {
+        var hash = 14695981039346656037UL;
+        void Mix(byte b) => hash = (hash ^ b) * 1099511628211UL;
+        foreach (var b in BitConverter.GetBytes(image.Width)) Mix(b);
+        foreach (var b in BitConverter.GetBytes(image.Height)) Mix(b);
+        foreach (var b in image.Pixels) Mix(b);
+        return hash;
     }
 
     private static long InkSum(RgbaImage image)
