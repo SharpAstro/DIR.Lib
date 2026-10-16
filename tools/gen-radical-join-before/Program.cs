@@ -95,7 +95,7 @@ foreach (var (font, scene, size) in points)
     var y = barBottom;
     while (y < image.Height && !RowHasInk(image, y, barStart, barEnd)) y++;
     rows.Append(CultureInfo.InvariantCulture,
-        $"        new(\"{font}\", \"{scene}\", {F(size)}, {path}, {F(sqrt.Height)}, {F(sqrt.Depth)}, {y - barBottom}),\n");
+        $"        new(\"{font}\", \"{scene}\", {F(size)}, {path}, {F(sqrt.Height)}, {F(sqrt.Depth)}, {y - barBottom}, {CutOff(box, image, style)}),\n");
 }
 
 var output = $$"""
@@ -110,9 +110,10 @@ public sealed partial class RadicalJoinTests
     /// <summary>
     /// The radical as commit {{baseCommit}} drew it, at every point the sweep and the named
     /// cases visit: which path drew it, its <see cref="MathLayout.Box.Height"/> and
-    /// <see cref="MathLayout.Box.Depth"/>, and the clear pixel rows between its bar and the radicand,
-    /// measured as <see cref="Rendered.ClearRowsUnderBar"/> does. Floats are printed round-trip, so they
-    /// are exact. {{points.Count}} points.
+    /// <see cref="MathLayout.Box.Depth"/>, the clear pixel rows between its bar and the radicand,
+    /// measured as <see cref="Rendered.ClearRowsUnderBar"/> does, and the alpha the canvas
+    /// <see cref="MathLayout.BoxRasterizer.RenderToRgba"/> drew the scene on cut off, measured as
+    /// <see cref="InkCutOff"/> does. Floats are printed round-trip, so they are exact. {{points.Count}} points.
     /// </summary>
     private static readonly BeforePoint[] BeforePoints =
     [
@@ -120,7 +121,7 @@ public sealed partial class RadicalJoinTests
     ];
 
     private readonly record struct BeforePoint(
-        string Font, string Scene, float Size, int Path, float Height, float Depth, int ClearRows);
+        string Font, string Scene, float Size, int Path, float Height, float Depth, int ClearRows, long CutOff);
 }
 
 """;
@@ -129,6 +130,26 @@ Console.WriteLine($"{points.Count} points -> {args[1]}");
 return 0;
 
 string F(float v) => v.ToString("R", inv) + "f";
+
+// The alpha the canvas RenderToRgba made cut off: the scene drawn again at the same coordinates on a canvas
+// 8 px larger on every side, through an integer content translation so every position is computed as
+// before, less the ink on the canvas. RadicalJoinTests.InkCutOff measures the branch the same way.
+static long CutOff(Box box, RgbaImage canvas, BoxStyle style)
+{
+    const int pad = 8;
+    var margin = (canvas.Width - (int)MathF.Ceiling(box.Width)) / 2;
+    using var renderer = new RgbaImageRenderer((uint)(canvas.Width + 2 * pad), (uint)(canvas.Height + 2 * pad));
+    renderer.ContentTransform = new ContentTransform(Rotation90.None, 1f, pad, pad);
+    box.Draw(renderer, margin, margin + box.Height, style);
+    return Ink(renderer.Surface) - Ink(canvas);
+}
+
+static long Ink(RgbaImage image)
+{
+    long sum = 0;
+    for (var i = 3; i < image.Pixels.Length; i += 4) sum += image.Pixels[i];
+    return sum;
+}
 
 static bool RowHasInk(RgbaImage image, int y, int x0, int x1)
 {

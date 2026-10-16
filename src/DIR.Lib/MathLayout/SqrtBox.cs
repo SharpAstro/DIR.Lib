@@ -41,6 +41,15 @@ namespace DIR.Lib.MathLayout;
 /// down to roughly <c>baselineY + radicand.Depth</c> so any descender
 /// inside the radicand still fits.
 ///
+/// <para>The box does not always hold the radical's ink. Where the
+/// radicand's own ink starts a row or two above its layout height (text
+/// below about 12 px), <see cref="JoinAt"/> raises the bar past what the
+/// layout reserved to keep a clear row over it, so the bar can sit above
+/// <see cref="Height"/>: by at most two rows across RadicalJoinTests' sweep.
+/// And on path 1 the depth counts the glyph alone, so a MATH assembly
+/// shorter than its radicand leaves the radicand hanging below
+/// <see cref="Depth"/>.</para>
+///
 /// <para>An optional <c>index</c> box (the small "n" in <c>ⁿ√x</c>) is
 /// rendered tucked into the radical's hook, raised by
 /// <c>RadicalDegreeBottomRaisePercent</c> of the radical's
@@ -286,7 +295,15 @@ public sealed class SqrtBox : Box
             // keep top-anchor invariant. If the picked variant overshoots,
             // the V's tip dangles deep below baseline — that's deliberate.
             _radicalGlyphDepth = bitmapHeight - _radicalH;
-            radicalD = _radicalGlyphDepth;
+            // The depth counts the glyph alone, so a MATH assembly shorter
+            // than its radicand (STIX Two Math's for
+            // \sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}) leaves the radicand
+            // hanging below it. The reserved row lifts the glyph against the
+            // baseline, which takes the row off the glyph's depth; it must
+            // not hang the radicand a row further below the box, so where
+            // the radicand is the deeper the depth keeps that row, as far as
+            // the radicand reaches.
+            radicalD = MathF.Max(_radicalGlyphDepth, MathF.Min(radicand.Depth, _radicalGlyphDepth + _gapRowReserve));
         }
         else if (HasScaledGlyph)
         {

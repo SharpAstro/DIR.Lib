@@ -193,7 +193,7 @@ public sealed partial class RadicalJoinTests
             return new Swept(p, r.Sqrt.Height, r.Sqrt.Depth, r.ClearRowsUnderBar(), r.Join.FlagRows, MaxBandRows(p.Font, r),
                 r.Sqrt.StrokeCapTrimmedBand,
                 r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY), r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY - 1),
-                r.GlyphPastDepth);
+                r.GlyphPastDepth, r.RowsAboveHeight, r.RadicalOnCanvas, InkCutOff(p.Font, p.Size, p.Scene, r.Image));
         }),
     ]);
 
@@ -209,8 +209,14 @@ public sealed partial class RadicalJoinTests
     /// <param name="AboveFlagAlpha">The row above it, at the same column.</param>
     /// <param name="GlyphPastDepth">How far the glyph's last row reaches past the reported depth
     /// (<see cref="Rendered.GlyphPastDepth"/>).</param>
+    /// <param name="RowsAboveHeight">Whole rows the bar sits above the reported height
+    /// (<see cref="Rendered.RowsAboveHeight"/>).</param>
+    /// <param name="RadicalOnCanvas">Whether the glyph and bar lie on the canvas
+    /// (<see cref="Rendered.RadicalOnCanvas"/>).</param>
+    /// <param name="InkCutOff">Alpha the canvas edge cut off (<see cref="InkCutOff(string, float, string, RgbaImage)"/>).</param>
     private sealed record Swept(BeforePoint Before, float Height, float Depth, int ClearRows, int BandRows, int MaxBandRows,
-        bool CapTrimmed, int FlagTopAlpha, int AboveFlagAlpha, float GlyphPastDepth)
+        bool CapTrimmed, int FlagTopAlpha, int AboveFlagAlpha, float GlyphPastDepth, int RowsAboveHeight,
+        bool RadicalOnCanvas, long InkCutOff)
     {
         public bool Touches => ClearRows == 0;
 
@@ -379,6 +385,30 @@ public sealed partial class RadicalJoinTests
     }
 
     /// <summary>
+    /// Where the radicand's own ink starts a row or two above its layout height (sizes below 12 px), the draw
+    /// raises the bar past what the layout placed, and it can go past the row the layout reserved for that
+    /// too: the one place the radical's box does not hold its ink. Across the sweep that is at most 2 rows
+    /// above the reported height; the glyph and bar always lie on the canvas
+    /// <see cref="BoxRasterizer.RenderToRgba"/> draws on, whose margin of ceil(0.15 em) is all there is above
+    /// the outermost box; and the canvas cuts off no more of the scene's ink than it did at fe09d4a (see
+    /// <see cref="InkCutOff"/>). It does cut some: STIX Two Math <c>\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}</c>
+    /// takes a MATH assembly shorter than its radicand, whose depth path 1 does not count, so the radicand
+    /// hangs below the canvas at 119 of its 238 sizes there as here. Every failing point is listed in the
+    /// one message.
+    /// </summary>
+    [Fact]
+    public void TheRaisedBarNeverClips()
+    {
+        const int maxRowsAboveHeight = 2;
+        var failures = SweptPoints.Value
+            .Where(s => s.RowsAboveHeight > maxRowsAboveHeight || !s.RadicalOnCanvas || s.InkCutOff > s.Before.CutOff)
+            .Select(s => $"{s}: the bar sits {s.RowsAboveHeight} rows above the reported height, the radical is " +
+                         $"{(s.RadicalOnCanvas ? "on" : "off")} the canvas, which cut off {s.InkCutOff} alpha, before {s.Before.CutOff}")
+            .ToList();
+        failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
+    }
+
+    /// <summary>
     /// The two points the relaxations named: STIX Two Math <c>\sqrt{\frac{a}{b}}</c> at 22.2 px and
     /// <c>\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}</c> at 31.7 px had 3 clear rows before the rework
     /// (e6778fc) and 2 after it (fe09d4a), lost to the float phase of the bar's floored row.
@@ -522,6 +552,16 @@ public sealed partial class RadicalJoinTests
         /// <c>baselineY + Depth</c>; zero or less when it stays inside.</summary>
         public float GlyphPastDepth => Join.GlyphY + Join.GlyphRows - (BaselineY + Sqrt.Depth);
 
+        /// <summary>Whole rows the bar's top sits above the row holding the radical's reported top,
+        /// <c>baselineY - Height</c>: zero where the box contains it.</summary>
+        public int RowsAboveHeight => Math.Max(0, (int)MathF.Floor(BaselineY - Sqrt.Height + 1e-3f) - Join.FlagTopY);
+
+        /// <summary>Whether the radical's own ink, its glyph and bar, lies on the canvas: from the flag's
+        /// top row (the glyph's top ink) to the glyph's last row, and from the glyph's left edge to the
+        /// bar's end.</summary>
+        public bool RadicalOnCanvas =>
+            Join.FlagTopY >= 0 && Join.GlyphY + Join.GlyphRows <= Image.Height && Join.GlyphX >= 0 && Join.BarEndX <= Image.Width;
+
         public int Alpha(int x, int y) =>
             x < 0 || y < 0 || x >= Image.Width || y >= Image.Height ? 0 : Image.Pixels[(y * Image.Width + x) * 4 + 3];
 
@@ -553,7 +593,18 @@ public sealed partial class RadicalJoinTests
     private static Rendered Render(string font, float size, string scene)
     {
         var style = new BoxStyle(FontPaths[font], size, new RGBAColor32(0, 0, 0, 255));
-        var box = scene switch
+        var box = BuildScene(scene, style);
+        var (root, probe) = ProbeSqrt(box);
+        var image = BoxRasterizer.RenderToRgba(root, style);
+        var (penX, baselineY, drawnStyle) = probe.Pen.ShouldNotBeNull("the scene never drew its radical");
+        var join = probe.Sqrt.JoinAt(penX, baselineY, drawnStyle).ShouldNotBeNull("the radical has no flag and bar (parametric path?)");
+        join.FlagRows.ShouldBeGreaterThan(0);
+        join.BarEndX.ShouldBeGreaterThan(join.FlagLastFullX);
+        return new Rendered(image, probe.Sqrt, join, baselineY);
+    }
+
+    private static Box BuildScene(string scene, BoxStyle style) =>
+        scene switch
         {
             "sqrt-x2-plus-y2" => Parse(@"\sqrt{x^2+y^2}", style),
             "sqrt-2" => Parse(@"\sqrt{2}", style),
@@ -573,13 +624,30 @@ public sealed partial class RadicalJoinTests
             _ => throw new ArgumentException($"unknown scene '{scene}'"),
         };
 
-        var (root, probe) = ProbeSqrt(box);
-        var image = BoxRasterizer.RenderToRgba(root, style);
-        var (penX, baselineY, drawnStyle) = probe.Pen.ShouldNotBeNull("the scene never drew its radical");
-        var join = probe.Sqrt.JoinAt(penX, baselineY, drawnStyle).ShouldNotBeNull("the radical has no flag and bar (parametric path?)");
-        join.FlagRows.ShouldBeGreaterThan(0);
-        join.BarEndX.ShouldBeGreaterThan(join.FlagLastFullX);
-        return new Rendered(image, probe.Sqrt, join, baselineY);
+    /// <summary>
+    /// How much of the scene's ink the canvas <see cref="BoxRasterizer.RenderToRgba"/> drew it on cut off: the
+    /// scene drawn again at the same coordinates on a canvas 8 px larger on every side, less the ink on
+    /// <paramref name="canvas"/>. The larger canvas moves the writes by a content transform, an integer
+    /// translation, so every position is computed exactly as before and only what the edge cut off differs.
+    /// </summary>
+    private static long InkCutOff(string font, float size, string scene, RgbaImage canvas)
+    {
+        const int pad = 8;
+        var style = new BoxStyle(FontPaths[font], size, new RGBAColor32(0, 0, 0, 255));
+        var box = BuildScene(scene, style);
+        // RenderToRgba's own margin, read back from the canvas it made: ceil(width) plus a margin each side.
+        var margin = (canvas.Width - (int)MathF.Ceiling(box.Width)) / 2;
+        using var renderer = new RgbaImageRenderer((uint)(canvas.Width + 2 * pad), (uint)(canvas.Height + 2 * pad));
+        renderer.ContentTransform = new ContentTransform(Rotation90.None, 1f, pad, pad);
+        box.Draw(renderer, margin, margin + box.Height, style);
+        return InkSum(renderer.Surface) - InkSum(canvas);
+    }
+
+    private static long InkSum(RgbaImage image)
+    {
+        long sum = 0;
+        for (var i = 3; i < image.Pixels.Length; i += 4) sum += image.Pixels[i];
+        return sum;
     }
 
     private static Box Parse(string latex, BoxStyle style)
