@@ -32,7 +32,7 @@ symbols:
   - Items        # 2  list of items
   - Item         # 3  one item (a line or a blank separator)
   - line_content # 4  terminal: bytes of one line excluding the newline
-  - newline      # 5  terminal: `\n` or `\r\n`
+  - newline      # 5  terminal: `\n`, `\r\n` or a lone `\r`
 
 productions:
   - derivation: none
@@ -51,6 +51,9 @@ productions:
       - { lhs: Item, rhs: [newline],                  action: blankItem }
 
 lexer:
+  # All three CommonMark line endings: `\r\n` (longest match beats a lone
+  # `\r`), a lone `\r`, and `\n`. A lone `\r` used to match no rule at all.
   root:
     - { symbol: line_content, match: '[^\n\r]+' }
     - { symbol: newline,      match: '\r?\n' }
+    - { symbol: newline,      match: '\r' }
