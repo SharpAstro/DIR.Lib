@@ -141,6 +141,11 @@ public sealed class SqrtBox : Box
     /// of it, in the bitmap and beyond, is drawn with that profile.</summary>
     private readonly int _flagLastFullCol;
 
+    /// <summary>Whether <see cref="MeasureFlag"/>'s scan down the flag's last
+    /// full column ran past the rows the flag's own stroke touches, so the
+    /// band was cut back to those rows.</summary>
+    private readonly bool _strokeCapTrimmedBand;
+
     public SqrtBox(Box radicand, BoxStyle style)
         : this(radicand, null, style)
     { }
@@ -196,7 +201,7 @@ public sealed class SqrtBox : Box
         {
             var radical = new StretchyVerticalBox(RadicalCodepoint, requiredHeight, style, snapTopEdge: true);
             _radicalFont = radical;
-            (_flagTopRow, _flagProfile, _flagLastFullCol) = MeasureFlag(radical.Bitmap, radical.TopSnap);
+            (_flagTopRow, _flagProfile, _flagLastFullCol, _strokeCapTrimmedBand) = MeasureFlag(radical.Bitmap, radical.TopSnap);
             _joinedRadical = JoinFlag(radical.Bitmap, _flagTopRow, _flagProfile, _flagLastFullCol);
         }
         else
@@ -219,7 +224,7 @@ public sealed class SqrtBox : Box
                 var scale = MathF.Max(0.5f, requiredHeight / native.Height);
                 _radicalScaled = rasterizer.RasterizeGlyphTopSnapped(style.FontPath, style.FontSize * scale, rune, out var snap);
                 _radicalScaledFactor = scale;
-                (_flagTopRow, _flagProfile, _flagLastFullCol) = MeasureFlag(_radicalScaled, snap);
+                (_flagTopRow, _flagProfile, _flagLastFullCol, _strokeCapTrimmedBand) = MeasureFlag(_radicalScaled, snap);
                 _joinedRadical = JoinFlag(_radicalScaled, _flagTopRow, _flagProfile, _flagLastFullCol);
             }
         }
@@ -425,10 +430,10 @@ public sealed class SqrtBox : Box
     /// column: one row, at those sizes, as the old one-row rule drew.
     /// </para>
     /// </summary>
-    private static (int TopRow, byte[] Profile, int LastFullCol) MeasureFlag(GlyphBitmap bm, ManagedFontRasterizer.TopSnap snap)
+    private static (int TopRow, byte[] Profile, int LastFullCol, bool CapTrimmed) MeasureFlag(GlyphBitmap bm, ManagedFontRasterizer.TopSnap snap)
     {
         if (bm.Rgba is null || bm.Width <= 0 || bm.Height <= 0)
-            return (0, [], bm.Width - 1);
+            return (0, [], bm.Width - 1, false);
 
         var w = bm.Width;
         var h = bm.Height;
@@ -443,7 +448,7 @@ public sealed class SqrtBox : Box
 
         var top = Math.Max(0, snap.InkTopRow);
         while (top < h && RowMax(top) == 0) top++;
-        if (top == h) return (0, [], w - 1);
+        if (top == h) return (0, [], w - 1, false);
 
         var topMax = RowMax(top);
         var last = w - 1;
@@ -451,12 +456,13 @@ public sealed class SqrtBox : Box
 
         var bottom = top;
         while (bottom < h && Alpha(last, bottom) > 0) bottom++;
-        if (snap.TopStrokeRows > 0) bottom = Math.Min(bottom, top + snap.TopStrokeRows);
+        var capTrimmed = snap.TopStrokeRows > 0 && bottom - top > snap.TopStrokeRows;
+        if (capTrimmed) bottom = top + snap.TopStrokeRows;
         while (bottom - 1 > top && Alpha(last, bottom - 1) < FlagTailMinAlpha) bottom--;
 
         var profile = new byte[bottom - top];
         for (var y = top; y < bottom; y++) profile[y - top] = Alpha(last, y);
-        return (top, profile, last);
+        return (top, profile, last, capTrimmed);
     }
 
     /// <summary>
@@ -491,6 +497,12 @@ public sealed class SqrtBox : Box
     /// <summary>The pixels-per-em the radical's glyph was rasterized at: the
     /// box's font size on path 1, that size times the scale on path 2.</summary>
     internal float RadicalGlyphSize => _radicalFont is not null ? _fontSize : _fontSize * _radicalScaledFactor;
+
+    /// <summary>Whether the cap at the flag's own stroke trimmed the band: the
+    /// scan down the flag's last full column ran past the rows the stroke
+    /// touches (into the stem, or the curve under a sub-pixel flag), so the
+    /// bar, and the rows the layout reserves for it, are fewer than it found.</summary>
+    internal bool StrokeCapTrimmedBand => _strokeCapTrimmedBand;
 
     /// <summary>Width of whichever radical-rendering path is active.</summary>
     private float RadicalWidth =>
