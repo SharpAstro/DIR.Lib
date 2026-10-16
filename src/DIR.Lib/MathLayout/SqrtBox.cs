@@ -712,23 +712,56 @@ public sealed class SqrtBox : Box
     /// The topmost pixel row the radicand inks, drawn at <paramref name="radicandX"/>
     /// and <paramref name="baselineY"/>, within columns [<paramref name="x0"/>,
     /// <paramref name="x1"/>), if that row is at or above <paramref name="bottomRow"/>;
-    /// null when the radicand inks nothing there. The radicand is drawn into a
-    /// scratch surface whose content transform is an integer translation, so it
-    /// computes every position exactly as the real draw does and only its pixel
-    /// writes move: the rows found are the rows the real draw inks.
+    /// null when the radicand inks nothing there.
+    /// <para>
+    /// What is measured does not depend on <paramref name="bottomRow"/>, which
+    /// <see cref="JoinAt"/> keeps at least a row above the radicand's top row:
+    /// the radicand's ink above that row, kept per position in
+    /// <see cref="_inkTops"/>, and the bottom row applied to it after. Measuring
+    /// draws the radicand, and a radicand that holds a radical is drawn twice at
+    /// the same place, inside this measurement and for real; the second draw
+    /// finds its own measurement kept, so a nesting n deep draws its innermost
+    /// radicand n + 1 times rather than 2^n.
+    /// </para>
     /// </summary>
     private int? RadicandInkTop(float radicandX, float baselineY, int x0, int x1, int bottomRow, BoxStyle style)
     {
         if (x1 <= x0) return null;
+        // A whole-pixel shift moves the ink by the same whole pixels, so the
+        // measurement is kept by sub-pixel phase, relative to the pixel the
+        // radicand's pen and baseline fall in.
+        var originX = (int)MathF.Floor(radicandX);
+        var originY = (int)MathF.Floor(baselineY);
+        var key = new InkKey(radicandX - originX, baselineY - originY, x0 - originX, x1 - originX, style.FontPath, style.FontSize);
+        if (!_inkTops.TryGetValue(key, out var top))
+        {
+            top = MeasureInkTop(radicandX, baselineY, x0, x1, style) is { } row ? row - originY : NoInk;
+            if (_inkTops.Count >= InkTopsKept) _inkTops.Clear();
+            _inkTops[key] = top;
+        }
+        return top != NoInk && originY + top <= bottomRow ? originY + top : null;
+    }
+
+    /// <summary>
+    /// The radicand's topmost inked row within columns [<paramref name="x0"/>,
+    /// <paramref name="x1"/>), above the row its layout height starts in; null
+    /// when it inks nothing there. The radicand is drawn into a scratch surface
+    /// whose content transform is an integer translation, so it computes every
+    /// position exactly as the real draw does and only its pixel writes move:
+    /// the rows found are the rows the real draw inks.
+    /// </summary>
+    private int? MeasureInkTop(float radicandX, float baselineY, int x0, int x1, BoxStyle style)
+    {
         // Any coverage counts as ink, whatever the foreground's own alpha.
         var measure = style with { Foreground = new RGBAColor32(0, 0, 0, 255) };
+        var lastRow = (int)MathF.Floor(baselineY - _radicand.Height) - 1;
         var maxRows = (int)MathF.Ceiling(_radicand.TotalHeight + _fontSize) + 4;
         if (!InkScratch.TryTake(out var scratch)) scratch = new RgbaImageRenderer(1, 1);
         try
         {
             for (var rows = 8; ; rows *= 2)
             {
-                var top = bottomRow - rows + 1;
+                var top = lastRow - rows + 1;
                 scratch.Resize((uint)(x1 - x0), (uint)rows);
                 scratch.ContentTransform = new ContentTransform(Rotation90.None, 1f, -x0, -top);
                 _radicand.Draw(scratch, radicandX, baselineY, measure);
@@ -743,6 +776,23 @@ public sealed class SqrtBox : Box
             InkScratch.Add(scratch);
         }
     }
+
+    /// <summary>What <see cref="MeasureInkTop"/> found, per <see cref="InkKey"/>: the
+    /// radicand's top inked row relative to the baseline's pixel row, or
+    /// <see cref="NoInk"/>. Boxes may be shared between threads.</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<InkKey, int> _inkTops = new();
+
+    /// <summary>How many positions <see cref="_inkTops"/> keeps before it starts
+    /// over: a box drawn at ever new sub-pixel positions must not grow it without
+    /// end.</summary>
+    private const int InkTopsKept = 64;
+
+    private const int NoInk = int.MinValue;
+
+    /// <summary>Where the radicand was measured: the sub-pixel phase of its pen
+    /// and baseline, the columns measured relative to the pen's pixel, and the
+    /// font the draw passed, which a radicand's text is drawn with.</summary>
+    private readonly record struct InkKey(float PhaseX, float PhaseY, int Left, int Right, string FontPath, float FontSize);
 
     /// <summary>The first row of <paramref name="image"/> with any alpha, or -1.</summary>
     private static int FirstInkedRow(RgbaImage image)
