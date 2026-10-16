@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using DIR.Lib.Markdown;
 using DIR.Lib.MathLayout;
 using LALR.CC.LexicalGrammar;
@@ -299,8 +300,11 @@ public sealed class BraceSetTests
     /// <para>The corpus is every string argument of every <c>[InlineData]</c>
     /// in <see cref="BracketMathTests"/>, <see cref="MathItalicTests"/> and
     /// <see cref="RadicalJoinTests"/>, the formulas behind the radical
-    /// scenes, and <see cref="BoxedAndChemCorpus"/>. A formula the old
-    /// sequence turned away for its braces is left out: that is the change.</para>
+    /// scenes, and <see cref="BoxedAndChemCorpus"/>. Left out are the
+    /// formulas this branch changes on purpose: one the old sequence turned
+    /// away for its braces, and one with whitespace between <c>\left</c> or
+    /// <c>\right</c> and its delimiter, which the old aliases did not
+    /// match.</para>
     /// </summary>
     [Fact]
     public void Helper_MatchesConsoleLibSequence_WithoutEscapedBraces()
@@ -309,7 +313,7 @@ public sealed class BraceSetTests
             .SelectMany(InlineDataStrings)
             .Concat(RadicalScenes)
             .Concat(BoxedAndChemCorpus)
-            .Where(latex => !ConsoleLibTurnsAwayBraces(latex))
+            .Where(latex => !ConsoleLibTurnsAwayBraces(latex) && !SpacedLeftOrRight.IsMatch(latex))
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
@@ -363,6 +367,9 @@ public sealed class BraceSetTests
         @"\textbf{x}",
         @"\beginning",
     ];
+
+    /// <summary><c>\left</c> or <c>\right</c>, whole, then whitespace.</summary>
+    private static readonly Regex SpacedLeftOrRight = new(@"\\(left|right)\s");
 
     /// <summary>The formulas <see cref="RadicalJoinTests"/>'s scenes parse.</summary>
     private static readonly string[] RadicalScenes =

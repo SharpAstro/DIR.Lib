@@ -148,6 +148,25 @@ public sealed class BracketMathTests
     }
 
     /// <summary>
+    /// LaTeX lets whitespace separate <c>\left</c> and <c>\right</c> from
+    /// their delimiter. Spaced or not, the pair is the same stretchy bracket
+    /// box. The aliases used to match the command and the delimiter only when
+    /// they touched, so <c>\left ( x \right )</c> drew the command names.
+    /// </summary>
+    [Theory]
+    [InlineData(@"\left \{ x \right \}", BracketKind.Curly)]
+    [InlineData(@"\left ( x \right )", BracketKind.Paren)]
+    [InlineData(@"\left [ x \right ]", BracketKind.Square)]
+    [InlineData(@"\left \lbrace x \right \rbrace", BracketKind.Curly)]
+    [InlineData("\\left\t(\n x \\right  )", BracketKind.Paren)]
+    public void BoxPath_WhitespaceAfterLeftAndRight_IsTheBracketPair(string latex, BracketKind kind)
+    {
+        var box = BuildBox(latex).ShouldBeOfType<BracketBox>($"'{latex}' should build a bracket box");
+        var inner = BuildBox("x").ShouldNotBeNull();
+        Render(box).ShouldBe(Render(new BracketBox(inner, kind, Style)));
+    }
+
+    /// <summary>
     /// An unbalanced bracket does not parse on the box path, so the terminal
     /// falls back to the Unicode path, which keeps rendering it as before.
     /// </summary>
@@ -200,6 +219,16 @@ public sealed class BracketMathTests
     // A `-` straight after `[` is unary now, as it is after `(`. While `[`
     // was an opaque atom this read as a binary minus: "[ − 1,1]".
     [InlineData(@"[-1, 1]", "[−1,1]")]
+    // Whitespace between \left or \right and its delimiter, as LaTeX allows.
+    [InlineData(@"\left \{ x \right \}", "{x}")]
+    [InlineData(@"\left ( x \right )", "(x)")]
+    [InlineData(@"\left [ x \right ]", "[x]")]
+    [InlineData(@"\left \lbrace x \right \rbrace", "{x}")]
+    [InlineData(@"\left | x \right |", "|x|")]
+    [InlineData(@"\left . x \right |", "x|")]
+    [InlineData("\\left\t(\n x \\right  )", "(x)")]
+    // A longer command that starts with \left or \right is left alone.
+    [InlineData(@"a \leftarrow b \rightarrow c", "a ← b → c")]
     public void UnicodePath_NewlyParsedBrackets(string latex, string expected)
         => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
 
