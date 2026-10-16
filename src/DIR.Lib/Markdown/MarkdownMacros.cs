@@ -134,7 +134,7 @@ public static class MarkdownMacros
     /// <see cref="NormalizeLatexAliases"/>; <c>\boxed{X}</c> to X (there is no
     /// boxed frame); <c>\ce{X}</c> to <see cref="Mhchem.ToLatex"/> of X; turn
     /// away again, since either expansion can bring one in; then
-    /// <see cref="ResolveBackslashEscapes"/>, except that <c>\{</c> and
+    /// <see cref="ResolveBackslashEscapes(string)"/>, except that <c>\{</c> and
     /// <c>\}</c> stay as written. The grammar lexes those as a set's braces,
     /// which the visitor draws as a curly <see cref="BracketBox"/>; resolved to
     /// a bare <c>{</c> they would open an invisible group. So
