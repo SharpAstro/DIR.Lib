@@ -198,13 +198,14 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
     /// whole document — the next block is classified from a clean state. This
     /// matches the renderer's best-effort contract: show the source rather
     /// than crash. A genuine classification regression still surfaces in tests
-    /// (the AST won't match the expected node type).</summary>
+    /// (the AST won't match the expected node type). The raw text is built by
+    /// <see cref="LiteralLines"/>, as the inline fallback is, so it reflows.</summary>
     private MdBlock ClassifyBlockSafe(IReadOnlyList<string> lines)
     {
         try { return ClassifyBlock(lines); }
         catch
         {
-            return new MdParagraph(new MdInline[] { new MdLiteral(string.Join("\n", lines)) });
+            return new MdParagraph(LiteralLines(string.Join("\n", lines)));
         }
     }
 
