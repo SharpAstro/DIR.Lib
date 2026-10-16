@@ -97,6 +97,13 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     /// the way a code span is. A math span that opens before the <c>[</c>
     /// runs to its own closer and takes the bracket with it; the bracket
     /// or link tail it leaves with no <c>[</c> is then text.</para>
+    /// <para>This deliberately differs from Pandoc, whose bracket scan
+    /// (<c>inBalancedBrackets</c>, Readers/Markdown.hs:217-243 in
+    /// jgm/pandoc) skips a math span whole, so Pandoc renders
+    /// <c>See [the $5 plan](https://x) or pay 5$ later.</c> as
+    /// <c>See [the </c> + math <c>5 plan](https://x) or pay 5</c> +
+    /// <c> later.</c>. Here a link label bounds the math inside it, and
+    /// math that opens before the <c>[</c> still takes the bracket.</para>
     /// <para>A <c>[</c> or <c>]</c> with no partner, and a backtick run
     /// with no closing run, are literal, as in CommonMark and Pandoc.</para>
     /// <para>One departure from Pandoc: a closer inside a code span that
