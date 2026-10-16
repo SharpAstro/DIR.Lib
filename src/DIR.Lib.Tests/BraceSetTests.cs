@@ -250,6 +250,66 @@ public sealed class BraceSetTests
     public void BoxPath_UnbalancedOrEmpty_DoesNotParse(string latex)
         => BuildBox(latex, Stix).ShouldBeNull();
 
+    private const string NestedFraction = @"\frac{\frac{a}{b}}{\frac{c}{d}}";
+
+    /// <summary>
+    /// Each brace of a set reads as a brace, not as a paren or an angle
+    /// bracket (<see cref="BraceShapeFault"/>), whether the font draws it
+    /// (STIX Two Math, DejaVu Sans) or <see cref="BracketBox"/>'s parametric
+    /// fallback does (BabelStone Xiangqi Colour, around a fraction).
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math", @"\{1, 2, 3\}")]
+    [InlineData("STIX2Math", @"\left\{ \frac{1}{2} \right\}")]
+    [InlineData("STIX2Math", @"\left\{ " + NestedFraction + @" \right\}")]
+    [InlineData("DejaVuSans", @"\{1, 2, 3\}")]
+    [InlineData("DejaVuSans", @"\left\{ \frac{1}{2} \right\}")]
+    [InlineData("DejaVuSans", @"\left\{ " + NestedFraction + @" \right\}")]
+    [InlineData("BabelStone", @"\left\{ \frac{1}{2} \right\}")]
+    [InlineData("BabelStone", @"\left\{ " + NestedFraction + @" \right\}")]
+    public void BoxPath_Set_EachBraceReadsAsABrace(string font, string latex)
+    {
+        var style = StyleFor(font);
+        var image = BoxRasterizer.RenderToRgba(BuildBox(latex, style).ShouldBeOfType<BracketBox>(), style);
+        var runs = InkColumnRuns(image);
+        BraceShapeFault(image, runs[0], outerIsLeft: true).ShouldBeNull($"the left brace of '{latex}' in {font}");
+        BraceShapeFault(image, runs[^1], outerIsLeft: false).ShouldBeNull($"the right brace of '{latex}' in {font}");
+    }
+
+    /// <summary>
+    /// The shape check tells a brace from a paren, whether the font draws
+    /// the paren or <see cref="BracketBox"/>'s parametric fallback does: a
+    /// paren's outer edge stays at its extreme over a broad band.
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math", @"\left( \frac{1}{2} \right)")]
+    [InlineData("STIX2Math", @"\left( " + NestedFraction + @" \right)")]
+    [InlineData("DejaVuSans", @"\left( " + NestedFraction + @" \right)")]
+    [InlineData("BabelStone", @"\left( \frac{1}{2} \right)")]
+    [InlineData("BabelStone", @"\left( " + NestedFraction + @" \right)")]
+    public void BraceShape_TellsAParenFromABrace(string font, string latex)
+    {
+        var style = StyleFor(font);
+        var image = BoxRasterizer.RenderToRgba(BuildBox(latex, style).ShouldBeOfType<BracketBox>(), style);
+        var runs = InkColumnRuns(image);
+        BraceShapeFault(image, runs[0], outerIsLeft: true).ShouldNotBeNull($"the left paren of '{latex}' in {font}");
+        BraceShapeFault(image, runs[^1], outerIsLeft: false).ShouldNotBeNull($"the right paren of '{latex}' in {font}");
+    }
+
+    /// <summary>
+    /// The shape check tells a brace from an angle bracket, STIX Two Math's
+    /// stretchy U+27E8 at two heights: its outer edge moves at an even rate,
+    /// with no straight spine.
+    /// </summary>
+    [Theory]
+    [InlineData(60f)]
+    [InlineData(110f)]
+    public void BraceShape_TellsAnAngleBracketFromABrace(float height)
+    {
+        var image = BoxRasterizer.RenderToRgba(new StretchyVerticalBox(0x27E8, height, Stix), Stix);
+        BraceShapeFault(image, InkColumnRuns(image)[0], outerIsLeft: true).ShouldNotBeNull();
+    }
+
     /// <summary>
     /// Renders written to <c>obj/</c> for a look by eye, in both fonts.
     /// Asserts that they have ink and that none of it reaches the raster's
@@ -262,6 +322,8 @@ public sealed class BraceSetTests
     [InlineData("DejaVuSans", @"\{1, 2, 3\}", "set-1-2-3")]
     [InlineData("DejaVuSans", @"\left\{ \frac{1}{2} \right\}", "set-half")]
     [InlineData("BabelStone", @"\left\{ \frac{1}{2} \right\}", "set-half")]
+    [InlineData("STIX2Math", @"\left\{ " + NestedFraction + @" \right\}", "set-nested")]
+    [InlineData("BabelStone", @"\left\{ " + NestedFraction + @" \right\}", "set-nested")]
     public void BoxPath_WritesPngForInspection(string font, string latex, string name)
     {
         var style = StyleFor(font);
@@ -635,6 +697,82 @@ public sealed class BraceSetTests
         }
         found.ShouldBeGreaterThanOrEqualTo(0, $"rows {y0}..{y1} of columns {run.Start}..{run.End} have no ink");
         return found;
+    }
+
+    /// <summary>
+    /// Null when the delimiter in <paramref name="run"/> reads as a brace,
+    /// else what does not. Read off two edges per row, taking ink as alpha
+    /// of at least half: the outer edge, the delimiter's outermost ink (on
+    /// the left for a left delimiter), and the inner edge, its innermost.
+    /// A brace has all three of:
+    /// <list type="bullet">
+    ///   <item>A sharp cusp. The outer edge comes within a pixel of its
+    ///   extreme only within max(2, 3% of the height) rows of mid-height. A
+    ///   paren's bulge holds its extreme over a broad band.</item>
+    ///   <item>A straight spine. Over the middle third of each half the outer
+    ///   edge moves at most a pixel, though over the half it moves at least
+    ///   three. An angle bracket's edge moves at an even rate.</item>
+    ///   <item>Hooked ends. In its first two rows at each end the inner edge
+    ///   reaches at least two pixels further towards the content than it does
+    ///   a quarter of the way in.</item>
+    /// </list>
+    /// The limits come from measuring at 32 px. STIX Two Math's and DejaVu
+    /// Sans's own braces, around text, a fraction and a nested fraction, have
+    /// cusps of at most 2.5 rows, spines that do not move, and ends that turn
+    /// in by 3 to 8 pixels. Their parens hold the extreme for 12 to 62 rows
+    /// from mid-height, the parametric paren for 22 and 46. STIX Two Math's
+    /// stretchy angle bracket at 60 and 110 px has a cusp of 5 and 4 rows and
+    /// moves 3 and 5 pixels across the middle third. The four-stroke
+    /// parametric brace this replaced had a cusp of 8 and 16 rows and moved 2
+    /// pixels there.
+    /// </summary>
+    private static string? BraceShapeFault(RgbaImage image, (int Start, int End) run, bool outerIsLeft)
+    {
+        // Per row: how far the outer edge and the inner edge lie from the run's outer side.
+        var rows = new List<(int Y, int Outer, int Inner)>();
+        for (var y = 0; y < image.Height; y++)
+        {
+            var (first, last) = (-1, -1);
+            for (var x = run.Start; x <= run.End; x++)
+            {
+                if (image.Pixels[(y * image.Width + x) * 4 + 3] < 128) continue;
+                if (first < 0) first = x;
+                last = x;
+            }
+            if (first < 0) continue;
+            rows.Add(outerIsLeft
+                ? (y, first - run.Start, last - run.Start)
+                : (y, run.End - last, run.End - first));
+        }
+        if (rows.Count < 8) return $"only {rows.Count} inked rows";
+
+        var (top, bottom) = (rows[0].Y, rows[^1].Y);
+        var mid = (top + bottom) / 2.0;
+        var extreme = rows.Min(r => r.Outer);
+        var cuspSpan = rows.Where(r => r.Outer <= extreme + 1).Max(r => Math.Abs(r.Y - mid));
+        var cuspLimit = Math.Max(2.0, 0.03 * (bottom - top + 1));
+        if (cuspSpan > cuspLimit)
+            return $"no sharp cusp: the outer edge is within a pixel of its extreme {cuspSpan:F1} rows from mid-height (at most {cuspLimit:F1})";
+
+        // Each half from its end to the cusp.
+        foreach (var (name, half) in new[]
+                 {
+                     ("top", rows.Where(r => r.Y <= mid).ToList()),
+                     ("bottom", rows.Where(r => r.Y >= mid).Reverse().ToList()),
+                 })
+        {
+            var third = half.Count / 3;
+            var middle = half.Skip(third).Take(third).ToList();
+            var spineMove = middle.Max(r => r.Outer) - middle.Min(r => r.Outer);
+            var halfMove = half.Max(r => r.Outer) - half.Min(r => r.Outer);
+            if (halfMove < 3 || spineMove > 1)
+                return $"no straight spine in the {name} half: the outer edge moves {spineMove} px over its middle third and {halfMove} px over the half";
+
+            var turnIn = half.Take(2).Max(r => r.Inner) - half[half.Count / 2].Inner;
+            if (turnIn < 2)
+                return $"the {name} end does not turn towards the content: its inner edge reaches {turnIn} px further in than a quarter of the way in";
+        }
+        return null;
     }
 
     /// <summary>Inked pixels in the image's outermost rows and columns.</summary>
