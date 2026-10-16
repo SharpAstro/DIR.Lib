@@ -58,7 +58,9 @@ public sealed class BracketBox : Box
         // were 0.08 em — visibly tight against letters in (x), [a,b], and
         // pmatrix). Matches MathJax/TeX visual spacing where the inner
         // baseline width does not equal the bracket-to-bracket interior.
-        _padding = style.FontSize * 0.15f;
+        // An empty pair, (), has no content to set off, so its delimiters
+        // sit side by side as TeX sets them.
+        _padding = inner.Width <= 0 && inner.TotalHeight <= 0 ? 0 : style.FontSize * 0.15f;
 
         // Try MATH-driven brackets first. requiredHeight = the inner content's
         // own extent, no extra padding — fonts with sparse stretch coverage

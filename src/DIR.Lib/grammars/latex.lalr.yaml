@@ -15,6 +15,7 @@
 #   \sqrt[3]{x}, \sqrt[n]{x^2+1}           (n-th root: optional index)
 #   [a, b], [0, 1), (0, 1]                 (brackets, half-open intervals)
 #   \{1, 2, 3\}, \{x\}                     (escaped braces: a set, drawn as braces)
+#   f(), [], \{\}                          (empty pairs)
 #   \mathrm{d}x, \mathrm{H}_{2}\mathrm{O}   (upright letters, as TeX's \mathrm)
 #
 # Things that don't:
@@ -157,7 +158,8 @@ productions:
   # mixes, [E) and (E]; the visitor reads which delimiters it got from Arg0
   # and Arg2. `brace` is the escaped pair \{E\}, a set: drawn as braces, where
   # the bare pair {E} is an invisible group. It is an A0, like `(`: only a
-  # `[` means something else straight after \sqrt.
+  # `[` means something else straight after \sqrt. `emptyPair` is the pair
+  # with nothing inside, (), [] or \{\}, which E cannot be; Arg0 says which.
   # `,` is an atom rather than an operator so it can sit wherever a
   # \name could, which is exactly where the Unicode path's placeholder for an
   # unlexed comma used to sit: a trailing "x = 1," still parses.
@@ -166,6 +168,7 @@ productions:
       - { lhs: A,  rhs: [A0] }
       - { lhs: A,  rhs: ['[', E, ']'],     action: bracket }
       - { lhs: A,  rhs: ['[', E, ')'],     action: bracket }
+      - { lhs: A,  rhs: ['[', ']'],        action: emptyPair }
       - { lhs: A0, rhs: [n],               action: number }
       - { lhs: A0, rhs: [id],              action: variable }
       - { lhs: A0, rhs: [cmd],             action: command }
@@ -174,6 +177,8 @@ productions:
       - { lhs: A0, rhs: ['(', E, ']'],     action: bracket }
       - { lhs: A0, rhs: ['{', E, '}'],     action: group }
       - { lhs: A0, rhs: [lbrace, E, rbrace], action: brace }
+      - { lhs: A0, rhs: ['(', ')'],        action: emptyPair }
+      - { lhs: A0, rhs: [lbrace, rbrace],  action: emptyPair }
       - { lhs: A0, rhs: [cmdsqrt, A0],     action: sqrt }
       - { lhs: A0, rhs: [cmdsqrt, '[', E, ']', A], action: nthRoot }
       - { lhs: A0, rhs: [cmdfrac, A, A],   action: frac }

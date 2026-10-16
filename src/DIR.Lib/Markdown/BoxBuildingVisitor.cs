@@ -269,6 +269,22 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
     }
 
     /// <summary>
+    /// (), [] or \{\}: a <see cref="BracketBox"/> around nothing, so the
+    /// font's delimiters at their normal height, side by side. Arg0 is the
+    /// opening delimiter as written.
+    /// </summary>
+    public Func<BoxStyle, Box> Visit(EmptyPair node)
+    {
+        var kind = (string)node.Arg0.Content switch
+        {
+            "(" => BracketKind.Paren,
+            "[" => BracketKind.Square,
+            _ => BracketKind.Curly,
+        };
+        return style => new BracketBox(new HBox(), kind, style);
+    }
+
+    /// <summary>
     /// [E], and the half-open mixes [E) and (E]. A matched pair is a
     /// <see cref="BracketBox"/>, stretchy like <see cref="Visit(Paren)"/>'s
     /// parens (<c>\left[ … \right]</c> arrives here too, since
