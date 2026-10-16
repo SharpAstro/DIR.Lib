@@ -386,6 +386,20 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
     public void UnicodePath(string latex, string expected)
         => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
 
+    /// <summary>
+    /// Op then Open takes no space on the Unicode path whatever spells the
+    /// opening delimiter, as <c>\sin(x)</c> already shows: an escaped brace,
+    /// a bracket, a sized paren.
+    /// </summary>
+    [Theory]
+    [InlineData(@"\sin \{x\}", "sin{x}")]
+    [InlineData(@"\sin \left\{ x \right\}", "sin{x}")]
+    [InlineData(@"\sin \lbrace x \rbrace", "sin{x}")]
+    [InlineData(@"\sin [x]", "sin[x]")]
+    [InlineData(@"\sin \left( x \right)", "sin(x)")]
+    public void UnicodePath_NoSpaceBeforeAnOpeningDelimiter(string latex, string expected)
+        => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
+
     // ── Renders for the eye ────────────────────────────────────────────
 
     /// <summary>
