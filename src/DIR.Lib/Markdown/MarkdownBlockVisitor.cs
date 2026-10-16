@@ -200,8 +200,8 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
     }
 
     /// <summary>The inline content of a paragraph, heading, list item or
-    /// table cell. When the inline parse fails (a lone <c>[</c> or an
-    /// unclosed backtick, which the inline grammar has no rule for), the
+    /// table cell. When the inline parse fails (a link whose URL never
+    /// closes, which the inline grammar has no rule for), the
     /// text stays literal (<see cref="LiteralLines"/>) rather than leaving
     /// the block empty. The
     /// inline parser itself keeps returning an empty list on failure;
