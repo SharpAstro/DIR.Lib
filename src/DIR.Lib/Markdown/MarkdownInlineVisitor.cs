@@ -27,15 +27,15 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
 {
     /// <summary>Parses an inline-only markdown string and returns the
     /// produced span list with transient nodes (MdGroup, MdStarMarker)
-    /// resolved. A math delimiter that does not pair is text (see
-    /// <see cref="MarkUnpairedMath"/>). Returns an empty list on any
-    /// other parse error so the caller can fall through to a
+    /// resolved. A math delimiter, bracket or backtick run that does not
+    /// pair is text (see <see cref="MarkUnpaired"/>). Returns an empty
+    /// list on any other parse error so the caller can fall through to a
     /// literal-text render of the source.</summary>
     public IReadOnlyList<MdInline> Parse(string source)
     {
         if (string.IsNullOrEmpty(source)) return Array.Empty<MdInline>();
 
-        source = MarkUnpairedMath(source);
+        source = MarkUnpaired(source);
         try
         {
             using var lexer = global::LALR.CC.LexicalGrammar.BytesLexer.FromString(source, s_lexerTable);
@@ -51,7 +51,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
         }
     }
 
-    // ── Math delimiter pairing (runs before the lexer) ───────────────
+    // ── Delimiter pairing (runs before the lexer) ────────────────────
     //
     // The lexer pushes a math state on every `$`, `$$`, `\(`, `\[` and
     // `\boxed{` it meets in root, so one that never closes used to leave
@@ -61,7 +61,9 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     // decided here instead. The pass walks the source the way the root
     // lexer would, finds each opener's closer by the same rules its math
     // state uses, and replaces every character of an opener that does
-    // not pair with a stand-in the lexer reads as plain text.
+    // not pair with a stand-in the lexer reads as plain text. A bracket
+    // with no partner and a backtick run that never closes are handled
+    // the same way, since the grammar has no rule for either.
     // LiteralSpan turns the stand-ins back. The grammar is unchanged,
     // so a delimiter that reaches the lexer always pairs.
 
@@ -75,10 +77,12 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     private const char UnpairedBackslash = '\uFDD1';
     private const char UnpairedBracket = '\uFDD2';
     private const char UnpairedCloseBracket = '\uFDD3';
+    private const char UnpairedBacktick = '\uFDD4';
 
     /// <summary>Returns <paramref name="s"/> with every math opener that
-    /// does not pair replaced by stand-ins, or <paramref name="s"/> itself
-    /// when every opener pairs.
+    /// does not pair, every bracket with no partner and every backtick run
+    /// that never closes replaced by stand-ins, or <paramref name="s"/>
+    /// itself when everything pairs.
     /// <para>A <c>$</c> follows Pandoc's <c>tex_math_dollars</c>: it opens
     /// only with a non-space to its right, and its closer is the next
     /// unescaped <c>$</c>, which needs a non-space to its left and no digit
@@ -91,13 +95,15 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     /// <c>[</c> opens before any math in it, so an opener inside the label
     /// pairs only inside it. The label is found first (<see cref="LabelEnd"/>),
     /// the way a code span is. A math span that opens before the <c>[</c>
-    /// runs to its own closer and takes the bracket with it; the link or
-    /// colour tail it leaves with no <c>[</c> is then text.</para>
+    /// runs to its own closer and takes the bracket with it; the bracket
+    /// or link tail it leaves with no <c>[</c> is then text.</para>
+    /// <para>A <c>[</c> or <c>]</c> with no partner, and a backtick run
+    /// with no closing run, are literal, as in CommonMark and Pandoc.</para>
     /// <para>One departure from Pandoc: a closer inside a code span that
     /// opens after the opener does not count, so the <c>$</c> in
     /// <c>$5 to run `echo $PATH`</c> stays with the code span (code spans
     /// bind tighter, as in CommonMark).</para></summary>
-    private static string MarkUnpairedMath(string s)
+    private static string MarkUnpaired(string s)
     {
         char[]? marked = null;
         List<int>? textDollars = null;
@@ -108,7 +114,9 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
         // no math span opened inside the label may cross.
         void Walk(int from, int bound)
         {
-            int open = 0;   // `[` here that open no label: plain, or never closed
+            // Each `[` here that opens no label (a plain bracket, or one
+            // with no partner), innermost last; a `]` closes the last one.
+            List<int>? open = null;
             int i = from;
             while (i < bound)
             {
@@ -156,10 +164,13 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                         break;
                     case '`':
                     {
-                        // A code span is opaque. One that never closes fails
-                        // the parse whatever this pass does; step past its fence.
+                        // A code span is opaque. A fence that never closes
+                        // is text, and so is the rest of its run.
                         int end = CodeSpanEnd(s, i);
-                        i = end > 0 ? end : i + FenceLength(s, i);
+                        if (end > 0) { i = end; break; }
+                        int fence = FenceLength(s, i);
+                        for (int k = i; k < i + fence; k++) Mark(k, UnpairedBacktick);
+                        i += fence;
                         break;
                     }
                     case '[':
@@ -177,32 +188,33 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                         {
                             // Not a label, so it bounds nothing; a math
                             // span may still close past its `]`.
-                            open++;
+                            (open ??= new()).Add(label - 1);
                             i = label;
                         }
                         break;
                     }
-                    case ']' when At(s, i + 1) is '(' or '{':
-                        if (open == 0)
+                    case ']':
+                        if (open is not { Count: > 0 })
                         {
-                            // A math span took this tail's `[`. Without one
-                            // the tail is text, and so is the URL after it.
+                            // No `[` for this bracket, or a math span took
+                            // it: text, and so is a link tail after it.
                             Mark(i, UnpairedCloseBracket);
                             i++;
                             break;
                         }
-                        open--;
-                        i = TailEnd(s, i);
-                        break;
-                    case ']':
-                        if (open > 0) open--;
-                        i++;
+                        open.RemoveAt(open.Count - 1);
+                        i = At(s, i + 1) is '(' or '{' ? TailEnd(s, i) : i + 1;
                         break;
                     default:
                         i++;
                         break;
                 }
             }
+
+            // A `[` that nothing closed is text. No pairing above depended
+            // on it, since nothing ever paired with it.
+            if (open is not null)
+                foreach (int at in open) Mark(at, UnpairedBracket);
         }
 
         void MarkTextDollars()
@@ -442,13 +454,14 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
 
     private static char At(string s, int i) => i < s.Length ? s[i] : '\0';
 
-    /// <summary>Turns <see cref="MarkUnpairedMath"/>'s stand-ins back into
+    /// <summary>Turns <see cref="MarkUnpaired"/>'s stand-ins back into
     /// the delimiter characters they replaced.</summary>
     private static string RestoreUnpaired(string text) =>
-        text.AsSpan().IndexOfAnyInRange(UnpairedDollar, UnpairedCloseBracket) < 0
+        text.AsSpan().IndexOfAnyInRange(UnpairedDollar, UnpairedBacktick) < 0
             ? text
             : text.Replace(UnpairedDollar, '$').Replace(UnpairedBackslash, '\\')
-                .Replace(UnpairedBracket, '[').Replace(UnpairedCloseBracket, ']');
+                .Replace(UnpairedBracket, '[').Replace(UnpairedCloseBracket, ']')
+                .Replace(UnpairedBacktick, '`');
 
     /// <summary>Post-pass over the raw span list: flatten <see cref="MdGroup"/>
     /// wrappers (transient containers produced by plain-bracket spans)
@@ -783,7 +796,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     // ── Math: dollar forms ($..$, $$..$$) ─────────────────────────────
     //
     // A dollar body can hold stand-ins: the `$` inside a `\text{..}`
-    // group, which MarkUnpairedMath hides from the closer.
+    // group, which MarkUnpaired hides from the closer.
 
     public object Visit(MarkdownInline.MathSpan node) =>
         BuildMath(RestoreUnpaired((string)node.Arg1.Content));
