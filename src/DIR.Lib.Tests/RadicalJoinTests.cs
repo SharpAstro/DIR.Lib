@@ -454,6 +454,47 @@ public sealed partial class RadicalJoinTests
     }
 
     /// <summary>
+    /// A radical finds its radicand's ink by drawing the radicand into a scratch surface, then draws it for
+    /// real, so a radical nested in a radicand is drawn twice at the same place: inside the outer's
+    /// measurement and for real. Each radical keeps what it measured per sub-pixel position, so the second
+    /// draw reuses it, and a nesting n deep draws its innermost radicand n + 1 times, not 2^n.
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math", 1)]
+    [InlineData("STIX2Math", 2)]
+    [InlineData("STIX2Math", 3)]
+    [InlineData("STIX2Math", 4)]
+    [InlineData("DejaVuSans", 1)]
+    [InlineData("DejaVuSans", 4)]
+    public void NestedRadicalsDrawTheirInnermostRadicandLinearly(string font, int depth)
+    {
+        var style = new BoxStyle(FontPaths[font], 24f, new RGBAColor32(0, 0, 0, 255));
+        var innermost = new CountingBox(new MathGlyphBox("x", style, MathStyle.Italic));
+        Box box = innermost;
+        for (var i = 0; i < depth; i++) box = new SqrtBox(box, style);
+        BoxRasterizer.RenderToRgba(box, style);
+        innermost.Draws.ShouldBe(depth + 1, $"draws of the innermost radicand of \\sqrt{{x}} nested {depth} deep");
+    }
+
+    /// <summary>Forwards a box's metrics and draw, counting the draws.</summary>
+    private sealed class CountingBox(Box inner) : Box
+    {
+        private int _draws;
+
+        public int Draws => _draws;
+
+        public override float Width => inner.Width;
+        public override float Height => inner.Height;
+        public override float Depth => inner.Depth;
+
+        public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style)
+        {
+            Interlocked.Increment(ref _draws);
+            inner.Draw(renderer, penX, baselineY, style);
+        }
+    }
+
+    /// <summary>
     /// The two points the relaxations named: STIX Two Math <c>\sqrt{\frac{a}{b}}</c> at 22.2 px and
     /// <c>\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}</c> at 31.7 px had 3 clear rows before the rework
     /// (e6778fc) and 2 after it (fe09d4a), lost to the float phase of the bar's floored row.
