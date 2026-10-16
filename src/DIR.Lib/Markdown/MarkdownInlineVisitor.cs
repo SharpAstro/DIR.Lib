@@ -124,7 +124,11 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
 
         // Walks s[from..bound) the way the root lexer would. The bound is
         // the end of the text, or the `]` of the label being walked, which
-        // no math span opened inside the label may cross.
+        // nothing opened inside the label may cross: a math span, a code
+        // span or a tail that would end past it does not pair here. Math
+        // can take a `[` LabelEnd counted, so a label walk can read text
+        // LabelEnd skipped as a URL, and a construct there that ran past
+        // the bound would leave the walk out of step with the lexer.
         void Walk(int from, int bound)
         {
             // Each `[` here that opens no label (a plain bracket, or one
@@ -170,10 +174,11 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                         i += 2;
                         break;
                     }
-                    case '\\' when i + 1 >= s.Length:
+                    case '\\' when i + 1 >= bound:
                         // A backslash at the very end matches no root lexer
                         // rule (an escape and a hard break both need the
-                        // character after it), so it is text.
+                        // character after it), so it is text. So is one just
+                        // before a label's `]`, which it would escape.
                         Mark(i, UnpairedBackslash);
                         i++;
                         break;
@@ -193,9 +198,10 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                     case '`':
                     {
                         // A code span is opaque. A fence that never closes
-                        // is text, and so is the rest of its run.
+                        // (here: before the bound) is text, and so is the
+                        // rest of its run.
                         int end = CodeSpanEnd(s, i);
-                        if (end > 0) { i = end; break; }
+                        if (end > 0 && end <= bound) { i = end; break; }
                         int fence = FenceLength(s, i);
                         for (int k = i; k < i + fence; k++) Mark(k, UnpairedBacktick);
                         i += fence;
@@ -216,7 +222,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                             i++;
                             break;
                         }
-                        int tailEnd = tail is '(' or '{' ? TailEnd(s, close) : -1;
+                        int tailEnd = tail is '(' or '{' ? TailEnd(s, close, bound) : -1;
                         if (tailEnd > 0)
                         {
                             Walk(label, close);
@@ -234,7 +240,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                     case ']':
                     {
                         bool hasTail = At(s, i + 1) is '(' or '{';
-                        int tailEnd = hasTail ? TailEnd(s, i) : -1;
+                        int tailEnd = hasTail ? TailEnd(s, i, bound) : -1;
                         if (open is not { Count: > 0 } || (hasTail && tailEnd < 0))
                         {
                             // No `[` for this bracket (or a math span took
@@ -314,12 +320,13 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     }
 
     /// <summary>End (exclusive) of the link or colour tail whose <c>]</c>
-    /// is at <paramref name="close"/>, or -1 when it never closes:
-    /// url_body and color_body run to the next <c>)</c> or <c>}</c>.</summary>
-    private static int TailEnd(string s, int close)
+    /// is at <paramref name="close"/>, or -1 when it never closes (before
+    /// <paramref name="bound"/>, when one is given): url_body and
+    /// color_body run to the next <c>)</c> or <c>}</c>.</summary>
+    private static int TailEnd(string s, int close, int bound = int.MaxValue)
     {
         int end = s.IndexOf(s[close + 1] == '(' ? ')' : '}', close + 2);
-        return end < 0 ? -1 : end + 1;
+        return end < 0 || end >= bound ? -1 : end + 1;
     }
 
     /// <summary>End (exclusive) of the <c>$..$</c> span opening at
