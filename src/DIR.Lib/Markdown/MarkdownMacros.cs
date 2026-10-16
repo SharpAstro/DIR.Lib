@@ -115,6 +115,12 @@ public static class MarkdownMacros
     /// with X, a nested one included.</summary>
     private static string UnwrapMathrm(string text) => ExpandBalancedMacro(text, "mathrm", UnwrapMathrm);
 
+    /// <summary>A <c>\text{X}</c> body as it renders: X with any
+    /// <c>\mathrm{...}</c> unwrapped and its backslash-non-letter macros
+    /// resolved. The math pass and an environment body's pass both render
+    /// <c>\text</c> through this, so the two cannot disagree.</summary>
+    private static string RenderTextBody(string inner) => ResolveBackslashEscapes(UnwrapMathrm(inner));
+
     /// <summary>
     /// Expands the LaTeX macros that the math-only grammar can't represent.
     /// Each match is replaced with a synthetic <c>\PHxxx</c> command (which the
@@ -183,7 +189,7 @@ public static class MarkdownMacros
         // with a single placeholder whose replacement is a plain-text render:
         //   \\           → newline (row break)
         //   &            → "  "  (column separator, two-space gutter)
-        //   \text{X}     → X with backslash-escapes resolved
+        //   \text{X}     → X as the \text pass below renders it
         //   other macros → ResolveBackslashEscapes
         // The body never reaches the lexer, so spaces and newlines survive.
         source = ExpandBalancedEnvironment(source, body =>
@@ -217,7 +223,7 @@ public static class MarkdownMacros
         source = ExpandBalancedMacro(source, "text", inner =>
         {
             var key = NewPlaceholder();
-            replacements.Add(new KeyValuePair<string, string>(key, ResolveBackslashEscapes(UnwrapMathrm(inner))));
+            replacements.Add(new KeyValuePair<string, string>(key, RenderTextBody(inner)));
             return key;
         });
 
@@ -503,24 +509,16 @@ public static class MarkdownMacros
     /// <summary>
     /// Plain-text rendering of an environment body: row break (<c>\\</c>) to
     /// newline, column separator (<c>&amp;</c>) to a two-space gutter, any
-    /// <c>\text{X}</c> bodies to their resolved-escape X, then a final pass
-    /// over remaining backslash-non-letter macros. Each row is then trimmed
-    /// of trailing whitespace and the whole block trimmed at the edges so the
+    /// <c>\text{X}</c> bodies to X exactly as the math pass renders them
+    /// (<see cref="RenderTextBody"/>), then a final pass over remaining
+    /// backslash-non-letter macros. Each row is then trimmed of trailing
+    /// whitespace and the whole block trimmed at the edges so the
     /// surrounding <c>\boxed{}</c> sees clean content.
     /// </summary>
-
-    /// <summary>
-    /// Plain-text rendering of an environment body: row break (<c>\\</c>) to
-    /// newline, column separator (<c>&amp;</c>) to a two-space gutter, any
-    /// <c>\text{X}</c> bodies to their resolved-escape X, then a final pass
-    /// over remaining backslash-non-letter macros. Each row is then trimmed
-    /// of trailing whitespace and the whole block trimmed at the edges so the
-    /// surrounding <c>\boxed{}</c> sees clean content.
-    /// </summary>
-    private static string RenderEnvironmentBody(string body)
+    internal static string RenderEnvironmentBody(string body)
     {
         body = body.Replace(@"\\", "\n");
-        body = ExpandBalancedMacro(body, "text", inner => ResolveBackslashEscapes(inner));
+        body = ExpandBalancedMacro(body, "text", RenderTextBody);
         body = body.Replace("&", "  ");
         body = ResolveBackslashEscapes(body);
         var rows = body.Split('\n');
