@@ -259,8 +259,8 @@ public sealed class SqrtBox : Box
         else if (HasScaledGlyph)
         {
             // Path 2 (scaled glyph): the bitmap's flag-top row lands at
-            // glyphTop + flagTopRow (see DrawWithScaledGlyph). For the
-            // vinculum to sit a `gap` above the radicand-top, the flag's top
+            // glyphTop + flagTopRow (see GlyphTop). For the vinculum to
+            // sit a `gap` above the radicand-top, the flag's top
             // must be radicand.Height + gap + VinculumThickness above the
             // baseline, and the glyph's top flagTopRow above that (zero
             // whenever the snap applied). So _radicalH = that:
@@ -529,65 +529,79 @@ public sealed class SqrtBox : Box
         }
 
         // Everything radical-side shifts right by _radicalShiftX (zero in the
-        // no-index case) so the existing draw logic stays untouched apart
-        // from the pen position it gets handed.
-        var radicalPenX = penX + _radicalShiftX;
-        if (_radicalFont is not null)
+        // no-index case), which JoinAt and RadicandX fold in.
+        if (JoinAt(penX, baselineY) is { } join)
         {
-            DrawWithFontGlyph(renderer, radicalPenX, baselineY, style);
+            DrawWithGlyph(renderer, join, RadicandX(penX), baselineY, style);
             return;
         }
-        if (HasScaledGlyph)
-        {
-            DrawWithScaledGlyph(renderer, radicalPenX, baselineY, style);
-            return;
-        }
-        DrawParametric(renderer, radicalPenX, baselineY, style);
+        DrawParametric(renderer, penX + _radicalShiftX, baselineY, style);
     }
 
     /// <summary>
-    /// Scaled-base-glyph path: blit the (re-rasterized at larger fontSize)
-    /// √ glyph with its top edge at the vinculum line, then extend the
-    /// vinculum across the radicand. Used for fonts with a √ glyph but no
-    /// MATH stretch coverage (e.g. DejaVu Sans). The glyph's own bottom-
-    /// hook tip lands somewhere near the radicand's bottom — exact
-    /// alignment depends on the font's glyph design, but visually the
-    /// result is much closer to a real radical than the parametric V.
+    /// Where <see cref="Draw"/> puts the radical's glyph, its flag and the
+    /// vinculum continuing it, for the box drawn at <paramref name="penX"/>
+    /// and <paramref name="baselineY"/>, in surface pixels; null on the
+    /// parametric path, which has no flag. Draw takes its geometry from here
+    /// and records nothing, so a test that asks for the join at the pen a
+    /// scene drew the box at gets the numbers Draw drew with, and finds the
+    /// join from the layout's own numbers instead of searching the image.
     /// </summary>
-    private void DrawWithScaledGlyph(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style)
+    internal RadicalJoin? JoinAt(float penX, float baselineY)
     {
-        // Anchor to the radical's own top (_radicalH), not the box's outer
-        // Height — the latter includes any index lift and would float the
-        // radical glyph upward when an index extends above.
-        var glyphTop = baselineY - _radicalH;
-        var (x0, y0) = DrawRadicalGlyph(renderer, penX, glyphTop, style);
-
-        var radicandX = penX + _radicalScaled.Width;
-        _radicand.Draw(renderer, radicandX, baselineY, style);
-
-        DrawVinculum(renderer, x0, y0, radicandX, style);
+        if (Path == 3) return null;
+        var x0 = (int)MathF.Floor(penX + _radicalShiftX);
+        var y0 = (int)MathF.Floor(GlyphTop(baselineY));
+        var barLeft = x0 + _joinedRadical.Width;
+        var barRight = (int)MathF.Ceiling(RadicandX(penX) + _radicand.Width + _gap);
+        return new RadicalJoin(x0, y0, y0 + _flagTopRow, _flagProfile.Length, x0 + _flagLastFullCol, barLeft, Math.Max(barLeft, barRight));
     }
 
-    /// <summary>Where the last <see cref="Draw"/> put the radical's flag and
-    /// the vinculum continuing it, in surface pixels; null before the first
-    /// draw and on the parametric path. Lets a test find the join from the
-    /// layout's own numbers instead of searching the image for it.</summary>
-    internal RadicalJoin? LastJoin { get; private set; }
+    /// <summary>The radical glyph's top-left corner, the flag's top row and
+    /// band height, its rightmost full-coverage column, the vinculum's first
+    /// column (the glyph's right edge) and one past its last, all in surface
+    /// pixels.</summary>
+    internal sealed record RadicalJoin(int GlyphX, int GlyphY, int FlagTopY, int FlagRows, int FlagLastFullX, int BarStartX, int BarEndX);
 
-    /// <summary>The flag's top row and band height, its rightmost
-    /// full-coverage column, the vinculum's first column (the glyph's right
-    /// edge) and one past its last, all in surface pixels.</summary>
-    internal sealed record RadicalJoin(int FlagTopY, int FlagRows, int FlagLastFullX, int BarStartX, int BarEndX);
+    /// <summary>The radicand's pen position for the box drawn at
+    /// <paramref name="penX"/>: past the index's shift and the radical.</summary>
+    private float RadicandX(float penX) => penX + _radicalShiftX + RadicalWidth;
 
-    /// <summary>Draw the radical glyph, its flag's end filled in (see
-    /// <see cref="JoinFlag"/>), at the floored pen position, and return that
-    /// position for <see cref="DrawVinculum"/>.</summary>
-    private (int X0, int Y0) DrawRadicalGlyph(RgbaImageRenderer renderer, float penX, float glyphTop, BoxStyle style)
+    /// <summary>The radical glyph's top edge for the box's baseline at
+    /// <paramref name="baselineY"/>, on paths 1 and 2.</summary>
+    private float GlyphTop(float baselineY)
     {
-        var x0 = (int)MathF.Floor(penX);
-        var y0 = (int)MathF.Floor(glyphTop);
-        renderer.DrawGlyphBitmap(x0, y0, _joinedRadical, style.Foreground);
-        return (x0, y0);
+        // Path 1 is bottom-anchored: the bitmap's bottom edge lands at
+        // baselineY + _radicalGlyphDepth (= radicand.Depth +
+        // extraDescender). That keeps the V's tip just below the radicand
+        // even when the picked variant overshoots requiredHeight.
+        if (_radicalFont is not null)
+            return baselineY + _radicalGlyphDepth - _joinedRadical.Height;
+        // Path 2 anchors to the radical's own top (_radicalH), not the box's
+        // outer Height: the latter includes any index lift and would float
+        // the radical glyph upward when an index extends above.
+        return baselineY - _radicalH;
+    }
+
+    /// <summary>
+    /// Paths 1 and 2: blit the radical glyph, its flag's end filled in (see
+    /// <see cref="JoinFlag"/>), where <paramref name="join"/> puts it, draw
+    /// the radicand to its right, and extend the vinculum across the
+    /// radicand as the glyph's own top stroke continued (see
+    /// <see cref="DrawVinculum"/>): its top row comes from the snapped
+    /// outline and its profile from the flag's last full-coverage column
+    /// (see <see cref="MeasureFlag"/>), so the bar joins the flag without a
+    /// step or gap. On path 2 (a font with a √ glyph but no MATH stretch
+    /// coverage, e.g. DejaVu Sans) the glyph's own bottom-hook tip lands
+    /// somewhere near the radicand's bottom; exact alignment depends on the
+    /// font's glyph design, but the result is much closer to a real radical
+    /// than the parametric V.
+    /// </summary>
+    private void DrawWithGlyph(RgbaImageRenderer renderer, RadicalJoin join, float radicandX, float baselineY, BoxStyle style)
+    {
+        renderer.DrawGlyphBitmap(join.GlyphX, join.GlyphY, _joinedRadical, style.Foreground);
+        _radicand.Draw(renderer, radicandX, baselineY, style);
+        DrawVinculum(renderer, join, style);
     }
 
     /// <summary>
@@ -596,12 +610,9 @@ public sealed class SqrtBox : Box
     /// the radicand. Each row is the flag's own coverage on that row, so the
     /// bar has the flag's top edge, bottom edge and weight.
     /// </summary>
-    private void DrawVinculum(RgbaImageRenderer renderer, int x0, int y0, float radicandX, BoxStyle style)
+    private void DrawVinculum(RgbaImageRenderer renderer, RadicalJoin join, BoxStyle style)
     {
         var fg = style.Foreground;
-        var barTop = y0 + _flagTopRow;
-        var barLeft = x0 + _joinedRadical.Width;
-        var barRight = (int)MathF.Ceiling(radicandX + _radicand.Width + _gap);
         for (var r = 0; r < _flagProfile.Length; r++)
         {
             // The same tint the glyph blit applies to its own alpha, so a bar
@@ -609,35 +620,9 @@ public sealed class SqrtBox : Box
             var a = (byte)((_flagProfile[r] * fg.Alpha + 127) / 255);
             if (a == 0) continue;
             renderer.FillRectangle(
-                new RectInt(new PointInt(barRight, barTop + r + 1), new PointInt(barLeft, barTop + r)),
+                new RectInt(new PointInt(join.BarEndX, join.FlagTopY + r + 1), new PointInt(join.BarStartX, join.FlagTopY + r)),
                 new RGBAColor32(fg.Red, fg.Green, fg.Blue, a));
         }
-        LastJoin = new RadicalJoin(barTop, _flagProfile.Length, x0 + _flagLastFullCol, barLeft, Math.Max(barLeft, barRight));
-    }
-
-    /// <summary>
-    /// MATH-driven path: blit the stretchy radical glyph to the left of the
-    /// radicand, then extend the vinculum across the radicand's width as the
-    /// glyph's own top stroke continued (see <see cref="DrawVinculum"/>):
-    /// its top row comes from the snapped outline and its profile from the
-    /// flag's last full-coverage column (see <see cref="MeasureFlag"/>), so
-    /// the bar joins the flag without a step or gap.
-    /// </summary>
-    private void DrawWithFontGlyph(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style)
-    {
-        // Bottom-anchored radical: position the bitmap so its bottom edge
-        // lands at baselineY + _radicalGlyphDepth (= radicand.Depth +
-        // extraDescender). That keeps the V's tip just below the radicand
-        // even when the picked variant overshoots requiredHeight. The
-        // bitmap top therefore sits at (radicalGlyphDepth - bitmap.Height)
-        // pixels relative to baseline.
-        var glyphTop = baselineY + _radicalGlyphDepth - _joinedRadical.Height;
-        var (x0, y0) = DrawRadicalGlyph(renderer, penX, glyphTop, style);
-
-        var radicandX = penX + _radicalFont!.Width;
-        _radicand.Draw(renderer, radicandX, baselineY, style);
-
-        DrawVinculum(renderer, x0, y0, radicandX, style);
     }
 
     /// <summary>

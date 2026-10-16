@@ -14,9 +14,9 @@ namespace DIR.Lib.Tests;
 /// whose solid top row sat on the flag's antialiased top row, so the bar read as half a pixel high.
 ///
 /// <para>Each case renders a scene to RGBA and finds the join from the layout's own numbers: the
-/// <see cref="SqrtBox.LastJoin"/> its draw recorded (the flag's top row and band height, its rightmost
-/// full-coverage column, the bar's end), never by searching the image. The assertions then read the
-/// pixels there.</para>
+/// <see cref="SqrtBox.JoinAt"/> the radical's draw takes its geometry from, asked at the pen the scene drew
+/// the radical at (the flag's top row and band height, its rightmost full-coverage column, the bar's end),
+/// never by searching the image. The assertions then read the pixels there.</para>
 ///
 /// <para>Both fonts run every assertion. DejaVu Sans has no MATH table, so it takes the scaled-glyph
 /// path (2), and path 1 with its unstretched base glyph for the 24 px index scene; its hinter already
@@ -496,12 +496,13 @@ public sealed partial class RadicalJoinTests
             _ => throw new ArgumentException($"unknown scene '{scene}'"),
         };
 
-        var image = BoxRasterizer.RenderToRgba(box, style);
-        var sqrt = FindSqrt(box);
-        var join = sqrt.LastJoin.ShouldNotBeNull("the radical drew no flag and bar (parametric path?)");
+        var (root, probe) = ProbeSqrt(box);
+        var image = BoxRasterizer.RenderToRgba(root, style);
+        var (penX, baselineY) = probe.Pen.ShouldNotBeNull("the scene never drew its radical");
+        var join = probe.Sqrt.JoinAt(penX, baselineY).ShouldNotBeNull("the radical has no flag and bar (parametric path?)");
         join.FlagRows.ShouldBeGreaterThan(0);
         join.BarEndX.ShouldBeGreaterThan(join.FlagLastFullX);
-        return new Rendered(image, sqrt, join);
+        return new Rendered(image, probe.Sqrt, join);
     }
 
     private static Box Parse(string latex, BoxStyle style)
@@ -515,25 +516,73 @@ public sealed partial class RadicalJoinTests
         return item.Content.ShouldBeOfType<Func<BoxStyle, Box>>()(style);
     }
 
-    /// <summary>The scene's one radical. Boxes keep their children in private fields, so this walks
-    /// them; it only locates the box, and the join's position comes from the box itself.</summary>
-    private static SqrtBox FindSqrt(Box root)
+    /// <summary>
+    /// Stands in for the scene's radical in its parent's slot and records the pen the parent draws it at,
+    /// so the test can ask the radical where its join is for that pen. It forwards the radical's metrics
+    /// and its draw unchanged, so the scene lays out and paints exactly as it does without it; the record
+    /// is the test's own, and the radical's draw writes none.
+    /// </summary>
+    private sealed class PenProbe(SqrtBox sqrt) : Box
     {
+        public SqrtBox Sqrt => sqrt;
+
+        public (float PenX, float BaselineY)? Pen { get; private set; }
+
+        public override float Width => sqrt.Width;
+        public override float Height => sqrt.Height;
+        public override float Depth => sqrt.Depth;
+
+        public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style)
+        {
+            Pen = (penX, baselineY);
+            sqrt.Draw(renderer, penX, baselineY, style);
+        }
+    }
+
+    /// <summary>The scene with a <see cref="PenProbe"/> in place of its one radical, and that probe. Boxes
+    /// keep their children in private fields, so this walks them and swaps the radical where its parent
+    /// holds it; the scene itself is the radical when it is the root.</summary>
+    private static (Box Root, PenProbe Probe) ProbeSqrt(Box root)
+    {
+        if (root is SqrtBox top)
+        {
+            var probe = new PenProbe(top);
+            return (probe, probe);
+        }
+
         var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
         var pending = new Stack<object>();
         pending.Push(root);
         while (pending.TryPop(out var node))
         {
             if (!seen.Add(node)) continue;
-            if (node is SqrtBox sqrt) return sqrt;
             for (var type = node.GetType(); type is not null && type != typeof(object); type = type.BaseType)
             {
                 foreach (var field in type.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly))
                 {
                     switch (field.GetValue(node))
                     {
+                        case SqrtBox sqrt when field.FieldType.IsAssignableFrom(typeof(PenProbe)):
+                        {
+                            var probe = new PenProbe(sqrt);
+                            field.SetValue(node, probe);
+                            return (root, probe);
+                        }
                         case Box child:
                             pending.Push(child);
+                            break;
+                        case System.Collections.IList items when items.GetType().GetElementType() is { } element
+                                                                 && element.IsAssignableFrom(typeof(PenProbe)):
+                            for (var i = 0; i < items.Count; i++)
+                            {
+                                if (items[i] is SqrtBox sqrt)
+                                {
+                                    var probe = new PenProbe(sqrt);
+                                    items[i] = probe;
+                                    return (root, probe);
+                                }
+                                if (items[i] is Box b) pending.Push(b);
+                            }
                             break;
                         case System.Collections.IEnumerable items and not string:
                             foreach (var item in items)
@@ -543,6 +592,6 @@ public sealed partial class RadicalJoinTests
                 }
             }
         }
-        throw new InvalidOperationException("scene has no SqrtBox");
+        throw new InvalidOperationException("scene has no SqrtBox its parent holds in a slot a probe fits");
     }
 }
