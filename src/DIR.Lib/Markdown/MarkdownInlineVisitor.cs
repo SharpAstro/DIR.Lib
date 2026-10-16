@@ -864,8 +864,13 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     public object Visit(MarkdownInline.ImageSpanEmpty node) =>
         new MdImage(Process((IReadOnlyList<MdInline>)node.Arg1.Content), string.Empty);
 
-    public object Visit(MarkdownInline.ColorSpanEmpty node) =>
-        new MdGroup(Process((IReadOnlyList<MdInline>)node.Arg1.Content));
+    // `[]{}` has no label to show either, so it stays its own text rather
+    // than flattening to nothing.
+    public object Visit(MarkdownInline.ColorSpanEmpty node)
+    {
+        var label = Process((IReadOnlyList<MdInline>)node.Arg1.Content);
+        return label.Count == 0 ? new MdLiteral("[]{}") : new MdGroup(label);
+    }
 
     // ── Math: dollar forms ($..$, $$..$$) ─────────────────────────────
     //
