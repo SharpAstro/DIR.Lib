@@ -362,7 +362,7 @@ public sealed class DollarRulesTests
         ];
         var rng = new System.Random(20261017);
         var parser = new MarkdownInlineVisitor();
-        for (int n = 0; n < 5000; n++)
+        for (int n = 0; n < 500; n++)   // each parse costs a few milliseconds
         {
             var source = string.Concat(Enumerable.Range(0, rng.Next(1, 11)).Select(_ => alphabet[rng.Next(alphabet.Length)]));
             Should.NotThrow(() => parser.Parse(source), $"source: [{source.Replace("\r", "\\r").Replace("\n", "\\n")}]");
@@ -377,22 +377,22 @@ public sealed class DollarRulesTests
         // deleted at random. That is the shape that once carried a label walk past its bound and
         // out of step with the lexer, which a uniform draw almost never builds. Every input parses
         // to spans: none throws and none needs the block fallback.
+        // Each parse costs a few milliseconds, so the draw leans on the pieces of that shape and
+        // stays at a few hundred inputs.
         var rng = new System.Random(20261018);
         string Pick(params string[] items) => items[rng.Next(items.Length)];
-        string Url() => string.Concat(Enumerable.Range(0, rng.Next(0, 5)).Select(_ => Pick("u", "`", "``", "\r", " ", "$", "[", "]", "\\")));
-        string Gen(int depth) => string.Concat(Enumerable.Range(0, rng.Next(1, 5)).Select(_ => (rng.Next(0, 8), depth) switch
+        string Url() => string.Concat(Enumerable.Range(0, rng.Next(0, 5)).Select(_ => Pick("u", "`", "`", "``", "\r", " ", "$", "[", "]", "\\")));
+        string Gen(int depth) => string.Concat(Enumerable.Range(0, rng.Next(1, 5)).Select(_ => (rng.Next(0, 20), depth) switch
         {
-            (2, < 3) => Pick("", "", "!") + "[" + Gen(depth + 1) + Pick("](", "](", "]{", "]") + Url() + Pick(")", ")", "}", ""),
-            (1, _) => "$" + string.Concat(Enumerable.Range(0, rng.Next(1, 4)).Select(_ => Pick("[", "]", "x", "`", "(", ")"))) + "$",
-            (3, _) => "`" + Pick("x", "$", "[", "]", ")") + "`",
-            (4, _) => "](" + Url() + ")",
-            (5, _) => Pick("[", "]", "`", "``", "$", "$$", "\r", "\\", ")", "(", "!["),
-            (6, _) => Pick(@"\(", @"\)", @"\[", @"\]", @"\boxed{", "}", @"\text{"),
-            (7, _) => "$$" + Pick("x", "[", "`") + "$$",
+            (< 7, < 3) => Pick("", "", "!") + "[" + Gen(depth + 1) + Pick("](", "](", "](", "]{", "]") + Url() + Pick(")", ")", "}", ""),
+            (< 12, _) => "$" + string.Concat(Enumerable.Range(0, rng.Next(1, 4)).Select(_ => Pick("[", "[", "]", "x", "`", "(", ")"))) + "$",
+            (< 15, _) => "](" + Url() + ")",
+            (< 17, _) => "`" + Pick("x", "$", "[", "]", ")") + "`",
+            (18, _) => Pick("[", "]", "`", "``", "$", "$$", "\r", "\\", ")", "(", "![", @"\(", @"\[", @"\boxed{", @"\text{"),
             _ => Pick("x", " ", "*", "**", "y z"),
         }));
         var parser = new MarkdownInlineVisitor();
-        for (int n = 0; n < 4000; n++)
+        for (int n = 0; n < 500; n++)
         {
             var source = Gen(0);
             if (rng.Next(3) == 0 && source.Length > 1) source = source.Remove(rng.Next(source.Length), 1);

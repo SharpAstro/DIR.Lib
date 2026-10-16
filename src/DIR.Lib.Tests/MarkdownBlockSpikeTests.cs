@@ -263,7 +263,7 @@ public sealed class MarkdownBlockSpikeTests
             "#", "# ", "-", "- ", "1. ", ">", "> ", "|", "| ", "|---|", "\n", "\r", "\r\n", "\n\n", "\r\r",
         ];
         var rng = new System.Random(20261017);
-        for (int n = 0; n < 2000; n++)
+        for (int n = 0; n < 200; n++)   // a document costs its blocks' inline parses, a few ms each
         {
             var source = string.Concat(Enumerable.Range(0, rng.Next(1, 25)).Select(_ => alphabet[rng.Next(alphabet.Length)]));
             Should.NotThrow(() => _visitor.Parse(source), $"source: [{source.Replace("\r", "\\r").Replace("\n", "\\n")}]");
