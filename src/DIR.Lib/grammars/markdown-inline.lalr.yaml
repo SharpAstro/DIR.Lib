@@ -158,9 +158,9 @@ lexer:
   # MarkdownInlineVisitor.MarkUnpaired pairs the openers first (by
   # Pandoc's dollar rule for `$`, and inside a link or colour label only
   # within the label) and swaps an unpaired one for stand-in characters
-  # this lexer reads as text. A `[` or `]` with no partner and a backtick
-  # run that never closes reach it the same way, as text, since the
-  # grammar has no rule for them.
+  # this lexer reads as text. A `[` or `]` with no partner, a backtick
+  # run that never closes and a `](` or `]{` whose `)` or `}` never comes
+  # reach it the same way, as text, since the grammar has no rule for them.
   root:
     - { symbol: lboxed,           match: '\\boxed\{',  push: math_boxed }
     - { symbol: dollar2,          match: '\$\$',       push: math_dollar2 }

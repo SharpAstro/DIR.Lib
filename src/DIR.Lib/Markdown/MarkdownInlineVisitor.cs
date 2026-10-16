@@ -189,10 +189,13 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                         bool image = s[i] == '!';
                         int label = i + (image ? 2 : 1);
                         int close = LabelEnd(s, label);
-                        if (close > 0 && close < bound && (At(s, close + 1) == '(' || (!image && At(s, close + 1) == '{')))
+                        int tailEnd = close > 0 && close < bound && (At(s, close + 1) == '(' || (!image && At(s, close + 1) == '{'))
+                            ? TailEnd(s, close)
+                            : -1;
+                        if (tailEnd > 0)
                         {
                             Walk(label, close);
-                            i = TailEnd(s, close);
+                            i = tailEnd;
                         }
                         else
                         {
@@ -204,17 +207,22 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                         break;
                     }
                     case ']':
-                        if (open is not { Count: > 0 })
+                    {
+                        bool hasTail = At(s, i + 1) is '(' or '{';
+                        int tailEnd = hasTail ? TailEnd(s, i) : -1;
+                        if (open is not { Count: > 0 } || (hasTail && tailEnd < 0))
                         {
-                            // No `[` for this bracket, or a math span took
-                            // it: text, and so is a link tail after it.
+                            // No `[` for this bracket (or a math span took
+                            // it), or a tail that never closes: text, and so
+                            // is what follows it.
                             Mark(i, UnpairedCloseBracket);
                             i++;
                             break;
                         }
                         open.RemoveAt(open.Count - 1);
-                        i = At(s, i + 1) is '(' or '{' ? TailEnd(s, i) : i + 1;
+                        i = hasTail ? tailEnd : i + 1;
                         break;
+                    }
                     default:
                         i++;
                         break;
@@ -239,9 +247,10 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     /// <summary>Index of the <c>]</c> that closes the bracket whose label
     /// starts at <paramref name="from"/>, or -1 when none does. Brackets
     /// nest. A code span, a <c>\X</c> pair, and a link's URL or a colour's
-    /// value hide the brackets they hold, as they do from the lexer. Math
-    /// does not: the label is found before the math in it is paired, so a
-    /// <c>$</c> in the label cannot carry its bracket away.</summary>
+    /// value hide the brackets they hold, as they do from the lexer; a
+    /// <c>]</c> whose tail never closes is text, as <see cref="MarkUnpaired"/>
+    /// makes it. Math does not: the label is found before the math in it
+    /// is paired, so a <c>$</c> in the label cannot carry its bracket away.</summary>
     private static int LabelEnd(string s, int from)
     {
         int depth = 0;
@@ -262,24 +271,25 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                     depth++;
                     break;
                 case ']':
+                {
+                    int tailEnd = At(s, k + 1) is '(' or '{' ? TailEnd(s, k) : 0;
+                    if (tailEnd < 0) break;   // text
                     if (depth-- == 0) return k;
-                    if (At(s, k + 1) is '(' or '{')
-                    {
-                        k = TailEnd(s, k) - 1;
-                    }
+                    if (tailEnd > 0) k = tailEnd - 1;
                     break;
+                }
             }
         }
         return -1;
     }
 
     /// <summary>End (exclusive) of the link or colour tail whose <c>]</c>
-    /// is at <paramref name="close"/>: url_body and color_body run to the
-    /// next <c>)</c> or <c>}</c>, or to the end of the text.</summary>
+    /// is at <paramref name="close"/>, or -1 when it never closes:
+    /// url_body and color_body run to the next <c>)</c> or <c>}</c>.</summary>
     private static int TailEnd(string s, int close)
     {
         int end = s.IndexOf(s[close + 1] == '(' ? ')' : '}', close + 2);
-        return end < 0 ? s.Length : end + 1;
+        return end < 0 ? -1 : end + 1;
     }
 
     /// <summary>End (exclusive) of the <c>$..$</c> span opening at
