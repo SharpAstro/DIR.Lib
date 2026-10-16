@@ -77,6 +77,19 @@ public sealed class BraceSetTests
     public void UnicodePath_UnbalancedRendersAsBefore(string latex, string expected)
         => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
 
+    /// <summary>
+    /// A piecewise definition, <c>\left\{</c> with no right brace
+    /// (<c>\right.</c>) around an environment, now parses. Its brace used to
+    /// alias to a bare <c>{</c> that left a group unclosed, so the formula
+    /// fell back to its source text, blanks and all:
+    /// <c>"f(x) = { x    x > 0\n 0    otherwise "</c>.
+    /// </summary>
+    [Fact]
+    public void UnicodePath_PiecewiseKeepsItsBrace()
+        => MarkdownMacros.RenderMathUnicode(
+                @"f(x) = \left\{ \begin{array}{ll} x & x > 0 \\ 0 & \text{otherwise} \end{array} \right.")
+            .ShouldBe("f(x) = {x    x > 0\n 0    otherwise");
+
     // ── Box path ───────────────────────────────────────────────────────
 
     /// <summary>
