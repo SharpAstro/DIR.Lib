@@ -26,7 +26,8 @@ public enum BracketKind { Paren, Square, Curly }
 /// <list type="bullet">
 ///   <item><c>Paren</c>: smooth crescents drawn as ellipse arcs.</item>
 ///   <item><c>Square</c>: two vertical strokes plus short horizontal serifs.</item>
-///   <item><c>Curly</c>: two-stroke S-curves meeting at a centre tip.</item>
+///   <item><c>Curly</c>: per half, two quarter-curves joined by a straight
+///   spine, the halves meeting at a sharp cusp.</item>
 /// </list>
 /// </summary>
 public sealed class BracketBox : Box
@@ -153,19 +154,38 @@ public sealed class BracketBox : Box
             }
             case BracketKind.Curly:
             {
-                // Two-stroke S: the ends turn in towards the content, and the
-                // centre tip points away from it, so the left one reads as {
-                // and the right one as }. Approximated as four straight strokes
-                // (the renderer doesn't expose Bezier curves; if it ever
-                // does, swap these for a proper cubic).
+                // Each half: a quarter-curve from the end, which lies towards
+                // the content, out to a straight vertical spine; the spine; and
+                // a quarter-curve from the spine out to the cusp at mid-height,
+                // which points away from the content. Both curves meet the cusp
+                // running horizontally, which is what makes it sharp, so the
+                // left one reads as { and the right one as }. Each curve is a
+                // quarter ellipse sampled into short strokes, as the paren's
+                // arc is (the renderer has no curve primitive).
                 float midY = (top + bottom) / 2;
-                float tipX = openLeft ? xOrigin + bw * 0.15f : xOrigin + bw * 0.85f;
-                float farX = openLeft ? xOrigin + bw * 0.70f : xOrigin + bw * 0.30f;
-                float spineX = openLeft ? xOrigin + bw * 0.45f : xOrigin + bw * 0.55f;
-                renderer.DrawLine(farX, top, spineX, top + (midY - top) * 0.3f, color, curveThickness);
-                renderer.DrawLine(spineX, top + (midY - top) * 0.3f, tipX, midY, color, curveThickness);
-                renderer.DrawLine(tipX, midY, spineX, midY + (bottom - midY) * 0.7f, color, curveThickness);
-                renderer.DrawLine(spineX, midY + (bottom - midY) * 0.7f, farX, bottom, color, curveThickness);
+                float inward = openLeft ? 1f : -1f;
+                float spineX = xOrigin + bw * 0.5f;
+                float reach = bw * 0.35f;
+                float halfHeight = (bottom - top) / 2;
+                float curl = MathF.Min(MathF.Max(halfHeight * 0.25f, reach), halfHeight * 0.5f);
+                int steps = Math.Max(6, (int)MathF.Ceiling(MathF.Max(curl, reach) / 1.5f));
+
+                // The top half, end to cusp; the bottom half mirrors it.
+                var points = new (float X, float Y)[4 * steps + 3];
+                var n = 0;
+                for (int i = 0; i <= steps; i++)
+                {
+                    float a = MathF.PI / 2 * i / steps;
+                    points[n++] = (spineX + inward * reach * (1 - MathF.Sin(a)), top + curl * (1 - MathF.Cos(a)));
+                }
+                for (int i = 0; i <= steps; i++)
+                {
+                    float a = MathF.PI / 2 * i / steps;
+                    points[n++] = (spineX - inward * reach * (1 - MathF.Cos(a)), midY - curl * (1 - MathF.Sin(a)));
+                }
+                for (int i = n - 2; i >= 0; i--)
+                    points[n++] = (points[i].X, 2 * midY - points[i].Y);
+                renderer.DrawPolyline(points.AsSpan(0, n), color, curveThickness);
                 break;
             }
             case BracketKind.Paren:
