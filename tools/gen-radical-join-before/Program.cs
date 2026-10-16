@@ -1,8 +1,9 @@
-// Measures the square root of commit e6778fc at every point RadicalJoinTests sweeps and writes the result
-// as src/DIR.Lib.Tests/RadicalJoinTests.Before.cs. Built against a copy of that commit's sources whose
-// SqrtBox generate.ps1 has patched to record its bar in a `_probeBar` field; see GenRadicalJoinBefore.csproj.
+// Measures the square root of a base commit (generate.ps1 says which, and why) at every point
+// RadicalJoinTests sweeps and writes the result as src/DIR.Lib.Tests/RadicalJoinTests.Before.cs. Built
+// against a copy of that commit's sources whose SqrtBox generate.ps1 has patched to record its bar in a
+// `_probeBar` field; see GenRadicalJoinBefore.csproj.
 //
-// Arguments: <fonts dir> <output .cs path>.
+// Arguments: <fonts dir> <output .cs path> <base commit>.
 //
 // The point set here and the sweep in RadicalJoinTests must agree; the test's BeforeDataCoversTheSweep
 // fails when a sweep point has no row here. Each point records the radical's rendering path, its Height
@@ -19,11 +20,12 @@ using DIR.Lib.MathLayout;
 using LALR.CC.LexicalGrammar;
 using SharpAstro.Fonts;
 
-if (args.Length != 2)
+if (args.Length != 3)
 {
-    Console.Error.WriteLine("usage: GenRadicalJoinBefore <fonts dir> <output .cs path>");
+    Console.Error.WriteLine("usage: GenRadicalJoinBefore <fonts dir> <output .cs path> <base commit>");
     return 2;
 }
+var baseCommit = args[2];
 
 var inv = CultureInfo.InvariantCulture;
 var fonts = new Dictionary<string, string>
@@ -106,7 +108,7 @@ namespace DIR.Lib.Tests;
 public sealed partial class RadicalJoinTests
 {
     /// <summary>
-    /// The radical before the radical-join rework (commit e6778fc) at every point the sweep and the named
+    /// The radical as commit {{baseCommit}} drew it, at every point the sweep and the named
     /// cases visit: which path drew it, its <see cref="MathLayout.Box.Height"/> and
     /// <see cref="MathLayout.Box.Depth"/>, and the clear pixel rows between its bar and the radicand,
     /// measured as <see cref="Rendered.ClearRowsUnderBar"/> does. Floats are printed round-trip, so they

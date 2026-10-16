@@ -1,12 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Regenerates src/DIR.Lib.Tests/RadicalJoinTests.Before.cs: the square root as it was BEFORE the
-    radical-join rework (commit e6778fc; generate.ps1 says why that one), measured at every point
-    RadicalJoinTests sweeps.
+    Regenerates src/DIR.Lib.Tests/RadicalJoinTests.Before.cs: the square root as a base commit drew it
+    (generate.ps1 says which, and why that one), measured at every point RadicalJoinTests sweeps.
 
     It builds against a copy of that commit's sources, not against src/: the point of the data is what
-    the old SqrtBox did. generate.ps1 beside this file extracts the copy, patches the old SqrtBox to
+    the replaced SqrtBox did. generate.ps1 beside this file extracts the copy, patches its SqrtBox to
     report where it drew its bar, and runs this project against it. Run that script, not this project:
       pwsh tools/gen-radical-join-before/generate.ps1
 
