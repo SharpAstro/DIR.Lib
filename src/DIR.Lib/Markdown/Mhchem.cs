@@ -33,7 +33,9 @@ namespace DIR.Lib.Markdown;
 /// <c>\mathrm</c> upright; on the Unicode path <c>\mathrm{X}</c> is just
 /// <c>X</c>. A LaTeX command's name in the body (<c>\alpha</c>) is copied
 /// through untouched, and so is a <c>\text{...}</c> argument; any other
-/// command's arguments are chemistry like the rest of the body.</para>
+/// command's arguments are chemistry like the rest of the body. A
+/// <c>\mathrm{...}</c> in the body is unwrapped, since its letters go out
+/// upright anyway: <c>\ce{\mathrm{H2}}</c> is <c>\mathrm{H}_{2}</c>.</para>
 ///
 /// <para>Wired into the markdown pipeline by
 /// <see cref="MarkdownMacros.ExpandLatexMacros"/> and by Console.Lib's
@@ -169,6 +171,9 @@ public static class Mhchem
 
             if (ch == '\\' && i + 1 < body.Length && IsAsciiLetter(body[i + 1]))
             {
+                // \mathrm{X} reads as X, from the same state (see
+                // TryUnwrapMathrm).
+                if (TryUnwrapMathrm(ref body, i)) continue;
                 // A LaTeX command's name (\alpha, and \text{aq} whole) goes
                 // through as written. Without this its name would be read as
                 // letters: wrapped in \mathrm, or, for \Gamma, cut at Ga.
@@ -301,6 +306,7 @@ public static class Mhchem
             var c = content[i];
             if (c == '\\' && i + 1 < content.Length && IsAsciiLetter(content[i + 1]))
             {
+                if (TryUnwrapMathrm(ref content, i)) continue;
                 CopyCommand(content, ref i, sb);
                 continue;
             }
@@ -328,13 +334,47 @@ public static class Mhchem
         => sb.Append(@"\mathrm{").Append(letters).Append('}');
 
     /// <summary>
+    /// If a <c>\mathrm{...}</c> starts at <paramref name="i"/>, replaces it
+    /// in <paramref name="s"/> by its argument, braces and all, and returns
+    /// true; the caller then reads on from <paramref name="i"/>, where the
+    /// argument now starts. Every chem letter goes out in its own
+    /// <c>\mathrm</c> already, so the user's adds nothing, and keeping it
+    /// nests one inside the other: <c>\ce{\mathrm{H2}}</c> would be
+    /// <c>\mathrm{\mathrm{H}_{2}}</c> rather than <c>\mathrm{H}_{2}</c>, as
+    /// <c>\ce{H2}</c> is. Blanks before the brace are skipped, as LaTeX
+    /// skips them. Returns false, changing nothing, for any other command,
+    /// or a <c>\mathrm</c> with no balanced brace group after it.
+    /// </summary>
+    private static bool TryUnwrapMathrm(ref string s, int i)
+    {
+        const string name = @"\mathrm";
+        if (!s.AsSpan(i).StartsWith(name, StringComparison.Ordinal)) return false;
+        int open = i + name.Length;
+        if (open < s.Length && IsAsciiLetter(s[open])) return false;
+        while (open < s.Length && (s[open] == ' ' || s[open] == '\t')) open++;
+        if (open >= s.Length || s[open] != '{') return false;
+        int depth = 1;
+        int close = open + 1;
+        while (close < s.Length && depth > 0)
+        {
+            if (s[close] == '{') depth++;
+            else if (s[close] == '}') depth--;
+            if (depth > 0) close++;
+        }
+        if (depth > 0) return false;
+        s = string.Concat(s.AsSpan(0, i), s.AsSpan(open + 1, close - open - 1), s.AsSpan(close + 1));
+        return true;
+    }
+
+    /// <summary>
     /// Copies the LaTeX command at <paramref name="i"/> (a backslash and its
-    /// letters). For <c>\text</c> it also copies the brace groups straight
-    /// after the name, balanced and as written, so <c>\text{aq}</c> reaches
-    /// the <c>\text</c> expansion whole. Any other command's arguments are
-    /// chemistry and go back through the caller's loop: <c>\sqrt{H2}</c> is
-    /// <c>\sqrt{\mathrm{H}_{2}}</c>. Leaves <paramref name="i"/> past what it
-    /// copied.
+    /// letters). For <c>\text</c> it also copies its one argument, the brace
+    /// group straight after the name, balanced and as written, so
+    /// <c>\text{aq}</c> reaches the <c>\text</c> expansion whole; a second
+    /// group (<c>\text{a}{b}</c>) is not its argument and is chemistry. Any
+    /// other command's arguments are chemistry too and go back through the
+    /// caller's loop: <c>\sqrt{H2}</c> is <c>\sqrt{\mathrm{H}_{2}}</c>.
+    /// Leaves <paramref name="i"/> past what it copied.
     /// </summary>
     private static void CopyCommand(string s, ref int i, StringBuilder sb)
     {
@@ -342,7 +382,7 @@ public static class Mhchem
         i++;
         while (i < s.Length && IsAsciiLetter(s[i])) i++;
         var isText = s.AsSpan(start, i - start).SequenceEqual(@"\text");
-        while (isText && i < s.Length && s[i] == '{')
+        if (isText && i < s.Length && s[i] == '{')
         {
             int depth = 1;
             int j = i + 1;

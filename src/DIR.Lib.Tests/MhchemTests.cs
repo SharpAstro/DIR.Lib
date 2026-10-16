@@ -139,6 +139,29 @@ public sealed class MhchemTests
     public void ToLatex_CommandsPassThrough(string body, string expected)
         => Mhchem.ToLatex(body).ShouldBe(expected);
 
+    // \text takes one argument, so only its first brace group is copied as
+    // written: a second one is chemistry like any other group. Every group
+    // after \text used to be copied verbatim.
+    [Theory]
+    [InlineData(@"\text{a}{b}",       @"\text{a}{\mathrm{b}}")]
+    [InlineData(@"\text{aq}{H2}",     @"\text{aq}{\mathrm{H}_{2}}")]
+    public void ToLatex_TextCopiesOnlyItsArgument(string body, string expected)
+        => Mhchem.ToLatex(body).ShouldBe(expected);
+
+    // A \mathrm in the body is unwrapped: every chem letter goes out in its
+    // own \mathrm already, so keeping the user's nested one inside it
+    // (\mathrm{\mathrm{H}_{2}}) adds nothing. Its braces go with it, so the
+    // body reads as it would bare, in a script too.
+    [Theory]
+    [InlineData(@"\mathrm{H2}",              @"\mathrm{H}_{2}")]
+    [InlineData(@"\mathrm{H2}O",             @"\mathrm{H}_{2}\mathrm{O}")]
+    [InlineData(@"2\mathrm{H2}",             @"2\mathrm{H}_{2}")]
+    [InlineData(@"\mathrm{\mathrm{Na}}Cl",   @"\mathrm{Na}\mathrm{Cl}")]
+    [InlineData(@"H2O(\mathrm {aq})",        @"\mathrm{H}_{2}\mathrm{O}(\mathrm{aq})")]
+    [InlineData(@"X^{\mathrm{n}+}",          @"\mathrm{X}^{\mathrm{n}\plus}")]
+    public void ToLatex_MathrmIsUnwrapped(string body, string expected)
+        => Mhchem.ToLatex(body).ShouldBe(expected);
+
     // ── Graceful degradation ───────────────────────────────────────────
 
     [Fact]
@@ -262,6 +285,8 @@ public sealed class MhchemTests
     [InlineData(@"\sqrt{H2}",        "√H₂")]
     [InlineData(@"\frac{H2O}{2}",    "H₂O⁄2")]
     [InlineData(@"\Gamma",           "Γ")]
+    [InlineData(@"\mathrm{H2}O",     "H₂O")]
+    [InlineData(@"\text{a}{b}",      "ab")]
     public void Roundtrip_UprightTextAndCommands(string body, string expected)
         => MarkdownMacros.RenderMathUnicode(@"\ce{" + body + "}").ShouldBe(expected);
 
