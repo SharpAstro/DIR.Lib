@@ -114,9 +114,10 @@ public sealed class BraceSetTests
     // ── Box path ───────────────────────────────────────────────────────
 
     /// <summary>
-    /// A set is a curly <see cref="BracketBox"/> around its content, in a
-    /// font with a MATH table (STIX Two Math) and in one without (DejaVu
-    /// Sans, which takes the parametric fallback).
+    /// A set is a curly <see cref="BracketBox"/> around its content, in STIX
+    /// Two Math and in DejaVu Sans. Both draw the braces from their MATH
+    /// table's stretchy brace (DejaVu Sans as an assembly of parts); the
+    /// parametric fallback is <see cref="BoxPath_SetWithoutMathCoverage_TakesTheParametricPath"/>'s.
     /// </summary>
     [Theory]
     [InlineData("STIX2Math", @"\{1, 2, 3\}", "1, 2, 3")]
@@ -148,6 +149,78 @@ public sealed class BraceSetTests
         var tall = BuildBox(@"\left\{ \frac{1}{2} \right\}", Stix).ShouldBeOfType<BracketBox>();
         var single = BuildBox(@"\{x\}", Stix).ShouldBeOfType<BracketBox>();
         tall.TotalHeight.ShouldBeGreaterThan(single.TotalHeight * 1.3f);
+    }
+
+    /// <summary>
+    /// A font with no MATH construction for the brace draws a set's braces
+    /// with <see cref="BracketBox"/>'s parametric strokes once the content is
+    /// taller than its brace glyph. Among the test fonts that is BabelStone
+    /// Xiangqi Colour: a colour-glyph fixture, but it maps <c>{</c>, <c>}</c>,
+    /// the digits and Latin letters, and has no MATH table. Around a fraction
+    /// its brace glyph is too short, so the braces are strokes.
+    /// </summary>
+    [Fact]
+    public void BoxPath_SetWithoutMathCoverage_TakesTheParametricPath()
+    {
+        var style = StyleFor("BabelStone");
+        var inner = BuildBox(@"\frac{1}{2}", style).ShouldNotBeNull();
+        new StretchyVerticalBox('{', inner.TotalHeight, style).IsAvailable.ShouldBeFalse("no stretchy { in the font");
+        new StretchyVerticalBox('}', inner.TotalHeight, style).IsAvailable.ShouldBeFalse("no stretchy } in the font");
+
+        var box = BuildBox(@"\left\{ \frac{1}{2} \right\}", style).ShouldBeOfType<BracketBox>();
+        Render(box, style).ShouldBe(Render(new BracketBox(inner, BracketKind.Curly, style), style));
+        Render(box, style).ShouldNotBe(Render(new BracketBox(inner, BracketKind.Square, style), style));
+    }
+
+    /// <summary>
+    /// What a set paints: a brace on each side, each at least as tall as
+    /// the content, with the content's ink between them, and each brace's
+    /// cusp (its mid-height point) turned away from the content, so the left
+    /// one reads as <c>{</c> and the right one as <c>}</c>. Read off the
+    /// raster, so it holds for a font's own braces and for the parametric
+    /// strokes alike.
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math", @"\{1, 2, 3\}")]
+    [InlineData("STIX2Math", @"\left\{ \frac{1}{2} \right\}")]
+    [InlineData("DejaVuSans", @"\{1, 2, 3\}")]
+    [InlineData("DejaVuSans", @"\left\{ \frac{1}{2} \right\}")]
+    [InlineData("BabelStone", @"\left\{ \frac{1}{2} \right\}")]
+    public void BoxPath_Set_PaintsBracesAroundTheContent(string font, string latex)
+    {
+        var style = StyleFor(font);
+        var image = BoxRasterizer.RenderToRgba(BuildBox(latex, style).ShouldBeOfType<BracketBox>(), style);
+
+        var runs = InkColumnRuns(image);
+        runs.Count.ShouldBeGreaterThanOrEqualTo(3, "a brace either side and the content between");
+        var (left, right) = (runs[0], runs[^1]);
+        var content = (Start: runs[1].Start, End: runs[^2].End);
+
+        // To within a row: a font's own brace at text size is centred on the
+        // math axis, and DejaVu Sans's then tops out a row below its digits.
+        var (contentTop, contentBottom) = InkRows(image, content.Start, content.End);
+        foreach (var (name, brace) in new[] { ("left", left), ("right", right) })
+        {
+            var (top, bottom) = InkRows(image, brace.Start, brace.End);
+            top.ShouldBeLessThanOrEqualTo(contentTop + 1, $"the {name} brace should reach the content's top");
+            bottom.ShouldBeGreaterThanOrEqualTo(contentBottom - 1, $"the {name} brace should reach the content's bottom");
+        }
+
+        var (leftTop, leftBottom) = InkRows(image, left.Start, left.End);
+        var leftMid = (leftTop + leftBottom) / 2;
+        var leftCusp = ExtremeInkX(image, left, leftMid - 1, leftMid + 1, leftmost: true);
+        leftCusp.ShouldBeLessThan(ExtremeInkX(image, left, leftTop, leftTop, leftmost: true),
+            "the left brace's cusp should be left of its top end");
+        leftCusp.ShouldBeLessThan(ExtremeInkX(image, left, leftBottom, leftBottom, leftmost: true),
+            "the left brace's cusp should be left of its bottom end");
+
+        var (rightTop, rightBottom) = InkRows(image, right.Start, right.End);
+        var rightMid = (rightTop + rightBottom) / 2;
+        var rightCusp = ExtremeInkX(image, right, rightMid - 1, rightMid + 1, leftmost: false);
+        rightCusp.ShouldBeGreaterThan(ExtremeInkX(image, right, rightTop, rightTop, leftmost: false),
+            "the right brace's cusp should be right of its top end");
+        rightCusp.ShouldBeGreaterThan(ExtremeInkX(image, right, rightBottom, rightBottom, leftmost: false),
+            "the right brace's cusp should be right of its bottom end");
     }
 
     /// <summary>
@@ -186,6 +259,7 @@ public sealed class BraceSetTests
     [InlineData("STIX2Math", @"\left\{ \frac{1}{2} \right\}", "set-half")]
     [InlineData("DejaVuSans", @"\{1, 2, 3\}", "set-1-2-3")]
     [InlineData("DejaVuSans", @"\left\{ \frac{1}{2} \right\}", "set-half")]
+    [InlineData("BabelStone", @"\left\{ \frac{1}{2} \right\}", "set-half")]
     public void BoxPath_WritesPngForInspection(string font, string latex, string name)
     {
         var style = StyleFor(font);
@@ -357,6 +431,7 @@ public sealed class BraceSetTests
     {
         "STIX2Math" => Path.Combine(AppContext.BaseDirectory, "Fonts", "STIX2Math.otf"),
         "DejaVuSans" => Path.Combine(AppContext.BaseDirectory, "Fonts", "DejaVuSans.ttf"),
+        "BabelStone" => Path.Combine(AppContext.BaseDirectory, "Fonts", "BabelStoneXiangqiColour.ttf"),
         _ => throw new ArgumentException($"unknown font '{font}'"),
     }, FontSize, Ink);
 
@@ -394,6 +469,65 @@ public sealed class BraceSetTests
         for (var i = 3; i < image.Pixels.Length; i += 4)
             if (image.Pixels[i] > 0) ink++;
         return ink;
+    }
+
+    private static bool Inked(RgbaImage image, int x, int y) => image.Pixels[(y * image.Width + x) * 4 + 3] > 0;
+
+    /// <summary>The image's inked columns as runs of adjacent columns, left to
+    /// right; a column with no ink at all ends a run.</summary>
+    private static List<(int Start, int End)> InkColumnRuns(RgbaImage image)
+    {
+        var runs = new List<(int Start, int End)>();
+        var start = -1;
+        for (var x = 0; x <= image.Width; x++)
+        {
+            var inked = false;
+            for (var y = 0; x < image.Width && y < image.Height && !inked; y++)
+                inked = Inked(image, x, y);
+            if (inked && start < 0) start = x;
+            else if (!inked && start >= 0)
+            {
+                runs.Add((start, x - 1));
+                start = -1;
+            }
+        }
+        return runs;
+    }
+
+    /// <summary>The first and last rows with ink in columns
+    /// <paramref name="x0"/> to <paramref name="x1"/>.</summary>
+    private static (int Top, int Bottom) InkRows(RgbaImage image, int x0, int x1)
+    {
+        var (top, bottom) = (-1, -1);
+        for (var y = 0; y < image.Height; y++)
+        {
+            for (var x = x0; x <= x1; x++)
+            {
+                if (!Inked(image, x, y)) continue;
+                if (top < 0) top = y;
+                bottom = y;
+                break;
+            }
+        }
+        top.ShouldBeGreaterThanOrEqualTo(0, $"columns {x0}..{x1} have no ink");
+        return (top, bottom);
+    }
+
+    /// <summary>The leftmost (or rightmost) column of <paramref name="run"/> with
+    /// ink in rows <paramref name="y0"/> to <paramref name="y1"/>.</summary>
+    private static int ExtremeInkX(RgbaImage image, (int Start, int End) run, int y0, int y1, bool leftmost)
+    {
+        var found = -1;
+        for (var y = y0; y <= y1; y++)
+        {
+            for (var x = run.Start; x <= run.End; x++)
+            {
+                if (!Inked(image, x, y)) continue;
+                if (found < 0 || (leftmost ? x < found : x > found)) found = x;
+            }
+        }
+        found.ShouldBeGreaterThanOrEqualTo(0, $"rows {y0}..{y1} of columns {run.Start}..{run.End} have no ink");
+        return found;
     }
 
     /// <summary>Inked pixels in the image's outermost rows and columns.</summary>
