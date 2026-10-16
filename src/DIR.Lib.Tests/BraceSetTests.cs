@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text;
 using DIR.Lib.Markdown;
 using DIR.Lib.MathLayout;
 using LALR.CC.LexicalGrammar;
@@ -389,17 +390,116 @@ public sealed class BraceSetTests
     /// main at 29489ca (<c>TryRenderMathBox</c>, from its first
     /// <c>CanBuildBox</c> to its <c>ResolveBackslashEscapes</c>). Null where it
     /// turned the formula away to the Unicode path.
+    ///
+    /// <para>The two DIR.Lib calls in it that this branch changes are frozen
+    /// below as they stood at fe09d4a, the branch's base:
+    /// <see cref="BaseNormalizeLatexAliases"/> and
+    /// <see cref="BaseExpandBalancedMacro"/>. Calling the live ones would
+    /// compare the helper with itself. The others (<c>ContainsMacro</c>,
+    /// <c>ResolveBackslashEscapes(string)</c>, <c>Mhchem.ToLatex</c>) are
+    /// unchanged here.</para>
     /// </summary>
     private static string? ConsoleLibPrepare(string source)
     {
         if (!CanBuildBox(source)) return null;
 
-        source = MarkdownMacros.NormalizeLatexAliases(source);
-        source = MarkdownMacros.ExpandBalancedMacro(source, "boxed", inner => inner);
-        source = MarkdownMacros.ExpandBalancedMacro(source, "ce", inner => Mhchem.ToLatex(inner));
+        source = BaseNormalizeLatexAliases(source);
+        source = BaseExpandBalancedMacro(source, "boxed", inner => inner);
+        source = BaseExpandBalancedMacro(source, "ce", inner => Mhchem.ToLatex(inner));
         if (!CanBuildBox(source)) return null;
         return MarkdownMacros.ResolveBackslashEscapes(source);
     }
+
+    /// <summary><c>MarkdownMacros.NormalizeLatexAliases</c> at fe09d4a: the
+    /// alias table's entries verbatim, applied in order with no whole-name
+    /// match.</summary>
+    private static string BaseNormalizeLatexAliases(string source)
+    {
+        foreach (var (from, to) in BaseLatexAliases)
+            source = source.Replace(from, to);
+        return source;
+    }
+
+    private static readonly (string From, string To)[] BaseLatexAliases =
+    [
+        // Fraction-style aliases.
+        (@"\dfrac",   @"\frac"),
+        (@"\tfrac",   @"\frac"),
+        // Auto-sizing delimiter pairs collapse to the bare delimiter.
+        (@"\left[",   "["),
+        (@"\right]",  "]"),
+        (@"\left(",   "("),
+        (@"\right)",  ")"),
+        (@"\left\{",  "{"),
+        (@"\right\}", "}"),
+        (@"\left|",   "|"),
+        (@"\right|",  "|"),
+        (@"\left.",   ""),   // null delimiter
+        (@"\right.",  ""),
+        // Manual size prefixes: strip, keep the delimiter that follows.
+        (@"\biggl",   ""),
+        (@"\biggr",   ""),
+        (@"\Biggl",   ""),
+        (@"\Biggr",   ""),
+        (@"\bigl",    ""),
+        (@"\bigr",    ""),
+        (@"\Bigl",    ""),
+        (@"\Bigr",    ""),
+    ];
+
+    /// <summary><c>MarkdownMacros.ExpandBalancedMacro</c> at fe09d4a, with its
+    /// brace matcher, which counted every brace, escaped or not.</summary>
+    private static string BaseExpandBalancedMacro(string source, string commandName, Func<string, string> onMatch)
+    {
+        var sb = new StringBuilder(source.Length);
+        var marker = "\\" + commandName;
+        int i = 0;
+        while (i < source.Length)
+        {
+            if (i + marker.Length <= source.Length
+                && string.CompareOrdinal(source, i, marker, 0, marker.Length) == 0
+                && (i + marker.Length == source.Length
+                    || !BaseIsAsciiLetter(source[i + marker.Length])))
+            {
+                int afterCmd = i + marker.Length;
+                int j = afterCmd;
+                while (j < source.Length && (source[j] == ' ' || source[j] == '\t' || source[j] == '\r' || source[j] == '\n'))
+                    j++;
+                if (j < source.Length && source[j] == '{')
+                {
+                    int braceEnd = BaseFindMatchingBrace(source, j);
+                    if (braceEnd > j)
+                    {
+                        var inner = source.Substring(j + 1, braceEnd - j - 1);
+                        sb.Append(onMatch(inner));
+                        i = braceEnd + 1;
+                        continue;
+                    }
+                }
+            }
+            sb.Append(source[i]);
+            i++;
+        }
+        return sb.ToString();
+    }
+
+    private static int BaseFindMatchingBrace(string s, int openPos)
+    {
+        int depth = 1;
+        for (int i = openPos + 1; i < s.Length; i++)
+        {
+            if (s[i] == '{') depth++;
+            else if (s[i] == '}')
+            {
+                depth--;
+                if (depth == 0) return i;
+            }
+        }
+        return -1;
+    }
+
+    private static bool BaseIsAsciiLetter(char c) =>
+        (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 
     private static bool CanBuildBox(string source)
         => !MarkdownMacros.ContainsMacro(source, "text")
