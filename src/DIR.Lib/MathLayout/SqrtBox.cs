@@ -691,13 +691,15 @@ public sealed class SqrtBox : Box
         var x0 = (int)MathF.Floor(penX + _radicalShiftX);
         var barLeft = x0 + _joinedRadical.Width;
         var barRight = Math.Max(barLeft, (int)MathF.Ceiling(RadicandX(penX) + _radicand.Width + _gap));
-        var below = Math.Min(
+        var placed = Math.Min(
             (int)MathF.Floor(GlyphTop(baselineY) + RowSlack) + _flagTopRow + _flagProfile.Length,
             (int)MathF.Floor(baselineY - _radicand.Height) - _gapRows);
+        var below = placed;
         if (RadicandInkTop(RadicandX(penX), baselineY, barLeft, barRight, below, style) is { } inkTop)
             below = inkTop - 1;
         var flagTopY = below - _flagProfile.Length;
-        return new RadicalJoin(x0, flagTopY - _flagTopRow, flagTopY, _flagProfile.Length, x0 + _flagLastFullCol, barLeft, barRight, _joinedRadical.Height);
+        return new RadicalJoin(x0, flagTopY - _flagTopRow, flagTopY, _flagProfile.Length, x0 + _flagLastFullCol, barLeft, barRight,
+            _joinedRadical.Height, placed - below);
     }
 
     /// <summary>How far a float may fall short of, or run past, a whole row and
@@ -821,9 +823,11 @@ public sealed class SqrtBox : Box
 
     /// <summary>The radical glyph's top-left corner, the flag's top row and
     /// band height, its rightmost full-coverage column, the vinculum's first
-    /// column (the glyph's right edge) and one past its last, and the glyph's
-    /// height in rows, all in surface pixels.</summary>
-    internal sealed record RadicalJoin(int GlyphX, int GlyphY, int FlagTopY, int FlagRows, int FlagLastFullX, int BarStartX, int BarEndX, int GlyphRows);
+    /// column (the glyph's right edge) and one past its last, the glyph's
+    /// height in rows, all in surface pixels, and how many rows the radicand's
+    /// ink raised bar and glyph past where the whole-row gap put them.</summary>
+    internal sealed record RadicalJoin(int GlyphX, int GlyphY, int FlagTopY, int FlagRows, int FlagLastFullX, int BarStartX, int BarEndX, int GlyphRows,
+        int InkRaise);
 
     /// <summary>The radicand's pen position for the box drawn at
     /// <paramref name="penX"/>: past the index's shift and the radical.</summary>

@@ -61,7 +61,13 @@ string[] joinScenes = ["sqrt-x2-plus-y2", "sqrt-2", "sqrt-frac-a-b", "quadratic-
 
 // Radicals with ink above them in their parent (a fraction's rule) or none but the canvas's edge (a
 // superscript), over the sweep's sizes again: the clear rows between the bar's top and what is above it.
-string[] contextScenes = ["frac-1-sqrt-x", "frac-1-sqrt-frac-a-b", "x-sup-sqrt-y"];
+string[] contextScenes =
+[
+    "frac-1-sqrt-x", "frac-1-sqrt-frac-a-b", "x-sup-sqrt-y",
+    // Radicands whose ink may start further above their reported height: an accent, a big operator, a
+    // stretchy delimiter (review round 1, Q1).
+    "frac-1-sqrt-hat-x", "frac-1-sqrt-sum-x", "frac-1-sqrt-paren-x",
+];
 
 var points = new List<(string Font, string Scene, float Size)>();
 void Add((string, string, float) p)
@@ -184,6 +190,9 @@ static Box Build(string scene, BoxStyle style) => scene switch
     "frac-1-sqrt-x" => Parse(@"\frac{1}{\sqrt{x}}", style),
     "frac-1-sqrt-frac-a-b" => Parse(@"\frac{1}{\sqrt{\frac{a}{b}}}", style),
     "x-sup-sqrt-y" => Parse(@"x^{\sqrt{y}}", style),
+    "frac-1-sqrt-hat-x" => Parse(@"\frac{1}{\sqrt{\hat{x}}}", style),
+    "frac-1-sqrt-sum-x" => Parse(@"\frac{1}{\sqrt{\sum x}}", style),
+    "frac-1-sqrt-paren-x" => Parse(@"\frac{1}{\sqrt{\left(x\right)}}", style),
     _ => throw new ArgumentException($"unknown scene '{scene}'"),
 };
 

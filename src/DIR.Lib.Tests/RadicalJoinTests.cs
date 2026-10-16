@@ -159,7 +159,12 @@ public sealed partial class RadicalJoinTests
     /// <summary>Radicals with something above them that the canvas's margin does not separate them from: a
     /// fraction's rule over its denominator, and a superscript's top, which is the canvas's edge. Swept over
     /// <see cref="SweepSizes"/> as well, and in the before-data.</summary>
-    private static readonly string[] ContextScenes = ["frac-1-sqrt-x", "frac-1-sqrt-frac-a-b", "x-sup-sqrt-y"];
+    private static readonly string[] ContextScenes =
+    [
+        "frac-1-sqrt-x", "frac-1-sqrt-frac-a-b", "x-sup-sqrt-y",
+        // Radicands whose ink may start further above their reported height (review round 1, Q1).
+        "frac-1-sqrt-hat-x", "frac-1-sqrt-sum-x", "frac-1-sqrt-paren-x",
+    ];
 
     /// <summary>Below this size, the floor of Console.Lib's Sixel range, a radical may shrink 3 px where the
     /// stroke cap trimmed its band (see <see cref="SweepHeightAndDepthDriftAtMostTwoPixels"/>).</summary>
@@ -199,7 +204,7 @@ public sealed partial class RadicalJoinTests
                 r.Sqrt.StrokeCapTrimmedBand,
                 r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY), r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY - 1),
                 r.GlyphPastDepth, r.RowsAboveHeight, r.RadicalOnCanvas, InkCutOff(p.Font, p.Size, p.Scene, r.Image),
-                r.JoinBreak(), RgbaHash(r.Image));
+                r.JoinBreak(), RgbaHash(r.Image), r.Join.InkRaise);
         }),
     ]);
 
@@ -222,10 +227,11 @@ public sealed partial class RadicalJoinTests
     /// <param name="InkCutOff">Alpha the canvas edge cut off (<see cref="InkCutOff(string, float, string, RgbaImage)"/>).</param>
     /// <param name="JoinBreak">Where the bar fails to continue the flag, or null (<see cref="Rendered.JoinBreak"/>).</param>
     /// <param name="RgbaHash">The rendered scene's size and pixels, hashed (<see cref="RgbaHash"/>).</param>
+    /// <param name="InkRaise">Rows the radicand's ink raised bar and glyph (<see cref="SqrtBox.RadicalJoin.InkRaise"/>).</param>
     /// <param name="ClearAbove">Clear rows between the bar and the ink above it (<see cref="Rendered.ClearRowsAboveBar"/>).</param>
     private sealed record Swept(BeforePoint Before, float Height, float Depth, int ClearRows, int ClearAbove, int BandRows, int MaxBandRows,
         bool CapTrimmed, int FlagTopAlpha, int AboveFlagAlpha, float GlyphPastDepth, int RowsAboveHeight,
-        bool RadicalOnCanvas, long InkCutOff, string? JoinBreak, ulong RgbaHash)
+        bool RadicalOnCanvas, long InkCutOff, string? JoinBreak, ulong RgbaHash, int InkRaise)
     {
         public bool Touches => ClearRows == 0;
 
@@ -449,7 +455,7 @@ public sealed partial class RadicalJoinTests
     {
         var failures = SweptPoints.Value
             .Where(s => ContextScenes.Contains(s.Before.Scene) && s.ClearAbove < s.Before.ClearAbove)
-            .Select(s => $"{s}: {s.ClearAbove} clear rows above the bar, before {s.Before.ClearAbove}")
+            .Select(s => $"{s}: {s.ClearAbove} clear rows above the bar, before {s.Before.ClearAbove}; the radicand's ink raised it {s.InkRaise} rows")
             .ToList();
         failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
     }
@@ -766,6 +772,9 @@ public sealed partial class RadicalJoinTests
             "frac-1-sqrt-x" => Parse(@"\frac{1}{\sqrt{x}}", style),
             "frac-1-sqrt-frac-a-b" => Parse(@"\frac{1}{\sqrt{\frac{a}{b}}}", style),
             "x-sup-sqrt-y" => Parse(@"x^{\sqrt{y}}", style),
+            "frac-1-sqrt-hat-x" => Parse(@"\frac{1}{\sqrt{\hat{x}}}", style),
+            "frac-1-sqrt-sum-x" => Parse(@"\frac{1}{\sqrt{\sum x}}", style),
+            "frac-1-sqrt-paren-x" => Parse(@"\frac{1}{\sqrt{\left(x\right)}}", style),
             _ => throw new ArgumentException($"unknown scene '{scene}'"),
         };
 
