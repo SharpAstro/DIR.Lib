@@ -56,6 +56,11 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
     public string Visit(Paren node) => $"({node.Arg1.Content})";
     public string Visit(Group node) => (string)node.Arg1.Content;
 
+    // \{E\}, a set, keeps its braces. MarkdownMacros.RenderMathUnicode never
+    // gets here: it turns each \{ and \} into a placeholder before the lexer
+    // sees it, which is what keeps an unbalanced one ("\{x") rendering.
+    public string Visit(Brace node) => $"{{{node.Arg1.Content}}}";
+
     // \mathrm{X} is X: a terminal row has no italic to switch off, so the
     // argument renders exactly as it would bare.
     public string Visit(MathRm node) => (string)node.Arg1.Content;

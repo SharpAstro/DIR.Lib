@@ -14,6 +14,7 @@
 #   \sin(\alpha + \beta) = \sin\alpha \cos\beta + \cos\alpha \sin\beta
 #   \sqrt[3]{x}, \sqrt[n]{x^2+1}           (n-th root: optional index)
 #   [a, b], [0, 1), (0, 1]                 (brackets, half-open intervals)
+#   \{1, 2, 3\}, \{x\}                     (escaped braces: a set, drawn as braces)
 #   \mathrm{d}x, \mathrm{H}_{2}\mathrm{O}   (upright letters, as TeX's \mathrm)
 #
 # Things that don't:
@@ -37,7 +38,7 @@
 #                                                         doesn't parse as 1·(-2))
 #   P:  ^ _                                              (postfix scripts, leftmost)
 #   A:  atoms (numbers, identifiers, commands, groups, parens, brackets,
-#       \frac, \sqrt, \mathrm)
+#       braces, \frac, \sqrt, \mathrm)
 #   A0: every atom except the ones that open with `[`
 #
 # Why A0 exists: LaTeX reads a `[` straight after \sqrt as the start of the
@@ -90,6 +91,8 @@ symbols:
   - ']'        # 27
   - ','        # 28  punctuation atom: [a, b], f(x, y), x_{i,j}
   - cmdmathrm  # 29  \mathrm (binds one atom argument, which it sets upright)
+  - lbrace     # 30  \{ : a brace as a glyph, where a bare '{' opens a group
+  - rbrace     # 31  \}
 
 productions:
   # Start production. Single-non-terminal so it trims at parse time and the
@@ -152,7 +155,10 @@ productions:
   # The atoms that open with `[` are A's own; everything else is an A0 (see
   # the header for why). `bracket` covers the matched [E] and both half-open
   # mixes, [E) and (E]; the visitor reads which delimiters it got from Arg0
-  # and Arg2. `,` is an atom rather than an operator so it can sit wherever a
+  # and Arg2. `brace` is the escaped pair \{E\}, a set: drawn as braces, where
+  # the bare pair {E} is an invisible group. It is an A0, like `(`: only a
+  # `[` means something else straight after \sqrt.
+  # `,` is an atom rather than an operator so it can sit wherever a
   # \name could, which is exactly where the Unicode path's placeholder for an
   # unlexed comma used to sit: a trailing "x = 1," still parses.
   - derivation: none
@@ -167,6 +173,7 @@ productions:
       - { lhs: A0, rhs: ['(', E, ')'],     action: paren }
       - { lhs: A0, rhs: ['(', E, ']'],     action: bracket }
       - { lhs: A0, rhs: ['{', E, '}'],     action: group }
+      - { lhs: A0, rhs: [lbrace, E, rbrace], action: brace }
       - { lhs: A0, rhs: [cmdsqrt, A0],     action: sqrt }
       - { lhs: A0, rhs: [cmdsqrt, '[', E, ']', A], action: nthRoot }
       - { lhs: A0, rhs: [cmdfrac, A, A],   action: frac }
@@ -224,6 +231,8 @@ lexer:
     - { symbol: ')',     match: '\)' }
     - { symbol: '{',     match: '\{' }
     - { symbol: '}',     match: '\}' }
+    - { symbol: lbrace,  match: '\\\{' }
+    - { symbol: rbrace,  match: '\\\}' }
     - { symbol: '[',     match: '\[' }
     - { symbol: ']',     match: '\]' }
     - { symbol: ',',     match: ',' }

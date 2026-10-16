@@ -134,7 +134,14 @@ public static class MarkdownMacros
     /// <see cref="NormalizeLatexAliases"/>; <c>\boxed{X}</c> to X (there is no
     /// boxed frame); <c>\ce{X}</c> to <see cref="Mhchem.ToLatex"/> of X; turn
     /// away again, since either expansion can bring one in; then
-    /// <see cref="ResolveBackslashEscapes"/>.</para>
+    /// <see cref="ResolveBackslashEscapes"/>, except that <c>\{</c> and
+    /// <c>\}</c> stay as written. The grammar lexes those as a set's braces,
+    /// which the visitor draws as a curly <see cref="BracketBox"/>; resolved to
+    /// a bare <c>{</c> they would open an invisible group. So
+    /// <c>\{1, 2, 3\}</c>, <c>\left\{ … \right\}</c> and
+    /// <c>\lbrace … \rbrace</c> all keep their braces. An unbalanced one does
+    /// not parse, and the caller falls back to the Unicode path as for any
+    /// formula the grammar rejects.</para>
     /// </summary>
     public static bool TryPrepareMathBoxSource(string source, [NotNullWhen(true)] out string? prepared)
     {
@@ -144,7 +151,7 @@ public static class MarkdownMacros
         source = ExpandBalancedMacro(source, "boxed", inner => inner);
         source = ExpandBalancedMacro(source, "ce", inner => Mhchem.ToLatex(inner));
         if (!BoxPathCanBuild(source)) return false;
-        prepared = ResolveBackslashEscapes(source);
+        prepared = ResolveBackslashEscapes(source, keepBraces: true);
         return true;
     }
 
@@ -408,6 +415,13 @@ public static class MarkdownMacros
     /// </summary>
     public static string NormalizeLatexAliases(string source)
     {
+        // \lbrace and \rbrace are the braces as glyphs, the same as \{ and \}.
+        // They are command names, so each aliases only where its name ends
+        // (\lbracex is another command). They go first, so \left\lbrace
+        // becomes \left\{ and then \{ like any other.
+        source = ReplaceMacro(source, "lbrace", @"\{");
+        source = ReplaceMacro(source, "rbrace", @"\}");
+
         // Order matters: longer prefixes first so e.g. \Biggl isn't eaten by
         // an earlier \bigl pass (they don't share a 5-char prefix today but
         // keeping the ordering explicit for future additions).
@@ -416,19 +430,56 @@ public static class MarkdownMacros
         return source;
     }
 
+    /// <summary>
+    /// Replaces each <c>\<paramref name="commandName"/></c> in
+    /// <paramref name="source"/> with <paramref name="replacement"/>, where the
+    /// name is whole (not followed by another ASCII letter, as
+    /// <see cref="ContainsMacro"/> reads it) and its backslash is not the
+    /// second half of a <c>\\</c> line break.
+    /// </summary>
+    private static string ReplaceMacro(string source, string commandName, string replacement)
+    {
+        var marker = "\\" + commandName;
+        if (source.IndexOf(marker, StringComparison.Ordinal) < 0) return source;
+
+        var sb = new StringBuilder(source.Length);
+        var i = 0;
+        while (i < source.Length)
+        {
+            if (source[i] == '\\' && i + 1 < source.Length && source[i + 1] == '\\')
+            {
+                sb.Append(source, i, 2);
+                i += 2;
+                continue;
+            }
+            if (string.CompareOrdinal(source, i, marker, 0, marker.Length) == 0
+                && (i + marker.Length == source.Length || !IsAsciiLetter(source[i + marker.Length])))
+            {
+                sb.Append(replacement);
+                i += marker.Length;
+                continue;
+            }
+            sb.Append(source[i]);
+            i++;
+        }
+        return sb.ToString();
+    }
+
 
     private static readonly (string From, string To)[] LatexAliases =
     [
         // Fraction-style aliases.
         (@"\dfrac",   @"\frac"),
         (@"\tfrac",   @"\frac"),
-        // Auto-sizing delimiter pairs collapse to the bare delimiter.
+        // Auto-sizing delimiter pairs collapse to the bare delimiter. A
+        // brace's bare delimiter is the escaped one: a bare { opens a group,
+        // and the braces would vanish.
         (@"\left[",   "["),
         (@"\right]",  "]"),
         (@"\left(",   "("),
         (@"\right)",  ")"),
-        (@"\left\{",  "{"),
-        (@"\right\}", "}"),
+        (@"\left\{",  @"\{"),
+        (@"\right\}", @"\}"),
         (@"\left|",   "|"),
         (@"\right|",  "|"),
         (@"\left.",   ""),   // null delimiter
@@ -491,7 +542,13 @@ public static class MarkdownMacros
     /// the lexer — it's stashed in the replacement map and spliced back in
     /// after the rest of the formula has rendered.
     /// </summary>
-    public static string ResolveBackslashEscapes(string body)
+    public static string ResolveBackslashEscapes(string body) => ResolveBackslashEscapes(body, keepBraces: false);
+
+    /// <summary><see cref="ResolveBackslashEscapes(string)"/>, leaving <c>\{</c>
+    /// and <c>\}</c> as written when <paramref name="keepBraces"/> is set (the
+    /// box path's grammar lexes them). A <c>\\</c> is consumed whole, so in
+    /// <c>\\{</c> the brace still opens a group.</summary>
+    private static string ResolveBackslashEscapes(string body, bool keepBraces)
     {
         if (body.IndexOf('\\') < 0) return body;
         var sb = new StringBuilder(body.Length);
@@ -500,7 +557,10 @@ public static class MarkdownMacros
         {
             if (body[i] == '\\' && i + 1 < body.Length && !IsAsciiLetter(body[i + 1]))
             {
-                sb.Append(RenderBackslashEscape(body[i + 1]));
+                if (keepBraces && body[i + 1] is '{' or '}')
+                    sb.Append(body, i, 2);
+                else
+                    sb.Append(RenderBackslashEscape(body[i + 1]));
                 i += 2;
             }
             else
