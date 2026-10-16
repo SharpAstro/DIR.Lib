@@ -286,18 +286,15 @@ public sealed class MathItalicTests
     }
 
     /// <summary>
-    /// Prepares <paramref name="latex"/> the way Console.Lib's
-    /// <c>TryRenderMathBox</c> does before it parses (aliases, <c>\boxed</c>
-    /// stripped, <c>\ce</c> expanded, backslash escapes resolved), then
-    /// parses it with <paramref name="visitor"/>. Returns the deferred
-    /// builder, or null when the formula does not lex or parse.
+    /// Prepares <paramref name="latex"/> for the box path with
+    /// <see cref="MarkdownMacros.TryPrepareMathBoxSource"/>, as the terminal
+    /// does before it parses, then parses it with <paramref name="visitor"/>.
+    /// Returns the deferred builder, or null when the helper turns the formula
+    /// away or it does not lex or parse.
     /// </summary>
     private static Func<BoxStyle, Box>? Parse(string latex, BoxBuildingVisitor visitor)
     {
-        var source = MarkdownMacros.NormalizeLatexAliases(latex);
-        source = MarkdownMacros.ExpandBalancedMacro(source, "boxed", inner => inner);
-        source = MarkdownMacros.ExpandBalancedMacro(source, "ce", inner => Mhchem.ToLatex(inner));
-        source = MarkdownMacros.ResolveBackslashEscapes(source);
+        if (!MarkdownMacros.TryPrepareMathBoxSource(latex, out var source)) return null;
         var parser = Latex.BuildParser(visitor);
         try
         {

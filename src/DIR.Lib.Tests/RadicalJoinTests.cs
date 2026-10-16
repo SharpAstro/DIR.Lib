@@ -554,9 +554,9 @@ public sealed partial class RadicalJoinTests
 
     private static Box Parse(string latex, BoxStyle style)
     {
-        var src = MarkdownMacros.ResolveBackslashEscapes(MarkdownMacros.NormalizeLatexAliases(latex));
+        MarkdownMacros.TryPrepareMathBoxSource(latex, out var src).ShouldBeTrue($"'{latex}' was turned away from the box path");
         var parser = Latex.BuildParser(new BoxBuildingVisitor(style));
-        using var lexer = BytesLexer.FromString(src, MarkdownMacros.MathLexerTable);
+        using var lexer = BytesLexer.FromString(src!, MarkdownMacros.MathLexerTable);
         using var tokens = new SyncLATokenIterator(lexer);
         var item = parser.ParseInput(tokens, debugger: null);
         item.IsError.ShouldBeFalse($"'{latex}' did not parse");

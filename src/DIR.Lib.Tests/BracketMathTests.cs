@@ -14,13 +14,12 @@ namespace DIR.Lib.Tests;
 /// and the half-open mixes <c>[0, 1)</c> / <c>(0, 1]</c>, on the box (raster)
 /// path and the Unicode path.
 ///
-/// <para>The box path here is the grammar's part of it only:
-/// <see cref="MarkdownMacros.NormalizeLatexAliases"/>, then the grammar's lexer
-/// and a parser bound to a <see cref="BoxBuildingVisitor"/>. The rest of the
-/// source preparation lives in Console.Lib's <c>TryRenderMathBox</c> and is not
-/// replicated (see <see cref="BuildBox"/>). Before the grammar lexed <c>[</c>,
-/// every one of these formulas threw in the lexer and the terminal fell back to
-/// Unicode text.</para>
+/// <para>The box path here is the whole of it up to the parse:
+/// <see cref="MarkdownMacros.TryPrepareMathBoxSource"/>, then the grammar's
+/// lexer and a parser bound to a <see cref="BoxBuildingVisitor"/> (see
+/// <see cref="BuildBox"/>). Before the grammar lexed <c>[</c>, every one of
+/// these formulas threw in the lexer and the terminal fell back to Unicode
+/// text.</para>
 ///
 /// <para><see cref="SqrtBox"/> and <see cref="BracketBox"/> keep their index and
 /// kind private, so the tests prove them by rendering: the parsed box must paint
@@ -260,26 +259,18 @@ public sealed class BracketMathTests
     // ── Helpers ────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Parses and builds <paramref name="latex"/> the way the box path's last
-    /// step does, at a fixed 32 px style. Null when the formula does not lex or
-    /// parse, which is where the terminal falls back to the Unicode path.
-    /// LALR.CC throws for both (<c>LexerException</c>, <c>ParseErrorException</c>),
-    /// and both are <see cref="InvalidOperationException"/>s.
-    ///
-    /// <para>It is NOT the whole box path. The source preparation lives in
-    /// Console.Lib's <c>TryRenderMathBox</c>, and of it this replicates only
-    /// <see cref="MarkdownMacros.NormalizeLatexAliases"/>. It skips the bail-out
-    /// to Unicode for <c>\text</c> and <c>\begin</c>, the <c>\boxed</c> and
-    /// <c>\ce</c> expansions, and <see cref="MarkdownMacros.ResolveBackslashEscapes"/>,
-    /// as well as the font lookup and the shrink-to-width loop. The escapes
-    /// matter: there, <c>\{1, 2, 3\}</c> becomes <c>{1, 2, 3}</c>, an invisible
-    /// group, so the set rasterizes without its braces; here it does not even
-    /// lex. A formula's fate on the real box path is whatever
-    /// <c>TryRenderMathBox</c> makes of it, not what this helper returns.</para>
+    /// Prepares <paramref name="latex"/> with
+    /// <see cref="MarkdownMacros.TryPrepareMathBoxSource"/>, then parses and
+    /// builds it at a fixed 32 px style. Null when the helper turns it away or
+    /// it does not lex or parse, which is where the terminal falls back to the
+    /// Unicode path. LALR.CC throws for both (<c>LexerException</c>,
+    /// <c>ParseErrorException</c>), and both are
+    /// <see cref="InvalidOperationException"/>s. The font lookup and the
+    /// shrink-to-width loop are the terminal's and are not replicated.
     /// </summary>
     private static Box? BuildBox(string latex)
     {
-        var source = MarkdownMacros.NormalizeLatexAliases(latex);
+        if (!MarkdownMacros.TryPrepareMathBoxSource(latex, out var source)) return null;
         var parser = Latex.BuildParser(new BoxBuildingVisitor(Style));
         try
         {
