@@ -40,8 +40,8 @@ if (-not $BaseTree) {
 }
 $BaseTree = (Resolve-Path $BaseTree).Path
 
-# The patch: a field Draw sets once the bar is placed, holding the row below the bar, the glyph's right
-# edge (where the bar starts over the radicand) and the bar's right end.
+# The patch: a field Draw sets once the bar is placed, holding the bar's top row, the row below the bar, the
+# glyph's right edge (where the bar starts over the radicand) and the bar's right end.
 $sqrt = Join-Path $BaseTree 'src/DIR.Lib/MathLayout/SqrtBox.cs'
 $text = [IO.File]::ReadAllText($sqrt)
 function Replace-Once([string]$s, [string]$old, [string]$new) {
@@ -57,19 +57,19 @@ if ($text.Contains('_probeBar')) {
 elseif ($text.Contains('internal RadicalJoin? JoinAt(')) {
     # Since 9fe19fd Draw takes the bar from JoinAt and keeps the join it drew with in a local.
     $field = "    private readonly bool _strokeCapTrimmedBand;`n"
-    $text = Replace-Once $text $field ($field + "    private (int, int, int) _probeBar; // recorded by Draw for tools/gen-radical-join-before`n")
+    $text = Replace-Once $text $field ($field + "    private (int, int, int, int) _probeBar; // recorded by Draw for tools/gen-radical-join-before`n")
     $draw = "            DrawWithGlyph(renderer, join, RadicandX(penX), baselineY, style);`n"
-    $text = Replace-Once $text $draw ($draw + "            _probeBar = (join.FlagTopY + join.FlagRows, join.BarStartX, join.BarEndX);`n")
+    $text = Replace-Once $text $draw ($draw + "            _probeBar = (join.FlagTopY, join.FlagTopY + join.FlagRows, join.BarStartX, join.BarEndX);`n")
     [IO.File]::WriteAllText($sqrt, $text)
 }
 else {
     # e6778fc: each glyph path fills its own vinculum rectangle.
     $field = "    private readonly int _flagRightCol;`n"
-    $text = Replace-Once $text $field ($field + "    private (int, int, int) _probeBar; // recorded by Draw for tools/gen-radical-join-before`n")
+    $text = Replace-Once $text $field ($field + "    private (int, int, int, int) _probeBar; // recorded by Draw for tools/gen-radical-join-before`n")
     $fill = "        renderer.FillRectangle(vinc, style.Foreground);`n    }`n`n    /// <summary>`n    /// MATH-driven path"
-    $text = Replace-Once $text $fill ("        renderer.FillRectangle(vinc, style.Foreground);`n        _probeBar = (vincBottom, (int)MathF.Floor(penX) + _radicalScaled.Width, vincRight);`n    }`n`n    /// <summary>`n    /// MATH-driven path")
+    $text = Replace-Once $text $fill ("        renderer.FillRectangle(vinc, style.Foreground);`n        _probeBar = (vincTop, vincBottom, (int)MathF.Floor(penX) + _radicalScaled.Width, vincRight);`n    }`n`n    /// <summary>`n    /// MATH-driven path")
     $fill = "        renderer.FillRectangle(vinc, style.Foreground);`n    }`n`n    /// <summary>`n    /// Parametric fallback"
-    $text = Replace-Once $text $fill ("        renderer.FillRectangle(vinc, style.Foreground);`n        _probeBar = (vincBottom, (int)MathF.Floor(penX) + bitmap.Width, vincRight);`n    }`n`n    /// <summary>`n    /// Parametric fallback")
+    $text = Replace-Once $text $fill ("        renderer.FillRectangle(vinc, style.Foreground);`n        _probeBar = (vincTop, vincBottom, (int)MathF.Floor(penX) + bitmap.Width, vincRight);`n    }`n`n    /// <summary>`n    /// Parametric fallback")
     [IO.File]::WriteAllText($sqrt, $text)
 }
 

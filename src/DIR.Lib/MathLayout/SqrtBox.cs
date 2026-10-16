@@ -43,12 +43,13 @@ namespace DIR.Lib.MathLayout;
 ///
 /// <para>The box does not always hold the radical's ink. Where the
 /// radicand's own ink starts a row or two above its layout height (text
-/// below about 12 px), <see cref="JoinAt"/> raises the bar past what the
-/// layout reserved to keep a clear row over it, so the bar can sit above
-/// <see cref="Height"/>: by at most two rows across RadicalJoinTests' sweep.
-/// And on path 1 the depth counts the glyph alone, so a MATH assembly
-/// shorter than its radicand leaves the radicand hanging below
-/// <see cref="Depth"/>.</para>
+/// below about 12 px), <see cref="JoinAt"/> raises the bar to keep a clear
+/// row over it, into a row of headroom the layout reserves for that; where
+/// it needs more (ink two rows high under a gap of less than a pixel), the
+/// bar sits above <see cref="Height"/>: by at most one row across
+/// RadicalJoinTests' sweep. And on path 1 the depth counts the glyph alone,
+/// so a MATH assembly shorter than its radicand leaves the radicand hanging
+/// below <see cref="Depth"/>.</para>
 ///
 /// <para>An optional <c>index</c> box (the small "n" in <c>ⁿ√x</c>) is
 /// rendered tucked into the radical's hook, raised by
@@ -76,6 +77,11 @@ public sealed class SqrtBox : Box
     /// <summary>The row the layout reserves on top of <see cref="_gap"/> for
     /// <see cref="_gapRows"/>: one, or none when the gap is whole already.</summary>
     private readonly int _gapRowReserve;
+
+    /// <summary>A row of headroom over the glyph, on the glyph paths where
+    /// <see cref="JoinAt"/> may raise the bar past it: one where the gap takes
+    /// at most two whole rows, none elsewhere. See the constructor.</summary>
+    private readonly int _raiseRowReserve;
     private readonly float _ruleThickness;
     private readonly float _fontSize;
 
@@ -273,6 +279,24 @@ public sealed class SqrtBox : Box
         // starts on follows that phase, and moving it by a fraction of a
         // pixel moved the radicand's ink up a row at 22 points of
         // RadicalJoinTests' sweep, which cost the very row this adds.
+        //
+        // The draw also raises the bar past the floor where the radicand's
+        // own ink would leave no clear row under it: text is rasterized at
+        // the rounded font size and placed on a truncated baseline, so its
+        // antialiased top can start a row or two above its layout height.
+        // The bar is already _gapRows whole rows above the radicand's top
+        // row, so for ink starting two rows high (the most the sweep sees)
+        // the raise is at most 3 - _gapRows rows: it can only happen where
+        // the gap takes at most two whole rows, up to 2 px, and there the
+        // box reserves a row of headroom over the glyph for it
+        // (_raiseRowReserve): a fraction's rule or the canvas's edge above
+        // the radical then has room for it. The glyph itself is placed as
+        // before, so its depth and every row under the bar are unchanged. A
+        // second row would grow the radical 3 px over fe09d4a, past
+        // RadicalJoinTests' 2 px drift limit, so a radicand whose ink starts
+        // two rows high under a gap of less than a pixel (STIX Two Math
+        // \sqrt{2} at 7.6 px) still puts the bar a row above the box.
+        _raiseRowReserve = (_radicalFont is not null || HasScaledGlyph) && _gapRows <= 2 ? 1 : 0;
         float radicalD;
         if (_radicalFont is not null)
         {
@@ -414,11 +438,11 @@ public sealed class SqrtBox : Box
                 _indexBaselineLift = maxBaselineLift;
 
             var indexTopLift = _indexBaselineLift + index.Height;
-            _heightWithIndex = MathF.Max(_radicalH, indexTopLift);
+            _heightWithIndex = MathF.Max(_radicalH + _raiseRowReserve, indexTopLift);
         }
         else
         {
-            _heightWithIndex = _radicalH;
+            _heightWithIndex = _radicalH + _raiseRowReserve;
         }
         _depthValue = radicalD;
     }
