@@ -220,43 +220,98 @@ public sealed class DollarRulesTests
             .Content.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("costs $5");
     }
 
-    // ── A block whose inline parse fails keeps its text ──────────────
+    // ── Unmatched brackets and backticks are text ────────────────────
     //
-    // Two prose dollars used to swallow a lone `[`, `]` or backtick into a math span. Now that
-    // they are text, that character reaches the root lexer, which fails on it, so the block falls
-    // back to its source as one literal instead of rendering empty.
+    // A `[` or `]` with no partner, and a backtick run with no closing run, are literal (as in
+    // CommonMark and Pandoc), the way an unpaired math opener is. They used to fail the inline
+    // parse and send the whole block to the literal fallback, which lost its emphasis, code and math.
+
+    [Theory]
+    [InlineData("a] with *em*, `code` and $x$", "L(a] with ) E1[L(em)] L(, ) C(code) L( and ) M(x)")]
+    [InlineData("[a with *em*, `code` and $x$", "L([a with ) E1[L(em)] L(, ) C(code) L( and ) M(x)")]
+    [InlineData("*em*, `code` and $x$ cost a ` tick", "E1[L(em)] L(, ) C(code) L( and ) M(x) L( cost a ` tick)")]
+    [InlineData("*em*, `code` and $x$ cost ``two", "E1[L(em)] L(, ) C(code) L( and ) M(x) L( cost ``two)")]
+    [InlineData("[a [b] with *em*, `code` and $x$", "L([a [b] with ) E1[L(em)] L(, ) C(code) L( and ) M(x)")]
+    public void UnmatchedBracketOrBacktick_IsText_AndTheRestStillParses(string source, string expected) =>
+        Dump(Paragraph(source)).ShouldBe(expected);
+
+    [Fact]
+    public void BracketAfterMathTookItsPartner_IsText() =>
+        Dump(Paragraph("$a [b$ c]")).ShouldBe("M(a [b) L( c])");
+
+    [Fact]
+    public void BracketInALabelAfterMathTookItsPartner_IsText() =>
+        Dump(Paragraph("[$a [b$ c] d](u)")).ShouldBe("Link[M(a [b) L( c] d)](u)");
 
     [Theory]
     [InlineData("$5 for a [discount and $10")]
     [InlineData("Prices: $5 for [0, 1) and $10 otherwise.")]
     [InlineData("$a ] $")]
     [InlineData("costs $5 (the ` key) and $10")]
-    public void LoneBracketOrBacktick_BetweenProseDollars_KeepsTheParagraph(string source) =>
-        ShouldRenderLiterally(source, source);
+    public void LoneBracketOrBacktick_BetweenProseDollars_IsText(string source) =>
+        new MarkdownInlineVisitor().Parse(source).ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe(source);
 
-    [Fact]
-    public void Heading_WithALoneBracket_KeepsItsText()
+    private static string Dump(IEnumerable<MdInline> spans) => string.Join(" ", spans.Select(Dump));
+
+    private static string Dump(MdInline span) => span switch
     {
-        var heading = _visitor.Parse("# see a[0 here").ShouldHaveSingleItem().ShouldBeOfType<MdHeading>();
-        heading.Level.ShouldBe(1);
-        heading.Content.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("see a[0 here");
+        MdLiteral l => $"L({l.Text})",
+        MdMathInline m => $"M({m.Source})",
+        MdCodeInline c => $"C({c.Content})",
+        MdEmphasis e => $"E{e.Level}[{Dump(e.Content)}]",
+        MdLink k => $"Link[{Dump(k.Text)}]({k.Url})",
+        MdLineBreak b => b.Hard ? "HB" : "SB",
+        _ => span.GetType().Name,
+    };
+
+    // ── A block whose inline parse fails keeps its text ──────────────
+    //
+    // The inline grammar has no rule for a link whose URL never closes (`[a](b` to the end), so
+    // the root lexer fails on it and the block falls back to its source as literal text instead
+    // of rendering empty. These tests used a lone `[`, `]` or backtick as the trigger until those
+    // became text; each asserts its trigger still fails, so the next such change has to move them.
+
+    private static void ShouldFailTheInlineParse(string text) =>
+        new MarkdownInlineVisitor().Parse(text).ShouldBeEmpty();
+
+    [Theory]
+    [InlineData("$5 for a [discount](x and $10")]
+    [InlineData("Prices: $5 for [0, 1](x and $10 otherwise.")]
+    [InlineData("$a [](x $")]
+    [InlineData("costs $5 (the [key](x and $10")]
+    public void UnclosedLinkUrl_BetweenProseDollars_KeepsTheParagraph(string source)
+    {
+        ShouldFailTheInlineParse(source);
+        ShouldRenderLiterally(source, source);
     }
 
     [Fact]
-    public void ListItem_WithALoneBracket_KeepsItsText()
+    public void Heading_WithAnUnclosedLinkUrl_KeepsItsText()
     {
-        var list = _visitor.Parse("- see a[0 here\n- next").ShouldHaveSingleItem().ShouldBeOfType<MdList>();
+        ShouldFailTheInlineParse("see [a](b here");
+        var heading = _visitor.Parse("# see [a](b here").ShouldHaveSingleItem().ShouldBeOfType<MdHeading>();
+        heading.Level.ShouldBe(1);
+        heading.Content.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("see [a](b here");
+    }
+
+    [Fact]
+    public void ListItem_WithAnUnclosedLinkUrl_KeepsItsText()
+    {
+        ShouldFailTheInlineParse("see [a](b here");
+        var list = _visitor.Parse("- see [a](b here\n- next").ShouldHaveSingleItem().ShouldBeOfType<MdList>();
         list.Items.Count.ShouldBe(2);
         list.Items[0].Body.ShouldHaveSingleItem().ShouldBeOfType<MdParagraph>()
-            .Content.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("see a[0 here");
+            .Content.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("see [a](b here");
     }
 
     [Fact]
-    public void TableCells_WithALoneBracket_KeepTheirText()
+    public void TableCells_WithAnUnclosedLinkUrl_KeepTheirText()
     {
-        var table = _visitor.Parse("| a[0 | b |\n|---|---|\n| x[1 | y |").ShouldHaveSingleItem().ShouldBeOfType<MdTable>();
-        table.Headers[0].ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("a[0");
-        table.Rows.ShouldHaveSingleItem()[0].ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("x[1");
+        ShouldFailTheInlineParse("[a](b");
+        ShouldFailTheInlineParse("[x](y");
+        var table = _visitor.Parse("| [a](b | b |\n|---|---|\n| [x](y | y |").ShouldHaveSingleItem().ShouldBeOfType<MdTable>();
+        table.Headers[0].ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("[a](b");
+        table.Rows.ShouldHaveSingleItem()[0].ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("[x](y");
     }
 
     // ── A fallback literal keeps its soft breaks ─────────────────────
@@ -268,9 +323,10 @@ public sealed class DollarRulesTests
     [Fact]
     public void FallbackParagraph_KeepsItsSoftBreaks()
     {
-        var content = Paragraph("see a[0\nhere");
+        ShouldFailTheInlineParse("see [a](b\nhere");
+        var content = Paragraph("see [a](b\nhere");
         content.Count.ShouldBe(3);
-        content[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("see a[0");
+        content[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("see [a](b");
         content[1].ShouldBeOfType<MdLineBreak>().Hard.ShouldBeFalse();
         content[2].ShouldBeOfType<MdLiteral>().Text.ShouldBe("here");
     }
@@ -279,23 +335,25 @@ public sealed class DollarRulesTests
     public void FallbackListItem_KeepsItsSoftBreaks()
     {
         // A list item's first line is one line; its continuation lines are where it can hold a newline.
-        var list = _visitor.Parse("- item\n  see a[0\n  here").ShouldHaveSingleItem().ShouldBeOfType<MdList>();
+        ShouldFailTheInlineParse("see [a](b\nhere");
+        var list = _visitor.Parse("- item\n  see [a](b\n  here").ShouldHaveSingleItem().ShouldBeOfType<MdList>();
         var body = list.Items.ShouldHaveSingleItem().Body;
         body.Count.ShouldBe(2);
         var content = body[1].ShouldBeOfType<MdParagraph>().Content;
         content.Count.ShouldBe(3);
-        content[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("see a[0");
+        content[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("see [a](b");
         content[1].ShouldBeOfType<MdLineBreak>().Hard.ShouldBeFalse();
         content[2].ShouldBeOfType<MdLiteral>().Text.ShouldBe("here");
     }
 
     [Theory]
-    [InlineData("see a[0\nhere\nand a `tick\nthere")]
-    [InlineData("# see a[0 here\n\nmore a[1\nhere")]   // a heading is one line by construction
-    [InlineData("- see a[0\n- item\n  more a[1\n  here")]
-    [InlineData("| a[0 | b |\n|---|---|\n| x[1 | y |")]
-    public void FallbackLiterals_HoldNoNewline(string source)
+    [InlineData("see [a](b\nhere\nand more\nthere", "see [a](b\nhere\nand more\nthere")]
+    [InlineData("# see [a](b here\n\nmore [c](d\nhere", "more [c](d\nhere")]   // a heading is one line by construction
+    [InlineData("- see [a](b\n- item\n  more [c](d\n  here", "more [c](d\nhere")]
+    [InlineData("| [a](b | b |\n|---|---|\n| [x](y | y |", "[a](b")]
+    public void FallbackLiterals_HoldNoNewline(string source, string failingInline)
     {
+        ShouldFailTheInlineParse(failingInline);
         var literals = Inlines(_visitor.Parse(source)).OfType<MdLiteral>().ToList();
         literals.ShouldNotBeEmpty();
         literals.ShouldAllBe(l => !l.Text.Contains('\n'));
