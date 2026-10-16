@@ -201,8 +201,8 @@ public sealed class SqrtBox : Box
         {
             var radical = new StretchyVerticalBox(RadicalCodepoint, requiredHeight, style, snapTopEdge: true);
             _radicalFont = radical;
-            (_flagTopRow, _flagProfile, _flagLastFullCol, _strokeCapTrimmedBand) = MeasureFlag(radical.Bitmap, radical.TopSnap);
-            _joinedRadical = JoinFlag(radical.Bitmap, _flagTopRow, _flagProfile, _flagLastFullCol);
+            (_flagTopRow, _flagProfile, _flagLastFullCol, _strokeCapTrimmedBand, var thickFrom) = MeasureFlag(radical.Bitmap, radical.TopSnap);
+            _joinedRadical = JoinFlag(radical.Bitmap, _flagTopRow, _flagProfile, _flagLastFullCol, thickFrom);
         }
         else
         {
@@ -224,8 +224,8 @@ public sealed class SqrtBox : Box
                 var scale = MathF.Max(0.5f, requiredHeight / native.Height);
                 _radicalScaled = rasterizer.RasterizeGlyphTopSnapped(style.FontPath, style.FontSize * scale, rune, out var snap);
                 _radicalScaledFactor = scale;
-                (_flagTopRow, _flagProfile, _flagLastFullCol, _strokeCapTrimmedBand) = MeasureFlag(_radicalScaled, snap);
-                _joinedRadical = JoinFlag(_radicalScaled, _flagTopRow, _flagProfile, _flagLastFullCol);
+                (_flagTopRow, _flagProfile, _flagLastFullCol, _strokeCapTrimmedBand, var thickFrom) = MeasureFlag(_radicalScaled, snap);
+                _joinedRadical = JoinFlag(_radicalScaled, _flagTopRow, _flagProfile, _flagLastFullCol, thickFrom);
             }
         }
 
@@ -400,6 +400,11 @@ public sealed class SqrtBox : Box
     /// below 32, where a dropped row would start to show as a thinner bar.</summary>
     private const int FlagTailMinAlpha = 16;
 
+    /// <summary>The least alpha a one-row band's row may have and still count
+    /// as covering its row; under it the flag's stroke is thinner than a pixel
+    /// and is drawn one pixel thick (see <see cref="MeasureFlag"/>).</summary>
+    private const int FlagFullCoverage = 240;
+
     /// <summary>
     /// Find the radical's flag in its rasterized glyph: the row its top
     /// begins at, its alpha profile down that row band, and the rightmost
@@ -429,11 +434,24 @@ public sealed class SqrtBox : Box
     /// over four soft rows. Either way the band is the stroke's rows of that
     /// column: one row, at those sizes, as the old one-row rule drew.
     /// </para>
+    /// <para>
+    /// A stroke thinner than a pixel cannot cover the row its snapped top
+    /// starts, so where the band is one row under <see cref="FlagFullCoverage"/>
+    /// (STIX Two Math and DejaVu Sans below about 19 px, where the flag is
+    /// under 0.9 px thick) that row is drawn at full coverage: the profile's
+    /// row, and the flag's top row from the first column of its plateau
+    /// (returned as <c>ThickFromCol</c>, -1 when nothing is thickened), which
+    /// <see cref="JoinFlag"/> fills in. The flag and the bar are then one
+    /// opaque row, as the old rule was at those sizes and as every rule is at
+    /// least a pixel (<see cref="BoxStyle.RadicalRuleThickness"/>), rather
+    /// than a grey one; the layout is unchanged, since the band is still one
+    /// row.
+    /// </para>
     /// </summary>
-    private static (int TopRow, byte[] Profile, int LastFullCol, bool CapTrimmed) MeasureFlag(GlyphBitmap bm, ManagedFontRasterizer.TopSnap snap)
+    private static (int TopRow, byte[] Profile, int LastFullCol, bool CapTrimmed, int ThickFromCol) MeasureFlag(GlyphBitmap bm, ManagedFontRasterizer.TopSnap snap)
     {
         if (bm.Rgba is null || bm.Width <= 0 || bm.Height <= 0)
-            return (0, [], bm.Width - 1, false);
+            return (0, [], bm.Width - 1, false, -1);
 
         var w = bm.Width;
         var h = bm.Height;
@@ -448,7 +466,7 @@ public sealed class SqrtBox : Box
 
         var top = Math.Max(0, snap.InkTopRow);
         while (top < h && RowMax(top) == 0) top++;
-        if (top == h) return (0, [], w - 1, false);
+        if (top == h) return (0, [], w - 1, false, -1);
 
         var topMax = RowMax(top);
         var last = w - 1;
@@ -462,7 +480,15 @@ public sealed class SqrtBox : Box
 
         var profile = new byte[bottom - top];
         for (var y = top; y < bottom; y++) profile[y - top] = Alpha(last, y);
-        return (top, profile, last, capTrimmed);
+
+        var thickFrom = -1;
+        if (profile.Length == 1 && profile[0] < FlagFullCoverage)
+        {
+            thickFrom = last;
+            while (thickFrom > 0 && Alpha(thickFrom - 1, top) >= topMax - FlagProfileTolerance) thickFrom--;
+            profile[0] = 255;
+        }
+        return (top, profile, last, capTrimmed, thickFrom);
     }
 
     /// <summary>
@@ -473,12 +499,20 @@ public sealed class SqrtBox : Box
     /// takes over. Filling the end inside the bitmap, rather than drawing the
     /// bar over it, writes each pixel of the join once: blending the bar over
     /// the antialiased end would darken it past the flag's own coverage.
+    /// A flag thinner than a pixel first gets its top row, from
+    /// <paramref name="thickFromCol"/> to the last full column, at the
+    /// profile's full coverage (see <see cref="MeasureFlag"/>).
     /// </summary>
-    private static GlyphBitmap JoinFlag(GlyphBitmap bm, int topRow, byte[] profile, int lastFullCol)
+    private static GlyphBitmap JoinFlag(GlyphBitmap bm, int topRow, byte[] profile, int lastFullCol, int thickFromCol)
     {
-        if (bm.Rgba is null || profile.Length == 0 || lastFullCol >= bm.Width - 1) return bm;
+        if (bm.Rgba is null || profile.Length == 0 || (lastFullCol >= bm.Width - 1 && thickFromCol < 0)) return bm;
         var w = bm.Width;
         var rgba = (byte[])bm.Rgba.Clone();
+        if (thickFromCol >= 0)
+        {
+            for (var col = thickFromCol; col <= lastFullCol; col++)
+                rgba[(topRow * w + col) * 4 + 3] = profile[0];
+        }
         for (var y = topRow; y < topRow + profile.Length; y++)
         {
             var src = (y * w + lastFullCol) * 4;
