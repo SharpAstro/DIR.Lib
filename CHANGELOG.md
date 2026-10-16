@@ -9,6 +9,94 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.23
+
+**Square brackets in math: `\sqrt[n]{x}` and `[a, b]`.** The LaTeX grammar now lexes `[`, `]` and `,`, so math that
+contains a bracket takes the box (raster) path instead of falling back to Unicode text. Before, any `[` made the box
+path's lexer throw (`unrecognized byte 0x5B`), and `\sqrt[3]{x}` printed `√[3]x`. `\sqrt[n]{x}` builds a radical with
+its index at script-script size; `[a, b]` and `\left[ \frac{1}{2} \right]` build stretchy square brackets, and mixed
+pairs such as `[0, 1)` and `(0, 1]` parse; the comma is an atom with TeX's thin space after it. As in LaTeX, a `[`
+right after a bare `\sqrt` can only open the index, so a bracketed radicand goes in braces, `\sqrt{[a, b]}`. On the
+Unicode path an index gives `∛x`, `∜x`, `ⁿ√y` or `¹⁰√x`, and keeps the `√[a + b]x` shape where it has no superscript
+form; an unbalanced bracket renders exactly as before. Of 65 bracket and comma formulas compared old against new, one
+renders differently on the Unicode path: `[-1, 1]` gives `[−1,1]` instead of `[ − 1,1]`, because a `-` after `[` is
+now unary, as it already was after `(`. A consumer that turns `\{` into `{` before taking the box path (Console.Lib's
+box-path prep does) now gets a set such as `\{1, 2, 3\}` rastered as a group without its braces, where the comma used
+to send it to the Unicode path; such a consumer has to send escaped braces (`\{ \}`, `\lbrace \rbrace`) to the Unicode
+path itself.
+
+**`MdMathInline.IsDisplay` records a display delimiter.** It is true for `$$..$$` and `\[..\]`, and false for `$..$`,
+`\(..\)` and `\boxed{..}`. All of them used to build the same record, so a renderer could not tell display math that
+sits inside a paragraph (Pandoc's rule: `$$..$$` is display math wherever it appears) from inline math. A fenced
+display block still produces `MdMathBlock`.
+
+**A `$` is math only by Pandoc's rule, and an unmatched math delimiter is text.** An opening `$` needs a non-space
+right after it; a closing `$` needs a non-space right before it and no digit right after it. `\$` is a literal dollar,
+inside math too (`So the answer is $\$42$.` renders `So the answer is $42.`), and `$$` closes only at the next `$$`,
+so a lone `$` in display math is part of its body. An opener with no partner (`$`, `$$`, `\(`, `\[` or `\boxed{`)
+renders as itself. Before, every `$` was a delimiter, and one left unmatched failed the inline parse, so the block
+visitor built an EMPTY paragraph:
+
+| Paragraph | 11.22 | 11.23 |
+|---|---|---|
+| `It costs $5 today.` | (nothing) | `It costs $5 today.` |
+| `Price: 5$ only.` | (nothing) | `Price: 5$ only.` |
+| `It costs $5 and $10 today.` | `It costs 5and10 today.` | `It costs $5 and $10 today.` |
+| `$a$ and $$x` | (nothing) | `a and $$x` |
+
+One departure from Pandoc: a closer inside a code span that opens after the `$` does not count, so
+`` costs $5 to run `echo $PATH` `` renders as text and code instead of stranding a backtick. And a heading, paragraph,
+list item's first line or table cell whose inline parse still fails now keeps its text as one `MdLiteral` rather than
+vanishing (a lone `[` as in `see a[0 here`, or an unclosed backtick, blanked it before); the cost is that other markup
+in that block shows as source. `MarkdownInlineVisitor.Parse` itself still returns an empty list on a failed parse. A
+fuzz of 40,000 random sources against the real lexer gave no empty parse, no leaked stand-in character and no
+exception. Math written with a space inside a delimiter (`$ x $`) is now text, as in Pandoc.
+
+**The radical's vinculum continues its flag as one stroke.** The bar over a radicand started one column after the
+radical glyph's flag ended, sat one row above it, and met a soft flag top (seen in mdcat over Sixel with STIX Two Math
+at 32 px, and in the 96 px baselines). `SqrtBox` placed the bar from an alpha-threshold scan of the radical's bitmap,
+which took the antialiased fringe for the flag's end and top; the radical is an unhinted CFF outline at a fractional
+position (STIX Two Math gets no hinting), drawn beside a pixel-snapped rectangle. Now the radical alone is shifted by
+a sub-pixel amount, chosen from its outline, so the flag's top edge lands on a pixel row (in an assembly only the
+topmost part moves), and the bar starts at the flag's last inked column and copies, row by row, the alpha profile of
+the flag's rightmost full column, so the two share their thickness and both edges. The layout reserves every row the
+drawn bar touches, cut to the rows the flag's own stroke covers. Swept over 2401 points (every integer size from 8 to
+40 px, 6.6 to 12 px in 0.05 px steps, 21.3 to 32 px in 0.1 px steps, and 48, 64, 72 and 96 px, for five scenes in
+STIX Two Math and DejaVu Sans, plus the join cases) against 11.22's radical code with this release's italic
+variables: a radical's height or depth grows by at most 1 px and shrinks by at most 2 px; from 21.3 px up a radicand
+never touches the bar where it had a clear row, and loses at most one (two STIX points go from 3 clear rows to 2,
+`\sqrt{\frac{a}{b}}` at 22.2 px and a nested fraction at 31.7 px); and the points where a radicand touches the bar
+fall from 791 to 758 (780 to 755 below 21.3 px). Five baselines changed, all of them radicals: STIX Two Math
+`sqrt-x2-plus-y2`, `sqrt-fourth-root` and `integral-formula-full`, DejaVu Sans `sqrt-fourth-root` and
+`integral-formula-full`; every baseline without a radical is byte-identical. The flag's bottom edge keeps one partial
+row (a vertical shift can snap only one edge), which the bar copies, and the diagonals stay antialiased.
+
+**Variables in math italic, `\mathrm`, and upright chemistry.** On the box path a variable is now set in math italic,
+as TeX sets it: `BoxBuildingVisitor` builds it as a `MathGlyphBox` with `MathStyle.Italic`, which maps each letter to
+its Unicode math-alphanumeric form where the font has one (`h` to U+210E) and leaves it alone where it does not, so
+DejaVu Sans, which has none, renders byte-identical to 11.22. Numbers and operator names (`\sin`) stay upright, as do
+big operators, and Greek is left as the font draws it. `\mathrm{..}` is new in the grammar: on the box path its
+argument stays upright, nested scripts included (`\mathrm{e^{x}}`), and on the Unicode path `\mathrm{X}` renders `X`
+(where `\sin x + \mathrm{d}x` used to print the literal `\mathrmdx`). Chemistry stays upright: `Mhchem.ToLatex` now
+wraps every element symbol, and every other run of letters (a state such as `(aq)`, the electron's `e`), in
+`\mathrm{..}`, so `H2O` expands to `\mathrm{H}_{2}\mathrm{O}` where it gave `H_{2}O`, and a caller that reads that
+string sees the new form. A LaTeX command in a `\ce` body is now copied through whole rather than read as letters,
+which mends `\ce{\Gamma}`: it gives Γ instead of being cut at the element Ga. (The command's brace arguments are still
+chemistry, except a `\text` argument, which is copied verbatim.) A formula parsed once still builds the same at any
+size, since nothing reads the visitor's style while parsing; a test pins it.
+
+A minor, not a major: no public API was removed or changed in shape. `MdMathInline.IsDisplay` is an init-only
+property, not a constructor parameter, so the record's constructor and `Deconstruct` keep their published
+three-parameter shape (a reflection test pins both). The LALR.CC-generated `Latex` class gains four public records
+(`Bracket`, `Punct`, `NthRoot`, `MathRm`) and a `Visit` overload for each on the public `Latex.IVisitor<T>`, which
+breaks only code that implements that interface directly; nothing in the SharpAstro org does (DIR.Lib's own
+`BoxBuildingVisitor` and `LatexUnicodeVisitor` are its only implementers, and implement all four). The generator
+offers no base class with defaults to inherit instead: `IVisitor<T>` is a plain interface, and its one generated
+implementation, `Latex.IdentityVisitor`, is sealed. So a direct implementer stops compiling with four `CS0535` errors,
+`does not implement interface member 'Latex.IVisitor<T>.Visit(Latex.Bracket)'` and the same for `Punct`, `NthRoot`
+and `MathRm`, until it adds those four `Visit` methods; one compiled against 11.22 throws `TypeLoadException` against
+11.23 when its type loads. Code that only hands DIR.Lib's visitors to `Latex.BuildParser` is unaffected.
+
 ## 11.22
 
 **A content-capped Star: `Sizing.StarUpToContent(weight = 1, min = 0)`**, with the fluent `.WStarUpToContent` /
