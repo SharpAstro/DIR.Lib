@@ -663,20 +663,26 @@ public sealed class SqrtBox : Box
     /// drew with, and finds the join from the layout's own numbers instead of
     /// searching the image.
     /// <para>
-    /// The bar's rows are decided here in whole rows. The glyph goes where the
-    /// layout puts it, floored as every box's pixels are, so it never lands
-    /// below its own box; but the floor of a float alone left whether a row of
-    /// the gap stayed clear to the float phase (STIX Two Math
-    /// <c>\sqrt{\frac{a}{b}}</c> at 22.2 px kept 2 clear rows of a 2.66 px
-    /// gap where 3 fit). So the bar is raised, where it has to be, until the
-    /// row under it is <see cref="_gapRows"/> whole rows above the row the
-    /// radicand's layout height starts in; the layout reserved that row (see
-    /// <see cref="_gapRowReserve"/>), so the raise only ever undoes float
-    /// noise. The radicand's own ink can start a row or two above that row
-    /// too (an antialiased top above its layout height, at sizes below 12 px),
-    /// so the bar goes higher still where it would otherwise leave no clear
-    /// row: <see cref="RadicandInkTop"/> finds the radicand's top inked row
-    /// under the bar by drawing it, which is why this takes the style.
+    /// The bar's rows are decided here in whole rows, and the glyph always
+    /// goes with them: its top is the bar's top less the flag's top row, so
+    /// wherever the bar is raised, the glyph is raised with it and the two stay
+    /// joined. They start where the layout puts the glyph, floored as every
+    /// box's pixels are, so the glyph never lands below its own box; but the
+    /// floor of a float alone left whether a row of the gap stayed clear to the
+    /// float phase (STIX Two Math <c>\sqrt{\frac{a}{b}}</c> at 22.2 px kept 2
+    /// clear rows of a 2.66 px gap where 3 fit). So bar and glyph are raised,
+    /// where they have to be, until the row under the bar is
+    /// <see cref="_gapRows"/> whole rows above the row the radicand's layout
+    /// height starts in; the layout reserved that row (see
+    /// <see cref="_gapRowReserve"/>), so this raise only ever undoes float
+    /// noise. The radicand's own ink can start a row or two above that row too
+    /// (an antialiased top above its layout height, at sizes below 12 px), so
+    /// bar and glyph go higher still where the bar would otherwise leave no
+    /// clear row, into the headroom the layout reserves for it (see
+    /// <see cref="_raiseRowReserve"/>) and, past that, above the box:
+    /// <see cref="RadicandInkTop"/> finds the radicand's top inked row under
+    /// the bar by drawing it, which is why this takes the style. An index stays
+    /// where the layout put it.
     /// </para>
     /// </summary>
     internal RadicalJoin? JoinAt(float penX, float baselineY, BoxStyle style)
