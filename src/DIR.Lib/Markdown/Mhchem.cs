@@ -343,7 +343,11 @@ public static class Mhchem
     /// <c>\mathrm{\mathrm{H}_{2}}</c> rather than <c>\mathrm{H}_{2}</c>, as
     /// <c>\ce{H2}</c> is. Blanks before the brace are skipped, as LaTeX
     /// skips them. Returns false, changing nothing, for any other command,
-    /// or a <c>\mathrm</c> with no balanced brace group after it.
+    /// or a <c>\mathrm</c> with no balanced brace group after it, or one
+    /// whose argument ends in a command with a letter straight after the
+    /// closing brace: without the brace between them the two would read as
+    /// one command, <c>\mathrm{\Delta}H</c> as <c>\DeltaH</c>. That one
+    /// stays wrapped, as <c>\mathrm{\Delta}\mathrm{H}</c>.
     /// </summary>
     private static bool TryUnwrapMathrm(ref string s, int i)
     {
@@ -362,8 +366,19 @@ public static class Mhchem
             if (depth > 0) close++;
         }
         if (depth > 0) return false;
+        if (close + 1 < s.Length && IsAsciiLetter(s[close + 1]) && EndsInControlWord(s, open + 1, close)) return false;
         s = string.Concat(s.AsSpan(0, i), s.AsSpan(open + 1, close - open - 1), s.AsSpan(close + 1));
         return true;
+    }
+
+    /// <summary>Whether <paramref name="s"/> from <paramref name="start"/> up
+    /// to <paramref name="end"/> ends in a backslash and one or more
+    /// letters, a command's name that a following letter would extend.</summary>
+    private static bool EndsInControlWord(string s, int start, int end)
+    {
+        int k = end;
+        while (k > start && IsAsciiLetter(s[k - 1])) k--;
+        return k < end && k > start && s[k - 1] == '\\';
     }
 
     /// <summary>

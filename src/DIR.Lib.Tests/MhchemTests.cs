@@ -162,6 +162,19 @@ public sealed class MhchemTests
     public void ToLatex_MathrmIsUnwrapped(string body, string expected)
         => Mhchem.ToLatex(body).ShouldBe(expected);
 
+    // An argument that ends in a command must stay apart from a letter after
+    // the closing brace: unwrapped bare, \mathrm{\Delta}H read as the one
+    // unknown command \DeltaH, on both paths, and in a script as well.
+    [Theory]
+    [InlineData(@"\mathrm{\Delta}H",      @"\DeltaH")]
+    [InlineData(@"\mathrm{\mu}g",         @"\mug")]
+    [InlineData(@"X^{\mathrm{\alpha}x}",  @"\alphax")]
+    public void ToLatex_UnwrapKeepsACommandApartFromTheNextLetter(string body, string glued)
+    {
+        Mhchem.ToLatex(body).ShouldNotContain(glued, Case.Sensitive);
+        MarkdownMacros.RenderMathUnicode(@"\ce{" + body + "}").ShouldNotContain(glued, Case.Sensitive);
+    }
+
     // ── Graceful degradation ───────────────────────────────────────────
 
     [Fact]
@@ -286,6 +299,8 @@ public sealed class MhchemTests
     [InlineData(@"\frac{H2O}{2}",    "H₂O⁄2")]
     [InlineData(@"\Gamma",           "Γ")]
     [InlineData(@"\mathrm{H2}O",     "H₂O")]
+    [InlineData(@"\mathrm{\Delta}H", "ΔH")]
+    [InlineData(@"\mathrm{\mu}g",    "μg")]
     [InlineData(@"\text{a}{b}",      "ab")]
     public void Roundtrip_UprightTextAndCommands(string body, string expected)
         => MarkdownMacros.RenderMathUnicode(@"\ce{" + body + "}").ShouldBe(expected);
