@@ -283,6 +283,43 @@ public sealed class DollarRulesTests
         Dump(blocks.ShouldHaveSingleItem().ShouldBeOfType<MdParagraph>().Content).ShouldBe(expected);
     }
 
+    // ── Parse never throws ───────────────────────────────────────────
+    //
+    // MarkdownInlineVisitor.Parse returns spans, or an empty list on a parse error; it does not
+    // throw. Two inputs used to make the root lexer throw LexerException: a backslash at the very
+    // end, and a carriage return with no line feed after it.
+
+    [Theory]
+    [InlineData(@"text\", @"L(text\)")]
+    [InlineData(@"\", @"L(\)")]
+    [InlineData(@"**b**\", @"E2[L(b)] L(\)")]
+    [InlineData("a\rb", "L(a) SB L(b)")]   // a lone CR is a line ending, as in CommonMark
+    public void InputTheLexerHasNoRuleFor_ParsesWithoutThrowing(string source, string expected) =>
+        Dump(new MarkdownInlineVisitor().Parse(source)).ShouldBe(expected);
+
+    [Theory]
+    [InlineData("a\\\nb")]
+    [InlineData("a\\\r\nb")]
+    public void BackslashBeforeANewline_IsStillAHardBreak(string source) =>
+        Dump(new MarkdownInlineVisitor().Parse(source)).ShouldBe("L(a) HB L(b)");
+
+    [Fact]
+    public void Parse_NeverThrows_OnDelimiterSoup()
+    {
+        string[] alphabet =
+        [
+            "[", "]", "(", ")", "{", "}", "!", "$", "\\", "`", "*", " ", "\n", "\r", "a", "5", "_", "|",
+            @"\boxed{", @"\text{", @"\(", @"\)", @"\[", @"\]", "$$", "``", "](", "]{", "![", @"\$",
+        ];
+        var rng = new System.Random(20261017);
+        var parser = new MarkdownInlineVisitor();
+        for (int n = 0; n < 5000; n++)
+        {
+            var source = string.Concat(Enumerable.Range(0, rng.Next(1, 11)).Select(_ => alphabet[rng.Next(alphabet.Length)]));
+            Should.NotThrow(() => parser.Parse(source), $"source: [{source.Replace("\r", "\\r").Replace("\n", "\\n")}]");
+        }
+    }
+
     /// <summary>The block visitor over the real inline parser, counting each block that takes a
     /// fallback: an inline parse that returns no spans for text that is not blank, or one that
     /// throws.</summary>
