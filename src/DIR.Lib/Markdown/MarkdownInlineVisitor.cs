@@ -170,10 +170,25 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                         i += 2;
                         break;
                     }
+                    case '\\' when i + 1 >= s.Length:
+                        // A backslash at the very end matches no root lexer
+                        // rule (an escape and a hard break both need the
+                        // character after it), so it is text.
+                        Mark(i, UnpairedBackslash);
+                        i++;
+                        break;
                     case '\\':
                         // Any other `\X` is one token (escape, command or hard
                         // break), so X opens nothing: `\$` is a literal dollar.
+                        if (IsLoneCarriageReturn(s, i + 1)) Mark(i + 1, '\n');
                         i += 2;
+                        break;
+                    case '\r' when IsLoneCarriageReturn(s, i):
+                        // A carriage return with no line feed matches no root
+                        // lexer rule. It is a line ending, as in CommonMark,
+                        // so the lexer gets one.
+                        Mark(i, '\n');
+                        i++;
                         break;
                     case '`':
                     {
@@ -488,6 +503,8 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     }
 
     private static char At(string s, int i) => i < s.Length ? s[i] : '\0';
+
+    private static bool IsLoneCarriageReturn(string s, int i) => At(s, i) == '\r' && At(s, i + 1) != '\n';
 
     /// <summary>Turns <see cref="MarkUnpaired"/>'s stand-ins back into
     /// the delimiter characters they replaced.</summary>
