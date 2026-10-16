@@ -193,7 +193,8 @@ public sealed partial class RadicalJoinTests
             return new Swept(p, r.Sqrt.Height, r.Sqrt.Depth, r.ClearRowsUnderBar(), r.Join.FlagRows, MaxBandRows(p.Font, r),
                 r.Sqrt.StrokeCapTrimmedBand,
                 r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY), r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY - 1),
-                r.GlyphPastDepth, r.RowsAboveHeight, r.RadicalOnCanvas, InkCutOff(p.Font, p.Size, p.Scene, r.Image));
+                r.GlyphPastDepth, r.RowsAboveHeight, r.RadicalOnCanvas, InkCutOff(p.Font, p.Size, p.Scene, r.Image),
+                r.JoinBreak());
         }),
     ]);
 
@@ -214,9 +215,10 @@ public sealed partial class RadicalJoinTests
     /// <param name="RadicalOnCanvas">Whether the glyph and bar lie on the canvas
     /// (<see cref="Rendered.RadicalOnCanvas"/>).</param>
     /// <param name="InkCutOff">Alpha the canvas edge cut off (<see cref="InkCutOff(string, float, string, RgbaImage)"/>).</param>
+    /// <param name="JoinBreak">Where the bar fails to continue the flag, or null (<see cref="Rendered.JoinBreak"/>).</param>
     private sealed record Swept(BeforePoint Before, float Height, float Depth, int ClearRows, int BandRows, int MaxBandRows,
         bool CapTrimmed, int FlagTopAlpha, int AboveFlagAlpha, float GlyphPastDepth, int RowsAboveHeight,
-        bool RadicalOnCanvas, long InkCutOff)
+        bool RadicalOnCanvas, long InkCutOff, string? JoinBreak)
     {
         public bool Touches => ClearRows == 0;
 
@@ -409,6 +411,23 @@ public sealed partial class RadicalJoinTests
     }
 
     /// <summary>
+    /// The bar continues the flag at every point of the sweep, not only at the join assertions' three sizes:
+    /// no gap column between them and no row of offset. The draw places glyph and bar from the one join, so
+    /// raising the bar to keep its clear row raises the glyph with it; this holds that at every point,
+    /// among them the 61 where the radicand's ink raises the bar (by two rows at STIX Two Math
+    /// <c>\sqrt{2}</c> 7.6 and 7.65 px). Every failing point is listed in the one message.
+    /// </summary>
+    [Fact]
+    public void SweepBarStaysJoinedToTheFlag()
+    {
+        var failures = SweptPoints.Value
+            .Where(s => s.JoinBreak is not null)
+            .Select(s => $"{s}: {s.JoinBreak}")
+            .ToList();
+        failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
+    }
+
+    /// <summary>
     /// The two points the relaxations named: STIX Two Math <c>\sqrt{\frac{a}{b}}</c> at 22.2 px and
     /// <c>\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}</c> at 31.7 px had 3 clear rows before the rework
     /// (e6778fc) and 2 after it (fe09d4a), lost to the float phase of the bar's floored row.
@@ -561,6 +580,25 @@ public sealed partial class RadicalJoinTests
         /// bar's end.</summary>
         public bool RadicalOnCanvas =>
             Join.FlagTopY >= 0 && Join.GlyphY + Join.GlyphRows <= Image.Height && Join.GlyphX >= 0 && Join.BarEndX <= Image.Width;
+
+        /// <summary>Where the bar fails to continue the flag, or null where it does: a column from the flag's
+        /// last full column to the bar's end lighter than that column down the band (a gap column, which is
+        /// what <see cref="NoColumnAtTheJoinIsLighterThanTheBar"/> asserts at its three sizes), or a bar
+        /// column whose band rows and the row above them differ from the flag's column (an offset row, which
+        /// is what <see cref="BarRepeatsTheFlagsLastFullColumn"/> asserts there).</summary>
+        public string? JoinBreak()
+        {
+            var j = Join;
+            var reference = ColumnSum(j.FlagLastFullX);
+            for (var x = j.FlagLastFullX; x < j.BarEndX; x++)
+                if (ColumnSum(x) < reference - AlphaTolerance * j.FlagRows)
+                    return $"column {x} has {ColumnSum(x)} alpha down the band against the flag's {reference}";
+            for (var x = j.FlagLastFullX + 1; x < j.BarEndX; x++)
+                for (var y = j.FlagTopY - 1; y < j.FlagTopY + j.FlagRows; y++)
+                    if (Math.Abs(Alpha(x, y) - Alpha(j.FlagLastFullX, y)) > AlphaTolerance)
+                        return $"column {x}, row {y}: {Alpha(x, y)} against the flag's {Alpha(j.FlagLastFullX, y)} (band {j.FlagTopY}..{j.FlagTopY + j.FlagRows - 1})";
+            return null;
+        }
 
         public int Alpha(int x, int y) =>
             x < 0 || y < 0 || x >= Image.Width || y >= Image.Height ? 0 : Image.Pixels[(y * Image.Width + x) * 4 + 3];
