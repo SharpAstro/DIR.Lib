@@ -265,6 +265,27 @@ public sealed class DollarRulesTests
         Dump(blocks.ShouldHaveSingleItem().ShouldBeOfType<MdParagraph>().Content).ShouldBe(expected);
     }
 
+    // ── An empty tail parses ─────────────────────────────────────────
+    //
+    // `[a]()` is a link with an empty URL, as in CommonMark, and `![a]()` an image with an empty
+    // source (a renderer that cannot resolve it shows the alt). `[a]{}` names no colour, so it is
+    // the label itself, which is how an unknown colour renders too.
+
+    [Theory]
+    [InlineData("[a]()", "Link[L(a)]()")]
+    [InlineData("see [*a*]() now", "L(see ) Link[E1[L(a)]]() L( now)")]
+    [InlineData("![a]()", "Img[L(a)]()")]
+    [InlineData("[a]{}", "L(a)")]
+    [InlineData("see [*a*]{} now", "L(see ) E1[L(a)] L( now)")]
+    [InlineData("*x [a*]{}", "L(*x a*)")]   // the label's star does not pair with one outside it
+    [InlineData("[a](b) [c]() [d]{red}", "Link[L(a)](b) L( ) Link[L(c)]() L( ) Col[L(d)]{red}")]
+    public void EmptyTail_Parses(string source, string expected)
+    {
+        var blocks = ParseCountingFallbacks(source, out int fallbacks);
+        fallbacks.ShouldBe(0);
+        Dump(blocks.ShouldHaveSingleItem().ShouldBeOfType<MdParagraph>().Content).ShouldBe(expected);
+    }
+
     // ── An image opener without a link tail is text ──────────────────
     //
     // The grammar has an image only as `![alt](url)`. Any other `![` is a `!` before a bracket.
@@ -341,17 +362,23 @@ public sealed class DollarRulesTests
     [InlineData(@"\(")]
     [InlineData(@"\[")]
     [InlineData(@"\boxed{")]
-    public void StrayDelimiter_NeverTakesTheFallback(string stray)
+    [InlineData("[a]()", "L(@ ) Link[L(a)]()")]
+    [InlineData("![a]()", "L(@ ) Img[L(a)]()")]
+    [InlineData("[a]{}", "L(@ a)")]
+    public void StrayDelimiter_NeverTakesTheFallback(string stray, string? shown = null)
     {
+        // `shown` is how the block renders after its leading word, which stands in for `@`; by
+        // default the stray is plain text after it.
+        shown ??= $"L(@ {stray})";
         var source = $"*em* then {stray}\n\n# head {stray}\n\n- item {stray}\n\n| cell {stray} | b |\n|---|---|\n| x | y |";
         var blocks = ParseCountingFallbacks(source, out int fallbacks);
         fallbacks.ShouldBe(0);
         blocks.Count.ShouldBe(4);
-        Dump(blocks[0].ShouldBeOfType<MdParagraph>().Content).ShouldBe($"E1[L(em)] L( then {stray})");
-        Dump(blocks[1].ShouldBeOfType<MdHeading>().Content).ShouldBe($"L(head {stray})");
+        Dump(blocks[0].ShouldBeOfType<MdParagraph>().Content).ShouldBe("E1[L(em)] " + shown.Replace("@", " then"));
+        Dump(blocks[1].ShouldBeOfType<MdHeading>().Content).ShouldBe(shown.Replace("@", "head"));
         Dump(blocks[2].ShouldBeOfType<MdList>().Items.ShouldHaveSingleItem().Body.ShouldHaveSingleItem()
-            .ShouldBeOfType<MdParagraph>().Content).ShouldBe($"L(item {stray})");
-        Dump(blocks[3].ShouldBeOfType<MdTable>().Headers[0]).ShouldBe($"L(cell {stray})");
+            .ShouldBeOfType<MdParagraph>().Content).ShouldBe(shown.Replace("@", "item"));
+        Dump(blocks[3].ShouldBeOfType<MdTable>().Headers[0]).ShouldBe(shown.Replace("@", "cell"));
     }
 
     /// <summary>The block visitor over the real inline parser, counting each block that takes a
