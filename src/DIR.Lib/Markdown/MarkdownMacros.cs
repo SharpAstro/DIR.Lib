@@ -644,12 +644,20 @@ public static class MarkdownMacros
     }
 
 
+    /// <summary>
+    /// The index of the <c>}</c> that closes the <c>{</c> at
+    /// <paramref name="openPos"/>, or -1. An escaped brace (<c>\{</c>,
+    /// <c>\}</c>) is a glyph, not a group brace, so it is skipped; so is
+    /// whatever follows any other backslash, which keeps <c>\\</c> one unit and
+    /// lets the brace after it close.
+    /// </summary>
     private static int FindMatchingBrace(string s, int openPos)
     {
         int depth = 1;
         for (int i = openPos + 1; i < s.Length; i++)
         {
-            if (s[i] == '{') depth++;
+            if (s[i] == '\\') i++;
+            else if (s[i] == '{') depth++;
             else if (s[i] == '}')
             {
                 depth--;
