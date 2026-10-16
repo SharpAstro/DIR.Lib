@@ -1,4 +1,4 @@
-// Measures the square root of commit 619f0e4 at every point RadicalJoinTests sweeps and writes the result
+// Measures the square root of commit e6778fc at every point RadicalJoinTests sweeps and writes the result
 // as src/DIR.Lib.Tests/RadicalJoinTests.Before.cs. Built against a copy of that commit's sources whose
 // SqrtBox generate.ps1 has patched to record its bar in a `_probeBar` field; see GenRadicalJoinBefore.csproj.
 //
@@ -106,7 +106,7 @@ namespace DIR.Lib.Tests;
 public sealed partial class RadicalJoinTests
 {
     /// <summary>
-    /// The radical before the radical-join rework (commit 619f0e4) at every point the sweep and the named
+    /// The radical before the radical-join rework (commit e6778fc) at every point the sweep and the named
     /// cases visit: which path drew it, its <see cref="MathLayout.Box.Height"/> and
     /// <see cref="MathLayout.Box.Depth"/>, and the clear pixel rows between its bar and the radicand,
     /// measured as <see cref="Rendered.ClearRowsUnderBar"/> does. Floats are printed round-trip, so they

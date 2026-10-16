@@ -2,7 +2,8 @@
 
   <!--
     Regenerates src/DIR.Lib.Tests/RadicalJoinTests.Before.cs: the square root as it was BEFORE the
-    radical-join rework (commit 619f0e4), measured at every point RadicalJoinTests sweeps.
+    radical-join rework (commit e6778fc; generate.ps1 says why that one), measured at every point
+    RadicalJoinTests sweeps.
 
     It builds against a copy of that commit's sources, not against src/: the point of the data is what
     the old SqrtBox did. generate.ps1 beside this file extracts the copy, patches the old SqrtBox to
