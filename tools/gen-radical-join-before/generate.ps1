@@ -1,6 +1,13 @@
 #!/usr/bin/env pwsh
-# Regenerates src/DIR.Lib.Tests/RadicalJoinTests.Before.cs: the square root as commit 619f0e4 drew it,
+# Regenerates src/DIR.Lib.Tests/RadicalJoinTests.Before.cs: the square root as commit e6778fc drew it,
 # before the radical-join rework, at every point RadicalJoinTests sweeps.
+#
+# Why e6778fc: it is math-italic (#117), which landed on main just before the rework (#115). Its SqrtBox,
+# StretchyVerticalBox and ManagedFontRasterizer are those of 619f0e4, where the rework branched, but it
+# builds parsed variables in math italic, as the tree the tests run against does. Measured from 619f0e4,
+# with upright variables, the sweep counted italic's own change to the radicand as radical drift (STIX Two
+# Math \sqrt{x} at 7 px: depth 0 -> 2.16). A new base must likewise differ from the tested tree only in the
+# radical's own code.
 #
 #   pwsh tools/gen-radical-join-before/generate.ps1               # extract the commit, patch, measure
 #   pwsh tools/gen-radical-join-before/generate.ps1 -BaseTree DIR # reuse an extracted copy of it
@@ -11,7 +18,7 @@
 # is built or touched except the output file. Change the point set in Program.cs and in RadicalJoinTests
 # together.
 param(
-    [string]$BaseCommit = '619f0e4',
+    [string]$BaseCommit = 'e6778fc',
     [string]$BaseTree
 )
 $ErrorActionPreference = 'Stop'
