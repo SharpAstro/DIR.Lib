@@ -79,6 +79,26 @@ public sealed class BraceSetTests
         => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
 
     /// <summary>
+    /// An escaped brace inside <c>\text{...}</c> is a glyph, not one of the
+    /// argument's braces, so it neither opens nor closes the argument. The
+    /// argument's end used to be found by counting every brace, so
+    /// <c>\text{\{}</c> never closed and printed its own source. A <c>\\</c> is
+    /// one unit, so the brace after it still closes the argument.
+    /// </summary>
+    [Theory]
+    [InlineData(@"\text{\{}", "{")]
+    [InlineData(@"\text{\lbrace}", "{")]
+    [InlineData(@"\text{\}}", "}")]
+    [InlineData(@"\text{a\}b}", "a}b")]
+    [InlineData(@"\text{\{a, b\}}", "{a, b}")]
+    [InlineData(@"\text{a\\}", "a ")]
+    // Balanced arguments, as they rendered before.
+    [InlineData(@"\text{a {b} c}", "a {b} c")]
+    [InlineData(@"\text{if } x", "if x")]
+    public void UnicodePath_EscapedBraceInsideText(string latex, string expected)
+        => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
+
+    /// <summary>
     /// A piecewise definition, <c>\left\{</c> with no right brace
     /// (<c>\right.</c>) around an environment, now parses. Its brace used to
     /// alias to a bare <c>{</c> that left a group unclosed, so the formula
