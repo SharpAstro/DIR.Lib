@@ -161,6 +161,8 @@ lexer:
   # this lexer reads as text. A `[` or `]` with no partner, a backtick
   # run that never closes and a `](` or `]{` whose `)` or `}` never comes
   # reach it the same way, as text, since the grammar has no rule for them.
+  # So does the `!` of a `![` that no `](url)` closes, which leaves its `[`
+  # an lbracket.
   root:
     - { symbol: lboxed,           match: '\\boxed\{',  push: math_boxed }
     - { symbol: dollar2,          match: '\$\$',       push: math_dollar2 }
