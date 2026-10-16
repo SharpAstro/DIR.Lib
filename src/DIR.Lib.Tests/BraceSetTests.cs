@@ -46,6 +46,7 @@ public sealed class BraceSetTests
     [InlineData(@"\lbrace x \rbrace", "{x}")]
     [InlineData(@"\{1, 2, 3\}", "{1,2,3}")]
     [InlineData(@"\left\lbrace x \right\rbrace", "{x}")]
+    [InlineData(@"\left\{ \frac{1}{2} \right\}", "{1⁄2}")]
     public void UnicodePath_SetKeepsBothBraces(string latex, string expected)
         => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
 
