@@ -34,6 +34,15 @@ namespace DIR.Lib.Markdown;
 public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
 {
     private readonly MarkdownInlineVisitor _inline = new();
+    private readonly Func<string, IReadOnlyList<MdInline>> _parseInline;
+
+    public MarkdownBlockVisitor() => _parseInline = _inline.Parse;
+
+    /// <summary>Test seam: <paramref name="parseInline"/> stands in for the
+    /// inline parser, so a test can make classification throw and reach
+    /// <see cref="ClassifyBlockSafe"/>'s fallback on purpose.</summary>
+    internal MarkdownBlockVisitor(Func<string, IReadOnlyList<MdInline>> parseInline) =>
+        _parseInline = parseInline;
 
     /// <summary>Parses a full markdown document and returns the list
     /// of blocks. Returns an empty list on parse error.</summary>
@@ -208,7 +217,7 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
     /// only a block knows its text has to show.</summary>
     private IReadOnlyList<MdInline> ParseInline(string text)
     {
-        var spans = _inline.Parse(text);
+        var spans = _parseInline(text);
         return spans.Count == 0 && !string.IsNullOrWhiteSpace(text)
             ? LiteralLines(text)
             : spans;

@@ -153,11 +153,15 @@ public sealed class MarkdownBlockSpikeTests
         // end, which no root lexer rule matches) must not abort the document:
         // it degrades to raw text, and the blank-line sync point lets the next
         // block parse normally. (This used a stray closing fence, ```, until a
-        // backtick run that never closes became text.)
+        // backtick run that never closes became text.) The raw text keeps its
+        // line as a soft break, so it reflows.
         var blocks = _visitor.Parse("some text;\nmore \\\n\nafter");
         blocks.Count.ShouldBe(2);
-        blocks[0].ShouldBeOfType<MdParagraph>()
-            .Content.OfType<MdLiteral>().Single().Text.ShouldBe("some text;\nmore \\");
+        var content = blocks[0].ShouldBeOfType<MdParagraph>().Content;
+        content.Count.ShouldBe(3);
+        content[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("some text;");
+        content[1].ShouldBeOfType<MdLineBreak>().Hard.ShouldBeFalse();
+        content[2].ShouldBeOfType<MdLiteral>().Text.ShouldBe("more \\");
         blocks[1].ShouldBeOfType<MdParagraph>()
             .Content.OfType<MdLiteral>().Single().Text.ShouldBe("after");
     }
