@@ -321,6 +321,76 @@ public sealed class BraceSetTests
     public void UnicodePath_EmptyPairKeepsItsDelimiters(string latex, string expected)
         => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
 
+    /// <summary>
+    /// In a font with no MATH table an empty pair still draws the font's own
+    /// delimiters, not <see cref="BracketBox"/>'s parametric strokes: a
+    /// stretchy delimiter asked for no height is the base glyph, which a font
+    /// that maps the delimiter has, MATH table or not. BabelStone Xiangqi
+    /// Colour has none, and each delimiter of its empty pairs inks from about
+    /// the top of its digits down to the baseline. Read off one raster of a
+    /// digit beside the pair, so both stand on the same baseline.
+    /// </summary>
+    [Theory]
+    [InlineData(@"\{\}", BracketKind.Curly)]
+    [InlineData(@"()", BracketKind.Paren)]
+    [InlineData(@"[]", BracketKind.Square)]
+    public void BoxPath_EmptyPairWithoutMath_StandsAsTallAsTheDigits(string latex, BracketKind kind)
+    {
+        var style = StyleFor("BabelStone");
+        var pair = BuildBox(latex, style).ShouldBeOfType<BracketBox>();
+        var digit = new GlyphBox("1", style);
+        var image = BoxRasterizer.RenderToRgba(new HBox(digit, pair), style);
+
+        var margin = (int)MathF.Ceiling(FontSize * 0.15f);
+        var (left, right) = Delimiters(kind, requiredHeight: 0, style);
+        var digitColumns = (Start: margin, End: margin + (int)digit.Width - 1);
+        var leftStart = margin + digit.Width;
+        var leftColumns = (Start: (int)MathF.Ceiling(leftStart), End: (int)(leftStart + left.Width) - 1);
+        var rightColumns = (Start: (int)MathF.Ceiling(leftStart + left.Width), End: (int)(leftStart + left.Width + right.Width) - 1);
+
+        var (digitTop, digitBottom) = InkRows(image, digitColumns.Start, digitColumns.End);
+        foreach (var (name, columns) in new[] { ("left", leftColumns), ("right", rightColumns) })
+        {
+            var (top, bottom) = InkRows(image, columns.Start, columns.End);
+            top.ShouldBeLessThanOrEqualTo(digitTop + 1, $"the {name} delimiter of '{latex}' should reach the digits' top");
+            bottom.ShouldBeGreaterThanOrEqualTo(digitBottom - 1, $"the {name} delimiter of '{latex}' should reach the baseline");
+        }
+    }
+
+    /// <summary>
+    /// A pair with content in that font keeps its height and depth, pinned
+    /// here, whatever is done for empty pairs. <c>(x)</c> takes the font's
+    /// paren glyph; around a fraction the brace glyph is too short, and the
+    /// braces are parametric.
+    /// </summary>
+    [Theory]
+    [InlineData(@"(x)", 20.5f, 4.5f)]
+    [InlineData(@"\left\{ \frac{1}{2} \right\}", 37.04889f, 21.04889f)]
+    public void BoxPath_PairWithContentWithoutMath_KeepsItsHeight(string latex, float height, float depth)
+    {
+        var pair = BuildBox(latex, StyleFor("BabelStone")).ShouldBeOfType<BracketBox>();
+        pair.Height.ShouldBe(height, 0.01f);
+        pair.Depth.ShouldBe(depth, 0.01f);
+    }
+
+    /// <summary>
+    /// <c>A = \{\} + f()</c> in BabelStone Xiangqi Colour, written to
+    /// <c>obj/</c> for a look by eye; asserts ink, none of it on the raster's
+    /// edge. Not a baseline.
+    /// </summary>
+    [Fact]
+    public void BoxPath_EmptyPairsWithoutMath_WritePngForInspection()
+    {
+        var style = StyleFor("BabelStone");
+        var image = BoxRasterizer.RenderToRgba(BuildBox(@"A = \{\} + f()", style).ShouldNotBeNull(), style);
+        InkPixels(image).ShouldBeGreaterThan(0);
+        EdgeInkPixels(image).ShouldBe(0);
+
+        Directory.CreateDirectory(OutputDir);
+        File.WriteAllBytes(Path.Combine(OutputDir, "BabelStone-empty-pairs.png"),
+            PngWriter.Encode(image.Pixels, image.Width, image.Height));
+    }
+
     private const string NestedFraction = @"\frac{\frac{a}{b}}{\frac{c}{d}}";
 
     /// <summary>
