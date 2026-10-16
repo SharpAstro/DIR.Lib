@@ -155,6 +155,17 @@ public static class MarkdownMacros
         return true;
     }
 
+    /// <summary>
+    /// The text between the braces of a token that carries its argument,
+    /// <c>\operatorname{X}</c> or <c>\textrm{X}</c> as the grammar lexes them:
+    /// X exactly as written, blanks included.
+    /// </summary>
+    internal static string BracedArgument(string token)
+    {
+        var open = token.IndexOf('{');
+        return token.Substring(open + 1, token.Length - open - 2);
+    }
+
     /// <summary>False when <paramref name="source"/> holds what only the
     /// Unicode path can draw: <c>\text</c> or an environment.</summary>
     private static bool BoxPathCanBuild(string source)

@@ -316,9 +316,12 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
         => Painted(latex, Stix).ShouldBe([expected]);
 
     /// <summary>
-    /// A font without the double-struck letter falls back to the plain one,
-    /// the way a variable falls back from math italic, and never to the
-    /// command's name.
+    /// DejaVu Sans paints whatever its cmap has: the double-struck letter
+    /// where it has one, else the plain letter, the way a variable falls back
+    /// from math italic, and never the command's name. Its cmap turns out to
+    /// hold every one of these (the oracle reads it), so here it paints them
+    /// all double-struck; the fallback is <see cref="MathGlyphBox"/>'s, per
+    /// rune, which <see cref="MathItalicTests"/> drives with this font.
     /// </summary>
     [Theory]
     [InlineData(@"\mathbb{R}", 'R', 0x211D)]
@@ -326,7 +329,7 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
     [InlineData(@"\mathbb{Z}", 'Z', 0x2124)]
     [InlineData(@"\mathbb{A}", 'A', 0x1D538)]
     [InlineData(@"\mathbb{B}", 'B', 0x1D539)]
-    public void Mathbb_WithoutTheGlyph_FallsBackToTheLetter(string latex, char letter, int doubleStruck)
+    public void Mathbb_DejaVuSans_PaintsWhatItsCmapHas(string latex, char letter, int doubleStruck)
     {
         var dejaVu = StyleFor("DejaVuSans");
         BoxStyle.SharedRasterizer.TryGetOpenTypeFont(dejaVu.FontPath, out var font).ShouldBeTrue();
