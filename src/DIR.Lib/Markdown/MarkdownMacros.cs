@@ -422,6 +422,12 @@ public static class MarkdownMacros
         source = ReplaceMacro(source, "lbrace", @"\{");
         source = ReplaceMacro(source, "rbrace", @"\}");
 
+        // LaTeX lets whitespace separate \left and \right from their
+        // delimiter (\left ( x \right )). Close that gap before each delimiter
+        // the table below handles on that side, so the table matches the pair
+        // spaced or not.
+        source = SpacedSizedDelimiterRegex.Replace(source, m => m.Value.TrimEnd());
+
         // Order matters: longer prefixes first so e.g. \Biggl isn't eaten by
         // an earlier \bigl pass (they don't share a 5-char prefix today but
         // keeping the ordering explicit for future additions).
@@ -465,6 +471,14 @@ public static class MarkdownMacros
         return sb.ToString();
     }
 
+
+    /// <summary><c>\left</c> and the whitespace after it when a delimiter
+    /// <see cref="LatexAliases"/> pairs with <c>\left</c> follows (<c>[</c>
+    /// <c>(</c> <c>\{</c> <c>|</c> <c>.</c>), and the same for <c>\right</c>
+    /// (<c>]</c> <c>)</c> <c>\}</c> <c>|</c> <c>.</c>).</summary>
+    private static readonly Regex SpacedSizedDelimiterRegex = new(
+        @"\\left\s+(?=[\[(|.]|\\\{)|\\right\s+(?=[\])|.]|\\\})",
+        RegexOptions.Compiled);
 
     private static readonly (string From, string To)[] LatexAliases =
     [
