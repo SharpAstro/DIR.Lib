@@ -251,6 +251,30 @@ public sealed class DollarRulesTests
     public void LoneBracketOrBacktick_BetweenProseDollars_IsText(string source) =>
         new MarkdownInlineVisitor().Parse(source).ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe(source);
 
+    // ── A label walk stays inside its bound ──────────────────────────
+    //
+    // Inside a label, math can take a `[` that LabelEnd counted. The `]` of that bracket's tail
+    // is then text, and so is the URL after it, which the label walk goes on to read. A code span
+    // or a tail there that ends past the label's own `]` would carry the walk past it, out of step
+    // with the lexer; here the backtick at 6 would close at the one inside the label's URL. So
+    // inside a label such a code span is an unclosed fence, and such a tail never closes.
+
+    [Theory]
+    [InlineData("[$[$](`x) y](u`v``w) `z`", "Link[M([) L(](`x) y)](u`v``w) L( ) C(z)")]
+    [InlineData("[$[$](`x) y](u`v\r) z", "Link[M([) L(](`x) y)](u`v\r) L( z)")]
+    [InlineData("*em* [$[$](`x) y](u) z`w``", "E1[L(em)] L( ) Link[M([) L(](`x) y)](u) L( z) C(w) L(`)")]
+    public void LabelWalk_StaysInsideItsBound(string source, string expected) =>
+        Dump(new MarkdownInlineVisitor().Parse(source)).ShouldBe(expected);
+
+    [Fact]
+    public void LabelWalk_StaysInsideItsBound_InATableCell()
+    {
+        var blocks = ParseCountingFallbacks("| [$[$](`x) y](u`v``w) `z` | b |\n|---|---|\n| x | y |", out int fallbacks);
+        fallbacks.ShouldBe(0);
+        var table = blocks.ShouldHaveSingleItem().ShouldBeOfType<MdTable>();
+        Dump(table.Headers[0]).ShouldBe("Link[M([) L(](`x) y)](u`v``w) L( ) C(z)");
+    }
+
     // ── A link or colour tail that never closes is text ──────────────
 
     [Theory]
@@ -338,6 +362,38 @@ public sealed class DollarRulesTests
         {
             var source = string.Concat(Enumerable.Range(0, rng.Next(1, 11)).Select(_ => alphabet[rng.Next(alphabet.Length)]));
             Should.NotThrow(() => parser.Parse(source), $"source: [{source.Replace("\r", "\\r").Replace("\n", "\\n")}]");
+        }
+    }
+
+    [Fact]
+    public void Parse_NeitherThrowsNorFails_OnNestedLabels()
+    {
+        // Built, not drawn letter by letter: labels inside labels, math holding brackets and
+        // backticks, tails with no label, URLs holding backticks and CRs, and then one character
+        // deleted at random. That is the shape that once carried a label walk past its bound and
+        // out of step with the lexer, which a uniform draw almost never builds. Every input parses
+        // to spans: none throws and none needs the block fallback.
+        var rng = new System.Random(20261018);
+        string Pick(params string[] items) => items[rng.Next(items.Length)];
+        string Url() => string.Concat(Enumerable.Range(0, rng.Next(0, 5)).Select(_ => Pick("u", "`", "``", "\r", " ", "$", "[", "]", "\\")));
+        string Gen(int depth) => string.Concat(Enumerable.Range(0, rng.Next(1, 5)).Select(_ => (rng.Next(0, 8), depth) switch
+        {
+            (2, < 3) => Pick("", "", "!") + "[" + Gen(depth + 1) + Pick("](", "](", "]{", "]") + Url() + Pick(")", ")", "}", ""),
+            (1, _) => "$" + string.Concat(Enumerable.Range(0, rng.Next(1, 4)).Select(_ => Pick("[", "]", "x", "`", "(", ")"))) + "$",
+            (3, _) => "`" + Pick("x", "$", "[", "]", ")") + "`",
+            (4, _) => "](" + Url() + ")",
+            (5, _) => Pick("[", "]", "`", "``", "$", "$$", "\r", "\\", ")", "(", "!["),
+            (6, _) => Pick(@"\(", @"\)", @"\[", @"\]", @"\boxed{", "}", @"\text{"),
+            (7, _) => "$$" + Pick("x", "[", "`") + "$$",
+            _ => Pick("x", " ", "*", "**", "y z"),
+        }));
+        var parser = new MarkdownInlineVisitor();
+        for (int n = 0; n < 4000; n++)
+        {
+            var source = Gen(0);
+            if (rng.Next(3) == 0 && source.Length > 1) source = source.Remove(rng.Next(source.Length), 1);
+            var shown = $"source: [{source.Replace("\r", "\\r").Replace("\n", "\\n")}]";
+            Should.NotThrow(() => parser.Parse(source), shown).ShouldNotBeEmpty(shown);
         }
     }
 
