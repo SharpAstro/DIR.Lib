@@ -256,6 +256,19 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
     public Func<BoxStyle, Box> Visit(Group node) => Builder(node.Arg1);
 
     /// <summary>
+    /// \{ E \}, a set: a curly <see cref="BracketBox"/>, stretchy like
+    /// <see cref="Visit(Paren)"/>'s parens. <c>\left\{ … \right\}</c> and
+    /// <c>\lbrace … \rbrace</c> arrive here too, since
+    /// <see cref="MarkdownMacros.NormalizeLatexAliases"/> reduces both to the
+    /// escaped braces.
+    /// </summary>
+    public Func<BoxStyle, Box> Visit(Brace node)
+    {
+        var inner = Builder(node.Arg1);
+        return style => new BracketBox(inner(style), BracketKind.Curly, style);
+    }
+
+    /// <summary>
     /// [E], and the half-open mixes [E) and (E]. A matched pair is a
     /// <see cref="BracketBox"/>, stretchy like <see cref="Visit(Paren)"/>'s
     /// parens (<c>\left[ … \right]</c> arrives here too, since
