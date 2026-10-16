@@ -259,6 +259,192 @@ public sealed class DollarRulesTests
         table.Rows.ShouldHaveSingleItem()[0].ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("x[1");
     }
 
+    // ── A fallback literal keeps its soft breaks ─────────────────────
+    //
+    // A newline inside one literal does not reflow (a consumer appends a literal verbatim and
+    // wraps only at spaces), and it reads as the hard break a renderer already draws that way. So
+    // the fallback splits at each newline into a soft break, as the inline grammar would.
+
+    [Fact]
+    public void FallbackParagraph_KeepsItsSoftBreaks()
+    {
+        var content = Paragraph("see a[0\nhere");
+        content.Count.ShouldBe(3);
+        content[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("see a[0");
+        content[1].ShouldBeOfType<MdLineBreak>().Hard.ShouldBeFalse();
+        content[2].ShouldBeOfType<MdLiteral>().Text.ShouldBe("here");
+    }
+
+    [Fact]
+    public void FallbackListItem_KeepsItsSoftBreaks()
+    {
+        // A list item's first line is one line; its continuation lines are where it can hold a newline.
+        var list = _visitor.Parse("- item\n  see a[0\n  here").ShouldHaveSingleItem().ShouldBeOfType<MdList>();
+        var body = list.Items.ShouldHaveSingleItem().Body;
+        body.Count.ShouldBe(2);
+        var content = body[1].ShouldBeOfType<MdParagraph>().Content;
+        content.Count.ShouldBe(3);
+        content[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("see a[0");
+        content[1].ShouldBeOfType<MdLineBreak>().Hard.ShouldBeFalse();
+        content[2].ShouldBeOfType<MdLiteral>().Text.ShouldBe("here");
+    }
+
+    [Theory]
+    [InlineData("see a[0\nhere\nand a `tick\nthere")]
+    [InlineData("# see a[0 here\n\nmore a[1\nhere")]   // a heading is one line by construction
+    [InlineData("- see a[0\n- item\n  more a[1\n  here")]
+    [InlineData("| a[0 | b |\n|---|---|\n| x[1 | y |")]
+    public void FallbackLiterals_HoldNoNewline(string source)
+    {
+        var literals = Inlines(_visitor.Parse(source)).OfType<MdLiteral>().ToList();
+        literals.ShouldNotBeEmpty();
+        literals.ShouldAllBe(l => !l.Text.Contains('\n'));
+    }
+
+    private static IEnumerable<MdInline> Inlines(IEnumerable<MdBlock> blocks) => blocks.SelectMany(InlinesOf);
+
+    private static IEnumerable<MdInline> InlinesOf(MdBlock block) => block switch
+    {
+        MdParagraph p => p.Content,
+        MdHeading h => h.Content,
+        MdList l => Inlines(l.Items.SelectMany(i => i.Body)),
+        MdTable t => t.Headers.SelectMany(c => c).Concat(t.Rows.SelectMany(r => r.SelectMany(c => c))),
+        _ => [],
+    };
+
+    // ── A link label is parsed on its own ────────────────────────────
+    //
+    // The label opens before any `$` in it, so that `$` pairs only inside the label. A math span
+    // that opens before the `[` still runs to its own closer and takes the bracket with it.
+
+    [Fact]
+    public void DollarInALinkLabel_DoesNotPairPastTheLabel()
+    {
+        var content = Paragraph("See [the $5 plan](https://x) or pay 5$ later.");
+        content.OfType<MdMathInline>().ShouldBeEmpty();
+        content.Count.ShouldBe(3);
+        content[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("See ");
+        var link = content[1].ShouldBeOfType<MdLink>();
+        link.Url.ShouldBe("https://x");
+        link.Text.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("the $5 plan");
+        content[2].ShouldBeOfType<MdLiteral>().Text.ShouldBe(" or pay 5$ later.");
+    }
+
+    [Fact]
+    public void DollarInALinkLabel_LeavesLaterMathAlone()
+    {
+        var content = Paragraph("See [the $5 plan](https://x) for ($x$) here.");
+        content.Count.ShouldBe(5);
+        content[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("See ");
+        var link = content[1].ShouldBeOfType<MdLink>();
+        link.Url.ShouldBe("https://x");
+        link.Text.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("the $5 plan");
+        content[2].ShouldBeOfType<MdLiteral>().Text.ShouldBe(" for (");
+        content[3].ShouldBeOfType<MdMathInline>().Source.ShouldBe("x");
+        content[4].ShouldBeOfType<MdLiteral>().Text.ShouldBe(") here.");
+    }
+
+    [Fact]
+    public void MathInsideALinkLabel_IsMath()
+    {
+        var link = Paragraph("[$a$](https://x)").ShouldHaveSingleItem().ShouldBeOfType<MdLink>();
+        link.Url.ShouldBe("https://x");
+        link.Text.ShouldHaveSingleItem().ShouldBeOfType<MdMathInline>().Source.ShouldBe("a");
+    }
+
+    [Fact]
+    public void MathOpenedBeforeALabel_TakesItsBracket()
+    {
+        var content = Paragraph("$a [b$ c](https://x)");
+        content.Count.ShouldBe(2);
+        content[0].ShouldBeOfType<MdMathInline>().Source.ShouldBe("a [b");
+        content[1].ShouldBeOfType<MdLiteral>().Text.ShouldBe(" c](https://x)");
+    }
+
+    [Theory]
+    [InlineData("See [the $$5 plan](https://x) or pay 5$$ later.", "the $$5 plan")]
+    [InlineData(@"See [the \(5 plan](https://x) or pay 5\) later.", @"the \(5 plan")]
+    [InlineData(@"See [the \boxed{5 plan](https://x) or pay 5} later.", @"the \boxed{5 plan")]
+    public void OtherOpenersInALinkLabel_PairOnlyInsideIt(string source, string label)
+    {
+        var content = Paragraph(source);
+        content.OfType<MdMathInline>().ShouldBeEmpty();
+        content[1].ShouldBeOfType<MdLink>().Text.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe(label);
+    }
+
+    [Fact]
+    public void DollarInAnImageAlt_DoesNotPairPastIt()
+    {
+        var content = Paragraph("See ![the $5 plan](https://x) or pay 5$ later.");
+        content.OfType<MdMathInline>().ShouldBeEmpty();
+        content[1].ShouldBeOfType<MdImage>().Alt.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("the $5 plan");
+    }
+
+    [Fact]
+    public void DollarInAColourLabel_DoesNotPairPastIt()
+    {
+        var content = Paragraph("See [the $5 plan]{red} or pay 5$ later.");
+        content.OfType<MdMathInline>().ShouldBeEmpty();
+        var color = content[1].ShouldBeOfType<MdColor>();
+        color.Color.ShouldBe("red");
+        color.Text.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("the $5 plan");
+    }
+
+    [Theory]
+    [InlineData("[on $[0,1]$](https://x)", "[0,1]")]
+    [InlineData("[on $[0,1)$](https://x)", "[0,1)")]   // the math's own `[` never closes
+    public void BracketsInsideMathInALabel_StayMath(string source, string body)
+    {
+        var link = Paragraph(source).ShouldHaveSingleItem().ShouldBeOfType<MdLink>();
+        link.Text.Count.ShouldBe(2);
+        link.Text[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("on ");
+        link.Text[1].ShouldBeOfType<MdMathInline>().Source.ShouldBe(body);
+    }
+
+    // ── A \text{..} group in math may hold a dollar ──────────────────
+    //
+    // Pandoc reads `\text` and the balanced brace group after it as one piece of a math body, so
+    // a `$` inside the braces does not close the span.
+
+    [Theory]
+    [InlineData(@"$\text{costs $5}$", false)]
+    [InlineData(@"$$\text{costs $5}$$", true)]
+    public void DollarInsideText_IsBody(string source, bool display)
+    {
+        var math = Paragraph(source).ShouldHaveSingleItem().ShouldBeOfType<MdMathInline>();
+        math.Source.ShouldBe(@"\text{costs $5}");
+        math.IsDisplay.ShouldBe(display);
+    }
+
+    [Fact]
+    public void DoubleDollarInsideText_DoesNotCloseDisplayMath()
+    {
+        var math = Paragraph(@"$$\text{a $$ b}$$").ShouldHaveSingleItem().ShouldBeOfType<MdMathInline>();
+        math.Source.ShouldBe(@"\text{a $$ b}");
+        math.IsDisplay.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void TextGroup_EndsAtItsBrace()
+    {
+        var content = Paragraph(@"$\text{costs $5}$ and $x$");
+        content.Count.ShouldBe(3);
+        content[0].ShouldBeOfType<MdMathInline>().Source.ShouldBe(@"\text{costs $5}");
+        content[1].ShouldBeOfType<MdLiteral>().Text.ShouldBe(" and ");
+        content[2].ShouldBeOfType<MdMathInline>().Source.ShouldBe("x");
+    }
+
+    [Fact]
+    public void UnclosedTextGroup_IsNotOnePiece()
+    {
+        // With no closing brace, `\text{` is ordinary body, so the `$` after `costs ` is a closer
+        // with a space before it: the first opener does not pair, and `$5$` does.
+        var content = Paragraph(@"$\text{costs $5$");
+        content.Count.ShouldBe(2);
+        content[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe(@"$\text{costs ");
+        content[1].ShouldBeOfType<MdMathInline>().Source.ShouldBe("5");
+    }
+
     // ── Code spans are opaque ────────────────────────────────────────
 
     [Fact]
