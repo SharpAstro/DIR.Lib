@@ -320,6 +320,40 @@ public sealed class DollarRulesTests
         }
     }
 
+    // ── No stray delimiter takes the fallback ────────────────────────
+    //
+    // Every ordinary stray delimiter is text, so no block holding one reaches either fallback (an
+    // inline parse with no spans, or one that throws). Each goes into a paragraph next to emphasis,
+    // and into a heading, a list item and a table cell, at the end of the text, where a trailing
+    // backslash is.
+
+    [Theory]
+    [InlineData("[")]
+    [InlineData("]")]
+    [InlineData("`")]
+    [InlineData("``")]
+    [InlineData("[a](b")]
+    [InlineData("[a]{red")]
+    [InlineData("![a]")]
+    [InlineData(@"\")]
+    [InlineData("$")]
+    [InlineData("$$")]
+    [InlineData(@"\(")]
+    [InlineData(@"\[")]
+    [InlineData(@"\boxed{")]
+    public void StrayDelimiter_NeverTakesTheFallback(string stray)
+    {
+        var source = $"*em* then {stray}\n\n# head {stray}\n\n- item {stray}\n\n| cell {stray} | b |\n|---|---|\n| x | y |";
+        var blocks = ParseCountingFallbacks(source, out int fallbacks);
+        fallbacks.ShouldBe(0);
+        blocks.Count.ShouldBe(4);
+        Dump(blocks[0].ShouldBeOfType<MdParagraph>().Content).ShouldBe($"E1[L(em)] L( then {stray})");
+        Dump(blocks[1].ShouldBeOfType<MdHeading>().Content).ShouldBe($"L(head {stray})");
+        Dump(blocks[2].ShouldBeOfType<MdList>().Items.ShouldHaveSingleItem().Body.ShouldHaveSingleItem()
+            .ShouldBeOfType<MdParagraph>().Content).ShouldBe($"L(item {stray})");
+        Dump(blocks[3].ShouldBeOfType<MdTable>().Headers[0]).ShouldBe($"L(cell {stray})");
+    }
+
     /// <summary>The block visitor over the real inline parser, counting each block that takes a
     /// fallback: an inline parse that returns no spans for text that is not blank, or one that
     /// throws.</summary>
