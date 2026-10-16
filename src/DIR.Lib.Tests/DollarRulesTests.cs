@@ -265,6 +265,24 @@ public sealed class DollarRulesTests
         Dump(blocks.ShouldHaveSingleItem().ShouldBeOfType<MdParagraph>().Content).ShouldBe(expected);
     }
 
+    // ── An image opener without a link tail is text ──────────────────
+    //
+    // The grammar has an image only as `![alt](url)`. Any other `![` is a `!` before a bracket.
+
+    [Theory]
+    [InlineData("![a]", "L(![a])")]
+    [InlineData("![a] *em*", "L(![a] ) E1[L(em)]")]
+    [InlineData("![a]{red} x", "L(!) Col[L(a)]{red} L( x)")]
+    [InlineData("![a](src)", "Img[L(a)](src)")]
+    [InlineData("![a](src", "L(![a](src)")]
+    [InlineData("![$a]$](src)", "Img[M(a])](src)")]   // the alt's `]` is inside math
+    public void ImageOpener_WithoutALinkTail_IsText(string source, string expected)
+    {
+        var blocks = ParseCountingFallbacks(source, out int fallbacks);
+        fallbacks.ShouldBe(0);
+        Dump(blocks.ShouldHaveSingleItem().ShouldBeOfType<MdParagraph>().Content).ShouldBe(expected);
+    }
+
     /// <summary>The block visitor over the real inline parser, counting each block that takes a
     /// fallback: an inline parse that returns no spans for text that is not blank, or one that
     /// throws.</summary>
