@@ -149,19 +149,22 @@ public sealed class MarkdownBlockSpikeTests
     [Fact]
     public void MalformedBlock_DegradesToRaw_AndResyncs()
     {
-        // A block the inline lexer can't handle (here a backslash at the very
-        // end, which no root lexer rule matches) must not abort the document:
-        // it degrades to raw text, and the blank-line sync point lets the next
-        // block parse normally. (This used a stray closing fence, ```, until a
-        // backtick run that never closes became text.) The raw text keeps its
-        // line as a soft break, so it reflows.
-        var blocks = _visitor.Parse("some text;\nmore \\\n\nafter");
+        // A block whose classification throws must not abort the document: it
+        // degrades to raw text, and the blank-line sync point lets the next
+        // block parse normally. No ordinary input makes the inline parser throw
+        // any more (this used a stray ```, then a trailing backslash), so the
+        // test seam's inline parser throws on the first block. The raw text
+        // keeps its line as a soft break, so it reflows.
+        var inline = new MarkdownInlineVisitor();
+        var visitor = new MarkdownBlockVisitor(text =>
+            text.StartsWith("some text") ? throw new System.InvalidOperationException("forced") : inline.Parse(text));
+        var blocks = visitor.Parse("some text;\nmore\n\nafter");
         blocks.Count.ShouldBe(2);
         var content = blocks[0].ShouldBeOfType<MdParagraph>().Content;
         content.Count.ShouldBe(3);
         content[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("some text;");
         content[1].ShouldBeOfType<MdLineBreak>().Hard.ShouldBeFalse();
-        content[2].ShouldBeOfType<MdLiteral>().Text.ShouldBe("more \\");
+        content[2].ShouldBeOfType<MdLiteral>().Text.ShouldBe("more");
         blocks[1].ShouldBeOfType<MdParagraph>()
             .Content.OfType<MdLiteral>().Single().Text.ShouldBe("after");
     }

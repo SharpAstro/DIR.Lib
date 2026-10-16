@@ -266,52 +266,46 @@ public sealed class DollarRulesTests
 
     // ── A block whose inline parse fails keeps its text ──────────────
     //
-    // The inline grammar has no rule for a link whose URL never closes (`[a](b` to the end), so
-    // the root lexer fails on it and the block falls back to its source as literal text instead
-    // of rendering empty. These tests used a lone `[`, `]` or backtick as the trigger until those
-    // became text; each asserts its trigger still fails, so the next such change has to move them.
+    // No ordinary input fails the inline parse any more: every unpaired delimiter is text. The
+    // fallback stays for whatever the pre-pass and the grammar might still disagree on, so these
+    // tests force it through the block visitor's seam: an inline parser that returns no spans (the
+    // fallback in ParseInline) or one that throws (the catch in ClassifyBlockSafe).
 
-    private static void ShouldFailTheInlineParse(string text) =>
-        new MarkdownInlineVisitor().Parse(text).ShouldBeEmpty();
+    private static readonly MarkdownBlockVisitor s_failingInline = new(_ => []);
+    private static readonly MarkdownBlockVisitor s_throwingInline = new(_ => throw new System.InvalidOperationException("forced"));
 
     [Theory]
-    [InlineData("$5 for a [discount](x and $10")]
-    [InlineData("Prices: $5 for [0, 1](x and $10 otherwise.")]
-    [InlineData("$a [](x $")]
-    [InlineData("costs $5 (the [key](x and $10")]
-    public void UnclosedLinkUrl_BetweenProseDollars_KeepsTheParagraph(string source)
-    {
-        ShouldFailTheInlineParse(source);
-        ShouldRenderLiterally(source, source);
-    }
+    [InlineData("$5 for a [discount and $10")]
+    [InlineData("Prices: $5 for [0, 1) and $10 otherwise.")]
+    [InlineData("$a ] $")]
+    [InlineData("costs $5 (the ` key) and $10")]
+    public void FailedInlineParse_BetweenProseDollars_KeepsTheParagraph(string source) =>
+        s_failingInline.Parse(source).ShouldHaveSingleItem().ShouldBeOfType<MdParagraph>()
+            .Content.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe(source);
 
     [Fact]
-    public void Heading_WithAnUnclosedLinkUrl_KeepsItsText()
+    public void Heading_WhoseInlineParseFails_KeepsItsText()
     {
-        ShouldFailTheInlineParse("see [a](b here");
-        var heading = _visitor.Parse("# see [a](b here").ShouldHaveSingleItem().ShouldBeOfType<MdHeading>();
+        var heading = s_failingInline.Parse("# see a[0 here").ShouldHaveSingleItem().ShouldBeOfType<MdHeading>();
         heading.Level.ShouldBe(1);
-        heading.Content.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("see [a](b here");
+        heading.Content.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("see a[0 here");
     }
 
     [Fact]
-    public void ListItem_WithAnUnclosedLinkUrl_KeepsItsText()
+    public void ListItem_WhoseInlineParseFails_KeepsItsText()
     {
-        ShouldFailTheInlineParse("see [a](b here");
-        var list = _visitor.Parse("- see [a](b here\n- next").ShouldHaveSingleItem().ShouldBeOfType<MdList>();
+        var list = s_failingInline.Parse("- see a[0 here\n- next").ShouldHaveSingleItem().ShouldBeOfType<MdList>();
         list.Items.Count.ShouldBe(2);
         list.Items[0].Body.ShouldHaveSingleItem().ShouldBeOfType<MdParagraph>()
-            .Content.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("see [a](b here");
+            .Content.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("see a[0 here");
     }
 
     [Fact]
-    public void TableCells_WithAnUnclosedLinkUrl_KeepTheirText()
+    public void TableCells_WhoseInlineParseFails_KeepTheirText()
     {
-        ShouldFailTheInlineParse("[a](b");
-        ShouldFailTheInlineParse("[x](y");
-        var table = _visitor.Parse("| [a](b | b |\n|---|---|\n| [x](y | y |").ShouldHaveSingleItem().ShouldBeOfType<MdTable>();
-        table.Headers[0].ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("[a](b");
-        table.Rows.ShouldHaveSingleItem()[0].ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("[x](y");
+        var table = s_failingInline.Parse("| a[0 | b |\n|---|---|\n| x[1 | y |").ShouldHaveSingleItem().ShouldBeOfType<MdTable>();
+        table.Headers[0].ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("a[0");
+        table.Rows.ShouldHaveSingleItem()[0].ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("x[1");
     }
 
     // ── A fallback literal keeps its soft breaks ─────────────────────
@@ -323,50 +317,41 @@ public sealed class DollarRulesTests
     [Fact]
     public void FallbackParagraph_KeepsItsSoftBreaks()
     {
-        ShouldFailTheInlineParse("see [a](b\nhere");
-        var content = Paragraph("see [a](b\nhere");
-        content.Count.ShouldBe(3);
-        content[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("see [a](b");
-        content[1].ShouldBeOfType<MdLineBreak>().Hard.ShouldBeFalse();
-        content[2].ShouldBeOfType<MdLiteral>().Text.ShouldBe("here");
+        var content = s_failingInline.Parse("see a[0\nhere").ShouldHaveSingleItem().ShouldBeOfType<MdParagraph>().Content;
+        Dump(content).ShouldBe("L(see a[0) SB L(here)");
     }
 
     [Fact]
     public void FallbackListItem_KeepsItsSoftBreaks()
     {
         // A list item's first line is one line; its continuation lines are where it can hold a newline.
-        ShouldFailTheInlineParse("see [a](b\nhere");
-        var list = _visitor.Parse("- item\n  see [a](b\n  here").ShouldHaveSingleItem().ShouldBeOfType<MdList>();
+        var list = s_failingInline.Parse("- item\n  see a[0\n  here").ShouldHaveSingleItem().ShouldBeOfType<MdList>();
         var body = list.Items.ShouldHaveSingleItem().Body;
         body.Count.ShouldBe(2);
-        var content = body[1].ShouldBeOfType<MdParagraph>().Content;
-        content.Count.ShouldBe(3);
-        content[0].ShouldBeOfType<MdLiteral>().Text.ShouldBe("see [a](b");
-        content[1].ShouldBeOfType<MdLineBreak>().Hard.ShouldBeFalse();
-        content[2].ShouldBeOfType<MdLiteral>().Text.ShouldBe("here");
+        Dump(body[1].ShouldBeOfType<MdParagraph>().Content).ShouldBe("L(see a[0) SB L(here)");
     }
 
     [Fact]
     public void ClassifyFallback_KeepsItsSoftBreaks()
     {
-        // ClassifyBlockSafe's catch builds the same literals as the inline fallback. An inline
-        // parser that throws forces that path whatever the input.
-        var visitor = new MarkdownBlockVisitor(_ => throw new System.InvalidOperationException("forced"));
-        var content = visitor.Parse("see more\nhere").ShouldHaveSingleItem().ShouldBeOfType<MdParagraph>().Content;
+        // ClassifyBlockSafe's catch builds the same literals as the inline fallback.
+        var content = s_throwingInline.Parse("see more\nhere").ShouldHaveSingleItem().ShouldBeOfType<MdParagraph>().Content;
         Dump(content).ShouldBe("L(see more) SB L(here)");
     }
 
     [Theory]
-    [InlineData("see [a](b\nhere\nand more\nthere", "see [a](b\nhere\nand more\nthere")]
-    [InlineData("# see [a](b here\n\nmore [c](d\nhere", "more [c](d\nhere")]   // a heading is one line by construction
-    [InlineData("- see [a](b\n- item\n  more [c](d\n  here", "more [c](d\nhere")]
-    [InlineData("| [a](b | b |\n|---|---|\n| [x](y | y |", "[a](b")]
-    public void FallbackLiterals_HoldNoNewline(string source, string failingInline)
+    [InlineData("see a[0\nhere\nand a `tick\nthere")]
+    [InlineData("# see a[0 here\n\nmore a[1\nhere")]   // a heading is one line by construction
+    [InlineData("- see a[0\n- item\n  more a[1\n  here")]
+    [InlineData("| a[0 | b |\n|---|---|\n| x[1 | y |")]
+    public void FallbackLiterals_HoldNoNewline(string source)
     {
-        ShouldFailTheInlineParse(failingInline);
-        var literals = Inlines(_visitor.Parse(source)).OfType<MdLiteral>().ToList();
-        literals.ShouldNotBeEmpty();
-        literals.ShouldAllBe(l => !l.Text.Contains('\n'));
+        foreach (var visitor in new[] { s_failingInline, s_throwingInline })
+        {
+            var literals = Inlines(visitor.Parse(source)).OfType<MdLiteral>().ToList();
+            literals.ShouldNotBeEmpty();
+            literals.ShouldAllBe(l => !l.Text.Contains('\n'));
+        }
     }
 
     private static IEnumerable<MdInline> Inlines(IEnumerable<MdBlock> blocks) => blocks.SelectMany(InlinesOf);
