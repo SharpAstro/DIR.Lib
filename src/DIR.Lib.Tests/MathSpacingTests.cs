@@ -134,6 +134,27 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// A braced group is an Ord atom in TeX, whatever is inside it, so a
+    /// braced operator name takes no thin space on either side:
+    /// <c>{\sin} x</c> and <c>x {\sin}</c> are set tight.
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math", @"{\sin} x", 0)]
+    [InlineData("STIX2Math", @"x {\sin}", 1)]
+    [InlineData("DejaVuSans", @"{\sin} x", 0)]
+    [InlineData("DejaVuSans", @"x {\sin}", 1)]
+    public void BracedOperatorName_IsAnOrdinaryAtom(string font, string latex, int op)
+    {
+        var atoms = AtomsOf(latex, StyleFor(font));
+        atoms.Count.ShouldBe(2, $"'{latex}' drew {Describe(atoms)}");
+        atoms[op].Text.ShouldBe("sin");
+
+        var gap = atoms[1].Left - atoms[0].Right;
+        output.WriteLine($"{font} '{latex}': gap = {gap:F2} px");
+        gap.ShouldBe(0f, HalfPixel);
+    }
+
+    /// <summary>
     /// A script does not change an Op atom's class, so <c>\sin^2 x</c> still
     /// has its thin space before the x, and <c>\log_2 n</c> before the n.
     /// Measured as widths: the whole is its two parts and a thin space.
@@ -360,6 +381,8 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
     [InlineData(@"\mathbb{R}", "ℝ")]
     [InlineData(@"\mathbb{N}", "ℕ")]
     [InlineData(@"\sin[\alpha + \beta]", "sin[α + β]")]
+    [InlineData(@"{\sin} x", "sinx")]
+    [InlineData(@"x {\sin}", "xsin")]
     public void UnicodePath(string latex, string expected)
         => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
 
