@@ -149,14 +149,15 @@ public sealed class MarkdownBlockSpikeTests
     [Fact]
     public void MalformedBlock_DegradesToRaw_AndResyncs()
     {
-        // A block the inline lexer can't handle (here a stray closing fence
-        // glued onto a text line, which the inline grammar rejects) must not
-        // abort the document: it degrades to raw text, and the blank-line sync
-        // point lets the next block parse normally.
-        var blocks = _visitor.Parse("some text;\n```\n\nafter");
+        // A block the inline lexer can't handle (here a backslash at the very
+        // end, which no root lexer rule matches) must not abort the document:
+        // it degrades to raw text, and the blank-line sync point lets the next
+        // block parse normally. (This used a stray closing fence, ```, until a
+        // backtick run that never closes became text.)
+        var blocks = _visitor.Parse("some text;\nmore \\\n\nafter");
         blocks.Count.ShouldBe(2);
         blocks[0].ShouldBeOfType<MdParagraph>()
-            .Content.OfType<MdLiteral>().Single().Text.ShouldBe("some text;\n```");
+            .Content.OfType<MdLiteral>().Single().Text.ShouldBe("some text;\nmore \\");
         blocks[1].ShouldBeOfType<MdParagraph>()
             .Content.OfType<MdLiteral>().Single().Text.ShouldBe("after");
     }
