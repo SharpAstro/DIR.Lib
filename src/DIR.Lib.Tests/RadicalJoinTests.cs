@@ -156,6 +156,11 @@ public sealed partial class RadicalJoinTests
     private static readonly string[] SweepScenes =
         ["sqrt-2", "sqrt-x", "sqrt-paren-frac", "sqrt-nested-frac", "sqrt-frac-a-b"];
 
+    /// <summary>Radicals with something above them that the canvas's margin does not separate them from: a
+    /// fraction's rule over its denominator, and a superscript's top, which is the canvas's edge. Swept over
+    /// <see cref="SweepSizes"/> as well, and in the before-data.</summary>
+    private static readonly string[] ContextScenes = ["frac-1-sqrt-x", "frac-1-sqrt-frac-a-b", "x-sup-sqrt-y"];
+
     /// <summary>Below this size, the floor of Console.Lib's Sixel range, a radical may shrink 3 px where the
     /// stroke cap trimmed its band (see <see cref="SweepHeightAndDepthDriftAtMostTwoPixels"/>).</summary>
     private const float SmallSizeShrinkBelow = 21.3f;
@@ -190,7 +195,7 @@ public sealed partial class RadicalJoinTests
         .. BeforePoints.Select(p =>
         {
             var r = Render(p.Font, p.Size, p.Scene);
-            return new Swept(p, r.Sqrt.Height, r.Sqrt.Depth, r.ClearRowsUnderBar(), r.Join.FlagRows, MaxBandRows(p.Font, r),
+            return new Swept(p, r.Sqrt.Height, r.Sqrt.Depth, r.ClearRowsUnderBar(), r.ClearRowsAboveBar(), r.Join.FlagRows, MaxBandRows(p.Font, r),
                 r.Sqrt.StrokeCapTrimmedBand,
                 r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY), r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY - 1),
                 r.GlyphPastDepth, r.RowsAboveHeight, r.RadicalOnCanvas, InkCutOff(p.Font, p.Size, p.Scene, r.Image),
@@ -216,7 +221,8 @@ public sealed partial class RadicalJoinTests
     /// (<see cref="Rendered.RadicalOnCanvas"/>).</param>
     /// <param name="InkCutOff">Alpha the canvas edge cut off (<see cref="InkCutOff(string, float, string, RgbaImage)"/>).</param>
     /// <param name="JoinBreak">Where the bar fails to continue the flag, or null (<see cref="Rendered.JoinBreak"/>).</param>
-    private sealed record Swept(BeforePoint Before, float Height, float Depth, int ClearRows, int BandRows, int MaxBandRows,
+    /// <param name="ClearAbove">Clear rows between the bar and the ink above it (<see cref="Rendered.ClearRowsAboveBar"/>).</param>
+    private sealed record Swept(BeforePoint Before, float Height, float Depth, int ClearRows, int ClearAbove, int BandRows, int MaxBandRows,
         bool CapTrimmed, int FlagTopAlpha, int AboveFlagAlpha, float GlyphPastDepth, int RowsAboveHeight,
         bool RadicalOnCanvas, long InkCutOff, string? JoinBreak)
     {
@@ -230,7 +236,7 @@ public sealed partial class RadicalJoinTests
     public void BeforeDataCoversTheSweep()
     {
         var missing = (from font in FontPaths.Keys
-                       from scene in SweepScenes
+                       from scene in SweepScenes.Concat(ContextScenes)
                        from size in SweepSizes
                        where !BeforePoints.Any(p => p.Font == font && p.Scene == scene && p.Size == size)
                        select $"{font} {scene} {size} px").ToList();
@@ -264,8 +270,10 @@ public sealed partial class RadicalJoinTests
     [Fact]
     public void SweepFlagTopRowIsFullyCovered()
     {
+        // In ContextScenes the row above the flag can be another box's ink, a fraction's rule; whether the
+        // bar crowds it is InContextTheBarNeverCrowdsWhatIsAboveIt's question.
         var failures = SweptPoints.Value
-            .Where(s => s.FlagTopAlpha < 240 || s.AboveFlagAlpha != 0)
+            .Where(s => s.FlagTopAlpha < 240 || (s.AboveFlagAlpha != 0 && !ContextScenes.Contains(s.Before.Scene)))
             .Select(s => $"{s}: flag's top row {s.FlagTopAlpha}, the row above {s.AboveFlagAlpha}, band {s.BandRows} rows")
             .ToList();
         failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
@@ -388,9 +396,10 @@ public sealed partial class RadicalJoinTests
 
     /// <summary>
     /// Where the radicand's own ink starts a row or two above its layout height (sizes below 12 px), the draw
-    /// raises the bar past what the layout placed, and it can go past the row the layout reserved for that
-    /// too: the one place the radical's box does not hold its ink. Across the sweep that is at most 2 rows
-    /// above the reported height; the glyph and bar always lie on the canvas
+    /// raises the bar past what the layout placed, and it can go past the row of headroom the layout reserves
+    /// for that too: the one place the radical's box does not hold its ink. Across the sweep and
+    /// <see cref="ContextScenes"/> that is at most 2 rows above the reported height (one, at 7 points, since
+    /// the headroom row); the glyph and bar always lie on the canvas
     /// <see cref="BoxRasterizer.RenderToRgba"/> draws on, whose margin of ceil(0.15 em) is all there is above
     /// the outermost box; and the canvas cuts off no more of the scene's ink than it did at fe09d4a (see
     /// <see cref="InkCutOff"/>). It does cut some: STIX Two Math <c>\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}</c>
@@ -423,6 +432,23 @@ public sealed partial class RadicalJoinTests
         var failures = SweptPoints.Value
             .Where(s => s.JoinBreak is not null)
             .Select(s => $"{s}: {s.JoinBreak}")
+            .ToList();
+        failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
+    }
+
+    /// <summary>
+    /// A radical in a fraction's denominator or a superscript has no canvas margin between it and what is
+    /// above it, so a bar the draw raised could meet the rule, or the canvas's top. At every swept size, in
+    /// both fonts, in <see cref="ContextScenes"/>, the clear rows between the bar and the ink above it are
+    /// never fewer than at fe09d4a (so never none where there was one). Every failing point is listed in the
+    /// one message.
+    /// </summary>
+    [Fact]
+    public void InContextTheBarNeverCrowdsWhatIsAboveIt()
+    {
+        var failures = SweptPoints.Value
+            .Where(s => ContextScenes.Contains(s.Before.Scene) && s.ClearAbove < s.Before.ClearAbove)
+            .Select(s => $"{s}: {s.ClearAbove} clear rows above the bar, before {s.Before.ClearAbove}")
             .ToList();
         failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
     }
@@ -620,6 +646,16 @@ public sealed partial class RadicalJoinTests
             return y - below;
         }
 
+        /// <summary>Rows with no ink at all, under the bar's columns, between the bar's top row and the first
+        /// row above it that has ink (a fraction's rule), or the canvas's top edge where none has.
+        /// tools/gen-radical-join-before counts fe09d4a's the same way.</summary>
+        public int ClearRowsAboveBar()
+        {
+            var above = Join.FlagTopY - 1;
+            while (above >= 0 && !RowHasInk(above)) above--;
+            return Join.FlagTopY - 1 - above;
+        }
+
         private bool RowHasInk(int y)
         {
             for (var x = Join.BarStartX; x < Join.BarEndX; x++)
@@ -659,6 +695,9 @@ public sealed partial class RadicalJoinTests
             // A radical whose baseline its parent places: a fraction keeps its numerator a gap above the
             // rule by the depth the numerator reports.
             "frac-sqrt-x" => Parse(@"\frac{\sqrt{x}}{2}", style),
+            "frac-1-sqrt-x" => Parse(@"\frac{1}{\sqrt{x}}", style),
+            "frac-1-sqrt-frac-a-b" => Parse(@"\frac{1}{\sqrt{\frac{a}{b}}}", style),
+            "x-sup-sqrt-y" => Parse(@"x^{\sqrt{y}}", style),
             _ => throw new ArgumentException($"unknown scene '{scene}'"),
         };
 

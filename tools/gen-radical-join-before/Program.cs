@@ -59,6 +59,10 @@ string[] joinScenes = ["sqrt-x2-plus-y2", "sqrt-2", "sqrt-frac-a-b", "quadratic-
     ("STIX2Math", "index-box-api", 10.85f), ("STIX2Math", "index-box-api", 11.5f), ("STIX2Math", "index-box-api", 12.05f),
 ];
 
+// Radicals with ink above them in their parent (a fraction's rule) or none but the canvas's edge (a
+// superscript), over the sweep's sizes again: the clear rows between the bar's top and what is above it.
+string[] contextScenes = ["frac-1-sqrt-x", "frac-1-sqrt-frac-a-b", "x-sup-sqrt-y"];
+
 var points = new List<(string Font, string Scene, float Size)>();
 void Add((string, string, float) p)
 {
@@ -74,6 +78,10 @@ foreach (var font in fonts.Keys)
             Add((font, scene, size));
 }
 foreach (var p in named) Add(p);
+foreach (var font in fonts.Keys)
+    foreach (var scene in contextScenes)
+        foreach (var size in sweepSizes)
+            Add((font, scene, size));
 
 var bf = BindingFlags.NonPublic | BindingFlags.Instance;
 var probeBar = typeof(SqrtBox).GetField("_probeBar", bf)
@@ -90,12 +98,15 @@ foreach (var (font, scene, size) in points)
     var sqrt = FindSqrt(box);
     var path = radicalFont.GetValue(sqrt) is not null ? 1
         : ((GlyphBitmap)radicalScaled.GetValue(sqrt)!).Rgba is not null ? 2 : 3;
-    var (barBottom, barStart, barEnd) = ((int, int, int))probeBar.GetValue(sqrt)!;
+    var (barTop, barBottom, barStart, barEnd) = ((int, int, int, int))probeBar.GetValue(sqrt)!;
     barEnd = Math.Max(barStart, barEnd);
     var y = barBottom;
     while (y < image.Height && !RowHasInk(image, y, barStart, barEnd)) y++;
+    // The clear rows above the bar's top row, to the next ink or the canvas's edge.
+    var above = barTop - 1;
+    while (above >= 0 && !RowHasInk(image, above, barStart, barEnd)) above--;
     rows.Append(CultureInfo.InvariantCulture,
-        $"        new(\"{font}\", \"{scene}\", {F(size)}, {path}, {F(sqrt.Height)}, {F(sqrt.Depth)}, {y - barBottom}, {CutOff(box, image, style)}),\n");
+        $"        new(\"{font}\", \"{scene}\", {F(size)}, {path}, {F(sqrt.Height)}, {F(sqrt.Depth)}, {y - barBottom}, {barTop - 1 - above}, {CutOff(box, image, style)}),\n");
 }
 
 var output = $$"""
@@ -111,7 +122,8 @@ public sealed partial class RadicalJoinTests
     /// The radical as commit {{baseCommit}} drew it, at every point the sweep and the named
     /// cases visit: which path drew it, its <see cref="MathLayout.Box.Height"/> and
     /// <see cref="MathLayout.Box.Depth"/>, the clear pixel rows between its bar and the radicand,
-    /// measured as <see cref="Rendered.ClearRowsUnderBar"/> does, and the alpha the canvas
+    /// measured as <see cref="Rendered.ClearRowsUnderBar"/> does, those between the bar and the ink above
+    /// it, measured as <see cref="Rendered.ClearRowsAboveBar"/> does, and the alpha the canvas
     /// <see cref="MathLayout.BoxRasterizer.RenderToRgba"/> drew the scene on cut off, measured as
     /// <see cref="InkCutOff"/> does. Floats are printed round-trip, so they are exact. {{points.Count}} points.
     /// </summary>
@@ -121,7 +133,8 @@ public sealed partial class RadicalJoinTests
     ];
 
     private readonly record struct BeforePoint(
-        string Font, string Scene, float Size, int Path, float Height, float Depth, int ClearRows, long CutOff);
+        string Font, string Scene, float Size, int Path, float Height, float Depth, int ClearRows, int ClearAbove,
+        long CutOff);
 }
 
 """;
@@ -168,6 +181,9 @@ static Box Build(string scene, BoxStyle style) => scene switch
     "index-box-api" => new SqrtBox(new MathGlyphBox("x", style, MathStyle.Italic), new GlyphBox("3", style.Smaller().Smaller()), style),
     "sqrt-paren-frac" => Parse(@"\sqrt{\left(\frac{a}{b}\right)}", style),
     "sqrt-nested-frac" => Parse(@"\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}", style),
+    "frac-1-sqrt-x" => Parse(@"\frac{1}{\sqrt{x}}", style),
+    "frac-1-sqrt-frac-a-b" => Parse(@"\frac{1}{\sqrt{\frac{a}{b}}}", style),
+    "x-sup-sqrt-y" => Parse(@"x^{\sqrt{y}}", style),
     _ => throw new ArgumentException($"unknown scene '{scene}'"),
 };
 
