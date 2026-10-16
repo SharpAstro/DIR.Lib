@@ -251,6 +251,40 @@ public sealed class DollarRulesTests
     public void LoneBracketOrBacktick_BetweenProseDollars_IsText(string source) =>
         new MarkdownInlineVisitor().Parse(source).ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe(source);
 
+    // ── A link or colour tail that never closes is text ──────────────
+
+    [Theory]
+    [InlineData("[a](b", "L([a](b)")]
+    [InlineData("**x** [a](b *y*", "E2[L(x)] L( [a](b ) E1[L(y)]")]
+    [InlineData("[a](b) [c](d", "Link[L(a)](b) L( [c](d)")]
+    [InlineData("[a]{red *y*", "L([a]{red ) E1[L(y)]")]
+    public void UnclosedTail_IsText_AndTheRestStillParses(string source, string expected)
+    {
+        var blocks = ParseCountingFallbacks(source, out int fallbacks);
+        fallbacks.ShouldBe(0);
+        Dump(blocks.ShouldHaveSingleItem().ShouldBeOfType<MdParagraph>().Content).ShouldBe(expected);
+    }
+
+    /// <summary>The block visitor over the real inline parser, counting each block that takes a
+    /// fallback: an inline parse that returns no spans for text that is not blank, or one that
+    /// throws.</summary>
+    private static IReadOnlyList<MdBlock> ParseCountingFallbacks(string source, out int fallbacks)
+    {
+        var inline = new MarkdownInlineVisitor();
+        int count = 0;
+        var visitor = new MarkdownBlockVisitor(text =>
+        {
+            IReadOnlyList<MdInline> spans;
+            try { spans = inline.Parse(text); }
+            catch { count++; throw; }
+            if (spans.Count == 0 && !string.IsNullOrWhiteSpace(text)) count++;
+            return spans;
+        });
+        var blocks = visitor.Parse(source);
+        fallbacks = count;
+        return blocks;
+    }
+
     private static string Dump(IEnumerable<MdInline> spans) => string.Join(" ", spans.Select(Dump));
 
     private static string Dump(MdInline span) => span switch
@@ -260,6 +294,8 @@ public sealed class DollarRulesTests
         MdCodeInline c => $"C({c.Content})",
         MdEmphasis e => $"E{e.Level}[{Dump(e.Content)}]",
         MdLink k => $"Link[{Dump(k.Text)}]({k.Url})",
+        MdImage i => $"Img[{Dump(i.Alt)}]({i.Url})",
+        MdColor c => $"Col[{Dump(c.Text)}]{{{c.Color}}}",
         MdLineBreak b => b.Hard ? "HB" : "SB",
         _ => span.GetType().Name,
     };
