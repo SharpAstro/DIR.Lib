@@ -9,6 +9,21 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.24
+
+This minor collects flight CL2's math and Markdown fixes, none of which has landed yet. They are listed below as
+planned, one line each, and none is claimed done. This entry is completed, with what each change does and why, once
+they have all landed.
+
+- Set braces kept on both math paths, and rastered as curly brackets.
+- Whole clear rows kept above a radical's radicand.
+- STIX radicals that grow over very tall radicands.
+- TeX's spacing for operator names, with `\operatorname` and `\textrm` upright.
+- A `$` in a link label that pairs only inside the label, a literal fallback that reflows, and `\text{..}` in math
+  that may hold a `$`.
+- Work to make the Markdown parse faster.
+- Glyph and stretched-glyph caching across `RenderToRgba` calls (#118).
+
 ## 11.23
 
 **Square brackets in math: `\sqrt[n]{x}` and `[a, b]`.** The LaTeX grammar now lexes `[`, `]` and `,`, so math that
