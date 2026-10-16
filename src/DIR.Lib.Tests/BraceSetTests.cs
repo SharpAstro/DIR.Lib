@@ -238,17 +238,88 @@ public sealed class BraceSetTests
     }
 
     /// <summary>
-    /// An unbalanced brace, or an empty set, does not parse on the box
-    /// path, so the terminal falls back to the Unicode path, which renders
-    /// it as before.
+    /// An unbalanced brace does not parse on the box path, so the terminal
+    /// falls back to the Unicode path, which renders it as before. (An empty
+    /// set does parse: <see cref="BoxPath_EmptyPair_IsAnUnstretchedBracketBox"/>.)
     /// </summary>
     [Theory]
     [InlineData(@"\{x")]
     [InlineData(@"x\}")]
     [InlineData(@"\left\{ x \right.")]
-    [InlineData(@"\{\}")]
-    public void BoxPath_UnbalancedOrEmpty_DoesNotParse(string latex)
+    public void BoxPath_Unbalanced_DoesNotParse(string latex)
         => BuildBox(latex, Stix).ShouldBeNull();
+
+    // ── Empty pairs ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// An empty pair parses on the box path, so a display formula that holds
+    /// one keeps its box rather than falling to the Unicode path whole. It is
+    /// a bracket box around nothing: the font's two delimiters at their normal
+    /// height, unstretched (a stretchy delimiter asked for no height is the
+    /// font's base glyph), and side by side, since there is no content for
+    /// the usual padding to set off.
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math", @"\{\}", BracketKind.Curly)]
+    [InlineData("STIX2Math", @"A = \{\}", BracketKind.Curly)]
+    [InlineData("STIX2Math", @"f()", BracketKind.Paren)]
+    [InlineData("STIX2Math", @"[]", BracketKind.Square)]
+    [InlineData("DejaVuSans", @"\{\}", BracketKind.Curly)]
+    [InlineData("DejaVuSans", @"A = \{\}", BracketKind.Curly)]
+    [InlineData("DejaVuSans", @"f()", BracketKind.Paren)]
+    [InlineData("DejaVuSans", @"[]", BracketKind.Square)]
+    public void BoxPath_EmptyPair_IsAnUnstretchedBracketBox(string font, string latex, BracketKind kind)
+    {
+        var style = StyleFor(font);
+        var box = BuildBox(latex, style).ShouldNotBeNull($"'{latex}' should parse on the box path");
+        var pair = BracketBoxesIn(box).ShouldHaveSingleItem($"'{latex}' should hold one bracket box");
+        Render(pair, style).ShouldBe(Render(new BracketBox(new HBox(), kind, style), style),
+            $"'{latex}' should be an empty {kind} pair");
+
+        var (left, right) = Delimiters(kind, requiredHeight: 0, style);
+        pair.Height.ShouldBe(MathF.Max(left.Height, right.Height), "the delimiters' own height");
+        pair.Depth.ShouldBe(MathF.Max(left.Depth, right.Depth), "the delimiters' own depth");
+        pair.Width.ShouldBe(left.Width + right.Width, 0.001f, "the two delimiters side by side");
+    }
+
+    /// <summary>
+    /// A pair with content keeps the 0.15 em of padding either side that
+    /// sets its content off: only an empty pair drops it, and a full one
+    /// builds exactly as before (the committed bracket baselines pin its
+    /// pixels too).
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math", @"\{x\}", BracketKind.Curly)]
+    [InlineData("STIX2Math", @"(x)", BracketKind.Paren)]
+    [InlineData("STIX2Math", @"[x]", BracketKind.Square)]
+    [InlineData("DejaVuSans", @"\{x\}", BracketKind.Curly)]
+    [InlineData("DejaVuSans", @"(x)", BracketKind.Paren)]
+    [InlineData("DejaVuSans", @"[x]", BracketKind.Square)]
+    public void BoxPath_PairWithContent_KeepsItsPadding(string font, string latex, BracketKind kind)
+    {
+        var style = StyleFor(font);
+        var pair = BuildBox(latex, style).ShouldBeOfType<BracketBox>();
+        var inner = BuildBox("x", style).ShouldNotBeNull();
+        var (left, right) = Delimiters(kind, inner.TotalHeight, style);
+        pair.Width.ShouldBe(left.Width + inner.Width + right.Width + 2 * 0.15f * FontSize, 0.001f);
+    }
+
+    /// <summary>
+    /// On the Unicode path an empty pair keeps its delimiters as written,
+    /// whether it parses now (<c>()</c>, <c>[]</c>) or reaches the lexer as
+    /// placeholders (<c>\{\}</c>). <c>\left( \right)</c> used to fail to
+    /// parse and print its source with the blank, "( )".
+    /// </summary>
+    [Theory]
+    [InlineData(@"\{\}", "{}")]
+    [InlineData(@"A = \{\}", "A = {}")]
+    [InlineData(@"f()", "f()")]
+    [InlineData(@"()", "()")]
+    [InlineData(@"[]", "[]")]
+    [InlineData(@"x = [] + ()", "x = [] + ()")]
+    [InlineData(@"\left( \right)", "()")]
+    public void UnicodePath_EmptyPairKeepsItsDelimiters(string latex, string expected)
+        => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
 
     private const string NestedFraction = @"\frac{\frac{a}{b}}{\frac{c}{d}}";
 
@@ -638,6 +709,61 @@ public sealed class BraceSetTests
         for (var i = 3; i < image.Pixels.Length; i += 4)
             if (image.Pixels[i] > 0) ink++;
         return ink;
+    }
+
+    /// <summary>The stretchy delimiters a <see cref="BracketBox"/> of
+    /// <paramref name="kind"/> asks the font for, at <paramref name="requiredHeight"/>.</summary>
+    private static (StretchyVerticalBox Left, StretchyVerticalBox Right) Delimiters(
+        BracketKind kind, float requiredHeight, BoxStyle style)
+    {
+        var (open, close) = kind switch
+        {
+            BracketKind.Paren => ('(', ')'),
+            BracketKind.Square => ('[', ']'),
+            _ => ('{', '}'),
+        };
+        var left = new StretchyVerticalBox(open, requiredHeight, style);
+        var right = new StretchyVerticalBox(close, requiredHeight, style);
+        left.IsAvailable.ShouldBeTrue($"the font has no {open}");
+        right.IsAvailable.ShouldBeTrue($"the font has no {close}");
+        return (left, right);
+    }
+
+    /// <summary>Every <see cref="BracketBox"/> in <paramref name="root"/>'s tree.
+    /// Boxes keep their children in private fields, so this walks those, as
+    /// <see cref="RadicalJoinTests"/>' probe does.</summary>
+    private static List<BracketBox> BracketBoxesIn(Box root)
+    {
+        var found = new List<BracketBox>();
+        var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        var pending = new Stack<object>();
+        pending.Push(root);
+        while (pending.TryPop(out var node))
+        {
+            if (!seen.Add(node)) continue;
+            if (node is BracketBox bracket)
+            {
+                found.Add(bracket);
+                continue;
+            }
+            for (var type = node.GetType(); type is not null && type != typeof(object); type = type.BaseType)
+            {
+                foreach (var field in type.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly))
+                {
+                    switch (field.GetValue(node))
+                    {
+                        case Box child:
+                            pending.Push(child);
+                            break;
+                        case System.Collections.IEnumerable items and not string:
+                            foreach (var item in items)
+                                if (item is Box b) pending.Push(b);
+                            break;
+                    }
+                }
+            }
+        }
+        return found;
     }
 
     private static bool Inked(RgbaImage image, int x, int y) => image.Pixels[(y * image.Width + x) * 4 + 3] > 0;
