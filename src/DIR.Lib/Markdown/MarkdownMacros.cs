@@ -207,6 +207,19 @@ public static class MarkdownMacros
         };
 
     /// <summary>
+    /// The <see cref="OperatorNames"/> that take their scripts as limits,
+    /// below and above, in display style (the others take them to the
+    /// right): LaTeX's set, which includes <c>\Pr</c>, plus <c>\argmax</c>
+    /// and <c>\argmin</c>. The box path draws them at the body size, as TeX
+    /// does; only the symbol big operators grow.
+    /// </summary>
+    internal static readonly IReadOnlySet<string> LimitOperatorNames = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "lim", "limsup", "liminf", "max", "min", "sup", "inf",
+        "argmax", "argmin", "det", "gcd", "Pr",
+    };
+
+    /// <summary>
     /// The text of the braced argument of a token that carries one,
     /// <c>\textrm{X}</c> as the grammar lexes it: X as it reads, blanks
     /// included. A group's braces inside X print as
