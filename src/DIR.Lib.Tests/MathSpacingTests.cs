@@ -619,6 +619,38 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
         gap.ShouldBe(Thin, HalfPixel);
     }
 
+    /// <summary>
+    /// The public contract stays: a parser built with
+    /// <c>new LatexUnicodeVisitor()</c> yields a string, as it always has,
+    /// with the operator spacing in it. The pieces with their atom classes
+    /// are the visitor's own, and DIR.Lib exports no type for them.
+    /// </summary>
+    [Theory]
+    [InlineData(@"\sin x", "sin x")]
+    [InlineData(@"x \sin y", "x sin y")]
+    [InlineData(@"\sin(x)", "sin(x)")]
+    [InlineData(@"{\sin} x", "sinx")]
+    [InlineData(@"x_{\sin x}", "xₛᵢₙₓ")]
+    [InlineData(@"\operatorname{tr} A", "tr A")]
+    public void PublicVisitor_YieldsAString(string latex, string expected)
+    {
+        var parser = Latex.BuildParser(new LatexUnicodeVisitor());
+        using var lexer = BytesLexer.FromString(latex, Latex.BuildLexer());
+        using var tokens = new SyncLATokenIterator(lexer);
+        var item = parser.ParseInput(tokens, debugger: null);
+        item.IsError.ShouldBeFalse();
+        item.Content.ShouldBeOfType<string>().ShouldBe(expected);
+    }
+
+    [Fact]
+    public void PublicVisitor_KeepsItsContract()
+    {
+        typeof(LatexUnicodeVisitor).GetInterfaces().ShouldContain(typeof(Latex.IVisitor<string>));
+        typeof(LatexUnicodeVisitor).Assembly.GetExportedTypes()
+            .Select(t => t.Name)
+            .ShouldNotContain(name => name == "UnicodeMath" || name == "MathAtomClass");
+    }
+
     // ── Renders for the eye ────────────────────────────────────────────
 
     /// <summary>
