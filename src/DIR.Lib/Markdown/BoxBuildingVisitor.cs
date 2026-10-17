@@ -5,6 +5,7 @@ using DIR.Lib;
 using DIR.Lib.MathLayout;
 using SharpAstro.Fonts;
 using static DIR.Lib.Latex;
+using AtomClass = DIR.Lib.Markdown.MathAtomClass;
 
 namespace DIR.Lib.Markdown;
 
@@ -99,9 +100,11 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
     /// <summary>
     /// Implicit multiplication ("xy", "n(n+1)", "\sin x"): the two sides
     /// side by side, with the space TeX puts between the atoms that meet
-    /// there (<see cref="ThinSpaceBetween"/>), which for two ordinary atoms
-    /// is none. It used to put 0.05 em before every juxtaposition, and they
-    /// nest to the left, so <c>1, 2, 3</c> carried 0.2 em in front of its 1.
+    /// there (<see cref="MarkdownMacros.ThinSpaceBetween"/>), which for two
+    /// ordinary atoms is none. It used to put 0.05 em before every
+    /// juxtaposition, and they nest to the left, so <c>1, 2, 3</c> carried
+    /// 0.2 em in front of its 1. Punctuation carries its own space
+    /// (<see cref="Visit(Punct)"/>).
     /// </summary>
     public Func<BoxStyle, Box> Visit(Juxt node)
     {
@@ -111,32 +114,11 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
         {
             var l = left(style);
             var r = right(style);
-            return ThinSpaceBetween(RightClass(l), LeftClass(r))
+            return MarkdownMacros.ThinSpaceBetween(RightClass(l), LeftClass(r))
                 ? new HBox(l, new KernBox(style.FontSize / 6f), r)
                 : new HBox(l, r);
         };
     }
-
-    /// <summary>
-    /// TeX's atom classes, as many of them as the space between two
-    /// juxtaposed atoms here depends on. Ord is every atom this visitor does
-    /// not single out: a letter, a digit, a fraction, a radical.
-    /// </summary>
-    private enum AtomClass { Ord, Op, Open, Close, Punct }
-
-    /// <summary>
-    /// The space TeX puts between two adjacent atoms, where it is a thin
-    /// space (3 mu, a sixth of an em) in every style: an Op and a following
-    /// Ord or Op, and an Ord or Close and a following Op. So <c>\sin x</c>,
-    /// <c>\sin \cos x</c> and <c>x \sin y</c> are spaced, while Op then Open
-    /// is not, so <c>\sin(x)</c> stays tight. Punctuation carries its own
-    /// space (<see cref="Visit(Punct)"/>), and nothing is added at the ends
-    /// of a formula, since only a juxtaposition asks.
-    /// </summary>
-    private static bool ThinSpaceBetween(AtomClass left, AtomClass right) =>
-        right == AtomClass.Op
-            ? left is AtomClass.Ord or AtomClass.Op or AtomClass.Close
-            : left == AtomClass.Op && right == AtomClass.Ord;
 
     /// <summary>The class of the first atom in <paramref name="box"/>. A
     /// scripted atom keeps its nucleus's class, as in TeX.</summary>
@@ -334,7 +316,7 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
     /// <summary>
     /// \name commands. Greek + symbol lookups produce a single Unicode glyph;
     /// function names like \sin become an upright-style multi-letter atom,
-    /// an Op (see <see cref="ThinSpaceBetween"/>), as are the big operators;
+    /// an Op (see <see cref="MarkdownMacros.ThinSpaceBetween"/>), as are the big operators;
     /// unknown commands fall back to the raw \name text so it's debuggable.
     /// </summary>
     public Func<BoxStyle, Box> Visit(Command node)

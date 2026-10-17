@@ -100,7 +100,7 @@ public static class MarkdownMacros
             parsed = !item.IsError;
             rendered = item.IsError
                 ? expanded
-                : (item.Content as string ?? expanded);
+                : ((item.Content as UnicodeMath)?.Text ?? expanded);
         }
         catch
         {
@@ -169,6 +169,20 @@ public static class MarkdownMacros
         prepared = ResolveBackslashEscapes(source, keepBraces: true);
         return true;
     }
+
+    /// <summary>
+    /// The space TeX puts between two adjacent atoms of the given classes,
+    /// where it is a thin space (3 mu, a sixth of an em) in every style: an
+    /// Op and a following Ord or Op, and an Ord or Close and a following Op.
+    /// So <c>\sin x</c>, <c>\sin \cos x</c> and <c>x \sin y</c> are spaced,
+    /// while Op then Open is not, so <c>\sin(x)</c> stays tight. Both math
+    /// visitors ask it where they juxtapose two pieces, and only there, so
+    /// nothing is added at the ends of a formula.
+    /// </summary>
+    internal static bool ThinSpaceBetween(MathAtomClass left, MathAtomClass right) =>
+        right == MathAtomClass.Op
+            ? left is MathAtomClass.Ord or MathAtomClass.Op or MathAtomClass.Close
+            : left == MathAtomClass.Op && right == MathAtomClass.Ord;
 
     /// <summary>
     /// The text of the braced argument of a token that carries one,
@@ -713,3 +727,12 @@ public static class MarkdownMacros
         return s_mathFontPath;
     }
 }
+
+/// <summary>
+/// TeX's atom classes, as many of them as the space between two juxtaposed
+/// pieces of a formula depends on (<see cref="MarkdownMacros.ThinSpaceBetween"/>).
+/// Ord is every atom the math visitors do not single out: a letter, a digit, a
+/// fraction, a radical, a braced group. Glue is not an atom but space, which
+/// takes no further space round it.
+/// </summary>
+internal enum MathAtomClass { Ord, Op, Open, Close, Punct, Glue }
