@@ -696,8 +696,9 @@ public sealed class SqrtBox : Box
     /// clear row, into the headroom the layout reserves for it (see
     /// <see cref="_raiseRowReserve"/>) and, past that, above the box:
     /// <see cref="RadicandInkTop"/> finds the radicand's top inked row under
-    /// the bar by drawing it, which is why this takes the style. An index stays
-    /// where the layout put it.
+    /// the bar by drawing it, which is why this takes the style. An index rises
+    /// with the glyph by the rows the radicand's ink raised it
+    /// (<see cref="RadicalJoin.InkRaise"/>; see <see cref="Draw"/>).
     /// </para>
     /// </summary>
     internal RadicalJoin? JoinAt(float penX, float baselineY, BoxStyle style)
