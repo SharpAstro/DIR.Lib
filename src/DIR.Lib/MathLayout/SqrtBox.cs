@@ -729,8 +729,36 @@ public sealed class SqrtBox : Box
     /// <summary>Scratch renderers for <see cref="RadicandInkTop"/>, one per
     /// measurement in flight (a radicand holding a radical measures its own
     /// radicand while the outer one is being measured). Pooled so each keeps
-    /// its glyph and font caches: a renderer parses every font it draws with.</summary>
-    private static readonly System.Collections.Concurrent.ConcurrentBag<RgbaImageRenderer> InkScratch = new();
+    /// its glyph and font caches: a renderer parses every font it draws with.
+    /// The caches are bounded, since the pool outlives every render: see
+    /// <see cref="InkScratchSizesKept"/>.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentBag<InkScratchRenderer> InkScratch = new();
+
+    /// <summary>
+    /// The most font sizes a pooled scratch renderer has measured radicands
+    /// at. A renderer's glyph cache keeps every glyph it has drawn, keyed by
+    /// font, rounded size and rune, and the pool keeps its renderers for the
+    /// process's life (RenderToRgba disposes its own after every render), so a
+    /// radical drawn at ever new sizes would grow it without end: measured at
+    /// 1000 STIX Two Math sizes, <c>\sqrt{abcdefghijklm}</c> left 379 KiB in the
+    /// pool against fe09d4a's 30 KiB. A scratch renderer that has measured at
+    /// more sizes than this (font and rounded size, as its glyph cache keys
+    /// them) is disposed, which clears its caches, and dropped rather than
+    /// pooled, so a pooled renderer keeps the glyphs of at most this many
+    /// radical sizes, and the pool holds no more renderers than measurements
+    /// were ever in flight at once. A text at a handful of sizes keeps its
+    /// renderer; one at ever new sizes re-parses its fonts each time a renderer
+    /// passes this many.
+    /// </summary>
+    internal const int InkScratchSizesKept = 8;
+
+    /// <summary>A pooled scratch renderer and the font sizes it has measured
+    /// radicands at.</summary>
+    private sealed class InkScratchRenderer
+    {
+        public readonly RgbaImageRenderer Renderer = new(1, 1);
+        public readonly HashSet<(string FontPath, float Size)> Sizes = [];
+    }
 
     /// <summary>
     /// The topmost pixel row the radicand inks, drawn at <paramref name="radicandX"/>
@@ -782,7 +810,9 @@ public sealed class SqrtBox : Box
         var measure = style with { Foreground = new RGBAColor32(0, 0, 0, 255) };
         var lastRow = (int)MathF.Floor(baselineY - _radicand.Height) - 1;
         var maxRows = (int)MathF.Ceiling(_radicand.TotalHeight + _fontSize) + 4;
-        if (!InkScratch.TryTake(out var scratch)) scratch = new RgbaImageRenderer(1, 1);
+        if (!InkScratch.TryTake(out var pooled)) pooled = new InkScratchRenderer();
+        pooled.Sizes.Add((style.FontPath, MathF.Round(_fontSize)));
+        var scratch = pooled.Renderer;
         try
         {
             for (var rows = 8; ; rows *= 2)
@@ -799,7 +829,8 @@ public sealed class SqrtBox : Box
         finally
         {
             scratch.ContentTransform = ContentTransform.Identity;
-            InkScratch.Add(scratch);
+            if (pooled.Sizes.Count > InkScratchSizesKept) scratch.Dispose();
+            else InkScratch.Add(pooled);
         }
     }
 
