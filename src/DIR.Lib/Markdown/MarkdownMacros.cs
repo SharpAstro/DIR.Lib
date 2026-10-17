@@ -100,7 +100,7 @@ public static class MarkdownMacros
             parsed = !item.IsError;
             rendered = item.IsError
                 ? expanded
-                : ((item.Content as UnicodeMath)?.Text ?? expanded);
+                : (item.Content as string ?? expanded);
         }
         catch
         {

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text;
 using LALR.CC.LexicalGrammar;
@@ -7,27 +8,25 @@ using static DIR.Lib.Latex;
 namespace DIR.Lib.Markdown;
 
 /// <summary>
-/// A formula, or a piece of one, as <see cref="LatexUnicodeVisitor"/> renders
-/// it: the Unicode <see cref="Text"/>, and the TeX atom class of its first and
-/// last atom, which the visitor reads where it juxtaposes two pieces, so that
+/// A piece of a formula as <see cref="LatexUnicodeVisitor"/> renders it: the
+/// Unicode <see cref="Text"/>, and the TeX atom class of its first and last
+/// atom, which the visitor reads where it juxtaposes two pieces, so that
 /// <c>\sin x</c> reads <c>sin x</c> and <c>\sin(x)</c> stays tight.
 /// </summary>
-public sealed record UnicodeMath(string Text)
+internal sealed record UnicodeMath(string Text)
 {
-    internal MathAtomClass First { get; init; }
-    internal MathAtomClass Last { get; init; }
+    public MathAtomClass First { get; init; }
+    public MathAtomClass Last { get; init; }
 
     /// <summary>The text without the spaces an operator name put in it, where
     /// it has any; a script whose Unicode form those spaces stop takes this
     /// instead.</summary>
-    internal string? Tight { get; init; }
-
-    public override string ToString() => Text;
+    public string? Tight { get; init; }
 }
 
 /// <summary>
-/// IVisitor&lt;UnicodeMath&gt; for the math-mode LaTeX grammar: walks each AST
-/// node to a plain-Unicode string suitable for inline rendering inside a single
+/// IVisitor&lt;string&gt; for the math-mode LaTeX grammar: walks each AST node
+/// to a plain-Unicode string suitable for inline rendering inside a single
 /// terminal row. Used by <see cref="MarkdownInlineVisitor"/> for inline
 /// math nodes (single-dollar <c>$x^2$</c> / inline <c>\(...\)</c>
 /// math); the box-rendered counterpart <see cref="BoxBuildingVisitor"/>
@@ -40,24 +39,24 @@ public sealed record UnicodeMath(string Text)
 /// back to caret/underscore notation, so e.g. <c>x^{a+b}</c> reads as
 /// <c>x^(a + b)</c> rather than mangling into broken super/subscript runs.
 ///
-/// <para>Each visit returns a <see cref="UnicodeMath"/>, the text with the
-/// atom class at each of its ends; <see cref="UnicodeMath.Text"/> is the
-/// rendered formula.</para>
+/// <para>Each visit returns the piece's text, and keeps the piece itself
+/// (<see cref="UnicodeMath"/>, the text with its atom class at each end) where
+/// the parent's visit finds it: <see cref="Kept"/> and <see cref="Of"/>.</para>
 ///
 /// Lifted from the LALR.CC Examples.Latex renderer.
 /// </summary>
-public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
+public sealed class LatexUnicodeVisitor : IVisitor<string>
 {
-    public UnicodeMath Visit(Add node)      => Joined(node.Arg0, " + ", node.Arg2);
-    public UnicodeMath Visit(Subtract node) => Joined(node.Arg0, " − ", node.Arg2);
-    public UnicodeMath Visit(Eq node)       => Joined(node.Arg0, " = ", node.Arg2);
-    public UnicodeMath Visit(Mul node)      => Joined(node.Arg0, "·", node.Arg2);
-    public UnicodeMath Visit(Div node)      => Joined(node.Arg0, "/", node.Arg2);
+    public string Visit(Add node)      => Kept(node.Arg0, Joined(node.Arg0, " + ", node.Arg2));
+    public string Visit(Subtract node) => Kept(node.Arg0, Joined(node.Arg0, " − ", node.Arg2));
+    public string Visit(Eq node)       => Kept(node.Arg0, Joined(node.Arg0, " = ", node.Arg2));
+    public string Visit(Mul node)      => Kept(node.Arg0, Joined(node.Arg0, "·", node.Arg2));
+    public string Visit(Div node)      => Kept(node.Arg0, Joined(node.Arg0, "/", node.Arg2));
 
-    public UnicodeMath Visit(Neg node)
+    public string Visit(Neg node)
     {
         var inner = Of(node.Arg1);
-        return new UnicodeMath($"−{inner.Text}") { Last = inner.Last, Tight = inner.Tight is { } t ? $"−{t}" : null };
+        return Kept(node.Arg0, new UnicodeMath($"−{inner.Text}") { Last = inner.Last, Tight = inner.Tight is { } t ? $"−{t}" : null });
     }
 
     /// <summary>
@@ -67,26 +66,58 @@ public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
     /// <c>\sin(x)</c> stays <c>sin(x)</c>. An empty side (<c>\null</c>) takes
     /// no space and leaves the other side's ends as they are.
     /// </summary>
-    public UnicodeMath Visit(Juxt node)
+    public string Visit(Juxt node)
     {
         var left = Of(node.Arg0);
         var right = Of(node.Arg1);
-        if (left.Text.Length == 0) return right;
-        if (right.Text.Length == 0) return left;
+        if (left.Text.Length == 0) return Kept(node.Arg0, right);
+        if (right.Text.Length == 0) return Kept(node.Arg0, left);
         var space = MarkdownMacros.ThinSpaceBetween(left.Last, right.First) ? " " : "";
-        return new UnicodeMath($"{left.Text}{space}{right.Text}")
+        return Kept(node.Arg0, new UnicodeMath($"{left.Text}{space}{right.Text}")
         {
             First = left.First,
             Last = right.Last,
             Tight = space.Length > 0 || left.Tight is not null || right.Tight is not null
                 ? $"{left.Tight ?? left.Text}{right.Tight ?? right.Text}"
                 : null,
-        };
+        });
     }
 
-    private static UnicodeMath Of(Item item) => (UnicodeMath)item.Content;
+    /// <summary>
+    /// The pieces this thread's visits have rendered, each keyed by where its
+    /// node starts in the source. The parser hands a visit its children's
+    /// results as their text, and the node record a child's visit saw is not
+    /// reachable from its parent's, but both see where the child starts: a
+    /// reduced item takes its first child's position. Visits run in post
+    /// order, so the last piece kept at a child's start is that child's own,
+    /// its descendants that start there having been kept before it. Per
+    /// thread because the parse is synchronous and the visitor is shared.
+    /// </summary>
+    [ThreadStatic]
+    private static Dictionary<long, UnicodeMath>? t_pieces;
 
-    private static string TextOf(Item item) => Of(item).Text;
+    /// <summary>Keeps <paramref name="piece"/> as the node whose first item is
+    /// <paramref name="first"/>, and returns its text for the parser.</summary>
+    private static string Kept(Item first, UnicodeMath piece)
+    {
+        (t_pieces ??= new Dictionary<long, UnicodeMath>())[first.Position.ByteOffset] = piece;
+        return piece.Text;
+    }
+
+    /// <summary>The piece behind a child item: the one kept where it starts,
+    /// when that one's text is the item's, else the text as an ordinary
+    /// atom.</summary>
+    private static UnicodeMath Of(Item item)
+    {
+        var text = (string)item.Content;
+        return t_pieces is { } pieces
+               && pieces.TryGetValue(item.Position.ByteOffset, out var piece)
+               && string.Equals(piece.Text, text, StringComparison.Ordinal)
+            ? piece
+            : new UnicodeMath(text);
+    }
+
+    private static string TextOf(Item item) => (string)item.Content;
 
     /// <summary>Left, <paramref name="op"/>, right: the ends are the
     /// operands' outer ones.</summary>
@@ -112,11 +143,11 @@ public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
     // \subset \to \leftarrow \rightarrow \pm \mp). Arg1 is the rel token's
     // raw bytes; RenderCommand looks up the bare glyph and the format
     // string places the outer spaces structurally.
-    public UnicodeMath Visit(Rel node)
-        => Joined(node.Arg0, $" {RenderCommand((string)node.Arg1.Content)} ", node.Arg2);
+    public string Visit(Rel node)
+        => Kept(node.Arg0, Joined(node.Arg0, $" {RenderCommand((string)node.Arg1.Content)} ", node.Arg2));
 
-    public UnicodeMath Visit(Sup node) => Scripted(node.Arg0, node.Arg2, Superscripts, '^');
-    public UnicodeMath Visit(Subscript node) => Scripted(node.Arg0, node.Arg2, Subscripts, '_');
+    public string Visit(Sup node) => Kept(node.Arg0, Scripted(node.Arg0, node.Arg2, Superscripts, '^'));
+    public string Visit(Subscript node) => Kept(node.Arg0, Scripted(node.Arg0, node.Arg2, Subscripts, '_'));
 
     /// <summary>
     /// A base and its script: the script in its Unicode form where every
@@ -137,39 +168,40 @@ public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
         return @base with { Text = $"{@base.Text}{suffix}", Tight = @base.Tight is { } t ? $"{t}{suffix}" : null };
     }
 
-    public UnicodeMath Visit(Number node)   => new((string)node.Arg0.Content);
-    public UnicodeMath Visit(Variable node) => new((string)node.Arg0.Content);
+    public string Visit(Number node)   => Kept(node.Arg0, new UnicodeMath((string)node.Arg0.Content));
+    public string Visit(Variable node) => Kept(node.Arg0, new UnicodeMath((string)node.Arg0.Content));
 
     // An operator name is an Op; a spacing macro is space, which takes no
     // further space round it; everything else is an ordinary atom.
-    public UnicodeMath Visit(Command node)
+    public string Visit(Command node)
     {
         var raw = (string)node.Arg0.Content;
         var name = raw.TrimStart('\\');
         var atomClass = MarkdownMacros.OperatorNames.ContainsKey(name) ? MathAtomClass.Op
             : name is "quad" or "qquad" ? MathAtomClass.Glue
             : MathAtomClass.Ord;
-        return Atom(RenderCommand(raw), atomClass);
+        return Kept(node.Arg0, Atom(RenderCommand(raw), atomClass));
     }
 
     // \operatorname{X} is X, spaced as an operator name. X is math, as in
     // amsmath, so its blanks are dropped and a command in it renders; a
     // placeholder in it (\, as a blank) is spliced back after the parse.
-    public UnicodeMath Visit(OperatorName node) => Atom(TextOf(node.Arg1), MathAtomClass.Op);
+    public string Visit(OperatorName node) => Kept(node.Arg0, Atom(TextOf(node.Arg1), MathAtomClass.Op));
 
     // A math space, \, \: \; or \!, as RenderBackslashEscape renders it. The
     // Unicode path's preparation turns each into a placeholder before the
     // lexer, so only a parse of unprepared source gets here.
-    public UnicodeMath Visit(MathSpace node)
-        => Atom(((string)node.Arg0.Content)[1] == '!' ? "" : " ", MathAtomClass.Glue);
+    public string Visit(MathSpace node)
+        => Kept(node.Arg0, Atom(((string)node.Arg0.Content)[1] == '!' ? "" : " ", MathAtomClass.Glue));
 
     // \textrm{X} is X, blanks and all.
-    public UnicodeMath Visit(TextRm node) => new(MarkdownMacros.BracedArgument((string)node.Arg0.Content));
+    public string Visit(TextRm node)
+        => Kept(node.Arg0, new UnicodeMath(MarkdownMacros.BracedArgument((string)node.Arg0.Content)));
 
     // \mathbb{X}: X's Latin letters and digits double-struck, ℝ for R, from
     // wherever Unicode put each (Letterlike Symbols for ℂ ℍ ℕ ℙ ℚ ℝ ℤ). The
     // letters of a \name in X (a placeholder still to be spliced back) stay.
-    public UnicodeMath Visit(MathBb node)
+    public string Visit(MathBb node)
     {
         var text = TextOf(node.Arg1);
         var sb = new StringBuilder(text.Length * 2);
@@ -182,40 +214,40 @@ public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
             else
                 sb.Append(c);
         }
-        return new UnicodeMath(sb.ToString());
+        return Kept(node.Arg0, new UnicodeMath(sb.ToString()));
     }
 
-    public UnicodeMath Visit(Paren node) => Delimited("(", node.Arg1, ")");
+    public string Visit(Paren node) => Kept(node.Arg0, Delimited("(", node.Arg1, ")"));
 
     // { E } is E, and to its neighbours one ordinary atom, as in TeX and on
     // the box path, whatever E's own ends are: {\sin} x is sinx, and
     // \sin{(x)} is sin (x).
-    public UnicodeMath Visit(Group node)
+    public string Visit(Group node)
     {
         var inner = Of(node.Arg1);
-        return new UnicodeMath(inner.Text) { Tight = inner.Tight };
+        return Kept(node.Arg0, new UnicodeMath(inner.Text) { Tight = inner.Tight });
     }
 
     // \{E\}, a set, keeps its braces. MarkdownMacros.RenderMathUnicode lexes
     // a balanced pair, so it gets here; an unbalanced one ("\{x") does not
     // parse, and is rendered again with each brace a placeholder atom.
-    public UnicodeMath Visit(Brace node) => Delimited("{", node.Arg1, "}");
+    public string Visit(Brace node) => Kept(node.Arg0, Delimited("{", node.Arg1, "}"));
 
     // (), [] or \{\} as written, an escaped brace without its backslash.
-    public UnicodeMath Visit(EmptyPair node) => new UnicodeMath(
+    public string Visit(EmptyPair node) => Kept(node.Arg0, new UnicodeMath(
         ((string)node.Arg0.Content).TrimStart('\\') + ((string)node.Arg1.Content).TrimStart('\\'))
     {
         First = MathAtomClass.Open,
         Last = MathAtomClass.Close,
-    };
+    });
 
     // \mathrm{X} is X: a terminal row has no italic to switch off, so the
     // argument renders exactly as it would bare.
-    public UnicodeMath Visit(MathRm node) => Of(node.Arg1);
+    public string Visit(MathRm node) => Kept(node.Arg0, Of(node.Arg1));
 
     // [E], [E) and (E]: Arg0 and Arg2 are the delimiters as written.
-    public UnicodeMath Visit(Bracket node)
-        => Delimited((string)node.Arg0.Content, node.Arg1, (string)node.Arg2.Content);
+    public string Visit(Bracket node)
+        => Kept(node.Arg0, Delimited((string)node.Arg0.Content, node.Arg1, (string)node.Arg2.Content));
 
     private static UnicodeMath Delimited(string open, Item inner, string close)
         => new($"{open}{TextOf(inner)}{close}") { First = MathAtomClass.Open, Last = MathAtomClass.Close };
@@ -223,9 +255,9 @@ public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
     // `,` as written. Before the grammar lexed it, a comma reached the parser
     // as a placeholder atom and came back verbatim, so this keeps every
     // formula with a comma rendering exactly as it did.
-    public UnicodeMath Visit(Punct node) => Atom((string)node.Arg0.Content, MathAtomClass.Punct);
+    public string Visit(Punct node) => Kept(node.Arg0, Atom((string)node.Arg0.Content, MathAtomClass.Punct));
 
-    public UnicodeMath Visit(Sqrt node) => new($"√{Wrap(TextOf(node.Arg1))}");
+    public string Visit(Sqrt node) => Kept(node.Arg0, new UnicodeMath($"√{Wrap(TextOf(node.Arg1))}"));
 
     /// <summary>
     /// <c>\sqrt[n]{x}</c>. Unicode has dedicated cube and fourth roots
@@ -234,20 +266,21 @@ public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
     /// bracketed LaTeX shape after the radical, √[a + b]x, which is how such
     /// a root read before the grammar knew the index.
     /// </summary>
-    public UnicodeMath Visit(NthRoot node)
+    public string Visit(NthRoot node)
     {
         var index = TextOf(node.Arg2);
         var radicand = Wrap(TextOf(node.Arg4));
-        return new UnicodeMath(index switch
+        return Kept(node.Arg0, new UnicodeMath(index switch
         {
             "3" => $"∛{radicand}",
             "4" => $"∜{radicand}",
             _ when TryUnicodeScript(index, Superscripts, out var sup) => $"{sup}√{radicand}",
             _ => $"√[{index}]{radicand}",
-        });
+        }));
     }
 
-    public UnicodeMath Visit(Frac node) => new($"{Wrap(TextOf(node.Arg1))}⁄{Wrap(TextOf(node.Arg2))}");
+    public string Visit(Frac node)
+        => Kept(node.Arg0, new UnicodeMath($"{Wrap(TextOf(node.Arg1))}⁄{Wrap(TextOf(node.Arg2))}"));
 
     private static string Wrap(string s)
     {
