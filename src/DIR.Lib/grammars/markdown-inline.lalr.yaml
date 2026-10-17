@@ -120,6 +120,11 @@ productions:
       - { lhs: Span, rhs: [lbracket, Spans, link_tail_open,  urlbody,   rparen],        action: linkSpan }
       - { lhs: Span, rhs: [lbracket, Spans, color_tail_open, colorbody, rbrace],        action: colorSpan }
       - { lhs: Span, rhs: [image_open, Spans, link_tail_open, urlbody,  rparen],        action: imageSpan }
+      # An empty tail: url_body and color_body pop at once, so no body
+      # token comes between the tail and its close.
+      - { lhs: Span, rhs: [lbracket, Spans, link_tail_open,  rparen],                   action: linkSpanEmpty }
+      - { lhs: Span, rhs: [lbracket, Spans, color_tail_open, rbrace],                   action: colorSpanEmpty }
+      - { lhs: Span, rhs: [image_open, Spans, link_tail_open, rparen],                  action: imageSpanEmpty }
 
   - derivation: leftmost
     rules:
@@ -155,9 +160,14 @@ lexer:
   #
   # Every math opener below pushes unconditionally, so one that never
   # closed would strand the lexer in its math state. None reaches it:
-  # MarkdownInlineVisitor.MarkUnpairedMath pairs the openers first (by
-  # Pandoc's dollar rule for `$`) and swaps an unpaired one for stand-in
-  # characters this lexer reads as text.
+  # MarkdownInlineVisitor.MarkUnpaired pairs the openers first (by
+  # Pandoc's dollar rule for `$`, and inside a link or colour label only
+  # within the label) and swaps an unpaired one for stand-in characters
+  # this lexer reads as text. A `[` or `]` with no partner, a backtick
+  # run that never closes and a `](` or `]{` whose `)` or `}` never comes
+  # reach it the same way, as text, since the grammar has no rule for them.
+  # So does the `!` of a `![` that no `](url)` closes, which leaves its `[`
+  # an lbracket.
   root:
     - { symbol: lboxed,           match: '\\boxed\{',  push: math_boxed }
     - { symbol: dollar2,          match: '\$\$',       push: math_dollar2 }
@@ -197,7 +207,9 @@ lexer:
 
   # A dollar body lexes `\` and the character after it as one piece, so
   # an escaped `\$` is body rather than the closer (Pandoc reads it the
-  # same way). The body stays a single token.
+  # same way). The body stays a single token. A `$` inside a `\text{..}`
+  # group is body too, in both dollar states; braces do not nest in a
+  # regular lexer, so MarkUnpaired hands that `$` over as a stand-in.
   math_dollar:
     - { symbol: dollar,   match: '\$',         pop: true }
     - { symbol: mathbody, match: '([^$\\]|\\(.|\n))+' }

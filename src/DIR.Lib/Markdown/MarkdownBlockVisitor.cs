@@ -34,6 +34,15 @@ namespace DIR.Lib.Markdown;
 public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
 {
     private readonly MarkdownInlineVisitor _inline = new();
+    private readonly Func<string, IReadOnlyList<MdInline>> _parseInline;
+
+    public MarkdownBlockVisitor() => _parseInline = _inline.Parse;
+
+    /// <summary>Test seam: <paramref name="parseInline"/> stands in for the
+    /// inline parser, so a test can make classification throw and reach
+    /// <see cref="ClassifyBlockSafe"/>'s fallback on purpose.</summary>
+    internal MarkdownBlockVisitor(Func<string, IReadOnlyList<MdInline>> parseInline) =>
+        _parseInline = parseInline;
 
     /// <summary>Parses a full markdown document and returns the list
     /// of blocks. Returns an empty list on parse error.</summary>
@@ -189,28 +198,47 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
     /// whole document — the next block is classified from a clean state. This
     /// matches the renderer's best-effort contract: show the source rather
     /// than crash. A genuine classification regression still surfaces in tests
-    /// (the AST won't match the expected node type).</summary>
+    /// (the AST won't match the expected node type). The raw text is built by
+    /// <see cref="LiteralLines"/>, as the inline fallback is, so it reflows.</summary>
     private MdBlock ClassifyBlockSafe(IReadOnlyList<string> lines)
     {
         try { return ClassifyBlock(lines); }
         catch
         {
-            return new MdParagraph(new MdInline[] { new MdLiteral(string.Join("\n", lines)) });
+            return new MdParagraph(LiteralLines(string.Join("\n", lines)));
         }
     }
 
     /// <summary>The inline content of a paragraph, heading, list item or
-    /// table cell. When the inline parse fails (a lone <c>[</c> or an
-    /// unclosed backtick, which the inline grammar has no rule for), the
-    /// text stays as one literal rather than leaving the block empty. The
+    /// table cell. When the inline parse fails (a link whose URL never
+    /// closes, which the inline grammar has no rule for), the
+    /// text stays literal (<see cref="LiteralLines"/>) rather than leaving
+    /// the block empty. The
     /// inline parser itself keeps returning an empty list on failure;
     /// only a block knows its text has to show.</summary>
     private IReadOnlyList<MdInline> ParseInline(string text)
     {
-        var spans = _inline.Parse(text);
+        var spans = _parseInline(text);
         return spans.Count == 0 && !string.IsNullOrWhiteSpace(text)
-            ? new MdInline[] { new MdLiteral(text) }
+            ? LiteralLines(text)
             : spans;
+    }
+
+    /// <summary>The fallback literal, split at each newline into a soft
+    /// break as the inline grammar's <c>soft_break</c> would. A newline
+    /// left inside one literal would not reflow, and a consumer would draw
+    /// it as a hard break.</summary>
+    private static IReadOnlyList<MdInline> LiteralLines(string text)
+    {
+        if (text.IndexOf('\n') < 0) return new MdInline[] { new MdLiteral(text) };
+        var lines = text.Split('\n');
+        var spans = new List<MdInline>(2 * lines.Length - 1);
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (i > 0) spans.Add(new MdLineBreak(Hard: false));
+            if (lines[i].Length > 0) spans.Add(new MdLiteral(lines[i]));
+        }
+        return spans;
     }
 
     private MdBlock ClassifyBlock(IReadOnlyList<string> lines)

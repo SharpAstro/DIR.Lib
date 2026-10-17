@@ -169,13 +169,22 @@ public sealed class MarkdownInlineSpikeTests
     }
 
     [Fact]
-    public void Backticks_EmptyBody_ParseFailsCleanly()
+    public void GrammarError_ParseFailsCleanly()
     {
-        // `` (two adjacent backticks) is degenerate — the grammar requires
-        // a non-empty codebody. Fail-closed matches the rest of the
-        // error-recovery posture; CommonMark's escape-for-empty-code
-        // (`<code></code>`) isn't supported here.
-        _visitor.Parse("`` foo").ShouldBeEmpty();
+        // A grammar error fails closed with an empty list, and the block
+        // visitor falls back to the source text. The pairing pass turns
+        // every ordinary stray delimiter into text first, so this goes
+        // through the seam that skips it: a link URL that never closes has
+        // no rule in the grammar. (This used `` foo, then the same URL
+        // through Parse, until each became text.)
+        _visitor.ParseWithoutPairing("see [a](b foo").ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Backticks_UnclosedFence_IsText()
+    {
+        // A backtick run with no closing run is literal, as in CommonMark.
+        _visitor.Parse("`` foo").ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe("`` foo");
     }
 
     // ── Backslash escapes ────────────────────────────────────────────
