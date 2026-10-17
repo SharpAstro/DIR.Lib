@@ -88,12 +88,19 @@ foreach (var font in fonts.Keys)
     foreach (var scene in contextScenes)
         foreach (var size in sweepSizes)
             Add((font, scene, size));
+// The radical with an index, over the sweep's sizes: the clear pixels between the index and the glyph
+// (review round 1, Q2).
+foreach (var font in fonts.Keys)
+    foreach (var size in sweepSizes)
+        Add((font, "index-box-api", size));
 
 var bf = BindingFlags.NonPublic | BindingFlags.Instance;
 var probeBar = typeof(SqrtBox).GetField("_probeBar", bf)
     ?? throw new InvalidOperationException("SqrtBox has no _probeBar field: run generate.ps1, which patches it in");
 var radicalFont = typeof(SqrtBox).GetField("_radicalFont", bf)!;
 var radicalScaled = typeof(SqrtBox).GetField("_radicalScaled", bf)!;
+var joinedRadical = typeof(SqrtBox).GetField("_joinedRadical", bf)!;
+var flagTopRow = typeof(SqrtBox).GetField("_flagTopRow", bf)!;
 
 var rows = new StringBuilder();
 foreach (var (font, scene, size) in points)
@@ -111,8 +118,18 @@ foreach (var (font, scene, size) in points)
     // The clear rows above the bar's top row, to the next ink or the canvas's edge.
     var above = barTop - 1;
     while (above >= 0 && !RowHasInk(image, above, barStart, barEnd)) above--;
+    var indexClear = "null";
+    if (scene == "index-box-api")
+    {
+        // The glyph's bitmap rectangle as Draw placed it: its right edge is where the bar starts, its top the
+        // bar's top less the flag's top row.
+        var glyph = (GlyphBitmap)joinedRadical.GetValue(sqrt)!;
+        var glyphY = barTop - (int)flagTopRow.GetValue(sqrt)!;
+        var blank = BoxRasterizer.RenderToRgba(IndexScene(style, blankIndex: true), style);
+        indexClear = IndexClearance(image, blank, barStart - glyph.Width, glyphY, glyph.Width, glyph.Height).ToString(inv);
+    }
     rows.Append(CultureInfo.InvariantCulture,
-        $"        new(\"{font}\", \"{scene}\", {F(size)}, {path}, {F(sqrt.Height)}, {F(sqrt.Depth)}, {y - barBottom}, {barTop - 1 - above}, {CutOff(box, image, style)}),\n");
+        $"        new(\"{font}\", \"{scene}\", {F(size)}, {path}, {F(sqrt.Height)}, {F(sqrt.Depth)}, {y - barBottom}, {barTop - 1 - above}, {CutOff(box, image, style)}, {indexClear}),\n");
 }
 
 var output = $$"""
@@ -131,7 +148,9 @@ public sealed partial class RadicalJoinTests
     /// measured as <see cref="Rendered.ClearRowsUnderBar"/> does, those between the bar and the ink above
     /// it, measured as <see cref="Rendered.ClearRowsAboveBar"/> does, and the alpha the canvas
     /// <see cref="MathLayout.BoxRasterizer.RenderToRgba"/> drew the scene on cut off, measured as
-    /// <see cref="InkCutOff"/> does. Floats are printed round-trip, so they are exact. {{points.Count}} points.
+    /// <see cref="InkCutOff"/> does, and for the index scene the clear pixels between the index's ink and the
+    /// glyph's, measured as <see cref="IndexClearance"/> does. Floats are printed round-trip, so they are exact.
+    /// {{points.Count}} points.
     /// </summary>
     private static readonly BeforePoint[] BeforePoints =
     [
@@ -140,7 +159,7 @@ public sealed partial class RadicalJoinTests
 
     private readonly record struct BeforePoint(
         string Font, string Scene, float Size, int Path, float Height, float Depth, int ClearRows, int ClearAbove,
-        long CutOff);
+        long CutOff, int? IndexClear);
 }
 
 """;
@@ -161,6 +180,46 @@ static long CutOff(Box box, RgbaImage canvas, BoxStyle style)
     renderer.ContentTransform = new ContentTransform(Rotation90.None, 1f, pad, pad);
     box.Draw(renderer, margin, margin + box.Height, style);
     return Ink(renderer.Surface) - Ink(canvas);
+}
+
+// The index scene, or the same with its index blank: a box with the index's metrics that draws nothing, so
+// the layout is the same and the two renders differ by the index's ink alone.
+static Box IndexScene(BoxStyle style, bool blankIndex)
+{
+    var index = new GlyphBox("3", style.Smaller().Smaller());
+    return new SqrtBox(new MathGlyphBox("x", style, MathStyle.Italic), blankIndex ? new BlankBox(index) : index, style);
+}
+
+// The fewest clear pixels between the index's ink (where the render with it has more alpha than the one
+// without) and the glyph's (ink inside the glyph's bitmap rectangle, in the render without the index), by
+// chessboard distance: 0 where they touch, even at a corner, -1 where they overlap. RadicalJoinTests'
+// IndexClearance measures the branch the same way.
+static int IndexClearance(RgbaImage withIndex, RgbaImage withoutIndex, int gx, int gy, int gw, int gh)
+{
+    int w = withIndex.Width, h = withIndex.Height;
+    byte A(RgbaImage im, int i) => im.Pixels[i * 4 + 3];
+    var dist = new int[w * h];
+    Array.Fill(dist, int.MaxValue);
+    var queue = new Queue<int>();
+    for (var y = Math.Max(0, gy); y < Math.Min(h, gy + gh); y++)
+        for (var x = Math.Max(0, gx); x < Math.Min(w, gx + gw); x++)
+            if (A(withoutIndex, y * w + x) > 0) { dist[y * w + x] = 0; queue.Enqueue(y * w + x); }
+    while (queue.TryDequeue(out var i))
+    {
+        int cx = i % w, cy = i / w;
+        for (var dy = -1; dy <= 1; dy++)
+            for (var dx = -1; dx <= 1; dx++)
+            {
+                int nx = cx + dx, ny = cy + dy;
+                if (nx < 0 || ny < 0 || nx >= w || ny >= h || dist[ny * w + nx] != int.MaxValue) continue;
+                dist[ny * w + nx] = dist[i] + 1;
+                queue.Enqueue(ny * w + nx);
+            }
+    }
+    var best = int.MaxValue;
+    for (var i = 0; i < w * h; i++)
+        if (A(withIndex, i) > A(withoutIndex, i)) best = Math.Min(best, dist[i]);
+    return best == int.MaxValue ? int.MaxValue : best - 1;
 }
 
 static long Ink(RgbaImage image)
@@ -227,4 +286,13 @@ static SqrtBox FindSqrt(Box root)
                 }
     }
     throw new InvalidOperationException("scene has no SqrtBox");
+}
+
+/// <summary>A box with another's metrics that draws nothing.</summary>
+sealed class BlankBox(Box metrics) : Box
+{
+    public override float Width => metrics.Width;
+    public override float Height => metrics.Height;
+    public override float Depth => metrics.Depth;
+    public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style) { }
 }

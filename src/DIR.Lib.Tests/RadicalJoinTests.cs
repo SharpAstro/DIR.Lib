@@ -204,7 +204,8 @@ public sealed partial class RadicalJoinTests
                 r.Sqrt.StrokeCapTrimmedBand,
                 r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY), r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY - 1),
                 r.GlyphPastDepth, r.RowsAboveHeight, r.RadicalOnCanvas, InkCutOff(p.Font, p.Size, p.Scene, r.Image),
-                r.JoinBreak(), RgbaHash(r.Image), r.Join.InkRaise);
+                r.JoinBreak(), RgbaHash(r.Image), r.Join.InkRaise,
+                p.Scene == "index-box-api" ? IndexClearanceAt(p.Font, p.Size, r) : null);
         }),
     ]);
 
@@ -228,10 +229,12 @@ public sealed partial class RadicalJoinTests
     /// <param name="JoinBreak">Where the bar fails to continue the flag, or null (<see cref="Rendered.JoinBreak"/>).</param>
     /// <param name="RgbaHash">The rendered scene's size and pixels, hashed (<see cref="RgbaHash"/>).</param>
     /// <param name="InkRaise">Rows the radicand's ink raised bar and glyph (<see cref="SqrtBox.RadicalJoin.InkRaise"/>).</param>
+    /// <param name="IndexClear">In the index scene, the clear pixels between the index and the glyph
+    /// (<see cref="IndexClearance"/>); null elsewhere.</param>
     /// <param name="ClearAbove">Clear rows between the bar and the ink above it (<see cref="Rendered.ClearRowsAboveBar"/>).</param>
     private sealed record Swept(BeforePoint Before, float Height, float Depth, int ClearRows, int ClearAbove, int BandRows, int MaxBandRows,
         bool CapTrimmed, int FlagTopAlpha, int AboveFlagAlpha, float GlyphPastDepth, int RowsAboveHeight,
-        bool RadicalOnCanvas, long InkCutOff, string? JoinBreak, ulong RgbaHash, int InkRaise)
+        bool RadicalOnCanvas, long InkCutOff, string? JoinBreak, ulong RgbaHash, int InkRaise, int? IndexClear)
     {
         public bool Touches => ClearRows == 0;
 
@@ -243,7 +246,7 @@ public sealed partial class RadicalJoinTests
     public void BeforeDataCoversTheSweep()
     {
         var missing = (from font in FontPaths.Keys
-                       from scene in SweepScenes.Concat(ContextScenes)
+                       from scene in SweepScenes.Concat(ContextScenes).Append("index-box-api")
                        from size in SweepSizes
                        where !BeforePoints.Any(p => p.Font == font && p.Scene == scene && p.Size == size)
                        select $"{font} {scene} {size} px").ToList();
@@ -528,6 +531,23 @@ public sealed partial class RadicalJoinTests
     }
 
     /// <summary>
+    /// An index stays where the layout lifted it, so where the radicand's ink raises the glyph, the V's left arm
+    /// rises towards the index. At every swept size, in both fonts, the clear pixels between the index's ink and
+    /// the glyph's (<see cref="IndexClearance"/>) are never fewer than at fe09d4a. Every failing point is
+    /// listed in the one message.
+    /// </summary>
+    [Fact]
+    public void TheIndexKeepsItsClearanceFromTheGlyph()
+    {
+        var failures = SweptPoints.Value
+            .Where(s => s.Before.IndexClear is { } before && s.IndexClear < before)
+            .Select(s => $"{s}: {s.IndexClear} clear pixels between index and glyph, before {s.Before.IndexClear}; " +
+                         $"the radicand's ink raised the glyph {s.InkRaise} rows")
+            .ToList();
+        failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
+    }
+
+    /// <summary>
     /// The two points the relaxations named: STIX Two Math <c>\sqrt{\frac{a}{b}}</c> at 22.2 px and
     /// <c>\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}</c> at 31.7 px had 3 clear rows before the rework
     /// (e6778fc) and 2 after it (fe09d4a), lost to the float phase of the bar's floored row.
@@ -760,10 +780,7 @@ public sealed partial class RadicalJoinTests
             "sqrt-frac-a-b" => Parse(@"\sqrt{\frac{a}{b}}", style),
             "quadratic-formula" => Parse(@"\frac{-b \pm \sqrt{b^2-4ac}}{2a}", style),
             // The index goes through the Box API: the grammar's \sqrt takes no optional argument.
-            "index-box-api" => new SqrtBox(
-                new MathGlyphBox("x", style, MathStyle.Italic),
-                new GlyphBox("3", style.Smaller().Smaller()),
-                style),
+            "index-box-api" => IndexScene(style, blankIndex: false),
             "sqrt-paren-frac" => Parse(@"\sqrt{\left(\frac{a}{b}\right)}", style),
             "sqrt-nested-frac" => Parse(@"\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}", style),
             // A radical whose baseline its parent places: a fraction keeps its numerator a gap above the
@@ -795,6 +812,66 @@ public sealed partial class RadicalJoinTests
         renderer.ContentTransform = new ContentTransform(Rotation90.None, 1f, pad, pad);
         box.Draw(renderer, margin, margin + box.Height, style);
         return InkSum(renderer.Surface) - InkSum(canvas);
+    }
+
+    /// <summary>The radical with an index, built through the Box API (the grammar's <c>\sqrt</c> takes no
+    /// optional argument), or the same with the index blank: a box with its metrics that draws nothing, so the
+    /// layout is the same and the two renders differ by the index's ink alone.</summary>
+    private static Box IndexScene(BoxStyle style, bool blankIndex)
+    {
+        var index = new GlyphBox("3", style.Smaller().Smaller());
+        return new SqrtBox(new MathGlyphBox("x", style, MathStyle.Italic), blankIndex ? new BlankBox(index) : index, style);
+    }
+
+    /// <summary>A box with another's metrics that draws nothing.</summary>
+    private sealed class BlankBox(Box metrics) : Box
+    {
+        public override float Width => metrics.Width;
+        public override float Height => metrics.Height;
+        public override float Depth => metrics.Depth;
+        public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style) { }
+    }
+
+    /// <summary>The index scene's <see cref="IndexClearance"/>, its glyph's rectangle taken from the join.</summary>
+    private static int IndexClearanceAt(string font, float size, Rendered r)
+    {
+        var style = new BoxStyle(FontPaths[font], size, new RGBAColor32(0, 0, 0, 255));
+        var blank = BoxRasterizer.RenderToRgba(IndexScene(style, blankIndex: true), style);
+        return IndexClearance(r.Image, blank, r.Join.GlyphX, r.Join.GlyphY, r.Join.BarStartX - r.Join.GlyphX, r.Join.GlyphRows);
+    }
+
+    /// <summary>
+    /// The fewest clear pixels between the index's ink (where the render with it has more alpha than the one
+    /// without) and the glyph's (ink inside the glyph's bitmap rectangle, in the render without the index), by
+    /// chessboard distance: 0 where they touch, even at a corner, -1 where they overlap.
+    /// tools/gen-radical-join-before measures fe09d4a the same way.
+    /// </summary>
+    private static int IndexClearance(RgbaImage withIndex, RgbaImage withoutIndex, int gx, int gy, int gw, int gh)
+    {
+        int w = withIndex.Width, h = withIndex.Height;
+        byte A(RgbaImage image, int i) => image.Pixels[i * 4 + 3];
+        var dist = new int[w * h];
+        Array.Fill(dist, int.MaxValue);
+        var queue = new Queue<int>();
+        for (var y = Math.Max(0, gy); y < Math.Min(h, gy + gh); y++)
+            for (var x = Math.Max(0, gx); x < Math.Min(w, gx + gw); x++)
+                if (A(withoutIndex, y * w + x) > 0) { dist[y * w + x] = 0; queue.Enqueue(y * w + x); }
+        while (queue.TryDequeue(out var i))
+        {
+            int cx = i % w, cy = i / w;
+            for (var dy = -1; dy <= 1; dy++)
+                for (var dx = -1; dx <= 1; dx++)
+                {
+                    int nx = cx + dx, ny = cy + dy;
+                    if (nx < 0 || ny < 0 || nx >= w || ny >= h || dist[ny * w + nx] != int.MaxValue) continue;
+                    dist[ny * w + nx] = dist[i] + 1;
+                    queue.Enqueue(ny * w + nx);
+                }
+        }
+        var best = int.MaxValue;
+        for (var i = 0; i < w * h; i++)
+            if (A(withIndex, i) > A(withoutIndex, i)) best = Math.Min(best, dist[i]);
+        return best == int.MaxValue ? int.MaxValue : best - 1;
     }
 
     /// <summary>FNV-1a over an image's size and RGBA bytes.</summary>
