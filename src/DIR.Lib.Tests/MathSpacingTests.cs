@@ -204,7 +204,6 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
     [InlineData("STIX2Math", @"\operatorname{argmax}", "argmax")]
     [InlineData("STIX2Math", @"\textrm{if}", "if")]
     [InlineData("STIX2Math", @"\textrm{a b}", "a b")]
-    [InlineData("STIX2Math", @"\operatorname*{arg\,max}", "arg max")]
     [InlineData("DejaVuSans", @"\operatorname{argmax}", "argmax")]
     [InlineData("DejaVuSans", @"\textrm{if}", "if")]
     [InlineData("DejaVuSans", @"\textrm{a b}", "a b")]
@@ -216,16 +215,15 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// A brace inside the argument: a group's braces are not printed, an
-    /// escaped brace is printed as a brace, and the letters stay upright.
-    /// Before, the token could not hold a brace, so the bare command name
-    /// printed, the very defect these commands were added to remove.
+    /// A brace inside <c>\textrm</c>'s argument: a group's braces are not
+    /// printed, an escaped brace is printed as a brace, and the letters stay
+    /// upright. Before, the token could not hold a brace, so the bare command
+    /// name printed, the very defect these commands were added to remove.
+    /// (<c>\operatorname</c>'s argument is math, and has tests of its own.)
     /// </summary>
     [Theory]
-    [InlineData("STIX2Math", @"\operatorname{arg{\,}max}", "arg max")]
     [InlineData("STIX2Math", @"\textrm{a {b} c}", "a b c")]
     [InlineData("STIX2Math", @"\textrm{x\{y\}}", "x{y}")]
-    [InlineData("DejaVuSans", @"\operatorname{arg{\,}max}", "arg max")]
     [InlineData("DejaVuSans", @"\textrm{a {b} c}", "a b c")]
     [InlineData("DejaVuSans", @"\textrm{x\{y\}}", "x{y}")]
     public void BraceInsideTheArgument_PaintsTheTextUpright(string font, string latex, string expected)
@@ -241,6 +239,103 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
     [InlineData(@"\textrm{x\{y\}}", "x{y}")]
     public void UnicodePath_BraceInsideTheArgument(string latex, string expected)
         => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
+
+    /// <summary>
+    /// <c>\operatorname</c>'s argument is math, as in amsmath, set with
+    /// upright letters: blanks in it are ignored, a command in it renders,
+    /// and its groups nest to any depth. A plain run of letters is drawn as
+    /// one name, as <c>\sin</c> is. Before, the argument was text taken whole
+    /// into the token, so <c>\operatorname{\mathbb{E}}</c> painted
+    /// <c>\mathbbE</c> and deep nesting printed the bare command.
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math", @"\operatorname{arg max}", "argmax")]
+    [InlineData("STIX2Math", @"\operatorname{a{b{c{d}}}}", "abcd")]
+    [InlineData("STIX2Math", @"\operatorname{\mathrm{tr}}", "tr")]
+    [InlineData("STIX2Math", @"\operatorname{\mathbb{E}}", "𝔼")]
+    [InlineData("DejaVuSans", @"\operatorname{arg max}", "argmax")]
+    [InlineData("DejaVuSans", @"\operatorname{a{b{c{d}}}}", "abcd")]
+    [InlineData("DejaVuSans", @"\operatorname{\mathrm{tr}}", "tr")]
+    public void OperatorName_ArgumentIsMath(string font, string latex, string expected)
+    {
+        var painted = Painted(latex, StyleFor(font));
+        painted.ShouldNotContain(t => t.Contains('\\'), $"'{latex}' painted a command name: {string.Join(" | ", painted)}");
+        painted.ShouldBe([expected]);
+    }
+
+    /// <summary>
+    /// A thin space written into the argument is a thin space between its
+    /// letters, which stay upright, starred or not, braced or not.
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math", @"\operatorname{arg\,max}")]
+    [InlineData("STIX2Math", @"\operatorname*{arg\,max}")]
+    [InlineData("STIX2Math", @"\operatorname{arg{\,}max}")]
+    [InlineData("DejaVuSans", @"\operatorname{arg\,max}")]
+    [InlineData("DejaVuSans", @"\operatorname{arg{\,}max}")]
+    public void OperatorName_ThinSpaceInsideItsArgument(string font, string latex)
+    {
+        var atoms = AtomsOf(latex, StyleFor(font));
+        string.Concat(atoms.Select(a => a.Text)).ShouldBe("argmax", $"'{latex}' drew {Describe(atoms)}");
+
+        var gap = atoms[3].Left - atoms[2].Right;
+        output.WriteLine($"{font} '{latex}': g to m = {gap:F2} px");
+        gap.ShouldBe(Thin, HalfPixel);
+    }
+
+    /// <summary><c>\operatorname{sin}</c> draws exactly as <c>\sin</c> does.</summary>
+    [Theory]
+    [InlineData("STIX2Math")]
+    [InlineData("DejaVuSans")]
+    public void OperatorName_DrawsAsTheBuiltInName(string font)
+    {
+        var style = StyleFor(font);
+        var image = BoxRasterizer.RenderToRgba(BuildBox(@"\operatorname{sin} x", style).ShouldNotBeNull(), style);
+        var builtIn = BoxRasterizer.RenderToRgba(BuildBox(@"\sin x", style).ShouldNotBeNull(), style);
+        image.Width.ShouldBe(builtIn.Width);
+        image.Pixels.ShouldBe(builtIn.Pixels);
+    }
+
+    [Theory]
+    [InlineData(@"\operatorname{\mathbb{E}}[X]", "𝔼[X]")]
+    [InlineData(@"\operatorname{arg\,max}", "arg max")]
+    [InlineData(@"\operatorname{arg max}", "argmax")]
+    [InlineData(@"\operatorname{a{b{c{d}}}}", "abcd")]
+    [InlineData(@"\textrm{a b}", "a b")]
+    public void UnicodePath_OperatorNameArgumentIsMath(string latex, string expected)
+        => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
+
+    /// <summary>
+    /// TeX's math spaces reach the box path's grammar, so that
+    /// <c>arg\,max</c> keeps its space: <c>\,</c> is 3 mu, <c>\:</c> 4 mu,
+    /// <c>\;</c> 5 mu and <c>\!</c> minus 3 mu, an eighteenth of an em each.
+    /// Before, the preparation turned each into a blank, which the grammar
+    /// drops. They are space, not atoms, so <c>\sin\,x</c> keeps the
+    /// operator's thin space too, as TeX stacks them.
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math", @"x\,y", 3)]
+    [InlineData("STIX2Math", @"x\:y", 4)]
+    [InlineData("STIX2Math", @"x\;y", 5)]
+    [InlineData("STIX2Math", @"x\!y", -3)]
+    [InlineData("STIX2Math", @"\sin\,x", 6)]
+    [InlineData("DejaVuSans", @"x\,y", 3)]
+    [InlineData("DejaVuSans", @"x\!y", -3)]
+    public void MathSpace_IsItsWidthInMu(string font, string latex, int mu)
+    {
+        var atoms = AtomsOf(latex, StyleFor(font));
+        atoms.Count.ShouldBe(2, $"'{latex}' drew {Describe(atoms)}");
+        var gap = atoms[1].Left - atoms[0].Right;
+        output.WriteLine($"{font} '{latex}': gap = {gap:F2} px");
+        gap.ShouldBe(FontSize * mu / 18f, HalfPixel);
+    }
+
+    [Fact]
+    public void Helper_KeepsTheMathSpaces()
+    {
+        MarkdownMacros.TryPrepareMathBoxSource(@"x\,y\;z\!w\:v", out var prepared).ShouldBeTrue();
+        prepared.ShouldBe(@"x\,y\;z\!w\:v");
+    }
 
     /// <summary>
     /// <c>\operatorname{X}</c> is an Op like <c>\sin</c>, so a subscript goes
