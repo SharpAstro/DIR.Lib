@@ -1,8 +1,9 @@
-// Measures the square root of commit e6778fc at every point RadicalJoinTests sweeps and writes the result
-// as src/DIR.Lib.Tests/RadicalJoinTests.Before.cs. Built against a copy of that commit's sources whose
-// SqrtBox generate.ps1 has patched to record its bar in a `_probeBar` field; see GenRadicalJoinBefore.csproj.
+// Measures the square root of a base commit (generate.ps1 says which, and why) at every point
+// RadicalJoinTests sweeps and writes the result as src/DIR.Lib.Tests/RadicalJoinTests.Before.cs. Built
+// against a copy of that commit's sources whose SqrtBox generate.ps1 has patched to record its bar in a
+// `_probeBar` field; see GenRadicalJoinBefore.csproj.
 //
-// Arguments: <fonts dir> <output .cs path>.
+// Arguments: <fonts dir> <output .cs path> <base commit>.
 //
 // The point set here and the sweep in RadicalJoinTests must agree; the test's BeforeDataCoversTheSweep
 // fails when a sweep point has no row here. Each point records the radical's rendering path, its Height
@@ -19,11 +20,12 @@ using DIR.Lib.MathLayout;
 using LALR.CC.LexicalGrammar;
 using SharpAstro.Fonts;
 
-if (args.Length != 2)
+if (args.Length != 3)
 {
-    Console.Error.WriteLine("usage: GenRadicalJoinBefore <fonts dir> <output .cs path>");
+    Console.Error.WriteLine("usage: GenRadicalJoinBefore <fonts dir> <output .cs path> <base commit>");
     return 2;
 }
+var baseCommit = args[2];
 
 var inv = CultureInfo.InvariantCulture;
 var fonts = new Dictionary<string, string>
@@ -57,6 +59,16 @@ string[] joinScenes = ["sqrt-x2-plus-y2", "sqrt-2", "sqrt-frac-a-b", "quadratic-
     ("STIX2Math", "index-box-api", 10.85f), ("STIX2Math", "index-box-api", 11.5f), ("STIX2Math", "index-box-api", 12.05f),
 ];
 
+// Radicals with ink above them in their parent (a fraction's rule) or none but the canvas's edge (a
+// superscript), over the sweep's sizes again: the clear rows between the bar's top and what is above it.
+string[] contextScenes =
+[
+    "frac-1-sqrt-x", "frac-1-sqrt-frac-a-b", "x-sup-sqrt-y",
+    // Radicands whose ink may start further above their reported height: an accent, a big operator, a
+    // stretchy delimiter (review round 1, Q1).
+    "frac-1-sqrt-hat-x", "frac-1-sqrt-sum-x", "frac-1-sqrt-paren-x",
+];
+
 var points = new List<(string Font, string Scene, float Size)>();
 void Add((string, string, float) p)
 {
@@ -72,12 +84,23 @@ foreach (var font in fonts.Keys)
             Add((font, scene, size));
 }
 foreach (var p in named) Add(p);
+foreach (var font in fonts.Keys)
+    foreach (var scene in contextScenes)
+        foreach (var size in sweepSizes)
+            Add((font, scene, size));
+// The radical with an index, over the sweep's sizes: the clear pixels between the index and the glyph
+// (review round 1, Q2).
+foreach (var font in fonts.Keys)
+    foreach (var size in sweepSizes)
+        Add((font, "index-box-api", size));
 
 var bf = BindingFlags.NonPublic | BindingFlags.Instance;
 var probeBar = typeof(SqrtBox).GetField("_probeBar", bf)
     ?? throw new InvalidOperationException("SqrtBox has no _probeBar field: run generate.ps1, which patches it in");
 var radicalFont = typeof(SqrtBox).GetField("_radicalFont", bf)!;
 var radicalScaled = typeof(SqrtBox).GetField("_radicalScaled", bf)!;
+var joinedRadical = typeof(SqrtBox).GetField("_joinedRadical", bf)!;
+var flagTopRow = typeof(SqrtBox).GetField("_flagTopRow", bf)!;
 
 var rows = new StringBuilder();
 foreach (var (font, scene, size) in points)
@@ -88,12 +111,25 @@ foreach (var (font, scene, size) in points)
     var sqrt = FindSqrt(box);
     var path = radicalFont.GetValue(sqrt) is not null ? 1
         : ((GlyphBitmap)radicalScaled.GetValue(sqrt)!).Rgba is not null ? 2 : 3;
-    var (barBottom, barStart, barEnd) = ((int, int, int))probeBar.GetValue(sqrt)!;
+    var (barTop, barBottom, barStart, barEnd) = ((int, int, int, int))probeBar.GetValue(sqrt)!;
     barEnd = Math.Max(barStart, barEnd);
     var y = barBottom;
     while (y < image.Height && !RowHasInk(image, y, barStart, barEnd)) y++;
+    // The clear rows above the bar's top row, to the next ink or the canvas's edge.
+    var above = barTop - 1;
+    while (above >= 0 && !RowHasInk(image, above, barStart, barEnd)) above--;
+    var indexClear = "null";
+    if (scene == "index-box-api")
+    {
+        // The glyph's bitmap rectangle as Draw placed it: its right edge is where the bar starts, its top the
+        // bar's top less the flag's top row.
+        var glyph = (GlyphBitmap)joinedRadical.GetValue(sqrt)!;
+        var glyphY = barTop - (int)flagTopRow.GetValue(sqrt)!;
+        var blank = BoxRasterizer.RenderToRgba(IndexScene(style, blankIndex: true), style);
+        indexClear = IndexClearance(image, blank, barStart - glyph.Width, glyphY, glyph.Width, glyph.Height).ToString(inv);
+    }
     rows.Append(CultureInfo.InvariantCulture,
-        $"        new(\"{font}\", \"{scene}\", {F(size)}, {path}, {F(sqrt.Height)}, {F(sqrt.Depth)}, {y - barBottom}),\n");
+        $"        new(\"{font}\", \"{scene}\", {F(size)}, {path}, {F(sqrt.Height)}, {F(sqrt.Depth)}, {y - barBottom}, {barTop - 1 - above}, {CutOff(box, image, style)}, {indexClear}),\n");
 }
 
 var output = $$"""
@@ -106,11 +142,15 @@ namespace DIR.Lib.Tests;
 public sealed partial class RadicalJoinTests
 {
     /// <summary>
-    /// The radical before the radical-join rework (commit e6778fc) at every point the sweep and the named
+    /// The radical as commit {{baseCommit}} drew it, at every point the sweep and the named
     /// cases visit: which path drew it, its <see cref="MathLayout.Box.Height"/> and
-    /// <see cref="MathLayout.Box.Depth"/>, and the clear pixel rows between its bar and the radicand,
-    /// measured as <see cref="Rendered.ClearRowsUnderBar"/> does. Floats are printed round-trip, so they
-    /// are exact. {{points.Count}} points.
+    /// <see cref="MathLayout.Box.Depth"/>, the clear pixel rows between its bar and the radicand,
+    /// measured as <see cref="Rendered.ClearRowsUnderBar"/> does, those between the bar and the ink above
+    /// it, measured as <see cref="Rendered.ClearRowsAboveBar"/> does, and the alpha the canvas
+    /// <see cref="MathLayout.BoxRasterizer.RenderToRgba"/> drew the scene on cut off, measured as
+    /// <see cref="InkCutOff"/> does, and for the index scene the clear pixels between the index's ink and the
+    /// glyph's, measured as <see cref="IndexClearance"/> does. Floats are printed round-trip, so they are exact.
+    /// {{points.Count}} points.
     /// </summary>
     private static readonly BeforePoint[] BeforePoints =
     [
@@ -118,7 +158,8 @@ public sealed partial class RadicalJoinTests
     ];
 
     private readonly record struct BeforePoint(
-        string Font, string Scene, float Size, int Path, float Height, float Depth, int ClearRows);
+        string Font, string Scene, float Size, int Path, float Height, float Depth, int ClearRows, int ClearAbove,
+        long CutOff, int? IndexClear);
 }
 
 """;
@@ -127,6 +168,66 @@ Console.WriteLine($"{points.Count} points -> {args[1]}");
 return 0;
 
 string F(float v) => v.ToString("R", inv) + "f";
+
+// The alpha the canvas RenderToRgba made cut off: the scene drawn again at the same coordinates on a canvas
+// 8 px larger on every side, through an integer content translation so every position is computed as
+// before, less the ink on the canvas. RadicalJoinTests.InkCutOff measures the branch the same way.
+static long CutOff(Box box, RgbaImage canvas, BoxStyle style)
+{
+    const int pad = 8;
+    var margin = (canvas.Width - (int)MathF.Ceiling(box.Width)) / 2;
+    using var renderer = new RgbaImageRenderer((uint)(canvas.Width + 2 * pad), (uint)(canvas.Height + 2 * pad));
+    renderer.ContentTransform = new ContentTransform(Rotation90.None, 1f, pad, pad);
+    box.Draw(renderer, margin, margin + box.Height, style);
+    return Ink(renderer.Surface) - Ink(canvas);
+}
+
+// The index scene, or the same with its index blank: a box with the index's metrics that draws nothing, so
+// the layout is the same and the two renders differ by the index's ink alone.
+static Box IndexScene(BoxStyle style, bool blankIndex)
+{
+    var index = new GlyphBox("3", style.Smaller().Smaller());
+    return new SqrtBox(new MathGlyphBox("x", style, MathStyle.Italic), blankIndex ? new BlankBox(index) : index, style);
+}
+
+// The fewest clear pixels between the index's ink (where the render with it has more alpha than the one
+// without) and the glyph's (ink inside the glyph's bitmap rectangle, in the render without the index), by
+// chessboard distance: 0 where they touch, even at a corner, -1 where they overlap. RadicalJoinTests'
+// IndexClearance measures the branch the same way.
+static int IndexClearance(RgbaImage withIndex, RgbaImage withoutIndex, int gx, int gy, int gw, int gh)
+{
+    int w = withIndex.Width, h = withIndex.Height;
+    byte A(RgbaImage im, int i) => im.Pixels[i * 4 + 3];
+    var dist = new int[w * h];
+    Array.Fill(dist, int.MaxValue);
+    var queue = new Queue<int>();
+    for (var y = Math.Max(0, gy); y < Math.Min(h, gy + gh); y++)
+        for (var x = Math.Max(0, gx); x < Math.Min(w, gx + gw); x++)
+            if (A(withoutIndex, y * w + x) > 0) { dist[y * w + x] = 0; queue.Enqueue(y * w + x); }
+    while (queue.TryDequeue(out var i))
+    {
+        int cx = i % w, cy = i / w;
+        for (var dy = -1; dy <= 1; dy++)
+            for (var dx = -1; dx <= 1; dx++)
+            {
+                int nx = cx + dx, ny = cy + dy;
+                if (nx < 0 || ny < 0 || nx >= w || ny >= h || dist[ny * w + nx] != int.MaxValue) continue;
+                dist[ny * w + nx] = dist[i] + 1;
+                queue.Enqueue(ny * w + nx);
+            }
+    }
+    var best = int.MaxValue;
+    for (var i = 0; i < w * h; i++)
+        if (A(withIndex, i) > A(withoutIndex, i)) best = Math.Min(best, dist[i]);
+    return best == int.MaxValue ? int.MaxValue : best - 1;
+}
+
+static long Ink(RgbaImage image)
+{
+    long sum = 0;
+    for (var i = 3; i < image.Pixels.Length; i += 4) sum += image.Pixels[i];
+    return sum;
+}
 
 static bool RowHasInk(RgbaImage image, int y, int x0, int x1)
 {
@@ -145,6 +246,12 @@ static Box Build(string scene, BoxStyle style) => scene switch
     "index-box-api" => new SqrtBox(new MathGlyphBox("x", style, MathStyle.Italic), new GlyphBox("3", style.Smaller().Smaller()), style),
     "sqrt-paren-frac" => Parse(@"\sqrt{\left(\frac{a}{b}\right)}", style),
     "sqrt-nested-frac" => Parse(@"\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}", style),
+    "frac-1-sqrt-x" => Parse(@"\frac{1}{\sqrt{x}}", style),
+    "frac-1-sqrt-frac-a-b" => Parse(@"\frac{1}{\sqrt{\frac{a}{b}}}", style),
+    "x-sup-sqrt-y" => Parse(@"x^{\sqrt{y}}", style),
+    "frac-1-sqrt-hat-x" => Parse(@"\frac{1}{\sqrt{\hat{x}}}", style),
+    "frac-1-sqrt-sum-x" => Parse(@"\frac{1}{\sqrt{\sum x}}", style),
+    "frac-1-sqrt-paren-x" => Parse(@"\frac{1}{\sqrt{\left(x\right)}}", style),
     _ => throw new ArgumentException($"unknown scene '{scene}'"),
 };
 
@@ -179,4 +286,13 @@ static SqrtBox FindSqrt(Box root)
                 }
     }
     throw new InvalidOperationException("scene has no SqrtBox");
+}
+
+/// <summary>A box with another's metrics that draws nothing.</summary>
+sealed class BlankBox(Box metrics) : Box
+{
+    public override float Width => metrics.Width;
+    public override float Height => metrics.Height;
+    public override float Depth => metrics.Depth;
+    public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style) { }
 }
