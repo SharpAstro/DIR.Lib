@@ -440,6 +440,23 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
     public void UnicodePath_BracedBracketIsAnOrdinaryAtom(string latex, string expected)
         => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
 
+    /// <summary>
+    /// Inside a script the Unicode path drops an operator name's space where
+    /// that space is all that stops the script's Unicode form: main printed
+    /// <c>x_{\sin x}</c> as <c>xₛᵢₙₓ</c>, and the space made it
+    /// <c>x_(sin x)</c>. Where the letters themselves have no script form
+    /// the space stays: there is no superscript s, so <c>e^{\sin x}</c>
+    /// printed <c>e^sinx</c> on main and reads <c>e^(sin x)</c> now.
+    /// </summary>
+    [Theory]
+    [InlineData(@"x_{\sin x}", "xₛᵢₙₓ")]
+    [InlineData(@"x_{\max n}", "xₘₐₓₙ")]
+    [InlineData(@"x_{\ln 2}", "xₗₙ₂")]
+    [InlineData(@"e^{\sin x}", "e^(sin x)")]
+    [InlineData(@"\sin x", "sin x")]
+    public void UnicodePath_ScriptKeepsItsUnicodeForm(string latex, string expected)
+        => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
+
     /// <summary>The box path's side of the same: the thin space is there.</summary>
     [Theory]
     [InlineData("STIX2Math")]
