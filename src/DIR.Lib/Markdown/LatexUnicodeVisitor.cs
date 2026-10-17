@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Text;
 using LALR.CC.LexicalGrammar;
 using SharpAstro.Fonts;
@@ -8,8 +7,22 @@ using static DIR.Lib.Latex;
 namespace DIR.Lib.Markdown;
 
 /// <summary>
-/// IVisitor&lt;string&gt; for the math-mode LaTeX grammar: walks each AST node
-/// to a plain-Unicode string suitable for inline rendering inside a single
+/// A formula, or a piece of one, as <see cref="LatexUnicodeVisitor"/> renders
+/// it: the Unicode <see cref="Text"/>, and the TeX atom class of its first and
+/// last atom, which the visitor reads where it juxtaposes two pieces, so that
+/// <c>\sin x</c> reads <c>sin x</c> and <c>\sin(x)</c> stays tight.
+/// </summary>
+public sealed record UnicodeMath(string Text)
+{
+    internal MathAtomClass First { get; init; }
+    internal MathAtomClass Last { get; init; }
+
+    public override string ToString() => Text;
+}
+
+/// <summary>
+/// IVisitor&lt;UnicodeMath&gt; for the math-mode LaTeX grammar: walks each AST
+/// node to a plain-Unicode string suitable for inline rendering inside a single
 /// terminal row. Used by <see cref="MarkdownInlineVisitor"/> for inline
 /// math nodes (single-dollar <c>$x^2$</c> / inline <c>\(...\)</c>
 /// math); the box-rendered counterpart <see cref="BoxBuildingVisitor"/>
@@ -22,129 +35,117 @@ namespace DIR.Lib.Markdown;
 /// back to caret/underscore notation, so e.g. <c>x^{a+b}</c> reads as
 /// <c>x^(a + b)</c> rather than mangling into broken super/subscript runs.
 ///
+/// <para>Each visit returns a <see cref="UnicodeMath"/>, the text with the
+/// atom class at each of its ends; <see cref="UnicodeMath.Text"/> is the
+/// rendered formula.</para>
+///
 /// Lifted from the LALR.CC Examples.Latex renderer.
 /// </summary>
-public sealed class LatexUnicodeVisitor : IVisitor<string>
+public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
 {
-    public string Visit(Add node)      => $"{node.Arg0.Content} + {node.Arg2.Content}";
-    public string Visit(Subtract node) => $"{node.Arg0.Content} − {node.Arg2.Content}";
-    public string Visit(Eq node)       => $"{node.Arg0.Content} = {node.Arg2.Content}";
+    public UnicodeMath Visit(Add node)      => Joined(node.Arg0, " + ", node.Arg2);
+    public UnicodeMath Visit(Subtract node) => Joined(node.Arg0, " − ", node.Arg2);
+    public UnicodeMath Visit(Eq node)       => Joined(node.Arg0, " = ", node.Arg2);
+    public UnicodeMath Visit(Mul node)      => Joined(node.Arg0, "·", node.Arg2);
+    public UnicodeMath Visit(Div node)      => Joined(node.Arg0, "/", node.Arg2);
 
-    public string Visit(Mul node) => Binary((string)node.Arg0.Content, "·", (string)node.Arg2.Content);
-    public string Visit(Div node) => Binary((string)node.Arg0.Content, "/", (string)node.Arg2.Content);
-
-    public string Visit(Neg node)
+    public UnicodeMath Visit(Neg node)
     {
-        var inner = (string)node.Arg1.Content;
-        return WithOpEnds($"−{inner}", left: false, right: EndsWithOp(inner));
+        var inner = Of(node.Arg1);
+        return new UnicodeMath($"−{inner.Text}") { Last = inner.Last };
     }
 
     /// <summary>
-    /// Juxtaposition, with a space where TeX puts its thin space round an
-    /// operator name (<see cref="SpaceBetween"/>): <c>\sin x</c> is
+    /// Juxtaposition, with a space where TeX puts its thin space
+    /// (<see cref="MarkdownMacros.ThinSpaceBetween"/>): <c>\sin x</c> is
     /// <c>sin x</c>, where it used to run together as <c>sinx</c>, and
-    /// <c>\sin(x)</c> stays <c>sin(x)</c>.
+    /// <c>\sin(x)</c> stays <c>sin(x)</c>. An empty side (<c>\null</c>) takes
+    /// no space and leaves the other side's ends as they are.
     /// </summary>
-    public string Visit(Juxt node)
+    public UnicodeMath Visit(Juxt node)
     {
-        var left = (string)node.Arg0.Content;
-        var right = (string)node.Arg1.Content;
-        return WithOpEnds(SpaceBetween(left, right) ? $"{left} {right}" : $"{left}{right}",
-            left: StartsWithOp(left), right: EndsWithOp(right));
+        var left = Of(node.Arg0);
+        var right = Of(node.Arg1);
+        if (left.Text.Length == 0) return right;
+        if (right.Text.Length == 0) return left;
+        var space = MarkdownMacros.ThinSpaceBetween(left.Last, right.First) ? " " : "";
+        return new UnicodeMath($"{left.Text}{space}{right.Text}") { First = left.First, Last = right.Last };
     }
 
-    private static string Binary(string left, string op, string right)
-        => WithOpEnds($"{left}{op}{right}", left: StartsWithOp(left), right: EndsWithOp(right));
+    private static UnicodeMath Of(Item item) => (UnicodeMath)item.Content;
 
-    /// <summary>
-    /// Whether TeX's thin space between two juxtaposed atoms shows here, as
-    /// a plain space: after an operator name, before anything but an opening
-    /// bracket or punctuation, and before an operator name, after anything
-    /// but an opening bracket or punctuation. A string's class at an end it
-    /// does not mark as an operator name is read off its character there.
-    /// The big operators (∑ ∫) are left as they were: a glyph does not run
-    /// into a letter the way a name does.
-    /// </summary>
-    private static bool SpaceBetween(string left, string right)
+    private static string TextOf(Item item) => Of(item).Text;
+
+    /// <summary>Left, <paramref name="op"/>, right: the ends are the
+    /// operands' outer ones.</summary>
+    private static UnicodeMath Joined(Item leftItem, string op, Item rightItem)
     {
-        if (left.Length == 0 || right.Length == 0) return false;
-        if (EndsWithOp(left)) return StartsWithOp(right) || !IsOpenOrPunct(right[0]);
-        return StartsWithOp(right) && !IsOpenOrPunct(left[^1]);
+        var left = Of(leftItem);
+        var right = Of(rightItem);
+        return new UnicodeMath($"{left.Text}{op}{right.Text}") { First = left.First, Last = right.Last };
     }
 
-    private static bool IsOpenOrPunct(char c) => c is '(' or '[' or '{' or ',' || char.IsWhiteSpace(c);
-
-    /// <summary>
-    /// Which ends of a rendered string are an operator name, for the strings
-    /// that have one. A string carries no atom class of its own, so this
-    /// table keeps it beside the very instance a visit returned, which is
-    /// what the parser hands the next visit; it holds them weakly, and it is
-    /// safe on the shared visitor across threads. Only an operator name's
-    /// glyph and the composites built round one are entered.
-    /// </summary>
-    private static readonly ConditionalWeakTable<string, OpEnds> s_opEnds = new();
-
-    private sealed record OpEnds(bool Left, bool Right);
-
-    private static bool StartsWithOp(string s) => s_opEnds.TryGetValue(s, out var ends) && ends.Left;
-    private static bool EndsWithOp(string s) => s_opEnds.TryGetValue(s, out var ends) && ends.Right;
-
-    /// <summary>
-    /// Enters <paramref name="s"/>'s ends. A string already entered keeps its
-    /// own: concatenating an empty string returns the other operand itself,
-    /// whose ends are its own and must not be overwritten.
-    /// </summary>
-    private static string WithOpEnds(string s, bool left, bool right)
-    {
-        if ((left || right) && s.Length > 0) s_opEnds.TryAdd(s, new OpEnds(left, right));
-        return s;
-    }
+    /// <summary>A piece with the same class at both ends.</summary>
+    private static UnicodeMath Atom(string text, MathAtomClass atomClass)
+        => new(text) { First = atomClass, Last = atomClass };
 
     // Binary relations (\approx \leq \geq \neq \equiv \ll \gg \in \notin
     // \subset \to \leftarrow \rightarrow \pm \mp). Arg1 is the rel token's
     // raw bytes; RenderCommand looks up the bare glyph and the format
     // string places the outer spaces structurally.
-    public string Visit(Rel node) =>
-        $"{node.Arg0.Content} {RenderCommand((string)node.Arg1.Content)} {node.Arg2.Content}";
+    public UnicodeMath Visit(Rel node)
+        => Joined(node.Arg0, $" {RenderCommand((string)node.Arg1.Content)} ", node.Arg2);
 
     // A script leaves its base's class alone, as in TeX: \sin^2 x is sin² x.
-    public string Visit(Sup node) => Scripted((string)node.Arg0.Content,
-        TryUnicodeScript((string)node.Arg2.Content, Superscripts, out var sup)
-            ? $"{node.Arg0.Content}{sup}"
-            : $"{node.Arg0.Content}^{Wrap((string)node.Arg2.Content)}");
+    public UnicodeMath Visit(Sup node)
+    {
+        var @base = Of(node.Arg0);
+        var script = TextOf(node.Arg2);
+        var text = TryUnicodeScript(script, Superscripts, out var sup)
+            ? $"{@base.Text}{sup}"
+            : $"{@base.Text}^{Wrap(script)}";
+        return @base with { Text = text };
+    }
 
-    public string Visit(Subscript node) => Scripted((string)node.Arg0.Content,
-        TryUnicodeScript((string)node.Arg2.Content, Subscripts, out var sub)
-            ? $"{node.Arg0.Content}{sub}"
-            : $"{node.Arg0.Content}_{Wrap((string)node.Arg2.Content)}");
+    public UnicodeMath Visit(Subscript node)
+    {
+        var @base = Of(node.Arg0);
+        var script = TextOf(node.Arg2);
+        var text = TryUnicodeScript(script, Subscripts, out var sub)
+            ? $"{@base.Text}{sub}"
+            : $"{@base.Text}_{Wrap(script)}";
+        return @base with { Text = text };
+    }
 
-    private static string Scripted(string @base, string scripted)
-        => WithOpEnds(scripted, left: StartsWithOp(@base), right: EndsWithOp(@base));
+    public UnicodeMath Visit(Number node)   => new((string)node.Arg0.Content);
+    public UnicodeMath Visit(Variable node) => new((string)node.Arg0.Content);
 
-    public string Visit(Number node)   => (string)node.Arg0.Content;
-    public string Visit(Variable node) => (string)node.Arg0.Content;
-
-    public string Visit(Command node)
+    // An operator name is an Op; a spacing macro is space, which takes no
+    // further space round it; everything else is an ordinary atom.
+    public UnicodeMath Visit(Command node)
     {
         var raw = (string)node.Arg0.Content;
-        var rendered = RenderCommand(raw);
-        return OperatorNames.Contains(raw.TrimStart('\\')) ? WithOpEnds(rendered, left: true, right: true) : rendered;
+        var name = raw.TrimStart('\\');
+        var atomClass = OperatorNames.Contains(name) ? MathAtomClass.Op
+            : name is "quad" or "qquad" ? MathAtomClass.Glue
+            : MathAtomClass.Ord;
+        return Atom(RenderCommand(raw), atomClass);
     }
 
     // \operatorname{X} is X, spaced as an operator name. The token holds the
     // braced name; any placeholder in it is spliced back after the parse.
-    public string Visit(OperatorName node) =>
-        WithOpEnds(MarkdownMacros.BracedArgument((string)node.Arg0.Content).Trim(), left: true, right: true);
+    public UnicodeMath Visit(OperatorName node) =>
+        Atom(MarkdownMacros.BracedArgument((string)node.Arg0.Content).Trim(), MathAtomClass.Op);
 
     // \textrm{X} is X, blanks and all.
-    public string Visit(TextRm node) => MarkdownMacros.BracedArgument((string)node.Arg0.Content);
+    public UnicodeMath Visit(TextRm node) => new(MarkdownMacros.BracedArgument((string)node.Arg0.Content));
 
     // \mathbb{X}: X's Latin letters and digits double-struck, ℝ for R, from
     // wherever Unicode put each (Letterlike Symbols for ℂ ℍ ℕ ℙ ℚ ℝ ℤ). The
     // letters of a \name in X (a placeholder still to be spliced back) stay.
-    public string Visit(MathBb node)
+    public UnicodeMath Visit(MathBb node)
     {
-        var text = (string)node.Arg1.Content;
+        var text = TextOf(node.Arg1);
         var sb = new StringBuilder(text.Length * 2);
         var inName = false;
         foreach (var c in text)
@@ -155,41 +156,53 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
             else
                 sb.Append(c);
         }
-        return sb.ToString();
+        return new UnicodeMath(sb.ToString());
     }
 
-    public string Visit(Paren node) => $"({node.Arg1.Content})";
-    // { E } is E, and to its neighbours one ordinary atom, as in TeX: a copy
-    // of an operator name's string carries none of its ends, so {\sin} x is
-    // sinx.
-    public string Visit(Group node)
+    public UnicodeMath Visit(Paren node) => Delimited("(", node.Arg1, ")");
+
+    // { E } is E, and to its neighbours one ordinary atom, as in TeX, where
+    // an end would otherwise be an operator name's: {\sin} x is sinx.
+    public UnicodeMath Visit(Group node)
     {
-        var inner = (string)node.Arg1.Content;
-        return StartsWithOp(inner) || EndsWithOp(inner) ? new string(inner.AsSpan()) : inner;
+        var inner = Of(node.Arg1);
+        return inner with
+        {
+            First = inner.First == MathAtomClass.Op ? MathAtomClass.Ord : inner.First,
+            Last = inner.Last == MathAtomClass.Op ? MathAtomClass.Ord : inner.Last,
+        };
     }
 
     // \{E\}, a set, keeps its braces. MarkdownMacros.RenderMathUnicode lexes
     // a balanced pair, so it gets here; an unbalanced one ("\{x") does not
     // parse, and is rendered again with each brace a placeholder atom.
-    public string Visit(Brace node) => $"{{{node.Arg1.Content}}}";
+    public UnicodeMath Visit(Brace node) => Delimited("{", node.Arg1, "}");
 
     // (), [] or \{\} as written, an escaped brace without its backslash.
-    public string Visit(EmptyPair node) =>
-        ((string)node.Arg0.Content).TrimStart('\\') + ((string)node.Arg1.Content).TrimStart('\\');
+    public UnicodeMath Visit(EmptyPair node) => new UnicodeMath(
+        ((string)node.Arg0.Content).TrimStart('\\') + ((string)node.Arg1.Content).TrimStart('\\'))
+    {
+        First = MathAtomClass.Open,
+        Last = MathAtomClass.Close,
+    };
 
     // \mathrm{X} is X: a terminal row has no italic to switch off, so the
     // argument renders exactly as it would bare.
-    public string Visit(MathRm node) => (string)node.Arg1.Content;
+    public UnicodeMath Visit(MathRm node) => Of(node.Arg1);
 
     // [E], [E) and (E]: Arg0 and Arg2 are the delimiters as written.
-    public string Visit(Bracket node) => $"{node.Arg0.Content}{node.Arg1.Content}{node.Arg2.Content}";
+    public UnicodeMath Visit(Bracket node)
+        => Delimited((string)node.Arg0.Content, node.Arg1, (string)node.Arg2.Content);
+
+    private static UnicodeMath Delimited(string open, Item inner, string close)
+        => new($"{open}{TextOf(inner)}{close}") { First = MathAtomClass.Open, Last = MathAtomClass.Close };
 
     // `,` as written. Before the grammar lexed it, a comma reached the parser
     // as a placeholder atom and came back verbatim, so this keeps every
     // formula with a comma rendering exactly as it did.
-    public string Visit(Punct node) => (string)node.Arg0.Content;
+    public UnicodeMath Visit(Punct node) => Atom((string)node.Arg0.Content, MathAtomClass.Punct);
 
-    public string Visit(Sqrt node) => $"√{Wrap((string)node.Arg1.Content)}";
+    public UnicodeMath Visit(Sqrt node) => new($"√{Wrap(TextOf(node.Arg1))}");
 
     /// <summary>
     /// <c>\sqrt[n]{x}</c>. Unicode has dedicated cube and fourth roots
@@ -198,20 +211,20 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
     /// bracketed LaTeX shape after the radical, √[a + b]x, which is how such
     /// a root read before the grammar knew the index.
     /// </summary>
-    public string Visit(NthRoot node)
+    public UnicodeMath Visit(NthRoot node)
     {
-        var index = (string)node.Arg2.Content;
-        var radicand = Wrap((string)node.Arg4.Content);
-        return index switch
+        var index = TextOf(node.Arg2);
+        var radicand = Wrap(TextOf(node.Arg4));
+        return new UnicodeMath(index switch
         {
             "3" => $"∛{radicand}",
             "4" => $"∜{radicand}",
             _ when TryUnicodeScript(index, Superscripts, out var sup) => $"{sup}√{radicand}",
             _ => $"√[{index}]{radicand}",
-        };
+        });
     }
 
-    public string Visit(Frac node) => $"{Wrap((string)node.Arg1.Content)}⁄{Wrap((string)node.Arg2.Content)}";
+    public UnicodeMath Visit(Frac node) => new($"{Wrap(TextOf(node.Arg1))}⁄{Wrap(TextOf(node.Arg2))}");
 
     private static string Wrap(string s)
     {
@@ -336,7 +349,7 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
     };
 
     /// <summary>The commands in <see cref="Commands"/> that are operator
-    /// names, spaced by <see cref="SpaceBetween"/>.</summary>
+    /// names: Op atoms, spaced by <see cref="MarkdownMacros.ThinSpaceBetween"/>.</summary>
     private static readonly HashSet<string> OperatorNames = new(System.StringComparer.Ordinal)
     {
         "sin", "cos", "tan", "sec", "csc", "cot",
