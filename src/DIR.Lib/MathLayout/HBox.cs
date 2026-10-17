@@ -41,6 +41,10 @@ public sealed class HBox : Box
     public override float Height => _height;
     public override float Depth => _depth;
 
+    /// <summary>The boxes in the row, left to right. The LaTeX visitor reads
+    /// the first and last to tell which atoms meet where it joins two rows.</summary>
+    internal IReadOnlyList<Box> Children => _children;
+
     public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style)
     {
         float x = penX;
