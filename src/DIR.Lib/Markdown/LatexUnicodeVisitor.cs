@@ -17,6 +17,11 @@ public sealed record UnicodeMath(string Text)
     internal MathAtomClass First { get; init; }
     internal MathAtomClass Last { get; init; }
 
+    /// <summary>The text without the spaces an operator name put in it, where
+    /// it has any; a script whose Unicode form those spaces stop takes this
+    /// instead.</summary>
+    internal string? Tight { get; init; }
+
     public override string ToString() => Text;
 }
 
@@ -52,7 +57,7 @@ public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
     public UnicodeMath Visit(Neg node)
     {
         var inner = Of(node.Arg1);
-        return new UnicodeMath($"−{inner.Text}") { Last = inner.Last };
+        return new UnicodeMath($"−{inner.Text}") { Last = inner.Last, Tight = inner.Tight is { } t ? $"−{t}" : null };
     }
 
     /// <summary>
@@ -69,7 +74,14 @@ public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
         if (left.Text.Length == 0) return right;
         if (right.Text.Length == 0) return left;
         var space = MarkdownMacros.ThinSpaceBetween(left.Last, right.First) ? " " : "";
-        return new UnicodeMath($"{left.Text}{space}{right.Text}") { First = left.First, Last = right.Last };
+        return new UnicodeMath($"{left.Text}{space}{right.Text}")
+        {
+            First = left.First,
+            Last = right.Last,
+            Tight = space.Length > 0 || left.Tight is not null || right.Tight is not null
+                ? $"{left.Tight ?? left.Text}{right.Tight ?? right.Text}"
+                : null,
+        };
     }
 
     private static UnicodeMath Of(Item item) => (UnicodeMath)item.Content;
@@ -82,7 +94,14 @@ public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
     {
         var left = Of(leftItem);
         var right = Of(rightItem);
-        return new UnicodeMath($"{left.Text}{op}{right.Text}") { First = left.First, Last = right.Last };
+        return new UnicodeMath($"{left.Text}{op}{right.Text}")
+        {
+            First = left.First,
+            Last = right.Last,
+            Tight = left.Tight is not null || right.Tight is not null
+                ? $"{left.Tight ?? left.Text}{op}{right.Tight ?? right.Text}"
+                : null,
+        };
     }
 
     /// <summary>A piece with the same class at both ends.</summary>
@@ -96,25 +115,26 @@ public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
     public UnicodeMath Visit(Rel node)
         => Joined(node.Arg0, $" {RenderCommand((string)node.Arg1.Content)} ", node.Arg2);
 
-    // A script leaves its base's class alone, as in TeX: \sin^2 x is sin² x.
-    public UnicodeMath Visit(Sup node)
-    {
-        var @base = Of(node.Arg0);
-        var script = TextOf(node.Arg2);
-        var text = TryUnicodeScript(script, Superscripts, out var sup)
-            ? $"{@base.Text}{sup}"
-            : $"{@base.Text}^{Wrap(script)}";
-        return @base with { Text = text };
-    }
+    public UnicodeMath Visit(Sup node) => Scripted(node.Arg0, node.Arg2, Superscripts, '^');
+    public UnicodeMath Visit(Subscript node) => Scripted(node.Arg0, node.Arg2, Subscripts, '_');
 
-    public UnicodeMath Visit(Subscript node)
+    /// <summary>
+    /// A base and its script: the script in its Unicode form where every
+    /// character has one, else after <paramref name="mark"/>. An operator
+    /// name's space does not stop the Unicode form, so <c>x_{\sin x}</c> is
+    /// <c>xₛᵢₙₓ</c>; where the script's letters themselves have none, the
+    /// space stays. A script leaves its base's class alone, as in TeX:
+    /// <c>\sin^2 x</c> is <c>sin² x</c>.
+    /// </summary>
+    private static UnicodeMath Scripted(Item baseItem, Item scriptItem, IReadOnlyDictionary<char, char> table, char mark)
     {
-        var @base = Of(node.Arg0);
-        var script = TextOf(node.Arg2);
-        var text = TryUnicodeScript(script, Subscripts, out var sub)
-            ? $"{@base.Text}{sub}"
-            : $"{@base.Text}_{Wrap(script)}";
-        return @base with { Text = text };
+        var @base = Of(baseItem);
+        var script = Of(scriptItem);
+        var suffix = TryUnicodeScript(script.Text, table, out var mapped)
+                     || (script.Tight is { } tight && TryUnicodeScript(tight, table, out mapped))
+            ? mapped
+            : $"{mark}{Wrap(script.Text)}";
+        return @base with { Text = $"{@base.Text}{suffix}", Tight = @base.Tight is { } t ? $"{t}{suffix}" : null };
     }
 
     public UnicodeMath Visit(Number node)   => new((string)node.Arg0.Content);
@@ -164,7 +184,11 @@ public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
     // { E } is E, and to its neighbours one ordinary atom, as in TeX and on
     // the box path, whatever E's own ends are: {\sin} x is sinx, and
     // \sin{(x)} is sin (x).
-    public UnicodeMath Visit(Group node) => new(TextOf(node.Arg1));
+    public UnicodeMath Visit(Group node)
+    {
+        var inner = Of(node.Arg1);
+        return new UnicodeMath(inner.Text) { Tight = inner.Tight };
+    }
 
     // \{E\}, a set, keeps its braces. MarkdownMacros.RenderMathUnicode lexes
     // a balanced pair, so it gets here; an unbalanced one ("\{x") does not
