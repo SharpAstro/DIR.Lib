@@ -427,6 +427,30 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
     public void UnicodePath_NoSpaceBeforeAnOpeningDelimiter(string latex, string expected)
         => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
 
+    /// <summary>
+    /// A braced group is an Ord on the Unicode path as on the box path, so a
+    /// bracket in braces after an operator name is set off by the space the
+    /// box path's thin space shows as: <c>\sin{(x)}</c> is <c>sin (x)</c>,
+    /// while <c>\sin(x)</c> stays tight.
+    /// </summary>
+    [Theory]
+    [InlineData(@"\sin{(x)}", "sin (x)")]
+    [InlineData(@"\sin{[x]}", "sin [x]")]
+    [InlineData(@"\sin(x)", "sin(x)")]
+    public void UnicodePath_BracedBracketIsAnOrdinaryAtom(string latex, string expected)
+        => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
+
+    /// <summary>The box path's side of the same: the thin space is there.</summary>
+    [Theory]
+    [InlineData("STIX2Math")]
+    [InlineData("DejaVuSans")]
+    public void BracedBracket_AfterAnOperatorName_TakesTheThinSpace(string font)
+    {
+        var style = StyleFor(font);
+        var gap = Width(@"\sin{(x)}", style) - Width(@"\sin", style) - Width("(x)", style);
+        gap.ShouldBe(Thin, HalfPixel);
+    }
+
     // ── Renders for the eye ────────────────────────────────────────────
 
     /// <summary>
