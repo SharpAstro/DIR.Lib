@@ -161,17 +161,10 @@ public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
 
     public UnicodeMath Visit(Paren node) => Delimited("(", node.Arg1, ")");
 
-    // { E } is E, and to its neighbours one ordinary atom, as in TeX, where
-    // an end would otherwise be an operator name's: {\sin} x is sinx.
-    public UnicodeMath Visit(Group node)
-    {
-        var inner = Of(node.Arg1);
-        return inner with
-        {
-            First = inner.First == MathAtomClass.Op ? MathAtomClass.Ord : inner.First,
-            Last = inner.Last == MathAtomClass.Op ? MathAtomClass.Ord : inner.Last,
-        };
-    }
+    // { E } is E, and to its neighbours one ordinary atom, as in TeX and on
+    // the box path, whatever E's own ends are: {\sin} x is sinx, and
+    // \sin{(x)} is sin (x).
+    public UnicodeMath Visit(Group node) => new(TextOf(node.Arg1));
 
     // \{E\}, a set, keeps its braces. MarkdownMacros.RenderMathUnicode lexes
     // a balanced pair, so it gets here; an unbalanced one ("\{x") does not
