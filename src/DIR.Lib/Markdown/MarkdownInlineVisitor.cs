@@ -45,7 +45,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
             using var tokens = new global::LALR.CC.LexicalGrammar.SyncLATokenIterator(lexer);
             var result = s_parser.ParseInput(tokens, debugger: null);
             if (result.IsError) return Array.Empty<MdInline>();
-            var flat = result.Content as IReadOnlyList<MdInline> ?? Array.Empty<MdInline>();
+            var flat = result.Content is SpansBuilder spans ? spans.ToList() : Array.Empty<MdInline>();
             return Process(flat);
         }
         catch (global::LALR.CC.ParseErrorException)
@@ -97,7 +97,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     /// state pops.</para>
     /// <para>A link, image or colour label is parsed on its own: its
     /// <c>[</c> opens before any math in it, so an opener inside the label
-    /// pairs only inside it. The label is found first (<see cref="LabelEnd"/>),
+    /// pairs only inside it. The label is found first (<c>LabelEnd</c>),
     /// the way a code span is. A math span that opens before the <c>[</c>
     /// runs to its own closer and takes the bracket with it; the bracket
     /// or link tail it leaves with no <c>[</c> is then text.</para>
@@ -227,7 +227,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                     {
                         bool image = s[i] == '!';
                         int label = i + (image ? 2 : 1);
-                        int close = LabelEnd(s, label);
+                        int close = LabelEnd(label);
                         char tail = close > 0 && close < bound ? At(s, close + 1) : '\0';
                         if (image && tail == '{')
                         {
@@ -237,7 +237,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                             i++;
                             break;
                         }
-                        int tailEnd = tail is '(' or '{' ? TailEnd(s, close, bound) : -1;
+                        int tailEnd = tail is '(' or '{' ? TailEnd(close, bound) : -1;
                         if (tailEnd > 0)
                         {
                             // The label is a region of its own; this one
@@ -259,7 +259,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                     case ']':
                     {
                         bool hasTail = At(s, i + 1) is '(' or '{';
-                        int tailEnd = hasTail ? TailEnd(s, i, bound) : -1;
+                        int tailEnd = hasTail ? TailEnd(i, bound) : -1;
                         if (open is not { Count: > 0 } || (hasTail && tailEnd < 0))
                         {
                             // No `[` for this bracket (or a math span took
@@ -290,58 +290,90 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
             foreach (int at in textDollars!) Mark(at, UnpairedDollar);
         }
 
+        // Index of the `]` that closes the bracket whose label starts at
+        // `from`, or -1 when none does. Brackets nest. A code span, a `\X`
+        // pair, and a link's URL or a colour's value hide the brackets they
+        // hold, as they do from the lexer; a `]` whose tail never closes is
+        // text, as Walk makes it. Math does not: the label is found before
+        // the math in it is paired, so a `$` in the label cannot carry its
+        // bracket away. One scan records the `]` of every `[` it passes,
+        // which a scan from that `[` would find the same way, so each part
+        // of the text is scanned once however many `[` it holds.
+        int[]? labelEnds = null;   // by label start: 0 not known, -1 none, else the `]` + 1
+
+        int LabelEnd(int from)
+        {
+            var ends = labelEnds ??= new int[s.Length + 1];
+            if (ends[from] == 0) ScanLabels(ends, from);
+            return ends[from] - 1 < 0 ? -1 : ends[from] - 1;
+        }
+
+        void ScanLabels(int[] ends, int from)
+        {
+            var starts = new List<int> { from };   // labels still open, innermost last
+            for (int k = from; k < s.Length; k++)
+            {
+                switch (s[k])
+                {
+                    case '\\':
+                        k++;
+                        break;
+                    case '`':
+                    {
+                        int end = CodeSpanEnd(s, k);
+                        k = (end > 0 ? end : k + FenceLength(s, k)) - 1;
+                        break;
+                    }
+                    case '[':
+                    {
+                        int known = ends[k + 1];
+                        if (known < 0)
+                        {
+                            // It never closes, so every `]` after it closes
+                            // something inside it, and no label open here
+                            // closes either.
+                            foreach (int start in starts) ends[start] = -1;
+                            return;
+                        }
+                        starts.Add(k + 1);
+                        if (known > 0) k = known - 2;   // on to its `]`, scanned already
+                        break;
+                    }
+                    case ']':
+                    {
+                        int tailEnd = At(s, k + 1) is '(' or '{' ? TailEnd(k, s.Length) : 0;
+                        if (tailEnd < 0) break;   // text
+                        ends[starts[^1]] = k + 1;
+                        starts.RemoveAt(starts.Count - 1);
+                        if (starts.Count == 0) return;
+                        if (tailEnd > 0) k = tailEnd - 1;
+                        break;
+                    }
+                }
+            }
+            foreach (int start in starts) ends[start] = -1;
+        }
+
+        // End (exclusive) of the link or colour tail whose `]` is at
+        // `close`, or -1 when it never closes before `bound`: url_body and
+        // color_body run to the next `)` or `}`, found by binary search
+        // over where each one is.
+        int[]? parens = null, braces = null;
+
+        int TailEnd(int close, int bound)
+        {
+            int[] closers = s[close + 1] == '('
+                ? parens ??= PositionsOf(s, ')')
+                : braces ??= PositionsOf(s, '}');
+            int at = Array.BinarySearch(closers, close + 2);
+            if (at < 0) at = ~at;
+            return at < closers.Length && closers[at] < bound ? closers[at] + 1 : -1;
+        }
+
         Walk();
         return marked is null ? s : new string(marked);
     }
 
-    /// <summary>Index of the <c>]</c> that closes the bracket whose label
-    /// starts at <paramref name="from"/>, or -1 when none does. Brackets
-    /// nest. A code span, a <c>\X</c> pair, and a link's URL or a colour's
-    /// value hide the brackets they hold, as they do from the lexer; a
-    /// <c>]</c> whose tail never closes is text, as <see cref="MarkUnpaired"/>
-    /// makes it. Math does not: the label is found before the math in it
-    /// is paired, so a <c>$</c> in the label cannot carry its bracket away.</summary>
-    private static int LabelEnd(string s, int from)
-    {
-        int depth = 0;
-        for (int k = from; k < s.Length; k++)
-        {
-            switch (s[k])
-            {
-                case '\\':
-                    k++;
-                    break;
-                case '`':
-                {
-                    int end = CodeSpanEnd(s, k);
-                    k = (end > 0 ? end : k + FenceLength(s, k)) - 1;
-                    break;
-                }
-                case '[':
-                    depth++;
-                    break;
-                case ']':
-                {
-                    int tailEnd = At(s, k + 1) is '(' or '{' ? TailEnd(s, k) : 0;
-                    if (tailEnd < 0) break;   // text
-                    if (depth-- == 0) return k;
-                    if (tailEnd > 0) k = tailEnd - 1;
-                    break;
-                }
-            }
-        }
-        return -1;
-    }
-
-    /// <summary>End (exclusive) of the link or colour tail whose <c>]</c>
-    /// is at <paramref name="close"/>, or -1 when it never closes (before
-    /// <paramref name="bound"/>, when one is given): url_body and
-    /// color_body run to the next <c>)</c> or <c>}</c>.</summary>
-    private static int TailEnd(string s, int close, int bound = int.MaxValue)
-    {
-        int end = s.IndexOf(s[close + 1] == '(' ? ')' : '}', close + 2);
-        return end < 0 || end >= bound ? -1 : end + 1;
-    }
 
     /// <summary>End (exclusive) of the <c>$..$</c> span opening at
     /// <paramref name="i"/> and closing before <paramref name="bound"/>, or
@@ -525,6 +557,13 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
 
     private static char At(string s, int i) => i < s.Length ? s[i] : '\0';
 
+    private static int[] PositionsOf(string s, char c)
+    {
+        var positions = new List<int>();
+        for (int k = s.IndexOf(c); k >= 0; k = s.IndexOf(c, k + 1)) positions.Add(k);
+        return positions.ToArray();
+    }
+
     private static bool IsLoneCarriageReturn(string s, int i) => At(s, i) == '\r' && At(s, i + 1) != '\n';
 
     /// <summary>Turns <see cref="MarkUnpaired"/>'s stand-ins back into
@@ -583,19 +622,17 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
             hasAdjacent = src[i] is MdLiteral && src[i + 1] is MdLiteral;
         if (!hasAdjacent) return src;
 
+        // Each run of literals is joined once: concatenating them pairwise
+        // copied the growing text again for every literal in the run.
         var result = new List<MdInline>(src.Count);
-        foreach (var s in src)
+        for (int i = 0; i < src.Count;)
         {
-            if (s is MdLiteral lit
-                && result.Count > 0
-                && result[result.Count - 1] is MdLiteral prev)
-            {
-                result[result.Count - 1] = new MdLiteral(prev.Text + lit.Text);
-            }
-            else
-            {
-                result.Add(s);
-            }
+            int run = i + 1;
+            while (src[i] is MdLiteral && run < src.Count && src[run] is MdLiteral) run++;
+            if (run == i + 1) { result.Add(src[i++]); continue; }
+            var text = new StringBuilder();
+            for (; i < run; i++) text.Append(((MdLiteral)src[i]).Text);
+            result.Add(new MdLiteral(text.ToString()));
         }
         return result;
     }
@@ -694,17 +731,34 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
 
     // ── Span-list assembly (epsilon-base + cons recursion) ────────────
 
-    public object Visit(MarkdownInline.SpansEmpty node) =>
-        (IReadOnlyList<MdInline>)Array.Empty<MdInline>();
+    public object Visit(MarkdownInline.SpansEmpty node) => new SpansBuilder();
 
-    public object Visit(MarkdownInline.SpansCons node)
+    public object Visit(MarkdownInline.SpansCons node) =>
+        ((SpansBuilder)node.Arg1.Content).Prepend((MdInline)node.Arg0.Content);
+
+    /// <summary>A <c>Spans</c> being reduced. The rule is right-recursive,
+    /// so its spans arrive last first, and prepending each one to a copy
+    /// of the rest made a paragraph's assembly quadratic in its spans. They
+    /// are gathered back to front instead and put in order once.</summary>
+    private sealed class SpansBuilder
     {
-        var head = (MdInline)node.Arg0.Content;
-        var tail = (IReadOnlyList<MdInline>)node.Arg1.Content;
-        var list = new List<MdInline>(tail.Count + 1) { head };
-        list.AddRange(tail);
-        return (IReadOnlyList<MdInline>)list;
+        private readonly List<MdInline> _backToFront = new();
+
+        public SpansBuilder Prepend(MdInline span)
+        {
+            _backToFront.Add(span);
+            return this;
+        }
+
+        public IReadOnlyList<MdInline> ToList()
+        {
+            var spans = new List<MdInline>(_backToFront);
+            spans.Reverse();
+            return spans;
+        }
     }
+
+    private static IReadOnlyList<MdInline> SpansOf(object content) => ((SpansBuilder)content).ToList();
 
     // ── Plain text ────────────────────────────────────────────────────
 
@@ -826,7 +880,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
         // `[text]` with no link/color tail — surface as literal text
         // including the brackets. Inline content inside the brackets
         // is preserved so e.g. `[**bold**]` still emphasises.
-        var inner = (IReadOnlyList<MdInline>)node.Arg1.Content;
+        var inner = SpansOf(node.Arg1.Content);
         var list = new List<MdInline>(inner.Count + 2)
         {
             new MdLiteral("["),
@@ -844,7 +898,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
 
     public object Visit(MarkdownInline.LinkSpan node)
     {
-        var text = Process((IReadOnlyList<MdInline>)node.Arg1.Content);
+        var text = Process(SpansOf(node.Arg1.Content));
         var url = (string)node.Arg3.Content;
         return new MdLink(text, url);
     }
@@ -854,14 +908,14 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     // production reuses the link tail tokens, differing only in the opener.
     public object Visit(MarkdownInline.ImageSpan node)
     {
-        var alt = Process((IReadOnlyList<MdInline>)node.Arg1.Content);
+        var alt = Process(SpansOf(node.Arg1.Content));
         var url = (string)node.Arg3.Content;
         return new MdImage(alt, url);
     }
 
     public object Visit(MarkdownInline.ColorSpan node)
     {
-        var text = Process((IReadOnlyList<MdInline>)node.Arg1.Content);
+        var text = Process(SpansOf(node.Arg1.Content));
         var color = (string)node.Arg3.Content;
         return new MdColor(text, color);
     }
@@ -873,16 +927,16 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     // spans around it.
 
     public object Visit(MarkdownInline.LinkSpanEmpty node) =>
-        new MdLink(Process((IReadOnlyList<MdInline>)node.Arg1.Content), string.Empty);
+        new MdLink(Process(SpansOf(node.Arg1.Content)), string.Empty);
 
     public object Visit(MarkdownInline.ImageSpanEmpty node) =>
-        new MdImage(Process((IReadOnlyList<MdInline>)node.Arg1.Content), string.Empty);
+        new MdImage(Process(SpansOf(node.Arg1.Content)), string.Empty);
 
     // `[]{}` has no label to show either, so it stays its own text rather
     // than flattening to nothing.
     public object Visit(MarkdownInline.ColorSpanEmpty node)
     {
-        var label = Process((IReadOnlyList<MdInline>)node.Arg1.Content);
+        var label = Process(SpansOf(node.Arg1.Content));
         return label.Count == 0 ? new MdLiteral("[]{}") : new MdGroup(label);
     }
 
