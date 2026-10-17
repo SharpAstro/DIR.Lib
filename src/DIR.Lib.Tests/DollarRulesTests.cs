@@ -312,6 +312,27 @@ public sealed class DollarRulesTests
         else node.ShouldBeOfType<MdMathInline>().Source.ShouldBe("x");
     }
 
+    // ── The label scan is linear ─────────────────────────────────────
+    //
+    // Finding a label's `]` once per `[`, each scan running to the partner or to the end, was
+    // quadratic: 16,000 copies of `a[b ` took seconds. 64k characters of brackets that never
+    // pair must parse in well under a second.
+
+    [Theory]
+    [InlineData("a[b ")]
+    [InlineData("[a](b ")]   // and tails that never close
+    public void ManyUnpairedBrackets_ParseInLinearTime(string unit)
+    {
+        var source = string.Concat(Enumerable.Repeat(unit, 64_000 / unit.Length));
+        var parser = new MarkdownInlineVisitor();
+        parser.Parse(unit);   // JIT and the static parser tables
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var spans = parser.Parse(source);
+        clock.Stop();
+        spans.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe(source);
+        clock.ElapsedMilliseconds.ShouldBeLessThan(500);
+    }
+
     // ── A link or colour tail that never closes is text ──────────────
 
     [Theory]
