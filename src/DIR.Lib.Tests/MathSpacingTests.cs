@@ -193,6 +193,62 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
         gap.ShouldBe(Thin, HalfPixel);
     }
 
+    /// <summary>
+    /// The named limit operators are drawn at the body size with their limit
+    /// below, as TeX draws them; only the symbol big operators grow. Before,
+    /// every one of these names was drawn at 1.5 times the body size. LaTeX
+    /// gives <c>\Pr</c> limits in display style too.
+    /// </summary>
+    [Theory]
+    [InlineData(@"\lim", "lim")]
+    [InlineData(@"\sup", "sup")]
+    [InlineData(@"\inf", "inf")]
+    [InlineData(@"\max", "max")]
+    [InlineData(@"\min", "min")]
+    [InlineData(@"\limsup", "lim sup")]
+    [InlineData(@"\liminf", "lim inf")]
+    [InlineData(@"\argmax", "argmax")]
+    [InlineData(@"\argmin", "argmin")]
+    [InlineData(@"\det", "det")]
+    [InlineData(@"\gcd", "gcd")]
+    [InlineData(@"\Pr", "Pr")]
+    public void NamedLimitOperator_AtBodySize_LimitBelow(string command, string name)
+    {
+        foreach (var font in new[] { "STIX2Math", "DejaVuSans" })
+        {
+            var atoms = AtomsOf(command + "_{n}", StyleFor(font));
+            var op = atoms.Single(a => a.Text == name);
+            op.Box.ShouldBeOfType<GlyphBox>().FontSize.ShouldBe(FontSize, $"{command} in {font}");
+            var limit = atoms.Single(a => a.Text != name);
+            limit.BaselineY.ShouldBeGreaterThan(op.BaselineY, $"{command}'s limit should sit below it in {font}");
+            limit.Left.ShouldBeLessThan(op.Right, $"{command}'s limit should sit under it, not after it, in {font}");
+        }
+    }
+
+    /// <summary>The symbol big operators keep their display size.</summary>
+    [Theory]
+    [InlineData(@"\sum_{n}", "∑")]
+    [InlineData(@"\int_{n}", "∫")]
+    public void SymbolBigOperator_KeepsItsDisplaySize(string latex, string glyph)
+    {
+        var op = AtomsOf(latex, Stix).Single(a => a.Text == glyph);
+        op.Box.ShouldBeOfType<GlyphBox>().FontSize.ShouldBe(FontSize * 1.5f);
+    }
+
+    /// <summary><c>\operatorname*{lim}</c> and <c>\lim</c> are the same operator.</summary>
+    [Theory]
+    [InlineData("STIX2Math")]
+    [InlineData("DejaVuSans")]
+    public void StarredOperatorName_DrawsAsTheBuiltInLimitOperator(string font)
+    {
+        var style = StyleFor(font);
+        var starred = BoxRasterizer.RenderToRgba(BuildBox(@"\operatorname*{lim}_{n \to \infty} a_n", style).ShouldNotBeNull(), style);
+        var builtIn = BoxRasterizer.RenderToRgba(BuildBox(@"\lim_{n \to \infty} a_n", style).ShouldNotBeNull(), style);
+        starred.Width.ShouldBe(builtIn.Width);
+        starred.Height.ShouldBe(builtIn.Height);
+        starred.Pixels.ShouldBe(builtIn.Pixels);
+    }
+
     // ── \operatorname and \textrm ──────────────────────────────────────
 
     /// <summary>
