@@ -390,17 +390,23 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
     {
         var raw = (string)node.Arg0.Content;
         var name = raw.Length > 1 && raw[0] == '\\' ? raw.Substring(1) : raw;
-        var isOperatorName = MarkdownMacros.OperatorNames.TryGetValue(name, out var opName);
-        var glyph = isOperatorName ? opName! : Commands.TryGetValue(name, out var g) ? g : raw;
-        if (LimitOps.Contains(name))
+        if (MarkdownMacros.OperatorNames.TryGetValue(name, out var opName))
+        {
+            // A named limit operator (\lim, \max) wraps its name, at the body
+            // size as TeX draws it, in a scaffold so subsequent _/^ scripts
+            // fold into a LimitsBox (limits above/below) instead of a
+            // SupSubBox (right-of).
+            if (MarkdownMacros.LimitOperatorNames.Contains(name))
+                return style => new BigOpScaffold(new GlyphBox(opName, style), null, null, style);
+            return style => new AtomBox(new GlyphBox(opName, style), AtomClass.Op);
+        }
+        var glyph = Commands.TryGetValue(name, out var g) ? g : raw;
+        if (BigOperators.Contains(name))
         {
             // Display-style big operator: render the glyph at 1.5x and wrap
-            // in a scaffold so subsequent _/^ scripts fold into a LimitsBox
-            // (limits above/below) instead of a SupSubBox (right-of).
+            // in a scaffold, as for a named limit operator.
             return style => new BigOpScaffold(new GlyphBox(glyph, style, style.FontSize * 1.5f), null, null, style);
         }
-        if (isOperatorName)
-            return style => new AtomBox(new GlyphBox(glyph, style), AtomClass.Op);
         return style => new GlyphBox(glyph, style);
     }
 
@@ -577,16 +583,16 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
     };
 
     /// <summary>
-    /// Commands that take their <c>_</c>/<c>^</c> as below/above limits in
-    /// display style (the LimitsBox rendering) rather than as right-of
-    /// scripts. Big operators (∑ ∏ ∫ ∮ ⋃ ⋂) plus the limit-style functions
-    /// (lim sup inf max min etc.).
+    /// The symbol big operators (∑ ∏ ∫ ∮ ⋃ ⋂): drawn at 1.5 times the body
+    /// size, as TeX's display style draws them, with their <c>_</c>/<c>^</c>
+    /// as below/above limits (the LimitsBox rendering) rather than as
+    /// right-of scripts. The named ones that take limits (<c>\lim</c>,
+    /// <c>\max</c>, ...) are <see cref="MarkdownMacros.LimitOperatorNames"/>,
+    /// at the body size.
     /// </summary>
-    private static readonly HashSet<string> LimitOps = new(System.StringComparer.Ordinal)
+    private static readonly HashSet<string> BigOperators = new(System.StringComparer.Ordinal)
     {
         "sum", "prod", "int", "oint", "bigcup", "bigcap",
-        "lim", "limsup", "liminf", "max", "min", "sup", "inf",
-        "argmax", "argmin", "det", "gcd",
     };
 
     /// <summary>
