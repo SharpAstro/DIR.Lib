@@ -362,7 +362,7 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
     }
 
     /// <summary>
-    /// { E } in LaTeX is an invisible group — render the inner E unchanged.
+    /// { E } in LaTeX is an invisible group: render the inner E unchanged.
     /// To its neighbours it is one Ord atom, as in TeX, whatever its own ends
     /// are, so <c>{\sin} x</c> is set tight; a group whose ends are ordinary
     /// already is returned as it is.
