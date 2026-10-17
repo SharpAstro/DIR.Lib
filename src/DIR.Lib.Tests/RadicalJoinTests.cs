@@ -531,10 +531,11 @@ public sealed partial class RadicalJoinTests
     }
 
     /// <summary>
-    /// An index stays where the layout lifted it, so where the radicand's ink raises the glyph, the V's left arm
-    /// rises towards the index. At every swept size, in both fonts, the clear pixels between the index's ink and
-    /// the glyph's (<see cref="IndexClearance"/>) are never fewer than at fe09d4a. Every failing point is
-    /// listed in the one message.
+    /// Where the radicand's ink raises the glyph, the index rises with it by the same rows, and where the
+    /// reserved gap row lifts the glyph, the index's lift grows by that whole row; an index left behind would
+    /// have the V's left arm rise towards it. At every swept size, in both fonts, the clear pixels between the
+    /// index's ink and the glyph's (<see cref="IndexClearance"/>) are never fewer than at fe09d4a. Every
+    /// failing point is listed in the one message.
     /// </summary>
     [Fact]
     public void TheIndexKeepsItsClearanceFromTheGlyph()
