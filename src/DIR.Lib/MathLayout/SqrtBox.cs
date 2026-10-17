@@ -298,6 +298,9 @@ public sealed class SqrtBox : Box
         // \sqrt{2} at 7.6 px) still puts the bar a row above the box.
         _raiseRowReserve = (_radicalFont is not null || HasScaledGlyph) && _gapRows <= 2 ? 1 : 0;
         float radicalD;
+        // The depth the radical would have without the reserved gap row,
+        // which the index's lift is figured on (see below).
+        float depthWithoutReserve;
         if (_radicalFont is not null)
         {
             // flag-top-Y = baselineY − radicand.Height − gap − reserve − ruleThickness
@@ -328,6 +331,7 @@ public sealed class SqrtBox : Box
             // the radicand is the deeper the depth keeps that row, as far as
             // the radicand reaches.
             radicalD = MathF.Max(_radicalGlyphDepth, MathF.Min(radicand.Depth, _radicalGlyphDepth + _gapRowReserve));
+            depthWithoutReserve = _radicalGlyphDepth + _gapRowReserve;
         }
         else if (HasScaledGlyph)
         {
@@ -345,6 +349,7 @@ public sealed class SqrtBox : Box
             // without it, a fraction's bar can clip through the V's
             // bottom (the visible bug in `\frac{\sqrt{\pi}}{2}`).
             radicalD = MathF.Max(radicand.Depth, _radicalScaled.Height - _radicalH);
+            depthWithoutReserve = MathF.Max(radicand.Depth, _radicalScaled.Height - (_radicalH - _gapRowReserve));
         }
         else
         {
@@ -353,6 +358,7 @@ public sealed class SqrtBox : Box
             // radicand, so depth = radicand.Depth.
             _radicalH = radicand.Height + _gap + VinculumThickness;
             radicalD = radicand.Depth;
+            depthWithoutReserve = radicalD;
         }
         if (index is not null)
         {
@@ -416,9 +422,15 @@ public sealed class SqrtBox : Box
             // the radical's bottom. Convert to "lift above box baseline":
             //   indexBottomLift = raisePct·(H+D) − D
             //   indexBaselineLift = indexBottomLift + index.Depth
-            var totalH = _radicalH + radicalD;
-            var indexBottomLift = raisePct * totalH - radicalD;
-            _indexBaselineLift = indexBottomLift + index.Depth;
+            // Figured on the radical without the reserved gap row, which
+            // lifts the glyph a whole row against the baseline, and then
+            // lifted by that row too: the index moves with the glyph rather
+            // than by raisePct of the row, which where the radicand sets the
+            // depth left the V's arm a pixel nearer it.
+            var glyphReserve = _radicalFont is not null || HasScaledGlyph ? _gapRowReserve : 0;
+            var totalH = _radicalH - glyphReserve + depthWithoutReserve;
+            var indexBottomLift = raisePct * totalH - depthWithoutReserve;
+            _indexBaselineLift = indexBottomLift + index.Depth + glyphReserve;
 
             // Cap the lift so the index's top edge sits at-or-below the
             // ACTUAL vinculum (which is at _radicalH − flagTopRow above
@@ -634,18 +646,21 @@ public sealed class SqrtBox : Box
 
     public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style)
     {
+        // Everything radical-side shifts right by _radicalShiftX (zero in the
+        // no-index case), which JoinAt and RadicandX fold in.
+        var join = JoinAt(penX, baselineY, style);
         if (_index is not null)
         {
             // Index draws first, at its raised position. The index uses its
             // own (caller-supplied) BoxStyle — typically the parent style's
             // Smaller().Smaller() — so the small "n" is rasterized at the
-            // appropriate em size; we just place the box.
-            _index.Draw(renderer, penX + _indexX, baselineY - _indexBaselineLift, style);
+            // appropriate em size; we just place the box. Where the radicand's
+            // ink raised the glyph, the index rises with it, so the V's arm
+            // keeps its distance from the index.
+            _index.Draw(renderer, penX + _indexX, baselineY - _indexBaselineLift - (join?.InkRaise ?? 0), style);
         }
 
-        // Everything radical-side shifts right by _radicalShiftX (zero in the
-        // no-index case), which JoinAt and RadicandX fold in.
-        if (JoinAt(penX, baselineY, style) is { } join)
+        if (join is not null)
         {
             DrawWithGlyph(renderer, join, RadicandX(penX), baselineY, style);
             return;
