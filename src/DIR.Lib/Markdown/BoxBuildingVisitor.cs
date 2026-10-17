@@ -323,7 +323,8 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
     {
         var raw = (string)node.Arg0.Content;
         var name = raw.Length > 1 && raw[0] == '\\' ? raw.Substring(1) : raw;
-        var glyph = Commands.TryGetValue(name, out var g) ? g : raw;
+        var isOperatorName = MarkdownMacros.OperatorNames.TryGetValue(name, out var opName);
+        var glyph = isOperatorName ? opName! : Commands.TryGetValue(name, out var g) ? g : raw;
         if (LimitOps.Contains(name))
         {
             // Display-style big operator: render the glyph at 1.5x and wrap
@@ -331,7 +332,7 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
             // (limits above/below) instead of a SupSubBox (right-of).
             return style => new BigOpScaffold(new GlyphBox(glyph, style, style.FontSize * 1.5f), null, null, style);
         }
-        if (OperatorNames.Contains(name))
+        if (isOperatorName)
             return style => new AtomBox(new GlyphBox(glyph, style), AtomClass.Op);
         return style => new GlyphBox(glyph, style);
     }
@@ -459,19 +460,8 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
         ["Gamma"] = "Γ", ["Delta"] = "Δ", ["Theta"] = "Θ", ["Lambda"] = "Λ",
         ["Xi"] = "Ξ", ["Pi"] = "Π", ["Sigma"] = "Σ", ["Phi"] = "Φ",
         ["Psi"] = "Ψ", ["Omega"] = "Ω",
-        // Function names — kept multi-letter; rendered as upright run.
-        // LaTeX's whole predefined set, plus argmax and argmin, which
-        // LimitOps already listed.
-        ["sin"] = "sin", ["cos"] = "cos", ["tan"] = "tan",
-        ["sec"] = "sec", ["csc"] = "csc", ["cot"] = "cot",
-        ["arcsin"] = "arcsin", ["arccos"] = "arccos", ["arctan"] = "arctan",
-        ["sinh"] = "sinh", ["cosh"] = "cosh", ["tanh"] = "tanh", ["coth"] = "coth",
-        ["log"] = "log", ["ln"] = "ln", ["lg"] = "lg", ["exp"] = "exp",
-        ["lim"] = "lim", ["max"] = "max", ["min"] = "min",
-        ["sup"] = "sup", ["inf"] = "inf", ["limsup"] = "lim sup", ["liminf"] = "lim inf",
-        ["argmax"] = "argmax", ["argmin"] = "argmin",
-        ["det"] = "det", ["dim"] = "dim", ["gcd"] = "gcd",
-        ["arg"] = "arg", ["deg"] = "deg", ["hom"] = "hom", ["ker"] = "ker", ["Pr"] = "Pr",
+        // Function names (\sin, \log, \lim, ...) are in
+        // MarkdownMacros.OperatorNames, which both visitors share.
         // Big operators
         ["sum"] = "∑", ["prod"] = "∏", ["int"] = "∫", ["oint"] = "∮",
         ["bigcup"] = "⋃", ["bigcap"] = "⋂",
@@ -530,18 +520,6 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
         "sum", "prod", "int", "oint", "bigcup", "bigcap",
         "lim", "limsup", "liminf", "max", "min", "sup", "inf",
         "argmax", "argmin", "det", "gcd",
-    };
-
-    /// <summary>
-    /// The function names in <see cref="Commands"/> that take their scripts
-    /// to the right, <c>\sin^2</c>: an Op atom each, upright at the body
-    /// size. Those in <see cref="LimitOps"/> are Ops too, as their scaffold.
-    /// </summary>
-    private static readonly HashSet<string> OperatorNames = new(System.StringComparer.Ordinal)
-    {
-        "sin", "cos", "tan", "sec", "csc", "cot",
-        "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "coth",
-        "log", "ln", "lg", "exp", "dim", "arg", "deg", "hom", "ker", "Pr",
     };
 
     /// <summary>

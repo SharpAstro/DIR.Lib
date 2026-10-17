@@ -185,6 +185,26 @@ public static class MarkdownMacros
             : left == MathAtomClass.Op && right == MathAtomClass.Ord;
 
     /// <summary>
+    /// The operator names both math visitors know, each with the text it
+    /// prints: LaTeX's whole predefined set, plus <c>\argmax</c> and
+    /// <c>\argmin</c>. Each is an Op atom, set upright.
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<string, string> OperatorNames =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["sin"] = "sin", ["cos"] = "cos", ["tan"] = "tan",
+            ["sec"] = "sec", ["csc"] = "csc", ["cot"] = "cot",
+            ["arcsin"] = "arcsin", ["arccos"] = "arccos", ["arctan"] = "arctan",
+            ["sinh"] = "sinh", ["cosh"] = "cosh", ["tanh"] = "tanh", ["coth"] = "coth",
+            ["log"] = "log", ["ln"] = "ln", ["lg"] = "lg", ["exp"] = "exp",
+            ["lim"] = "lim", ["max"] = "max", ["min"] = "min",
+            ["sup"] = "sup", ["inf"] = "inf", ["limsup"] = "lim sup", ["liminf"] = "lim inf",
+            ["argmax"] = "argmax", ["argmin"] = "argmin",
+            ["det"] = "det", ["dim"] = "dim", ["gcd"] = "gcd",
+            ["arg"] = "arg", ["deg"] = "deg", ["hom"] = "hom", ["ker"] = "ker", ["Pr"] = "Pr",
+        };
+
+    /// <summary>
     /// The text of the braced argument of a token that carries one,
     /// <c>\operatorname{X}</c> or <c>\textrm{X}</c> as the grammar lexes them:
     /// X as it reads, blanks included. A group's braces inside X print as
