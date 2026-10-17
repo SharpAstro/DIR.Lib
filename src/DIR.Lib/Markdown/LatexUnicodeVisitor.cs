@@ -126,7 +126,7 @@ public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
     {
         var raw = (string)node.Arg0.Content;
         var name = raw.TrimStart('\\');
-        var atomClass = OperatorNames.Contains(name) ? MathAtomClass.Op
+        var atomClass = MarkdownMacros.OperatorNames.ContainsKey(name) ? MathAtomClass.Op
             : name is "quad" or "qquad" ? MathAtomClass.Glue
             : MathAtomClass.Ord;
         return Atom(RenderCommand(raw), atomClass);
@@ -263,7 +263,8 @@ public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
     {
         if (raw.Length < 2 || raw[0] != '\\') return raw;
         var name = raw.Substring(1);
-        return Commands.TryGetValue(name, out var glyph) ? glyph : raw;
+        return MarkdownMacros.OperatorNames.TryGetValue(name, out var text) ? text
+            : Commands.TryGetValue(name, out var glyph) ? glyph : raw;
     }
 
     private static readonly Dictionary<string, string> Commands = new(System.StringComparer.Ordinal)
@@ -279,18 +280,8 @@ public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
         ["Gamma"] = "Γ", ["Delta"] = "Δ", ["Theta"] = "Θ", ["Lambda"] = "Λ",
         ["Xi"] = "Ξ", ["Pi"] = "Π", ["Sigma"] = "Σ", ["Phi"] = "Φ",
         ["Psi"] = "Ψ", ["Omega"] = "Ω",
-        // Function names — kept as letters, render upright in fixed-width fonts.
-        // LaTeX's whole predefined set, plus argmax and argmin.
-        ["sin"] = "sin", ["cos"] = "cos", ["tan"] = "tan",
-        ["sec"] = "sec", ["csc"] = "csc", ["cot"] = "cot",
-        ["arcsin"] = "arcsin", ["arccos"] = "arccos", ["arctan"] = "arctan",
-        ["sinh"] = "sinh", ["cosh"] = "cosh", ["tanh"] = "tanh", ["coth"] = "coth",
-        ["log"] = "log", ["ln"] = "ln", ["lg"] = "lg", ["exp"] = "exp",
-        ["lim"] = "lim", ["max"] = "max", ["min"] = "min",
-        ["sup"] = "sup", ["inf"] = "inf", ["limsup"] = "lim sup", ["liminf"] = "lim inf",
-        ["argmax"] = "argmax", ["argmin"] = "argmin",
-        ["det"] = "det", ["dim"] = "dim", ["gcd"] = "gcd",
-        ["arg"] = "arg", ["deg"] = "deg", ["hom"] = "hom", ["ker"] = "ker", ["Pr"] = "Pr",
+        // Function names (\sin, \log, \lim, ...) are in
+        // MarkdownMacros.OperatorNames, which both visitors share.
         // Big operators
         ["sum"] = "∑", ["prod"] = "∏", ["int"] = "∫", ["oint"] = "∮",
         ["bigcup"] = "⋃", ["bigcap"] = "⋂",
@@ -346,17 +337,6 @@ public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
         // LALR.CC 3.1+, so this dict returns the bare glyph and the
         // surrounding spaces come from Visit(Rel)'s format string.
         ["ll"] = "≪", ["gg"] = "≫",
-    };
-
-    /// <summary>The commands in <see cref="Commands"/> that are operator
-    /// names: Op atoms, spaced by <see cref="MarkdownMacros.ThinSpaceBetween"/>.</summary>
-    private static readonly HashSet<string> OperatorNames = new(System.StringComparer.Ordinal)
-    {
-        "sin", "cos", "tan", "sec", "csc", "cot",
-        "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "coth",
-        "log", "ln", "lg", "exp", "lim", "max", "min",
-        "sup", "inf", "limsup", "liminf", "argmax", "argmin",
-        "det", "dim", "gcd", "arg", "deg", "hom", "ker", "Pr",
     };
 
     private static readonly Dictionary<char, char> Superscripts = new()
