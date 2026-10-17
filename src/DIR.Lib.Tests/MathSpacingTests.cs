@@ -216,6 +216,33 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// A brace inside the argument: a group's braces are not printed, an
+    /// escaped brace is printed as a brace, and the letters stay upright.
+    /// Before, the token could not hold a brace, so the bare command name
+    /// printed, the very defect these commands were added to remove.
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math", @"\operatorname{arg{\,}max}", "arg max")]
+    [InlineData("STIX2Math", @"\textrm{a {b} c}", "a b c")]
+    [InlineData("STIX2Math", @"\textrm{x\{y\}}", "x{y}")]
+    [InlineData("DejaVuSans", @"\operatorname{arg{\,}max}", "arg max")]
+    [InlineData("DejaVuSans", @"\textrm{a {b} c}", "a b c")]
+    [InlineData("DejaVuSans", @"\textrm{x\{y\}}", "x{y}")]
+    public void BraceInsideTheArgument_PaintsTheTextUpright(string font, string latex, string expected)
+    {
+        var painted = Painted(latex, StyleFor(font));
+        painted.ShouldNotContain(t => t.Contains('\\'), $"'{latex}' painted a command name: {string.Join(" | ", painted)}");
+        painted.ShouldBe([expected]);
+    }
+
+    [Theory]
+    [InlineData(@"\operatorname{arg{\,}max}", "arg max")]
+    [InlineData(@"\textrm{a {b} c}", "a b c")]
+    [InlineData(@"\textrm{x\{y\}}", "x{y}")]
+    public void UnicodePath_BraceInsideTheArgument(string latex, string expected)
+        => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
+
+    /// <summary>
     /// <c>\operatorname{X}</c> is an Op like <c>\sin</c>, so a subscript goes
     /// to its right (it is not a limits operator unless starred) and a thin
     /// space follows it.
