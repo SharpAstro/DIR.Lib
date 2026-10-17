@@ -275,6 +275,43 @@ public sealed class DollarRulesTests
         Dump(table.Headers[0]).ShouldBe("Link[M([) L(](`x) y)](u`v``w) L( ) C(z)");
     }
 
+    // ── Deep nesting never overflows the stack ───────────────────────
+    //
+    // Each label is walked as a region of its own. Ten thousand labels, one inside the other, must
+    // not take ten thousand stack frames: a stack overflow cannot be caught, and it takes the host
+    // process down with it. The parse runs on a thread with a 1 MB stack, the smallest common
+    // default. The checks walk the result by hand, since printing a tree this deep (as a failed
+    // assertion would) recurses as deep as it is.
+
+    [Theory]
+    [InlineData("a")]
+    [InlineData("$x$")]
+    public void DeeplyNestedLinks_ParseToOneLink(string innermost)
+    {
+        const int depth = 10_000;
+        var source = new string('[', depth) + innermost + string.Concat(Enumerable.Repeat("](u)", depth));
+        IReadOnlyList<MdInline>? spans = null;
+        System.Exception? error = null;
+        var thread = new System.Threading.Thread(() =>
+        {
+            try { spans = new MarkdownInlineVisitor().Parse(source); }
+            catch (System.Exception e) { error = e; }
+        }, maxStackSize: 1024 * 1024);
+        thread.Start();
+        thread.Join();
+        if (error is not null) Assert.Fail("Parse threw " + error.GetType().Name + ": " + error.Message);
+        if (spans is not { Count: 1 }) Assert.Fail($"{spans?.Count} top-level spans");
+
+        MdInline node = spans[0];
+        for (int level = 0; level < depth; level++)
+        {
+            if (node is not MdLink { Url: "u", Text.Count: 1 } link) { Assert.Fail($"level {level} is a {node.GetType().Name}"); return; }
+            node = link.Text[0];
+        }
+        if (innermost == "a") node.ShouldBeOfType<MdLiteral>().Text.ShouldBe("a");
+        else node.ShouldBeOfType<MdMathInline>().Source.ShouldBe("x");
+    }
+
     // ── A link or colour tail that never closes is text ──────────────
 
     [Theory]
