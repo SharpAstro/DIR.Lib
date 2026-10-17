@@ -122,21 +122,36 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
         List<int>? textDollars = null;
         void Mark(int at, char standIn) => (marked ??= s.ToCharArray())[at] = standIn;
 
-        // Walks s[from..bound) the way the root lexer would. The bound is
-        // the end of the text, or the `]` of the label being walked, which
-        // nothing opened inside the label may cross: a math span, a code
-        // span or a tail that would end past it does not pair here. Math
-        // can take a `[` LabelEnd counted, so a label walk can read text
-        // LabelEnd skipped as a URL, and a construct there that ran past
-        // the bound would leave the walk out of step with the lexer.
-        void Walk(int from, int bound)
+        // Walks the text the way the root lexer would, a region at a time.
+        // A region is the whole text, or a label up to its `]` (the bound),
+        // which nothing opened inside the label may cross: a math span, a
+        // code span or a tail that would end past it does not pair here.
+        // Math can take a `[` LabelEnd counted, so a label walk can read
+        // text LabelEnd skipped as a URL, and a construct there that ran
+        // past the bound would leave the walk out of step with the lexer.
+        void Walk()
         {
-            // Each `[` here that opens no label (a plain bracket, or one
-            // with no partner), innermost last; a `]` closes the last one.
+            // The regions a label interrupted, innermost last, each with the
+            // index to resume at, after the label's tail. They wait on the
+            // heap rather than the call stack, so labels nested ten thousand
+            // deep take no stack frames.
+            Stack<(int Resume, int Bound, List<(int At, bool Image)>? Open)>? outer = null;
+            // Each `[` in this region that opens no label (a plain bracket,
+            // or one with no partner), innermost last; a `]` closes the last.
             List<(int At, bool Image)>? open = null;
-            int i = from;
-            while (i < bound)
+            int i = 0, bound = s.Length;
+            while (true)
             {
+                if (i >= bound)
+                {
+                    // A `[` that nothing closed is text. No pairing above
+                    // depended on it, since nothing ever paired with it.
+                    if (open is not null)
+                        foreach (var (at, _) in open) Mark(at, UnpairedBracket);
+                    if (outer is not { Count: > 0 }) return;
+                    (i, bound, open) = outer.Pop();
+                    continue;
+                }
                 switch (s[i])
                 {
                     case '$' when At(s, i + 1) == '$':
@@ -225,8 +240,12 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                         int tailEnd = tail is '(' or '{' ? TailEnd(s, close, bound) : -1;
                         if (tailEnd > 0)
                         {
-                            Walk(label, close);
-                            i = tailEnd;
+                            // The label is a region of its own; this one
+                            // resumes after its tail.
+                            (outer ??= new()).Push((tailEnd, bound, open));
+                            open = null;
+                            i = label;
+                            bound = close;
                         }
                         else
                         {
@@ -264,11 +283,6 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                         break;
                 }
             }
-
-            // A `[` that nothing closed is text. No pairing above depended
-            // on it, since nothing ever paired with it.
-            if (open is not null)
-                foreach (var (at, _) in open) Mark(at, UnpairedBracket);
         }
 
         void MarkTextDollars()
@@ -276,7 +290,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
             foreach (int at in textDollars!) Mark(at, UnpairedDollar);
         }
 
-        Walk(0, s.Length);
+        Walk();
         return marked is null ? s : new string(marked);
     }
 
