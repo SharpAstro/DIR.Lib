@@ -171,14 +171,30 @@ public static class MarkdownMacros
     }
 
     /// <summary>
-    /// The text between the braces of a token that carries its argument,
+    /// The text of the braced argument of a token that carries one,
     /// <c>\operatorname{X}</c> or <c>\textrm{X}</c> as the grammar lexes them:
-    /// X exactly as written, blanks included.
+    /// X as it reads, blanks included. A group's braces inside X print as
+    /// nothing, as in TeX, and an escaped brace as the brace; any other escape
+    /// pair stays as written (a placeholder still to be spliced back).
     /// </summary>
     internal static string BracedArgument(string token)
     {
         var open = token.IndexOf('{');
-        return token.Substring(open + 1, token.Length - open - 2);
+        var body = token.AsSpan(open + 1, token.Length - open - 2);
+        var sb = new StringBuilder(body.Length);
+        for (var i = 0; i < body.Length; i++)
+        {
+            if (body[i] == '\\' && i + 1 < body.Length)
+            {
+                if (body[i + 1] is not ('{' or '}')) sb.Append('\\');
+                sb.Append(body[++i]);
+            }
+            else if (body[i] is not ('{' or '}'))
+            {
+                sb.Append(body[i]);
+            }
+        }
+        return sb.ToString();
     }
 
     /// <summary>False when <paramref name="source"/> holds what only the

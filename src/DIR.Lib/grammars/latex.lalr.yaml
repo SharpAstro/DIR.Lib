@@ -24,7 +24,7 @@
 #   - \begin{...}\end{...} environments, alignments, multi-line displays.
 #   - Macro definitions (\def, \newcommand) and any TeX programming.
 #   - String content inside \text{...} (treated as opaque \cmd). \textrm{...}
-#     is lexed whole, so its blanks survive, but only with no brace inside.
+#     is lexed whole, so its blanks survive, with groups inside two deep.
 #   - Implicit prefix unary minus inside group-arguments without parens
 #     (e.g. \frac{-1}{2} works because -1 reduces via F -> '-' F, but
 #     \sqrt -2 does not — write \sqrt{-2}).
@@ -206,10 +206,12 @@ lexer:
     - { symbol: cmdmathbb, match: '\\mathbb' }
     # \operatorname and \textrm take their braced argument into the token,
     # because the argument is text: the grammar would read `if` as two
-    # variables and drop the blank in `a b`. Neither may hold a brace; with
-    # one, the longest match is the bare name, which falls through to `cmd`.
-    - { symbol: opname,  match: '\\operatorname\*?[ \t\r\n]*\{[^\{\}]*\}' }
-    - { symbol: textrm,  match: '\\textrm[ \t\r\n]*\{[^\{\}]*\}' }
+    # variables and drop the blank in `a b`. The argument is any run of
+    # plain characters, escape pairs (\{ \, \PHa) and groups nested up to two
+    # deep, each of the same: `arg{\,}max`, `a {b} c`, `x\{y\}`. Deeper
+    # than that, the longest match is the bare name, which falls to `cmd`.
+    - { symbol: opname,  match: '\\operatorname\*?[ \t\r\n]*\{([^\{\}\\]|\\.|\{([^\{\}\\]|\\.|\{([^\{\}\\]|\\.)*\})*\})*\}' }
+    - { symbol: textrm,  match: '\\textrm[ \t\r\n]*\{([^\{\}\\]|\\.|\{([^\{\}\\]|\\.|\{([^\{\}\\]|\\.)*\})*\})*\}' }
     - { symbol: '*',     match: '\\cdot' }
     - { symbol: '*',     match: '\\times' }
     # Binary relations. Must precede the `\\[a-zA-Z]+` catchall so on the
