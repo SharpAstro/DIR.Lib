@@ -59,22 +59,37 @@ public static class MarkdownMacros
     {
         if (string.IsNullOrWhiteSpace(source)) return string.Empty;
 
+        // A set's escaped braces are grammar atoms too, lexed first so the
+        // visitor sees the pair: an operator name before one takes no space,
+        // as before a paren. An unbalanced one ("\{x") does not parse, and
+        // the formula is rendered again with each brace a placeholder atom,
+        // which is how every escaped brace rendered before.
+        if (TryRenderMathUnicode(source, lexBrackets: true, lexBraces: true, out var rendered))
+            return rendered;
+        if (HasEscapedBrace(source) && TryRenderMathUnicode(source, lexBrackets: true, lexBraces: false, out rendered))
+            return rendered;
+
         // Square brackets are grammar atoms, so an unbalanced one ("[0, 1[",
         // or "\left[ x \right." once the aliases are normalised) no longer
         // parses. Such a formula gets the treatment every bracket had before
         // the grammar lexed them: a placeholder atom, spliced back verbatim.
         // A formula that fails both ways falls back to its own text, which is
         // the same string either way.
-        if (TryRenderMathUnicode(source, lexBrackets: true, out var rendered)
-            || source.AsSpan().IndexOfAny('[', ']') < 0)
+        if (source.AsSpan().IndexOfAny('[', ']') < 0)
             return rendered;
-        TryRenderMathUnicode(source, lexBrackets: false, out rendered);
+        TryRenderMathUnicode(source, lexBrackets: false, lexBraces: false, out rendered);
         return rendered;
     }
 
-    private static bool TryRenderMathUnicode(string source, bool lexBrackets, out string rendered)
+    /// <summary>True when <paramref name="source"/> spells a brace as a glyph:
+    /// <c>\{</c>, <c>\}</c>, <c>\lbrace</c> or <c>\rbrace</c>.</summary>
+    private static bool HasEscapedBrace(string source)
+        => source.Contains(@"\{", StringComparison.Ordinal) || source.Contains(@"\}", StringComparison.Ordinal)
+           || ContainsMacro(source, "lbrace") || ContainsMacro(source, "rbrace");
+
+    private static bool TryRenderMathUnicode(string source, bool lexBrackets, bool lexBraces, out string rendered)
     {
-        var (expanded, replacements) = ExpandLatexMacros(source, lexBrackets);
+        var (expanded, replacements) = ExpandLatexMacros(source, lexBrackets, lexBraces);
 
         bool parsed;
         try
@@ -184,9 +199,14 @@ public static class MarkdownMacros
     ///         square brackets as a Unicode-friendly stand-in for the LaTeX
     ///         <c>\boxed</c> frame.</item>
     /// </list>
+    ///
+    /// <para>With <paramref name="lexBraces"/>, <c>\{</c> and <c>\}</c> are left
+    /// as written for the grammar to lex as a set's braces; without it, each is
+    /// a placeholder like the other backslash escapes. With
+    /// <paramref name="lexBrackets"/> unset, so is each square bracket.</para>
     /// </summary>
     private static (string expanded, List<KeyValuePair<string, string>> replacements) ExpandLatexMacros(
-        string source, bool lexBrackets = true)
+        string source, bool lexBrackets, bool lexBraces)
     {
         var replacements = new List<KeyValuePair<string, string>>();
         var counter = 0;
@@ -275,13 +295,20 @@ public static class MarkdownMacros
         // Outer-source pass over LaTeX backslash-non-letter macros (\, \; \: \!
         // \\ \{ \} \_ \$ \% \# \&). Each becomes a placeholder mapping to its
         // rendered equivalent so the lexer doesn't choke on the orphan `\` +
-        // non-letter pair (the cmd rule is `\\[a-zA-Z]+`).
+        // non-letter pair (the cmd rule is `\\[a-zA-Z]+`). A set's braces stay
+        // as written when the grammar is to lex them.
         var spaceSb = new StringBuilder(source.Length);
         int p = 0;
         while (p < source.Length)
         {
             if (source[p] == '\\' && p + 1 < source.Length && !IsAsciiLetter(source[p + 1]))
             {
+                if (lexBraces && source[p + 1] is '{' or '}')
+                {
+                    spaceSb.Append(source, p, 2);
+                    p += 2;
+                    continue;
+                }
                 var key = NewPlaceholder();
                 replacements.Add(new KeyValuePair<string, string>(key, RenderBackslashEscape(source[p + 1])));
                 spaceSb.Append(key);
