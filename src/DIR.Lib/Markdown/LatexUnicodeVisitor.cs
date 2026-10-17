@@ -152,10 +152,16 @@ public sealed class LatexUnicodeVisitor : IVisitor<UnicodeMath>
         return Atom(RenderCommand(raw), atomClass);
     }
 
-    // \operatorname{X} is X, spaced as an operator name. The token holds the
-    // braced name; any placeholder in it is spliced back after the parse.
-    public UnicodeMath Visit(OperatorName node) =>
-        Atom(MarkdownMacros.BracedArgument((string)node.Arg0.Content).Trim(), MathAtomClass.Op);
+    // \operatorname{X} is X, spaced as an operator name. X is math, as in
+    // amsmath, so its blanks are dropped and a command in it renders; a
+    // placeholder in it (\, as a blank) is spliced back after the parse.
+    public UnicodeMath Visit(OperatorName node) => Atom(TextOf(node.Arg1), MathAtomClass.Op);
+
+    // A math space, \, \: \; or \!, as RenderBackslashEscape renders it. The
+    // Unicode path's preparation turns each into a placeholder before the
+    // lexer, so only a parse of unprepared source gets here.
+    public UnicodeMath Visit(MathSpace node)
+        => Atom(((string)node.Arg0.Content)[1] == '!' ? "" : " ", MathAtomClass.Glue);
 
     // \textrm{X} is X, blanks and all.
     public UnicodeMath Visit(TextRm node) => new(MarkdownMacros.BracedArgument((string)node.Arg0.Content));

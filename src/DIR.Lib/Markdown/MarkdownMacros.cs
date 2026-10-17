@@ -156,7 +156,9 @@ public static class MarkdownMacros
     /// <c>\{1, 2, 3\}</c>, <c>\left\{ … \right\}</c> and
     /// <c>\lbrace … \rbrace</c> all keep their braces. An unbalanced one does
     /// not parse, and the caller falls back to the Unicode path as for any
-    /// formula the grammar rejects.</para>
+    /// formula the grammar rejects. The math spaces <c>\,</c> <c>\:</c>
+    /// <c>\;</c> <c>\!</c> stay as written too, for the grammar to lex as
+    /// space; resolved to a blank, they would be dropped.</para>
     /// </summary>
     public static bool TryPrepareMathBoxSource(string source, [NotNullWhen(true)] out string? prepared)
     {
@@ -166,7 +168,7 @@ public static class MarkdownMacros
         source = ExpandBalancedMacro(source, "boxed", inner => inner);
         source = ExpandBalancedMacro(source, "ce", inner => Mhchem.ToLatex(inner));
         if (!BoxPathCanBuild(source)) return false;
-        prepared = ResolveBackslashEscapes(source, keepBraces: true);
+        prepared = ResolveBackslashEscapes(source, keepLexed: true);
         return true;
     }
 
@@ -206,8 +208,8 @@ public static class MarkdownMacros
 
     /// <summary>
     /// The text of the braced argument of a token that carries one,
-    /// <c>\operatorname{X}</c> or <c>\textrm{X}</c> as the grammar lexes them:
-    /// X as it reads, blanks included. A group's braces inside X print as
+    /// <c>\textrm{X}</c> as the grammar lexes it: X as it reads, blanks
+    /// included. A group's braces inside X print as
     /// nothing, as in TeX, and an escaped brace as the brace; any other escape
     /// pair stays as written (a placeholder still to be spliced back).
     /// </summary>
@@ -587,13 +589,15 @@ public static class MarkdownMacros
     /// the lexer — it's stashed in the replacement map and spliced back in
     /// after the rest of the formula has rendered.
     /// </summary>
-    public static string ResolveBackslashEscapes(string body) => ResolveBackslashEscapes(body, keepBraces: false);
+    public static string ResolveBackslashEscapes(string body) => ResolveBackslashEscapes(body, keepLexed: false);
 
-    /// <summary><see cref="ResolveBackslashEscapes(string)"/>, leaving <c>\{</c>
-    /// and <c>\}</c> as written when <paramref name="keepBraces"/> is set (the
-    /// box path's grammar lexes them). A <c>\\</c> is consumed whole, so in
-    /// <c>\\{</c> the brace still opens a group.</summary>
-    private static string ResolveBackslashEscapes(string body, bool keepBraces)
+    /// <summary><see cref="ResolveBackslashEscapes(string)"/>, leaving the
+    /// escapes the box path's grammar lexes as written when
+    /// <paramref name="keepLexed"/> is set: <c>\{</c> and <c>\}</c>, a set's
+    /// braces, and the math spaces <c>\,</c> <c>\:</c> <c>\;</c> <c>\!</c>. A
+    /// <c>\\</c> is consumed whole, so in <c>\\{</c> the brace still opens a
+    /// group.</summary>
+    private static string ResolveBackslashEscapes(string body, bool keepLexed)
     {
         if (body.IndexOf('\\') < 0) return body;
         var sb = new StringBuilder(body.Length);
@@ -602,7 +606,7 @@ public static class MarkdownMacros
         {
             if (body[i] == '\\' && i + 1 < body.Length && !IsAsciiLetter(body[i + 1]))
             {
-                if (keepBraces && body[i + 1] is '{' or '}')
+                if (keepLexed && body[i + 1] is '{' or '}' or ',' or ':' or ';' or '!')
                     sb.Append(body, i, 2);
                 else
                     sb.Append(RenderBackslashEscape(body[i + 1]));

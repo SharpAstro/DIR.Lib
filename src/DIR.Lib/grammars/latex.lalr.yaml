@@ -18,6 +18,7 @@
 #   f(), [], \{\}                          (empty pairs)
 #   \mathrm{d}x, \mathrm{H}_{2}\mathrm{O}   (upright letters, as TeX's \mathrm)
 #   \operatorname{tr} A, \textrm{if}       (an operator name; upright text)
+#   \operatorname*{arg\,max}_x             (\, \: \; \!: TeX's math spaces)
 #   \{ x \in \mathbb{R} \mid x > 0 \}     (set-builder: \mid, \mathbb, < and >)
 #
 # Things that don't:
@@ -98,8 +99,9 @@ symbols:
   - lbrace     # 30  \{ : a brace as a glyph, where a bare '{' opens a group
   - rbrace     # 31  \}
   - cmdmathbb  # 32  \mathbb (binds one atom argument, which it sets double-struck)
-  - opname     # 33  \operatorname{X} or \operatorname*{X}, its braced name in the token
+  - opname     # 33  \operatorname or \operatorname* (binds one atom argument, a name in upright letters)
   - textrm     # 34  \textrm{X}, its braced text in the token
+  - mspace     # 35  a math space: \, \: \; \!
 
 productions:
   # Start production. Single-non-terminal so it trims at parse time and the
@@ -190,10 +192,11 @@ productions:
       - { lhs: A0, rhs: [cmdfrac, A, A],   action: frac }
       - { lhs: A0, rhs: [cmdmathrm, A],    action: mathRm }
       - { lhs: A0, rhs: [cmdmathbb, A],    action: mathBb }
-      - { lhs: A0, rhs: [opname],          action: operatorName }
+      - { lhs: A0, rhs: [opname, A],       action: operatorName }
       - { lhs: A0, rhs: [textrm],          action: textRm }
+      - { lhs: A0, rhs: [mspace],          action: mathSpace }
 
-# Single lexer state. Ordering matters: `\frac`, `\sqrt`, `\mathrm`, `\mathbb` (and the explicit
+# Single lexer state. Ordering matters: `\frac`, `\sqrt`, `\mathrm`, `\mathbb`, `\operatorname` (and the explicit
 # multiplication aliases `\cdot` / `\times`) must come before the `\\[a-zA-Z]+`
 # catchall so first-rule-wins picks them on identical-length matches. (Longer
 # real names like `\fraction` would still win via longest-match — they fall
@@ -204,14 +207,24 @@ lexer:
     - { symbol: cmdsqrt, match: '\\sqrt' }
     - { symbol: cmdmathrm, match: '\\mathrm' }
     - { symbol: cmdmathbb, match: '\\mathbb' }
-    # \operatorname and \textrm take their braced argument into the token,
-    # because the argument is text: the grammar would read `if` as two
-    # variables and drop the blank in `a b`. The argument is any run of
-    # plain characters, escape pairs (\{ \, \PHa) and groups nested up to two
-    # deep, each of the same: `arg{\,}max`, `a {b} c`, `x\{y\}`. Deeper
-    # than that, the longest match is the bare name, which falls to `cmd`.
-    - { symbol: opname,  match: '\\operatorname\*?[ \t\r\n]*\{([^\{\}\\]|\\.|\{([^\{\}\\]|\\.|\{([^\{\}\\]|\\.)*\})*\})*\}' }
+    # \operatorname's argument is math, as in amsmath, so it is an atom like
+    # \mathrm's; the star (limits) may follow a blank, as TeX's \@ifstar
+    # allows.
+    - { symbol: opname,  match: '\\operatorname([ \t\r\n]*\*)?' }
+    # \textrm takes its braced argument into the token, because the argument
+    # is text: the grammar would read `if` as two variables and drop the
+    # blank in `a b`. The argument is any run of plain characters, escape
+    # pairs (\{ \PHa) and groups nested up to two deep, each of the same:
+    # `a {b} c`, `x\{y\}`. Deeper than that, the longest match is the bare
+    # name, which falls to `cmd`.
     - { symbol: textrm,  match: '\\textrm[ \t\r\n]*\{([^\{\}\\]|\\.|\{([^\{\}\\]|\\.|\{([^\{\}\\]|\\.)*\})*\})*\}' }
+    # TeX's math spaces. Only the box path lexes them: its preparation keeps
+    # them as written, where the Unicode path's turns each into a
+    # placeholder for a blank first.
+    - { symbol: mspace,  match: '\\,' }
+    - { symbol: mspace,  match: '\\:' }
+    - { symbol: mspace,  match: '\\;' }
+    - { symbol: mspace,  match: '\\!' }
     - { symbol: '*',     match: '\\cdot' }
     - { symbol: '*',     match: '\\times' }
     # Binary relations. Must precede the `\\[a-zA-Z]+` catchall so on the

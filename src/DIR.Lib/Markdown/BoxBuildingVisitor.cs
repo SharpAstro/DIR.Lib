@@ -128,7 +128,8 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
         BigOpScaffold => AtomClass.Op,
         SupSubBox scripted => LeftClass(scripted.Base),
         BracketBox or DelimiterPairBox => AtomClass.Open,
-        HBox { Children: [var first, ..] } => LeftClass(first),
+        HBox row => EdgeClass(row.Children, LeftClass, fromEnd: false),
+        KernBox => AtomClass.Glue,
         _ => AtomClass.Ord,
     };
 
@@ -139,9 +140,26 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
         BigOpScaffold => AtomClass.Op,
         SupSubBox scripted => RightClass(scripted.Base),
         BracketBox or DelimiterPairBox => AtomClass.Close,
-        HBox { Children: [.., var last] } => RightClass(last),
+        HBox row => EdgeClass(row.Children, RightClass, fromEnd: true),
+        KernBox => AtomClass.Glue,
         _ => AtomClass.Ord,
     };
+
+    /// <summary>
+    /// The class of a row's first (or last) atom. Space is not an atom, so a
+    /// kern at that end is passed over, as TeX passes over glue: in
+    /// <c>\sin\,x</c> the x still follows an Op, and gets its thin space on
+    /// top of the <c>\,</c>. A row of nothing but space is space.
+    /// </summary>
+    private static AtomClass EdgeClass(IReadOnlyList<Box> children, Func<Box, AtomClass> classOf, bool fromEnd)
+    {
+        for (var i = 0; i < children.Count; i++)
+        {
+            var child = children[fromEnd ? children.Count - 1 - i : i];
+            if (child is not KernBox) return classOf(child);
+        }
+        return children.Count == 0 ? AtomClass.Ord : AtomClass.Glue;
+    }
 
     public Func<BoxStyle, Box> Visit(Neg node)
     {
@@ -288,19 +306,68 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
 
     /// <summary>
     /// <c>\operatorname{X}</c>: X as an operator name of the writer's own,
-    /// set upright as one Op atom, so it is spaced like <c>\sin</c> and its
-    /// scripts go to its right. <c>\operatorname*{X}</c> takes them as limits
-    /// instead, as <c>\lim</c> does. The token holds the braced name (see the
-    /// grammar), so a blank inside it, <c>arg\,max</c>'s, survives; those at
-    /// its ends are dropped.
+    /// one Op atom, so it is spaced like <c>\sin</c> and its scripts go to
+    /// its right. <c>\operatorname*{X}</c> takes them as limits instead, as
+    /// <c>\lim</c> does. X is math, as amsmath sets it, built with its letters
+    /// upright: blanks in it are dropped, <c>arg\,max</c> keeps its thin
+    /// space, <c>\mathbb{E}</c> is 𝔼. A name of nothing but upright glyphs is
+    /// drawn as one run (<see cref="AsOneRun"/>), so <c>\operatorname{sin}</c>
+    /// is exactly <c>\sin</c>.
     /// </summary>
     public Func<BoxStyle, Box> Visit(OperatorName node)
     {
-        var token = (string)node.Arg0.Content;
-        var name = MarkdownMacros.BracedArgument(token).Trim();
-        if (token[@"\operatorname".Length] == '*')
-            return style => new BigOpScaffold(new GlyphBox(name, style), null, null, style);
-        return style => new AtomBox(new GlyphBox(name, style), AtomClass.Op);
+        var starred = ((string)node.Arg0.Content).EndsWith('*');
+        var argument = InAlphabet(MathStyle.Normal, Builder(node.Arg1));
+        return style =>
+        {
+            var name = AsOneRun(argument(style), style);
+            return starred ? new BigOpScaffold(name, null, null, style) : new AtomBox(name, AtomClass.Op);
+        };
+    }
+
+    /// <summary>
+    /// <paramref name="box"/> as one <see cref="GlyphBox"/> of its text when it
+    /// is nothing but a row of upright glyphs at the body size, which is how
+    /// a built-in name like <c>\sin</c> is drawn; anything else as it is.
+    /// </summary>
+    private static Box AsOneRun(Box box, BoxStyle style)
+    {
+        var text = new System.Text.StringBuilder();
+        return AppendRun(box, text, style.FontSize) ? new GlyphBox(text.ToString(), style) : box;
+    }
+
+    private static bool AppendRun(Box box, System.Text.StringBuilder text, float fontSize)
+    {
+        switch (box)
+        {
+            case GlyphBox glyph when glyph.FontSize == fontSize:
+                text.Append(glyph.Text);
+                return true;
+            case HBox row:
+                foreach (var child in row.Children)
+                    if (!AppendRun(child, text, fontSize)) return false;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// TeX's math spaces, in mu (an eighteenth of an em at the current
+    /// style's size): <c>\,</c> 3, <c>\:</c> 4, <c>\;</c> 5 and <c>\!</c>
+    /// minus 3. A kern, which <see cref="LeftClass"/> and
+    /// <see cref="RightClass"/> pass over as space rather than an atom.
+    /// </summary>
+    public Func<BoxStyle, Box> Visit(MathSpace node)
+    {
+        var mu = ((string)node.Arg0.Content)[1] switch
+        {
+            ',' => 3,
+            ':' => 4,
+            ';' => 5,
+            _ => -3,
+        };
+        return style => new KernBox(style.FontSize * mu / 18f);
     }
 
     /// <summary>
