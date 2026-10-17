@@ -168,9 +168,9 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
         return StartsWithOp(inner) || EndsWithOp(inner) ? new string(inner.AsSpan()) : inner;
     }
 
-    // \{E\}, a set, keeps its braces. MarkdownMacros.RenderMathUnicode never
-    // gets here: it turns each \{ and \} into a placeholder before the lexer
-    // sees it, which is what keeps an unbalanced one ("\{x") rendering.
+    // \{E\}, a set, keeps its braces. MarkdownMacros.RenderMathUnicode lexes
+    // a balanced pair, so it gets here; an unbalanced one ("\{x") does not
+    // parse, and is rendered again with each brace a placeholder atom.
     public string Visit(Brace node) => $"{{{node.Arg1.Content}}}";
 
     // (), [] or \{\} as written, an escaped brace without its backslash.
