@@ -507,7 +507,10 @@ public sealed class BraceSetTests
     /// formulas this branch changes on purpose: one the old sequence turned
     /// away for its braces, and one with whitespace between <c>\left</c> or
     /// <c>\right</c> and its delimiter, which the old aliases did not
-    /// match.</para>
+    /// match. Also left out are those with a math space (<c>\,</c> <c>\:</c>
+    /// <c>\;</c> <c>\!</c>), which the helper now keeps for the grammar to
+    /// lex as space where the old sequence made each a blank
+    /// (<see cref="MathSpacingTests"/> pins that).</para>
     /// </summary>
     [Fact]
     public void Helper_MatchesConsoleLibSequence_WithoutEscapedBraces()
@@ -516,7 +519,8 @@ public sealed class BraceSetTests
             .SelectMany(InlineDataStrings)
             .Concat(RadicalScenes)
             .Concat(BoxedAndChemCorpus)
-            .Where(latex => !ConsoleLibTurnsAwayBraces(latex) && !SpacedLeftOrRight.IsMatch(latex))
+            .Where(latex => !ConsoleLibTurnsAwayBraces(latex) && !SpacedLeftOrRight.IsMatch(latex)
+                            && !MathSpaceEscape.IsMatch(latex))
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
@@ -573,6 +577,10 @@ public sealed class BraceSetTests
 
     /// <summary><c>\left</c> or <c>\right</c>, whole, then whitespace.</summary>
     private static readonly Regex SpacedLeftOrRight = new(@"\\(left|right)\s");
+
+    /// <summary>A math space, <c>\,</c> <c>\:</c> <c>\;</c> or <c>\!</c>, its
+    /// backslash not the second half of a <c>\\</c>.</summary>
+    private static readonly Regex MathSpaceEscape = new(@"(?<!\\)(\\\\)*\\[,:;!]");
 
     /// <summary>The formulas <see cref="RadicalJoinTests"/>'s scenes parse.</summary>
     private static readonly string[] RadicalScenes =
