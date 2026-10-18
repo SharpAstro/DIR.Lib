@@ -62,15 +62,22 @@ public sealed class BracketBox : Box
         // sit side by side as TeX sets them.
         _padding = inner.Width <= 0 && inner.TotalHeight <= 0 ? 0 : style.FontSize * 0.15f;
 
-        // Try MATH-driven brackets first. requiredHeight = the inner content's
-        // own extent, no extra padding — fonts with sparse stretch coverage
-        // (DejaVu only ships base + tall-assembly with nothing in between)
-        // would otherwise see a ~10% over-request push past the base glyph
-        // and snap to the much taller assembly, producing badly disproportionate
-        // brackets around 1em-tall content. Visual padding is added externally
-        // by Width/Height around the chosen delimiter, not by inflating the
-        // request to the font.
-        var requiredHeight = inner.TotalHeight;
+        // Try MATH-driven brackets first. The delimiters are centred on the
+        // math axis, so they must reach as far from it as the content does on
+        // its farther side: requiredHeight = 2 * max(height - axis, depth +
+        // axis), as TeX sizes a \left..\right pair. The content's total height
+        // is the same only for content centred on the axis; a fraction whose
+        // numerator is itself a fraction reaches further above the axis than
+        // below, and asking for its total height left its numerator above the
+        // delimiters. No extra padding beyond that — fonts with sparse stretch
+        // coverage (DejaVu only ships base + tall-assembly with nothing in
+        // between) would otherwise see a ~10% over-request push past the base
+        // glyph and snap to the much taller assembly, producing badly
+        // disproportionate brackets around 1em-tall content. Visual padding is
+        // added externally by Width/Height around the chosen delimiter, not by
+        // inflating the request to the font.
+        var axis = style.AxisHeight;
+        var requiredHeight = 2 * MathF.Max(inner.Height - axis, inner.Depth + axis);
         var (leftCp, rightCp) = BracketCodepoints(kind);
         var left = new StretchyVerticalBox(leftCp, requiredHeight, style);
         var right = new StretchyVerticalBox(rightCp, requiredHeight, style);
