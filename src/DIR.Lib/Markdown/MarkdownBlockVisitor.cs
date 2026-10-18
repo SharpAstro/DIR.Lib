@@ -61,7 +61,7 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
             using var tokens = new global::LALR.CC.LexicalGrammar.SyncLATokenIterator(lexer);
             var result = s_parser.ParseInput(tokens, debugger: null);
             if (result.IsError) return Array.Empty<MdBlock>();
-            items = result.Content as IReadOnlyList<RawItem> ?? Array.Empty<RawItem>();
+            items = result.Content is ItemsBuilder built ? built.ToList() : Array.Empty<RawItem>();
         }
         catch (global::LALR.CC.ParseErrorException)
         {
@@ -73,16 +73,34 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
 
     // ── Items list (epsilon-base + cons; flat list of RawItems) ──────
 
-    public object Visit(MarkdownBlock.ItemsEmpty node) =>
-        (IReadOnlyList<RawItem>)Array.Empty<RawItem>();
+    public object Visit(MarkdownBlock.ItemsEmpty node) => new ItemsBuilder();
 
-    public object Visit(MarkdownBlock.ItemsCons node)
+    public object Visit(MarkdownBlock.ItemsCons node) =>
+        ((ItemsBuilder)node.Arg1.Content).Prepend((RawItem)node.Arg0.Content);
+
+    /// <summary>An <c>Items</c> being reduced. The rule is right-recursive, so
+    /// the lines arrive last first, and copying the rest into a new list for
+    /// each one made a document's assembly quadratic in its lines (about 4 MB
+    /// for Console.Lib's CHANGELOG). They are gathered back to front instead and
+    /// put in order once, as <see cref="MarkdownInlineVisitor"/> does for spans.
+    /// One builder per parse, made by that parse's own reductions, so the
+    /// shared static parser holds no state between calls.</summary>
+    private sealed class ItemsBuilder
     {
-        var head = (RawItem)node.Arg0.Content;
-        var tail = (IReadOnlyList<RawItem>)node.Arg1.Content;
-        var list = new List<RawItem>(tail.Count + 1) { head };
-        list.AddRange(tail);
-        return (IReadOnlyList<RawItem>)list;
+        private readonly List<RawItem> _backToFront = new();
+
+        public ItemsBuilder Prepend(RawItem item)
+        {
+            _backToFront.Add(item);
+            return this;
+        }
+
+        public IReadOnlyList<RawItem> ToList()
+        {
+            var items = new List<RawItem>(_backToFront);
+            items.Reverse();
+            return items;
+        }
     }
 
     public object Visit(MarkdownBlock.LineItem node) =>
