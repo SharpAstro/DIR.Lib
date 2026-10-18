@@ -47,9 +47,10 @@ namespace DIR.Lib.MathLayout;
 /// row over it, into a row of headroom the layout reserves for that; where
 /// it needs more (ink two rows high under a gap of less than a pixel), the
 /// bar sits above <see cref="Height"/>: by at most one row across
-/// RadicalJoinTests' sweep. And on path 1 the depth counts the glyph alone,
-/// so a MATH assembly shorter than its radicand leaves the radicand hanging
-/// below <see cref="Depth"/>.</para>
+/// RadicalJoinTests' sweep. On path 1 the depth counts the glyph alone, and
+/// the glyph is at least as tall as it asks for (a MATH assembly grows to
+/// the request, short of it only at its copy cap, past 30 em), so the
+/// radicand does not hang below <see cref="Depth"/>.</para>
 ///
 /// <para>An optional <c>index</c> box (the small "n" in <c>ⁿ√x</c>) is
 /// rendered tucked into the radical's hook, raised by
@@ -322,14 +323,15 @@ public sealed class SqrtBox : Box
             // keep top-anchor invariant. If the picked variant overshoots,
             // the V's tip dangles deep below baseline — that's deliberate.
             _radicalGlyphDepth = bitmapHeight - _radicalH;
-            // The depth counts the glyph alone, so a MATH assembly shorter
-            // than its radicand (STIX Two Math's for
-            // \sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}) leaves the radicand
-            // hanging below it. The reserved row lifts the glyph against the
-            // baseline, which takes the row off the glyph's depth; it must
-            // not hang the radicand a row further below the box, so where
-            // the radicand is the deeper the depth keeps that row, as far as
-            // the radicand reaches.
+            // The depth counts the glyph alone. The glyph is at least the
+            // request (a MATH assembly grows to it, short only at its copy
+            // cap), so it reaches below the radicand; the assembly used to
+            // stop short and leave STIX Two Math's
+            // \sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}} hanging below it. The
+            // reserved row lifts the glyph against the baseline, which takes
+            // the row off the glyph's depth; it must not hang the radicand a
+            // row further below the box, so where the radicand is the deeper
+            // the depth keeps that row, as far as the radicand reaches.
             radicalD = MathF.Max(_radicalGlyphDepth, MathF.Min(radicand.Depth, _radicalGlyphDepth + _gapRowReserve));
             depthWithoutReserve = _radicalGlyphDepth + _gapRowReserve;
         }

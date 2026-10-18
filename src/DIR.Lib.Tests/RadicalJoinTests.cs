@@ -329,9 +329,9 @@ public sealed partial class RadicalJoinTests
     /// nothing about the radical's own drawing. Every other test of the sweep still visits them.
     /// <list type="bullet">
     /// <item>DejaVu Sans <c>sqrt-paren-frac</c>: the radicand's parenthesis is now the two-part assembly,
-    /// with no extender and squashed to the fraction it holds, where one copy of each extender made it
-    /// about twice the fraction's height, so the radical over it is shorter (at 32 px height 78.34 became
-    /// 44.34, depth 50.5 became 24.86).</item>
+    /// with no extender, scaled to fit the fraction it holds where it overshoots (to the nearest height the
+    /// bound allows), where one copy of each extender made it about twice the fraction's height, so the
+    /// radical over it is shorter (at 32 px height 78.34 became 55.84, depth 50.5 became 30).</item>
     /// <item>STIX Two Math <c>sqrt-paren-frac</c>: the radicand's parenthesis is now sized by TeX's symmetric
     /// request, twice the fraction's larger reach from the axis, and the b's ascender reaches further above
     /// it than the denominator below, so the radicand is taller from 48 to 96 px (at 72 px height 97.14
@@ -380,7 +380,7 @@ public sealed partial class RadicalJoinTests
     /// <c>\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}</c> at 31.7 px went from 3 clear rows to 2 (see
     /// <see cref="TheRowsFloatPhaseCostKeepThreeClearRows"/>). The gap is now kept in whole rows at draw
     /// time, so no row is left to rounding. DejaVu Sans <c>sqrt-paren-frac</c> is exempt: its radicand's
-    /// parenthesis is redrawn (the two-part assembly squashed to the fraction, see
+    /// parenthesis is redrawn (the two-part assembly fitted to the fraction, see
     /// <see cref="RadicandsRedrawnForClearRows"/>), so its layout is not the before data's and the rows of
     /// its gap fall at another float phase; <see cref="SweepKeepsAClearRowUnderTheBar"/> still holds there.
     /// Every failing point is listed in the one message.
@@ -398,8 +398,8 @@ public sealed partial class RadicalJoinTests
 
     /// <summary>Scenes, in one font each, whose radicand is drawn differently from the before data, so the
     /// clear rows it had there describe another layout. DejaVu Sans <c>sqrt-paren-frac</c>: its parenthesis is
-    /// now the two-part assembly squashed to the fraction, where one copy of each extender made it about
-    /// twice the fraction's height; 27 points lost a row against it (18 px: 3 against 4), none its last.</summary>
+    /// now the two-part assembly fitted to the fraction, where one copy of each extender made it about
+    /// twice the fraction's height; 28 points lost a row against it (18 px: 3 against 4), none its last.</summary>
     private static readonly HashSet<(string Font, string Scene)> RadicandsRedrawnForClearRows =
         [("DejaVuSans", "sqrt-paren-frac")];
 
