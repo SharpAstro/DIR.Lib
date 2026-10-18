@@ -46,6 +46,15 @@ public sealed class ManagedFontRasterizer : IDisposable
     // and may be registered after a glyph was already resolved.
     private readonly ConcurrentDictionary<(string Font, int Codepoint, int CharCode, GlyphMapHint Hint), GlyphIdentity> _identityMemo = new();
 
+    /// <summary>A test's switch: while it is true on the current flow, the raster caches are neither read
+    /// nor written, so a test can compare a render with them against one without them, byte for byte. An
+    /// <see cref="AsyncLocal{T}"/>, so a test that sets it changes nothing for tests running beside it.
+    /// (No raster cache exists yet; DIR.Lib #118 adds them.)</summary>
+    internal static readonly AsyncLocal<bool> BypassRasterCaches = new();
+
+    /// <summary>Empty the raster caches. (None exist yet; DIR.Lib #118 adds them.)</summary>
+    internal void ClearRasterCaches() { }
+
     // Char-code → gid for a loaded OpenType face, the PDF's named glyph first: a registered
     // /Encoding designates glyphs BY NAME (code → name → glyph), that designation is
     // authoritative over any cmap strategy, and for a bare name-keyed CFF with no cmap it is
