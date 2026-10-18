@@ -41,6 +41,9 @@
         /// </remarks>
         protected abstract IReadOnlyList<PixelWidgetBase<TSurface>> Children { get; }
 
+        /// <summary>How many of <see cref="Children"/>, from the back, this widget's own content is painted over.</summary>
+        protected virtual int ChildrenUnderOwn => Children.Count;
+
         /// <inheritdoc/>
         public override HitResult? HitTest(float x, float y)
             => base.HitTest(x, y) ?? FromChildren(child => child.HitTest(x, y));
