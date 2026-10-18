@@ -19,7 +19,9 @@ composite painted over it: TianWen's Live Session tab paints its Planetary child
 child's capture panel scrolls and so registers a region over its whole column, and a press on a menu row reached the
 panel. `CollectPaintedRegions` now appends the children's regions in paint order and the composite's own after them,
 so the router and `HitTest` agree. `PaintedRegions()` follows (children, then own, which is paint order under the
-contract); Tab cycling (`GetRegisteredTextInputs`) is unchanged.
+contract); Tab cycling (`GetRegisteredTextInputs`) is unchanged. Nothing fails to compile, but a composite that
+paints a child over its own content and relied on that child winning there has a port to make, with
+`ChildrenUnderOwn` below: [MIGRATION.md](MIGRATION.md).
 
 **A composite states where its own content falls among its children: `ChildrenUnderOwn`.** A protected virtual
 int, defaulting to `Children.Count`: children `[0, k)` are painted under the composite's own content and `[k, Count)`
