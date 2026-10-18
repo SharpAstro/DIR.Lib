@@ -9,6 +9,18 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.26
+
+This minor collects the rest of flight CL2's math work, none of which has landed yet. It changes rendered math, so it
+opens a minor of its own: Console.Lib 5.9 pins `11.25.*`, and its golden pins raster bytes. The changes are listed
+below as planned, one line each, and none is claimed done. This entry is completed, with what each change does and
+why, once they have all landed.
+
+- Stretchy vertical glyphs drawn the size asked for: assemblies grow to the request, delimiters do not overshoot it,
+  and a pair's two sides share one height (#132).
+- A root's index that never touches the radical glyph.
+- Glyph and stretched-glyph caching across `RenderToRgba` calls (#118).
+
 ## 11.25
 
 **A routed press asks a composite's own regions before its children's.** `CompositeWidget` has always documented
