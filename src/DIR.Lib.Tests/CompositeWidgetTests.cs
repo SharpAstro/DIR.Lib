@@ -90,6 +90,68 @@ public class CompositeWidgetTests
         }
     }
 
+    private static readonly KeyChord Chord = new(InputKey.K, InputModifier.Ctrl);
+    private static readonly RGBAColor32 Lit = new(0x40, 0x40, 0x60, 0xff);
+
+    /// <summary>
+    /// One layer of a composed frame: a node filling its bounds that takes a press, states a cursor, scrolls,
+    /// lights under the pointer and answers <see cref="Chord"/>, so every combined query finds it.
+    /// </summary>
+    private sealed class Layer(string id, CursorKind cursor)
+    {
+        /// <summary>How many times its handler ran, by a press or by the chord.</summary>
+        public int Acted { get; private set; }
+
+        public ListScrollController Scroll { get; } = new();
+
+        public Layout.Node Node() => Layout.Builder.Spacer().Stretch()
+            .Clickable(new HitResult.ButtonHit(id), _ => Acted++, cursor)
+            .BgHover(Lit)
+            .WithShortcut(Chord)
+            .WithScroll(Scroll);
+    }
+
+    /// <summary>A widget painting one layout tree.</summary>
+    private sealed class Pane(Renderer<RgbaImage> renderer) : PixelWidgetBase<RgbaImage>(renderer)
+    {
+        public void Paint(Layout.Node root, RectF32 bounds)
+        {
+            BeginFrame();
+            RenderLayout(root, bounds, fontPath: Font, scale: DesignScale.One);
+        }
+    }
+
+    /// <summary>A composite painting its own tree among its children, at <see cref="ChildrenUnderOwn"/>.</summary>
+    private sealed class Layered(Renderer<RgbaImage> renderer, int? childrenUnderOwn = null) : CompositeWidget<RgbaImage>(renderer)
+    {
+        private readonly List<PixelWidgetBase<RgbaImage>> _children = [];
+
+        protected override IReadOnlyList<PixelWidgetBase<RgbaImage>> Children => _children;
+
+        protected override int ChildrenUnderOwn => childrenUnderOwn ?? base.ChildrenUnderOwn;
+
+        /// <param name="children">In paint order, back to front; the first <see cref="ChildrenUnderOwn"/>
+        /// of them under <paramref name="own"/> and the rest over it.</param>
+        public void Paint(Layout.Node own, RectF32 bounds, params PixelWidgetBase<RgbaImage>[] children)
+        {
+            BeginFrame();
+            _children.Clear();
+            _children.AddRange(children);
+            RenderLayout(own, bounds, fontPath: Font, scale: DesignScale.One);
+        }
+    }
+
+    private static Pane Painted(Renderer<RgbaImage> renderer, Layer layer, RectF32 bounds)
+    {
+        var pane = new Pane(renderer) { FontPath = Font };
+        pane.Paint(layer.Node(), bounds);
+        return pane;
+    }
+
+    /// <summary>The ids of the ButtonHits a list holds, in its order.</summary>
+    private static IEnumerable<string?> Ids(IEnumerable<HitResult?> hits)
+        => hits.Select(hit => (hit as HitResult.ButtonHit)?.Action).Where(action => action is not null);
+
     private static (Chrome Chrome, Leaf Back, Leaf Front) Composed()
     {
         var renderer = new StubRenderer(200, 200);
@@ -255,5 +317,123 @@ public class CompositeWidgetTests
         chrome.HitTest(50f, 10f).ShouldBe(new HitResult.ButtonHit("chrome"));
         chrome.HitTest(50f, 90f).ShouldBeNull();
         chrome.PaintedRegions().Count.ShouldBe(2);   // its button and its own field
+    }
+
+    [Fact]
+    public void ByDefaultTheCompositesOwnContentIsOverEveryChildForEveryQuery()
+    {
+        var renderer = new StubRenderer(200, 200);
+        var (own, under) = (new Layer("own", CursorKind.Pointer), new Layer("under", CursorKind.Text));
+        var host = new Layered(renderer) { FontPath = Font };
+        host.Paint(own.Node(), new RectF32(50, 50, 100, 100), Painted(renderer, under, new RectF32(0, 0, 200, 200)));
+
+        Routing.Press(host, 75f, 75f).ShouldBeTrue();
+        own.Acted.ShouldBe(1);
+        under.Acted.ShouldBe(0);
+        host.HitTest(75f, 75f).ShouldBe(new HitResult.ButtonHit("own"));
+        host.HitTestCursor(75f, 75f).ShouldBe(CursorKind.Pointer);
+        host.ScrollTargetAt(75f, 75f).ShouldBeSameAs(own.Scroll);
+
+        // A chord both declare reaches the one on top, as a press there does.
+        Routing.Key(host, Chord.Key, Chord.Modifiers).ShouldBeTrue();
+        own.Acted.ShouldBe(2);
+        under.Acted.ShouldBe(0);
+    }
+
+    [Fact]
+    public void AChildDeclaredOverTheCompositesOwnContentAnswersFirstForEveryQuery()
+    {
+        // ChildrenUnderOwn = 0: TianWen's image viewer, whose sky map floats its palette over the picture.
+        var renderer = new StubRenderer(200, 200);
+        var (own, over) = (new Layer("own", CursorKind.Pointer), new Layer("over", CursorKind.Move));
+        var host = new Layered(renderer, childrenUnderOwn: 0) { FontPath = Font };
+        host.Paint(own.Node(), new RectF32(50, 50, 100, 100), Painted(renderer, over, new RectF32(0, 0, 200, 200)));
+
+        Routing.Press(host, 75f, 75f).ShouldBeTrue();
+        over.Acted.ShouldBe(1);
+        own.Acted.ShouldBe(0);
+        host.HitTest(75f, 75f).ShouldBe(new HitResult.ButtonHit("over"));
+        host.HitTestCursor(75f, 75f).ShouldBe(CursorKind.Move);
+        host.ScrollTargetAt(75f, 75f).ShouldBeSameAs(over.Scroll);
+
+        Routing.Key(host, Chord.Key, Chord.Modifiers).ShouldBeTrue();
+        over.Acted.ShouldBe(2);
+        own.Acted.ShouldBe(0);
+    }
+
+    [Fact]
+    public void ASplitInTheMiddlePutsTheCompositesOwnContentBetweenItsChildren()
+    {
+        // TianWen's chrome: the active tab and the rail under its status bar, the night calendar over it.
+        var renderer = new StubRenderer(200, 200);
+        var under = new Layer("under", CursorKind.Text);
+        var own = new Layer("own", CursorKind.Pointer);
+        var over = new Layer("over", CursorKind.Move);
+        var host = new Layered(renderer, childrenUnderOwn: 1) { FontPath = Font };
+        host.Paint(own.Node(), new RectF32(50, 50, 100, 100),
+            Painted(renderer, under, new RectF32(0, 0, 200, 200)),
+            Painted(renderer, over, new RectF32(100, 100, 100, 100)));
+
+        // Paint order, back to front, for regions and nodes alike: the router walks both from the end.
+        Ids(host.PaintedRegions().Select(r => (HitResult?)r.Result)).ShouldBe(["under", "own", "over"]);
+        var nodes = new List<Layout.ArrangedNode<float>>();
+        host.CollectPaintedNodes(nodes);
+        Ids(nodes.Select(n => n.Node.Hit)).ShouldBe(["under", "own", "over"]);
+
+        foreach (var (x, y, layer, cursor) in new[]
+                 {
+                     (125f, 125f, over, CursorKind.Move),     // all three
+                     (75f, 75f, own, CursorKind.Pointer),     // own over the under child
+                     (25f, 25f, under, CursorKind.Text),      // the under child alone
+                 })
+        {
+            var before = layer.Acted;
+            Routing.Press(host, x, y).ShouldBeTrue();
+            layer.Acted.ShouldBe(before + 1, $"a press at ({x}, {y})");
+            host.HitTestCursor(x, y).ShouldBe(cursor, $"the cursor at ({x}, {y})");
+            host.ScrollTargetAt(x, y).ShouldBeSameAs(layer.Scroll, $"the wheel at ({x}, {y})");
+        }
+
+        host.HitTest(125f, 125f).ShouldBe(new HitResult.ButtonHit("over"));
+        host.HitTest(75f, 75f).ShouldBe(new HitResult.ButtonHit("own"));
+        host.HitTest(25f, 25f).ShouldBe(new HitResult.ButtonHit("under"));
+
+        // The chord all three declare reaches the topmost.
+        var (overBefore, ownBefore, underBefore) = (over.Acted, own.Acted, under.Acted);
+        Routing.Key(host, Chord.Key, Chord.Modifiers).ShouldBeTrue();
+        over.Acted.ShouldBe(overBefore + 1);
+        own.Acted.ShouldBe(ownBefore);
+        under.Acted.ShouldBe(underBefore);
+    }
+
+    [Theory]
+    [InlineData(null, 1)]   // own rows over the child: moving between them changes the lit row
+    [InlineData(0, 0)]      // the child over the rows: one lit node under both points, nothing changes
+    public void HoverFollowsTheSameOrderAsAPress(int? childrenUnderOwn, int redraws)
+    {
+        // Two lit rows of the composite's own over one lit node of a child. Which node the router resolves
+        // under the pointer decides whether a move between the rows asks for a frame.
+        var renderer = new StubRenderer(200, 200);
+        var child = new Pane(renderer) { FontPath = Font };
+        child.Paint(Layout.Builder.Spacer().Stretch().BgHover(Lit), new RectF32(0, 0, 200, 200));
+        var host = new Layered(renderer, childrenUnderOwn) { FontPath = Font };
+        host.Paint(
+            Layout.Builder.VStack(
+                Layout.Builder.Spacer().WStar().RowH(50f).BgHover(Lit),
+                Layout.Builder.Spacer().WStar().RowH(50f).BgHover(Lit)).Stretch(),
+            new RectF32(50, 50, 100, 100),
+            child);
+
+        var requested = 0;
+        var router = new InputRouter(host.Ui, new BackgroundTaskTracker(), () => requested++)
+        {
+            Widgets = () => [host],
+        };
+        router.Handle(new InputEvent.MouseMove(75f, 75f));   // onto the first row
+        requested = 0;
+
+        router.Handle(new InputEvent.MouseMove(75f, 125f));  // onto the second
+
+        requested.ShouldBe(redraws);
     }
 }
