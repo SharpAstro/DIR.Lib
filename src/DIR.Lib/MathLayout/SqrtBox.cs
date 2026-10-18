@@ -780,8 +780,8 @@ public sealed class SqrtBox : Box
     /// <summary>Scratch renderers for <see cref="RadicandInkTop"/>, one per
     /// measurement in flight (a radicand holding a radical measures its own
     /// radicand while the outer one is being measured). Pooled so each keeps
-    /// its own glyph table; its fonts are the shared rasterizer's
-    /// (<see cref="BoxStyle.SharedRasterizer"/>). The table is
+    /// its own glyph table; its fonts and glyph rasters are the shared
+    /// rasterizer's (<see cref="BoxStyle.SharedRasterizer"/>). The table is
     /// bounded, since the pool outlives every render: see
     /// <see cref="InkScratchSizesKept"/>.</summary>
     private static readonly System.Collections.Concurrent.ConcurrentBag<InkScratchRenderer> InkScratch = new();
@@ -800,7 +800,7 @@ public sealed class SqrtBox : Box
     /// radical sizes, and the pool holds no more renderers than measurements
     /// were ever in flight at once. A text at a handful of sizes keeps its
     /// renderer; one at ever new sizes starts a new table each time a renderer
-    /// passes this many, its fonts still the shared rasterizer's.
+    /// passes this many, its glyphs still served by the shared rasterizer.
     /// </summary>
     internal const int InkScratchSizesKept = 8;
 
@@ -808,7 +808,8 @@ public sealed class SqrtBox : Box
     /// radicands at.</summary>
     private sealed class InkScratchRenderer
     {
-        // Lent the shared rasterizer, as RenderToRgba's renderer is, so a
+        // Lent the shared rasterizer, as RenderToRgba's renderer is, so the
+        // radicand's glyphs come from the rasters the real draw uses and a
         // renderer dropped from the pool takes no parsed font with it.
         public readonly RgbaImageRenderer Renderer = new(1, 1, BoxStyle.SharedRasterizer);
         public readonly HashSet<(string FontPath, float Size)> Sizes = [];

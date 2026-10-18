@@ -31,9 +31,10 @@ public static class BoxRasterizer
         // showing through the surrounding background.
         //
         // The renderer draws with the shared rasterizer the box tree was laid
-        // out with, which keeps its parsed fonts across renders. A renderer of
-        // its own re-read and re-parsed the font file on every call (808 KB for
-        // STIX Two Math, most of a render's time).
+        // out with, which keeps its parsed fonts and its glyph rasters across
+        // renders. A renderer of its own re-read and re-parsed the font file on
+        // every call (808 KB for STIX Two Math, most of a render's time) and
+        // rasterized every glyph again.
         using var renderer = new RgbaImageRenderer((uint)totalW, (uint)totalH, BoxStyle.SharedRasterizer);
         float baselineY = margin + box.Height;
         box.Draw(renderer, margin, baselineY, style);

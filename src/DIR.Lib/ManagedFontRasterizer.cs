@@ -46,14 +46,94 @@ public sealed class ManagedFontRasterizer : IDisposable
     // and may be registered after a glyph was already resolved.
     private readonly ConcurrentDictionary<(string Font, int Codepoint, int CharCode, GlyphMapHint Hint), GlyphIdentity> _identityMemo = new();
 
+    /// <summary>
+    /// Glyphs rasterized by <see cref="RasterizeGlyph"/> and <see cref="RasterizeGlyphTopSnapped"/>, kept
+    /// across calls; null unless this rasterizer was made with <c>cacheRasters</c>, as only
+    /// <see cref="MathLayout.BoxStyle.SharedRasterizer"/> is. Keyed by everything the bitmap depends on: the
+    /// font, the exact size asked for (not rounded: a caller that rounds asks for the rounded size), the
+    /// code point, and whether the glyph was moved by the sub-pixel shift that puts its top on a pixel row
+    /// (<see cref="TopSnap"/>), which with the rest of the key fixes that shift. At most
+    /// <see cref="GlyphRastersKept"/> entries and <see cref="GlyphRasterBytesKept"/> bytes, evicted by
+    /// generation (<see cref="BoundedCache{TKey, TValue}"/>).
+    /// </summary>
+    private readonly BoundedCache<GlyphRasterKey, (GlyphBitmap Bitmap, TopSnap Snap)>? _glyphRasters;
+
+    /// <summary>
+    /// Stretched glyphs (radicals, <c>\left..\right</c> delimiters, big operators) from
+    /// <see cref="RasterizeStretchyVerticalCore"/>, kept across calls on the same terms as
+    /// <see cref="_glyphRasters"/>: at most <see cref="StretchyRastersKept"/> entries and
+    /// <see cref="StretchyRasterBytesKept"/> bytes. The key carries every argument the choice and the
+    /// composition read (<see cref="StretchyRasterKey"/>).
+    /// </summary>
+    private readonly BoundedCache<StretchyRasterKey, StretchyRaster>? _stretchyRasters;
+
+    /// <summary>The most glyph rasters a caching rasterizer keeps (see <see cref="_glyphRasters"/>).</summary>
+    internal const int GlyphRastersKept = 4096;
+
+    /// <summary>The most bytes of glyph rasters a caching rasterizer keeps: 8 MiB.</summary>
+    internal const long GlyphRasterBytesKept = 8L << 20;
+
+    /// <summary>The most stretched-glyph rasters a caching rasterizer keeps (see <see cref="_stretchyRasters"/>).</summary>
+    internal const int StretchyRastersKept = 512;
+
+    /// <summary>The most bytes of stretched-glyph rasters a caching rasterizer keeps: 8 MiB.</summary>
+    internal const long StretchyRasterBytesKept = 8L << 20;
+
+    /// <summary>A glyph raster's key (see <see cref="_glyphRasters"/>).</summary>
+    private readonly record struct GlyphRasterKey(string FontPath, float FontSize, int Codepoint, bool SnapTop);
+
+    /// <summary>
+    /// A stretched glyph's key: the font, the size, the code point, the height requested, the least height
+    /// that counts as covering it (the request, or less for a delimiter), the exact height asked for where
+    /// one was (a pair's other side), and whether the glyph is moved by the radical's sub-pixel shift that
+    /// puts its top on a pixel row. That shift is a function of the glyph chosen and composed, which the
+    /// rest of the key fixes, so the flag is what the key needs; without it the radical
+    /// <see cref="MathLayout.SqrtBox"/> measures unsnapped and then draws snapped would be one entry.
+    /// </summary>
+    private readonly record struct StretchyRasterKey(string FontPath, float FontSize, int Codepoint, float RequestPx,
+        float CoversFromPx, float? ExactPx, bool SnapTop);
+
+    /// <summary>What <see cref="RasterizeStretchyVerticalCore"/> returns, kept whole.</summary>
+    private sealed record StretchyRaster(GlyphBitmap Bitmap, uint VariantGlyphId, TopSnap Snap, AssemblyPart[]? Parts);
+
+    public ManagedFontRasterizer() { }
+
+    /// <summary>
+    /// A rasterizer that, with <paramref name="cacheRasters"/>, keeps the glyphs and stretched glyphs it
+    /// rasterizes across calls (see <see cref="_glyphRasters"/> and <see cref="_stretchyRasters"/>). The
+    /// bitmaps it hands out are then shared between callers, which must not write to them.
+    /// </summary>
+    internal ManagedFontRasterizer(bool cacheRasters)
+    {
+        if (!cacheRasters) return;
+        _glyphRasters = new(GlyphRastersKept, GlyphRasterBytesKept, entry => entry.Bitmap.Rgba?.Length ?? 0);
+        _stretchyRasters = new(StretchyRastersKept, StretchyRasterBytesKept,
+            entry => (entry.Bitmap.Rgba?.Length ?? 0) + (entry.Parts?.Length ?? 0) * 16L);
+    }
+
     /// <summary>A test's switch: while it is true on the current flow, the raster caches are neither read
     /// nor written, so a test can compare a render with them against one without them, byte for byte. An
-    /// <see cref="AsyncLocal{T}"/>, so a test that sets it changes nothing for tests running beside it.
-    /// (No raster cache exists yet; DIR.Lib #118 adds them.)</summary>
+    /// <see cref="AsyncLocal{T}"/>, so a test that sets it changes nothing for tests running beside it.</summary>
     internal static readonly AsyncLocal<bool> BypassRasterCaches = new();
 
-    /// <summary>Empty the raster caches. (None exist yet; DIR.Lib #118 adds them.)</summary>
-    internal void ClearRasterCaches() { }
+    /// <summary>Empty the raster caches.</summary>
+    internal void ClearRasterCaches()
+    {
+        _glyphRasters?.Clear();
+        _stretchyRasters?.Clear();
+    }
+
+    /// <summary>Entries the glyph and stretched-glyph caches hold (both zero for a rasterizer without them).</summary>
+    internal (int Glyphs, long GlyphBytes, int Stretchy, long StretchyBytes) RasterCacheSize =>
+        (_glyphRasters?.Count ?? 0, _glyphRasters?.Bytes ?? 0, _stretchyRasters?.Count ?? 0, _stretchyRasters?.Bytes ?? 0);
+
+    /// <summary><see cref="_glyphRasters"/>, or null where there is none or the test switch bypasses it.</summary>
+    private BoundedCache<GlyphRasterKey, (GlyphBitmap Bitmap, TopSnap Snap)>? GlyphRasters =>
+        _glyphRasters is { } cache && !BypassRasterCaches.Value ? cache : null;
+
+    /// <summary><see cref="_stretchyRasters"/>, or null where there is none or the test switch bypasses it.</summary>
+    private BoundedCache<StretchyRasterKey, StretchyRaster>? StretchyRasters =>
+        _stretchyRasters is { } cache && !BypassRasterCaches.Value ? cache : null;
 
     // Char-code → gid for a loaded OpenType face, the PDF's named glyph first: a registered
     // /Encoding designates glyphs BY NAME (code → name → glyph), that designation is
@@ -98,10 +178,14 @@ public sealed class ManagedFontRasterizer : IDisposable
         // is enough for the resolver's "render 'A'" probe and any Unicode-keyed draw of basic Latin.
         if (_type1Fonts.TryGetValue(fontPath, out var t1))
             return RenderType1(t1, ResolveType1Name(fontPath, t1, (uint)codepoint.Value), fontSize);
+        var cache = GlyphRasters;
+        var key = new GlyphRasterKey(fontPath, fontSize, codepoint.Value, SnapTop: false);
+        if (cache is not null && cache.TryGet(key, out var kept)) return kept.Bitmap;
         var font = GetOrLoad(fontPath);
         var gid = font.GetGlyphId((uint)codepoint.Value);
-        if (gid == 0) return default;
-        return Render(font, gid, fontSize);
+        var bitmap = gid == 0 ? default : Render(font, gid, fontSize);
+        cache?.Add(key, (bitmap, TopSnap.None));
+        return bitmap;
     }
 
     /// <summary>
@@ -131,10 +215,18 @@ public sealed class ManagedFontRasterizer : IDisposable
     {
         snap = TopSnap.None;
         if (_type1Fonts.ContainsKey(fontPath)) return RasterizeGlyph(fontPath, fontSize, codepoint);
+        var cache = GlyphRasters;
+        var key = new GlyphRasterKey(fontPath, fontSize, codepoint.Value, SnapTop: true);
+        if (cache is not null && cache.TryGet(key, out var kept))
+        {
+            snap = kept.Snap;
+            return kept.Bitmap;
+        }
         var font = GetOrLoad(fontPath);
         var gid = font.GetGlyphId((uint)codepoint.Value);
-        if (gid == 0) return default;
-        return RenderTopSnapped(font, gid, fontSize, out snap);
+        var bitmap = gid == 0 ? default : RenderTopSnapped(font, gid, fontSize, out snap);
+        cache?.Add(key, (bitmap, snap));
+        return bitmap;
     }
 
     /// <summary>
@@ -442,6 +534,31 @@ public sealed class ManagedFontRasterizer : IDisposable
         float HeightPx);
 
     /// <summary>
+    /// <see cref="ChooseAndComposeStretchyVertical"/>, kept across calls where this rasterizer keeps its
+    /// rasters (see <see cref="_stretchyRasters"/>): every argument but the out parameters is the key.
+    /// </summary>
+    private GlyphBitmap RasterizeStretchyVerticalCore(string fontPath, float fontSize,
+        Rune codepoint, float requiredHeightPx, float coversFromPx, bool snapTop, out uint variantGlyphId,
+        out TopSnap snap, out AssemblyPart[]? parts, float? exactPx = null)
+    {
+        var cache = StretchyRasters;
+        if (cache is null)
+            return ChooseAndComposeStretchyVertical(fontPath, fontSize, codepoint, requiredHeightPx, coversFromPx, snapTop,
+                out variantGlyphId, out snap, out parts, exactPx);
+
+        var key = new StretchyRasterKey(fontPath, fontSize, codepoint.Value, requiredHeightPx, coversFromPx, exactPx, snapTop);
+        if (!cache.TryGet(key, out var kept))
+        {
+            var bitmap = ChooseAndComposeStretchyVertical(fontPath, fontSize, codepoint, requiredHeightPx, coversFromPx,
+                snapTop, out var glyphId, out var topSnap, out var placed, exactPx);
+            kept = new StretchyRaster(bitmap, glyphId, topSnap, placed);
+            cache.Add(key, kept);
+        }
+        (variantGlyphId, snap, parts) = (kept.VariantGlyphId, kept.Snap, kept.Parts);
+        return kept.Bitmap;
+    }
+
+    /// <summary>
     /// The choice (see <see cref="RasterizeStretchyVertical(string, float, Rune, float)"/>). Where nothing
     /// fits as it is (the assembly built to the request overshoots <see cref="StretchyBound"/>, or stops at
     /// its copy cap short of the request), every candidate is a height it would be scaled from to fit: to
@@ -468,9 +585,9 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// <param name="exactPx">Draw the glyph exactly this many rows tall instead: the candidate scaled by the
     /// factor nearest 1 to that height, the assemblies built toward it, and nothing drawn as it is. A
     /// pair's other delimiter is drawn this way (<see cref="RasterizeStretchyDelimiterPair"/>).</param>
-    private GlyphBitmap RasterizeStretchyVerticalCore(string fontPath, float fontSize,
+    private GlyphBitmap ChooseAndComposeStretchyVertical(string fontPath, float fontSize,
         Rune codepoint, float requiredHeightPx, float coversFromPx, bool snapTop, out uint variantGlyphId,
-        out TopSnap snap, out AssemblyPart[]? parts, float? exactPx = null)
+        out TopSnap snap, out AssemblyPart[]? parts, float? exactPx)
     {
         variantGlyphId = 0;
         snap = TopSnap.None;
@@ -1166,6 +1283,7 @@ public sealed class ManagedFontRasterizer : IDisposable
         // sufficient. Method retained for API parity with FreeType path.
         _fonts.Clear();
         _identityMemo.Clear();
+        ClearRasterCaches();
     }
 
     // ---- Internals ---------------------------------------------------------
