@@ -316,17 +316,28 @@ public sealed class ManagedFontRasterizer : IDisposable
 
     /// <summary>
     /// Rasterize a stretchy delimiter (paren, bracket, brace, radical, etc.)
-    /// at a height that covers <paramref name="requiredHeightPx"/> using the
-    /// font's OpenType MATH vertical-construction recipe. Algorithm:
+    /// at about <paramref name="requiredHeightPx"/> using the font's OpenType
+    /// MATH vertical-construction recipe. The candidates are, in order, the
+    /// unstretched base glyph, the construction's pre-drawn size variants, and
+    /// its assembly with each count of extender copies.
     /// <list type="number">
-    /// <item>If the unstretched base glyph is already tall enough, use it.</item>
-    /// <item>Else walk the construction's pre-drawn variants and pick the
-    /// smallest whose advance covers the request.</item>
-    /// <item>Else compose the assembly: each non-extender part appears once,
-    /// extender parts repeat as many times as needed to reach the request.</item>
+    /// <item>If the base glyph is already tall enough, use it as it is.</item>
+    /// <item>Else the smallest variant whose advance covers the request, as it
+    /// is.</item>
+    /// <item>Else compose the assembly with the fewest extender copies (none
+    /// counts) that can reach the request, spread to land on it; where its
+    /// shortest is taller, at that. It is used as it is unless it overshoots
+    /// <see cref="StretchyBound"/>, the larger of 1.25 times the request and
+    /// the request plus half an em.</item>
+    /// <item>Else, where it overshoots (or reaches its copy cap short of the
+    /// request), the candidate that needs the least scaling to fit is scaled
+    /// vertically to the nearest whole row from the request to that bound
+    /// (see <see cref="RasterizeStretchyVerticalCore"/>).</item>
+    /// <item>A construction with no assembly gives its largest variant, as it
+    /// is, where none covers.</item>
     /// </list>
     /// Returns a default <see cref="GlyphBitmap"/> (Rgba == null, Width == 0)
-    /// when the result wouldn't be useful — codepoint not in the font, or the
+    /// when the result wouldn't be useful: codepoint not in the font, or the
     /// font has no MATH data and the unstretched base glyph isn't tall
     /// enough to cover the request. Callers must handle this by falling back
     /// to a non-MATH path (e.g. parametric drawing in SqrtBox / BracketBox).
@@ -341,13 +352,14 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// Same as <see cref="RasterizeStretchyVertical(string, float, Rune, float)"/>
     /// but also returns the glyph id of the variant that was rendered.
     /// <list type="bullet">
-    /// <item>Variant path or "base already tall enough" path → the
+    /// <item>Variant path or "base already tall enough" path: the
     /// chosen single glyph's id (caller can look up its
-    /// <c>MathItalicsCorrection</c>, corner kerns, etc.).</item>
-    /// <item>Assembly path → the BASE glyph's id (assembly-composed
+    /// <c>MathItalicsCorrection</c>, corner kerns, etc.), also where it was
+    /// scaled to fit.</item>
+    /// <item>Assembly path: the BASE glyph's id (assembly-composed
     /// glyphs don't have a single glyph id, so the base is the only
     /// reasonable fallback for metric lookup).</item>
-    /// <item>No coverage → 0 (caller should use base codepoint).</item>
+    /// <item>No coverage: 0 (caller should use base codepoint).</item>
     /// </list>
     /// </summary>
     public GlyphBitmap RasterizeStretchyVertical(string fontPath, float fontSize,
@@ -358,10 +370,11 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// <summary>
     /// <see cref="RasterizeStretchyVertical(string, float, Rune, float, out uint)"/> with an opt-in
     /// <paramref name="snapTop"/>: the chosen glyph is moved vertically by at most half a pixel so the top
-    /// of its outline lands on a pixel row, as <see cref="RasterizeGlyphTopSnapped"/> does. Of an assembly
-    /// only the topmost part is snapped (see <see cref="ComposeVerticalAssembly"/> for why). Which glyph is
-    /// chosen does not depend on <paramref name="snapTop"/>; with it false the result is the public
-    /// method's, byte for byte, which is what every caller but the radical gets.
+    /// of its outline lands on a pixel row, as <see cref="RasterizeGlyphTopSnapped"/> does. An assembly is
+    /// moved whole, every part by the one shift, so its joins stay where they were (see
+    /// <see cref="ComposeVerticalAssembly"/>). Which glyph is chosen does not depend on
+    /// <paramref name="snapTop"/>; with it false the result is the public method's, byte for byte, which is
+    /// what every caller but the radical gets.
     /// </summary>
     /// <param name="snap">Where the outline's top begins in the bitmap and how many rows the stroke at
     /// its top-right touches; <see cref="TopSnap.None"/> when nothing was snapped
@@ -374,7 +387,7 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// <summary>
     /// <see cref="RasterizeStretchyVertical(string, float, Rune, float)"/>, also saying where each part of an
     /// assembly landed in the composed bitmap; <paramref name="parts"/> is null when no assembly was built
-    /// (the base glyph or a size variant covered the request).
+    /// (the base glyph or a size variant was drawn, as it is or scaled to fit).
     /// </summary>
     internal GlyphBitmap RasterizeStretchyVerticalWithParts(string fontPath, float fontSize,
         Rune codepoint, float requiredHeightPx, out AssemblyPart[]? parts)
@@ -390,10 +403,19 @@ public sealed class ManagedFontRasterizer : IDisposable
         MathF.Max(0.901f * requestPx, requestPx - 0.5f * fontSize);
 
     /// <summary>
+    /// The most a stretchy glyph is drawn for a request of <paramref name="requestPx"/>: the larger of 1.25
+    /// times the request and the request plus half an em. An assembly taller than this is not drawn as it
+    /// is (see <see cref="RasterizeStretchyVerticalCore"/>).
+    /// </summary>
+    internal static float StretchyBound(float requestPx, float fontSize) =>
+        MathF.Max(1.25f * requestPx, requestPx + 0.5f * fontSize);
+
+    /// <summary>
     /// <see cref="RasterizeStretchyVertical(string, float, Rune, float, out uint)"/> for a <c>\left..\right</c>
     /// delimiter, which may fall short of its request by TeX's rule (<see cref="DelimiterCovers"/>): the
-    /// unstretched glyph or a size variant covers it from that height. An assembly is still built to the
-    /// whole request, since it can reach it.
+    /// unstretched glyph or a size variant covers it from that height, and so does the assembly with a copy
+    /// fewer where the one built to the request overshoots the bound. An assembly that fits is still built
+    /// to the whole request, since it can reach it.
     /// </summary>
     internal GlyphBitmap RasterizeStretchyDelimiter(string fontPath, float fontSize,
         Rune codepoint, float requiredHeightPx, out uint variantGlyphId, out AssemblyPart[]? parts)
@@ -404,8 +426,35 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// ink box spans, Y down, as fractions of a pixel.</summary>
     internal readonly record struct AssemblyPart(uint GlyphId, bool IsExtender, float Top, float Bottom);
 
-    /// <param name="coversFromPx">The least height at which the unstretched glyph or a size variant counts
-    /// as covering the request: the request itself, or less for a delimiter (<see cref="DelimiterCovers"/>).</param>
+    /// <summary>A candidate for a stretchy glyph: one glyph (<see cref="Sequence"/> null), the base or a size
+    /// variant, or an assembly's parts bottom-up with each join's overlap in font units; and the height in
+    /// pixels it is drawn at unscaled: a glyph's rows (the base) or advance (a variant), an assembly's ink.</summary>
+    private sealed record StretchyCandidate(uint GlyphId, Tables.OpenTypeMath.MathGlyphPart[]? Sequence, float[]? Overlaps,
+        float HeightPx);
+
+    /// <summary>
+    /// The choice (see <see cref="RasterizeStretchyVertical(string, float, Rune, float)"/>). Where nothing
+    /// fits as it is (the assembly built to the request overshoots <see cref="StretchyBound"/>, or stops at
+    /// its copy cap short of the request), every candidate is a height it would be scaled from to fit: to
+    /// the nearest whole row from <paramref name="coversFromPx"/> to the bound. The candidates are the base glyph, each size
+    /// variant, the assembly built to the request and the one with a copy fewer (every other copy count is
+    /// further from fitting than one of those two). The one scaled by the factor nearest 1 is drawn, a glyph
+    /// twice as tall as it may be counting as far off as one half as tall as it must be; one that already
+    /// fits, such as a delimiter's assembly a copy short but within its shortfall, is drawn as it is.
+    /// <para>This replaces squashing the assembly to the request, which DejaVu Sans reached for every
+    /// delimiter taller than its base glyph: its parts are 1.2 em tall and its joins have no room, so its
+    /// two-part parenthesis is 2.4 em at the least. Squashed to the request it thinned the horizontal strokes
+    /// of ordinary text (<c>(b)</c> at 96 px drew a 227 px assembly at 98 px, where the base parenthesis is
+    /// 86 rows), and it jumped where the assembly started to fit (a 32 px parenthesis drew 61 rows for a 60.7
+    /// px request and 77 for 60.9 px). Scaled to the nearest height that fits, the least it must be, the
+    /// glyph meets its own height where it starts to fit. Only a construction with an assembly gets here,
+    /// where the squash was. A base glyph or a variant that covers is drawn as designed even past the
+    /// bound (STIX Two Math's radical variants step by up to two thirds of an em, and
+    /// <see cref="MathLayout.SqrtBox"/> scales its own base glyph for those), and so is the largest variant
+    /// of a construction with no assembly, short of the request.</para>
+    /// </summary>
+    /// <param name="coversFromPx">The least height at which a glyph counts as covering the request: the
+    /// request itself, or less for a delimiter (<see cref="DelimiterCovers"/>).</param>
     private GlyphBitmap RasterizeStretchyVerticalCore(string fontPath, float fontSize,
         Rune codepoint, float requiredHeightPx, float coversFromPx, bool snapTop, out uint variantGlyphId,
         out TopSnap snap, out AssemblyPart[]? parts)
@@ -417,7 +466,7 @@ public sealed class ManagedFontRasterizer : IDisposable
         var baseGid = font.GetGlyphId((uint)codepoint.Value);
         if (baseGid == 0) return default;
 
-        // 0) Base glyph already covers the request — no stretching needed.
+        // 0) The base glyph already covers the request: no stretching needed.
         //    This branch fires for short content even on math-less fonts and
         //    is the cheap path: just render the unstretched glyph and return.
         //    The decision is taken on the unsnapped bitmap, so snapping never
@@ -429,7 +478,7 @@ public sealed class ManagedFontRasterizer : IDisposable
             return snapTop ? RenderTopSnapped(font, baseGid, fontSize, out snap) : baseGlyph;
         }
 
-        // The base glyph isn't tall enough. From here we need MATH data — if
+        // The base glyph isn't tall enough. From here we need MATH data. If
         // the font has none (or doesn't cover this codepoint vertically),
         // return empty so the caller can pick a non-MATH fallback (e.g.
         // parametric drawing in SqrtBox / BracketBox). Returning the too-
@@ -441,8 +490,9 @@ public sealed class ManagedFontRasterizer : IDisposable
         var construction = math.GetVerticalConstruction((ushort)baseGid);
         if (construction is null) return default;
 
-        // 1) Variants — pick smallest whose AdvanceMeasurement (FUnits) covers the request.
+        // 1) Variants: the smallest whose AdvanceMeasurement (FUnits) covers the request.
         var unitsPerEm = font.UnitsPerEm;
+        var pxPerUnit = fontSize / unitsPerEm;
         var requiredFUnits = (int)Math.Ceiling(coversFromPx * unitsPerEm / fontSize);
         foreach (var v in construction.Variants)
         {
@@ -453,26 +503,65 @@ public sealed class ManagedFontRasterizer : IDisposable
             }
         }
 
-        // 2) Assembly path — composed from multiple parts; no single glyph
-        //    id. Report the base glyph id so callers can still look up
-        //    metrics (italic correction, etc.) against something sensible.
-        if (construction.Assembly is { } asm)
+        // 2) No assembly: the largest variant, still short of the request but closer than the base, as it
+        //    is. A font that draws a largest size and no assembly (STIX Two Math's summation) means it as the
+        //    biggest the glyph gets, and stretching a designed glyph past it would distort it.
+        if (construction.Assembly is not { Parts.Count: > 0 } asm)
+        {
+            if (construction.Variants.Count == 0) return default;
+            variantGlyphId = construction.Variants[^1].GlyphId;
+            return RenderMaybeTopSnapped(font, variantGlyphId, fontSize, snapTop, out snap);
+        }
+
+        // 3) The assembly, built to the whole request: drawn as it is where it fits. It has no single glyph
+        //    id, so the base glyph's is reported, for callers to look up metrics (italic correction, etc.).
+        var bound = StretchyBound(requiredHeightPx, fontSize);
+        var minOverlap = math.MinConnectorOverlap;
+        var requiredUnits = requiredHeightPx * unitsPerEm / fontSize;
+        var copies = AssemblyCopies(asm, minOverlap, requiredUnits);
+        var built = AssemblyCandidate(font, asm, copies, minOverlap, requiredUnits, pxPerUnit);
+        if (MostUnits(built.Sequence!, minOverlap) >= requiredUnits && built.HeightPx <= bound)
         {
             variantGlyphId = baseGid;
-            return ComposeVerticalAssembly(font, asm, math.MinConnectorOverlap, unitsPerEm, fontSize,
-                requiredHeightPx * unitsPerEm / fontSize,
+            return ComposeVerticalAssembly(font, built.Sequence!, built.Overlaps!, unitsPerEm, fontSize, null,
+                snapTop, out snap, out parts);
+        }
+        var candidates = new List<StretchyCandidate> { new(baseGid, null, null, baseGlyph.Height) };
+        foreach (var v in construction.Variants)
+            candidates.Add(new(v.GlyphId, null, null, v.AdvanceMeasurement * pxPerUnit));
+        candidates.Add(built);
+        if (copies > 0) candidates.Add(AssemblyCandidate(font, asm, copies - 1, minOverlap, requiredUnits, pxPerUnit));
+
+        // 4) Nothing fits as it is: the candidate scaled by the factor nearest 1, the first on a tie.
+        var low = MathF.Ceiling(coversFromPx);
+        var high = MathF.Max(low, MathF.Floor(bound));
+        StretchyCandidate? best = null;
+        var bestCost = float.PositiveInfinity;
+        foreach (var c in candidates)
+        {
+            if (!(c.HeightPx > 0f)) continue;
+            var cost = MathF.Abs(MathF.Log(Math.Clamp(c.HeightPx, low, high) / c.HeightPx));
+            if (cost < bestCost) (best, bestCost) = (c, cost);
+        }
+        if (best is null) return default;
+
+        var fits = best.HeightPx >= coversFromPx && best.HeightPx <= bound;
+        float? target = fits ? null : Math.Clamp(best.HeightPx, low, high);
+        if (best.Sequence is { } sequence)
+        {
+            variantGlyphId = baseGid;
+            return ComposeVerticalAssembly(font, sequence, best.Overlaps!, unitsPerEm, fontSize, target,
                 snapTop, out snap, out parts);
         }
 
-        // 3) Largest variant if any (still possibly short of the request, but
-        //    closer than the base). If the construction has neither variants
-        //    nor assembly we already returned default above.
-        if (construction.Variants.Count > 0)
-        {
-            variantGlyphId = construction.Variants[^1].GlyphId;
-            return RenderMaybeTopSnapped(font, construction.Variants[^1].GlyphId, fontSize, snapTop, out snap);
-        }
-        return default;
+        variantGlyphId = best.GlyphId;
+        if (target is null) return RenderMaybeTopSnapped(font, best.GlyphId, fontSize, snapTop, out snap);
+        // One glyph scaled: drawn as an assembly of that one part, its ink its whole height.
+        var ink = InkBounds(font, (ushort)best.GlyphId, fallbackHeight: 0);
+        if (!(ink.YMax > ink.YMin)) return RenderMaybeTopSnapped(font, best.GlyphId, fontSize, snapTop, out snap);
+        var part = new Tables.OpenTypeMath.MathGlyphPart((ushort)best.GlyphId, 0, 0,
+            (ushort)Math.Clamp(MathF.Round(ink.YMax - ink.YMin), 1, ushort.MaxValue), false);
+        return ComposeVerticalAssembly(font, [part], [], unitsPerEm, fontSize, target, snapTop, out snap, out _);
     }
 
     private static GlyphBitmap RenderMaybeTopSnapped(OpenTypeFont font, uint gid, float pixelsPerEm, bool snapTop, out TopSnap snap)
@@ -482,79 +571,62 @@ public sealed class ManagedFontRasterizer : IDisposable
         return Render(font, gid, pixelsPerEm);
     }
 
+    /// <summary>The assembly with <paramref name="copies"/> of every extender, its joins spread toward
+    /// <paramref name="requiredUnits"/>, as a candidate whose height is its ink's.</summary>
+    private static StretchyCandidate AssemblyCandidate(OpenTypeFont font, Tables.OpenTypeMath.MathGlyphAssembly asm,
+        int copies, ushort minOverlap, float requiredUnits, float pxPerUnit)
+    {
+        var sequence = AssemblySequence(asm, copies);
+        var overlaps = SpreadOverlaps(sequence, minOverlap, requiredUnits);
+        return new(0, sequence, overlaps, Stack(font, sequence, overlaps).Top * pxPerUnit);
+    }
+
     /// <summary>
     /// Compose a stretchy vertical glyph from an OpenType MATH assembly recipe, as the specification (and
     /// MathML Core after it) lays one out. Parts are listed bottom-up.
     /// <list type="number">
     /// <item>Every extender appears the same number of times, r, from none upward: the fewest whose height
     /// reaches the request with every join at the table's <c>MinConnectorOverlap</c>, the least it may
-    /// overlap. Taking the most the connectors allow instead (what this did) lets an extender whose
-    /// connectors are as long as itself add next to nothing a copy: STIX Two Math's radical extender
-    /// (FullAdvance 651, connectors 650) added one font unit, so the loop met its cap a little over two em
-    /// tall and the radical came out shorter than its radicand. And always one copy of each extender put
-    /// DejaVu Sans's parenthesis at 3.5 em where the two ends alone make 2.4.</item>
+    /// overlap (<see cref="AssemblyCopies"/>). Taking the most the connectors allow instead (what this did)
+    /// lets an extender whose connectors are as long as itself add next to nothing a copy: STIX Two Math's
+    /// radical extender (FullAdvance 651, connectors 650) added one font unit, so the loop met its cap a
+    /// little over two em tall and the radical came out shorter than its radicand. And always one copy of
+    /// each extender put DejaVu Sans's parenthesis at 3.5 em where the two ends alone make 2.4.</item>
     /// <item>The overlap left over, the height past the request, is spread evenly across the joins, each
-    /// held between <c>MinConnectorOverlap</c> and what its two connectors allow, so the glyph lands on the
-    /// request. It is shorter only at the cap, and taller only where no extender at all already overshoots
-    /// (the assembly's minimum).</item>
+    /// held between <c>MinConnectorOverlap</c> and what its two connectors allow (<see cref="SpreadOverlaps"/>),
+    /// so the glyph lands on the request. Where the joins have too little room it does not: it is taller
+    /// where even the most overlap leaves r copies past the request (the request falls between what r - 1
+    /// copies reach at the least overlap and r copies at the most, or below what none reach), and shorter
+    /// only at the copy cap. A copy count a caller passes on its own (one short, to scale up) is spread
+    /// the same way.</item>
     /// <item>The parts are placed in font units, each one's ink box starting where the one below ends less
     /// the join's overlap, and drawn as one outline at those fractional offsets. A join is then a union of
     /// overlapping ink, never two antialiased edges stacked on whole pixels, so it shows no seam.</item>
     /// </list>
     /// The parts' design outlines are drawn, not hinted ones: a hinter fits each part to the pixel grid on
     /// its own, which moves its ends, and they would no longer meet where the font units say.
+    /// <para>With <paramref name="heightPx"/> the whole outline is scaled vertically so its ink is that many
+    /// pixels tall, less a 256th so a whole number of pixels fills exactly that many rows; its X is not
+    /// scaled. Without it the ink is as tall as the font units make it.</para>
     /// <para>With <paramref name="snapTop"/> the whole outline moves up by under half a pixel so the top of
     /// the topmost part (the radical's flag) lands on a pixel row, and the stroke at its top-right is
     /// measured on that part alone, as <see cref="RenderTopSnapped"/> does for a single glyph. Moving every
     /// part by the one shift keeps the joins where they were.</para>
     /// </summary>
-    /// <param name="requiredUnits">The height asked for, in font units.</param>
+    /// <param name="overlaps">The overlap at each join, bottom-up, in font units.</param>
     /// <param name="placed">Each part as drawn, bottom-up: its ink box in the bitmap's rows (Y down).</param>
     private static GlyphBitmap ComposeVerticalAssembly(
-        OpenTypeFont font, Tables.OpenTypeMath.MathGlyphAssembly asm,
-        ushort minOverlap, ushort unitsPerEm, float fontSize, float requiredUnits,
-        bool snapTop, out TopSnap snap, out AssemblyPart[]? placed)
+        OpenTypeFont font, Tables.OpenTypeMath.MathGlyphPart[] sequence, float[] overlaps,
+        ushort unitsPerEm, float fontSize, float? heightPx, bool snapTop, out TopSnap snap, out AssemblyPart[]? placed)
     {
         snap = TopSnap.None;
         placed = null;
-        if (asm.Parts.Count == 0) return default;
+        if (sequence.Length == 0) return default;
 
-        var sequence = AssemblySequence(asm, minOverlap, requiredUnits);
-        var overlaps = SpreadOverlaps(sequence, minOverlap, requiredUnits);
-
-        // Each part's ink box, from its outline: the part is placed by where its ink starts, which for these
-        // parts is its FullAdvance tall (STIX Two Math's and DejaVu Sans's alike, to a unit).
-        var inkBottom = new float[sequence.Length];
-        var bottoms = new float[sequence.Length];
-        var boundsCache = new Dictionary<ushort, (float YMin, float YMax)>();
-        for (var i = 0; i < sequence.Length; i++)
-        {
-            var gid = sequence[i].GlyphId;
-            if (!boundsCache.TryGetValue(gid, out var bounds))
-            {
-                var sink = new TopEdgeSink();
-                font.DrawGlyph(gid, sink);
-                bounds = sink.HasPoints ? (sink.YMin, sink.YMax) : (0f, sequence[i].FullAdvance);
-                boundsCache[gid] = bounds;
-            }
-            inkBottom[i] = bounds.YMin;
-            bottoms[i] = i == 0 ? 0f : bottoms[i - 1] + sequence[i - 1].FullAdvance - overlaps[i - 1];
-        }
-
+        var (bottoms, inkBottom, topUnits) = Stack(font, sequence, overlaps);
         var scale = fontSize / unitsPerEm;
         var top = sequence.Length - 1;
-        var topUnits = bottoms[top] + boundsCache[sequence[top].GlyphId].YMax - inkBottom[top];
-
-        // An assembly whose least reachable height still overshoots the request past what a delimiter may
-        // (the larger of 1.25 times the request and the request plus half an em) is squashed vertically to
-        // the request. DejaVu Sans ships no size variants, and parts 1.2 em tall whose connectors leave no
-        // room to overlap more, so its two-part parenthesis alone is 1.29 times a 1/2 fraction and its brace
-        // 1.92 times. STIX Two Math, with variants and joins that stretch, never comes near the bound.
-        var requestPx = requiredUnits * scale;
-        var heightPx = topUnits * scale;
-        var yScale = heightPx > MathF.Max(1.25f * requestPx, requestPx + 0.5f * fontSize)
-            ? scale * (requestPx / heightPx)
-            : scale;
+        var yScale = heightPx is { } h && topUnits > 0f ? (h - SnapInsetPx) / topUnits : scale;
         void Walk(IGlyphSink sink, float shift)
         {
             for (var i = 0; i < sequence.Length; i++)
@@ -594,17 +666,55 @@ public sealed class ManagedFontRasterizer : IDisposable
         return bitmap with { BearingY = bitmap.Height };
     }
 
+    /// <summary>
+    /// Where each part of <paramref name="sequence"/> sits, in font units with Y up: <c>Bottoms[i]</c> the
+    /// bottom of its ink, each part's ink starting where the one below it ends less the join's overlap;
+    /// <c>InkBottom[i]</c> where its ink starts in its own outline; and <c>Top</c> the top of the topmost
+    /// part's ink, the whole stack's height. The parts are placed by where their ink starts, which for these
+    /// parts is their FullAdvance tall (STIX Two Math's to a unit; DejaVu Sans's top parts reach about 80
+    /// units past theirs).
+    /// </summary>
+    private static (float[] Bottoms, float[] InkBottom, float Top) Stack(
+        OpenTypeFont font, Tables.OpenTypeMath.MathGlyphPart[] sequence, float[] overlaps)
+    {
+        var inkBottom = new float[sequence.Length];
+        var bottoms = new float[sequence.Length];
+        var boundsCache = new Dictionary<ushort, (float YMin, float YMax)>();
+        (float YMin, float YMax) Bounds(int i)
+        {
+            var gid = sequence[i].GlyphId;
+            if (!boundsCache.TryGetValue(gid, out var bounds))
+                boundsCache[gid] = bounds = InkBounds(font, gid, sequence[i].FullAdvance);
+            return bounds;
+        }
+        for (var i = 0; i < sequence.Length; i++)
+        {
+            inkBottom[i] = Bounds(i).YMin;
+            bottoms[i] = i == 0 ? 0f : bottoms[i - 1] + sequence[i - 1].FullAdvance - overlaps[i - 1];
+        }
+        var top = sequence.Length - 1;
+        return (bottoms, inkBottom, top < 0 ? 0f : bottoms[top] + Bounds(top).YMax - inkBottom[top]);
+    }
+
+    /// <summary>The lowest and highest Y of <paramref name="gid"/>'s outline in font units, or 0 to
+    /// <paramref name="fallbackHeight"/> where it has none.</summary>
+    private static (float YMin, float YMax) InkBounds(OpenTypeFont font, ushort gid, float fallbackHeight)
+    {
+        var sink = new TopEdgeSink();
+        font.DrawGlyph(gid, sink);
+        return sink.HasPoints ? (sink.YMin, sink.YMax) : (0f, fallbackHeight);
+    }
+
     /// <summary>The most copies of the extenders an assembly is given; past it the glyph is short of the
     /// request. A hundred copies of the shortest extender in the fonts here is over 30 em.</summary>
     private const int MaxExtenderRepeats = 100;
 
     /// <summary>
-    /// The assembly's parts bottom-up with every extender repeated r times: the fewest, from none, whose
-    /// height with every join at <paramref name="minOverlap"/> (the most an assembly can be stretched to)
-    /// reaches <paramref name="requiredUnits"/>, up to <see cref="MaxExtenderRepeats"/>.
+    /// How many times every extender of <paramref name="asm"/> repeats: the fewest, from none, whose height
+    /// with every join at <paramref name="minOverlap"/> (the most an assembly can be stretched to) reaches
+    /// <paramref name="requiredUnits"/>, up to <see cref="MaxExtenderRepeats"/>.
     /// </summary>
-    private static Tables.OpenTypeMath.MathGlyphPart[] AssemblySequence(
-        Tables.OpenTypeMath.MathGlyphAssembly asm, ushort minOverlap, float requiredUnits)
+    private static int AssemblyCopies(Tables.OpenTypeMath.MathGlyphAssembly asm, ushort minOverlap, float requiredUnits)
     {
         int fixedAdvance = 0, fixedParts = 0, extenderAdvance = 0, extenderParts = 0;
         foreach (var p in asm.Parts)
@@ -613,21 +723,32 @@ public sealed class ManagedFontRasterizer : IDisposable
             else { fixedAdvance += p.FullAdvance; fixedParts++; }
         }
 
-        var repeats = 0;
-        if (extenderParts > 0)
-        {
-            // Height at r copies, least overlap: fixed + r * ext - minOverlap * (parts(r) - 1).
-            var perRepeat = extenderAdvance - minOverlap * extenderParts;
-            var atNone = fixedAdvance - minOverlap * (fixedParts - 1);
-            if (perRepeat > 0 && requiredUnits > atNone)
-                repeats = Math.Min(MaxExtenderRepeats, (int)Math.Ceiling((requiredUnits - atNone) / perRepeat));
-        }
+        if (extenderParts == 0) return 0;
+        // Height at r copies, least overlap: fixed + r * ext - minOverlap * (parts(r) - 1).
+        var perRepeat = extenderAdvance - minOverlap * extenderParts;
+        var atNone = fixedAdvance - minOverlap * (fixedParts - 1);
+        return perRepeat > 0 && requiredUnits > atNone
+            ? Math.Min(MaxExtenderRepeats, (int)Math.Ceiling((requiredUnits - atNone) / perRepeat))
+            : 0;
+    }
 
-        var sequence = new List<Tables.OpenTypeMath.MathGlyphPart>(fixedParts + repeats * extenderParts);
+    /// <summary>The assembly's parts bottom-up with every extender repeated <paramref name="copies"/> times.</summary>
+    private static Tables.OpenTypeMath.MathGlyphPart[] AssemblySequence(Tables.OpenTypeMath.MathGlyphAssembly asm, int copies)
+    {
+        var sequence = new List<Tables.OpenTypeMath.MathGlyphPart>(asm.Parts.Count + copies * asm.Parts.Count);
         foreach (var p in asm.Parts)
-            for (var r = p.IsExtender ? repeats : 1; r > 0; r--)
+            for (var r = p.IsExtender ? copies : 1; r > 0; r--)
                 sequence.Add(p);
         return [.. sequence];
+    }
+
+    /// <summary>The height of <paramref name="sequence"/>'s advances with every join at
+    /// <paramref name="minOverlap"/>, the most it can reach, in font units.</summary>
+    private static float MostUnits(Tables.OpenTypeMath.MathGlyphPart[] sequence, ushort minOverlap)
+    {
+        var advance = 0f;
+        foreach (var p in sequence) advance += p.FullAdvance;
+        return advance - minOverlap * Math.Max(0, sequence.Length - 1);
     }
 
     /// <summary>
@@ -635,7 +756,7 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// less the overlaps come to <paramref name="requiredUnits"/>: the same at every join, each held between
     /// <paramref name="minOverlap"/> and what its two connectors allow (<see cref="MaxOverlap"/>). Where even
     /// the most overlap leaves the parts taller than the request, every join takes its most; where even the
-    /// least leaves them shorter (at the cap), its least.
+    /// least leaves them shorter (at the cap, or a copy short of the request), its least.
     /// </summary>
     private static float[] SpreadOverlaps(Tables.OpenTypeMath.MathGlyphPart[] sequence, ushort minOverlap, float requiredUnits)
     {
