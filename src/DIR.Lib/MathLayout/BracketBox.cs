@@ -69,13 +69,12 @@ public sealed class BracketBox : Box
         // is the same only for content centred on the axis; a fraction whose
         // numerator is itself a fraction reaches further above the axis than
         // below, and asking for its total height left its numerator above the
-        // delimiters. No extra padding beyond that — fonts with sparse stretch
-        // coverage (DejaVu only ships base + tall-assembly with nothing in
-        // between) would otherwise see a ~10% over-request push past the base
-        // glyph and snap to the much taller assembly, producing badly
-        // disproportionate brackets around 1em-tall content. Visual padding is
-        // added externally by Width/Height around the chosen delimiter, not by
-        // inflating the request to the font.
+        // delimiters. No padding is added to the request. A font's delimiters
+        // come in steps (DejaVu Sans ships no size variants, and its assembly
+        // grows by more than an em a copy), so asking for more than the content
+        // reaches only takes a larger step than TeX would. The visual padding
+        // around the delimiters comes from Width and Height, not from the
+        // request.
         var axis = style.AxisHeight;
         var requiredHeight = 2 * MathF.Max(inner.Height - axis, inner.Depth + axis);
         var (leftCp, rightCp) = BracketCodepoints(kind);
