@@ -19,4 +19,10 @@
     <ProjectReference Include="..\DIR.Lib\DIR.Lib.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The markdown parse corpus loader, shared with MarkdownCorpusGoldenTests so the benchmark
+         times the documents whose AST the test pins. It finds the fixtures in the source tree. -->
+    <Compile Include="..\DIR.Lib.Tests\MarkdownCorpus.cs" Link="MarkdownCorpus.cs" />
+  </ItemGroup>
+
 </Project>
