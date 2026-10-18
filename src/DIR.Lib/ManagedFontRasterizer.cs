@@ -381,6 +381,23 @@ public sealed class ManagedFontRasterizer : IDisposable
         => RasterizeStretchyVerticalCore(fontPath, fontSize, codepoint, requiredHeightPx, snapTop: false,
             out _, out _, out parts);
 
+    /// <summary>
+    /// The least height a <c>\left..\right</c> delimiter may be for a request of <paramref name="requestPx"/>:
+    /// max(0.901 x request, request - 0.5 em), TeX's <c>\delimiterfactor</c> 901 and <c>\delimitershortfall</c>
+    /// 5 pt at a 10 pt design size.
+    /// </summary>
+    internal static float DelimiterCovers(float requestPx, float fontSize) =>
+        MathF.Max(0.901f * requestPx, requestPx - 0.5f * fontSize);
+
+    /// <summary>
+    /// <see cref="RasterizeStretchyVertical(string, float, Rune, float, out uint)"/> for a <c>\left..\right</c>
+    /// delimiter, which may fall short of its request by TeX's rule (<see cref="DelimiterCovers"/>).
+    /// </summary>
+    internal GlyphBitmap RasterizeStretchyDelimiter(string fontPath, float fontSize,
+        Rune codepoint, float requiredHeightPx, out uint variantGlyphId, out AssemblyPart[]? parts)
+        => RasterizeStretchyVerticalCore(fontPath, fontSize, codepoint, requiredHeightPx, snapTop: false,
+            out variantGlyphId, out _, out parts);
+
     /// <summary>One part of a composed assembly as drawn: its glyph, and the rows of the composed bitmap its
     /// ink box spans, Y down, as fractions of a pixel.</summary>
     internal readonly record struct AssemblyPart(uint GlyphId, bool IsExtender, float Top, float Bottom);
