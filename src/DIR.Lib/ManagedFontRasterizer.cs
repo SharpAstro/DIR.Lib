@@ -523,10 +523,22 @@ public sealed class ManagedFontRasterizer : IDisposable
         var scale = fontSize / unitsPerEm;
         var top = sequence.Length - 1;
         var topUnits = bottoms[top] + boundsCache[sequence[top].GlyphId].YMax - inkBottom[top];
+
+        // An assembly whose least reachable height still overshoots the request past what a delimiter may
+        // (the larger of 1.25 times the request and the request plus half an em) is squashed vertically to
+        // the request. DejaVu Sans ships no size variants, and parts 1.2 em tall whose connectors leave no
+        // room to overlap more, so its two-part parenthesis alone is 1.29 times a 1/2 fraction and its brace
+        // 1.92 times. STIX Two Math, with variants and joins that stretch, never comes near the bound.
+        var requestPx = requiredUnits * scale;
+        var heightPx = topUnits * scale;
+        var yScale = heightPx > MathF.Max(1.25f * requestPx, requestPx + 0.5f * fontSize)
+            ? scale * (requestPx / heightPx)
+            : scale;
         void Walk(IGlyphSink sink, float shift)
         {
             for (var i = 0; i < sequence.Length; i++)
-                font.DrawGlyph(sequence[i].GlyphId, new ScaleShiftSink(sink, scale, (bottoms[i] - inkBottom[i]) * scale + shift));
+                font.DrawGlyph(sequence[i].GlyphId,
+                    new ScaleShiftSink(sink, scale, (bottoms[i] - inkBottom[i]) * yScale + shift, yScale));
         }
 
         // The bottom of the ink on a row boundary, or the top on one when snapping (see RenderTopSnapped).
@@ -534,13 +546,13 @@ public sealed class ManagedFontRasterizer : IDisposable
         float row = 0, strokeBottomPx = float.NaN;
         if (snapTop)
         {
-            var topPx = topUnits * scale;
+            var topPx = topUnits * yScale;
             row = MathF.Round(topPx);
             if (!(row - topPx is >= 0f and <= SnapInsetPx)) shiftPx = row - SnapInsetPx - topPx;
             var stroke = new TopStrokeSink();
             font.DrawGlyph(sequence[top].GlyphId, stroke);
             var strokeUnits = stroke.TopRunBottom(stroke.XMax - 0.01f * unitsPerEm);
-            strokeBottomPx = (strokeUnits + bottoms[top] - inkBottom[top]) * scale + shiftPx;
+            strokeBottomPx = (strokeUnits + bottoms[top] - inkBottom[top]) * yScale + shiftPx;
         }
 
         var gray = Rast.SmoothRasterizer.Rasterize(sink => Walk(sink, shiftPx), pixelsPerEm: 1f, unitsPerEm: 1);
@@ -550,9 +562,9 @@ public sealed class ManagedFontRasterizer : IDisposable
         placed = new AssemblyPart[sequence.Length];
         for (var i = 0; i < sequence.Length; i++)
         {
-            var bottomY = gray.Top - (bottoms[i] * scale + shiftPx);
+            var bottomY = gray.Top - (bottoms[i] * yScale + shiftPx);
             placed[i] = new AssemblyPart(sequence[i].GlyphId, sequence[i].IsExtender,
-                bottomY - sequence[i].FullAdvance * scale, bottomY);
+                bottomY - sequence[i].FullAdvance * yScale, bottomY);
         }
 
         // BearingY = height keeps the whole thing above the baseline by default;
@@ -1241,19 +1253,21 @@ public sealed class ManagedFontRasterizer : IDisposable
         }
     }
 
-    /// <summary>Scales an outline to pixels and moves it up by <c>dy</c> pixels (Y is up here), for the
-    /// rasterizer to draw at identity scale.</summary>
-    private sealed class ScaleShiftSink(IGlyphSink inner, float scale, float dy) : IGlyphSink
+    /// <summary>Scales an outline to pixels (its Y by <c>yScale</c>, the same as X unless an assembly is squashed)
+    /// and moves it up by <c>dy</c> pixels (Y is up here), for the rasterizer to draw at identity scale.</summary>
+    private sealed class ScaleShiftSink(IGlyphSink inner, float scale, float dy, float yScale) : IGlyphSink
     {
-        public void MoveTo(float x, float y) => inner.MoveTo(x * scale, y * scale + dy);
+        public ScaleShiftSink(IGlyphSink inner, float scale, float dy) : this(inner, scale, dy, scale) { }
 
-        public void LineTo(float x, float y) => inner.LineTo(x * scale, y * scale + dy);
+        public void MoveTo(float x, float y) => inner.MoveTo(x * scale, y * yScale + dy);
+
+        public void LineTo(float x, float y) => inner.LineTo(x * scale, y * yScale + dy);
 
         public void QuadTo(float cx, float cy, float x, float y)
-            => inner.QuadTo(cx * scale, cy * scale + dy, x * scale, y * scale + dy);
+            => inner.QuadTo(cx * scale, cy * yScale + dy, x * scale, y * yScale + dy);
 
         public void CubicTo(float c1x, float c1y, float c2x, float c2y, float x, float y)
-            => inner.CubicTo(c1x * scale, c1y * scale + dy, c2x * scale, c2y * scale + dy, x * scale, y * scale + dy);
+            => inner.CubicTo(c1x * scale, c1y * yScale + dy, c2x * scale, c2y * yScale + dy, x * scale, y * yScale + dy);
 
         public void Close() => inner.Close();
     }
