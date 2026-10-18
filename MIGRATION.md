@@ -16,7 +16,9 @@ hover highlight or a declared shortcut where the two overlap. Nothing fails to c
 composite's own content wherever they overlapped. Both now list the children first and the composite's own after
 them, so the composite's own regions and nodes are asked first, as `HitTest`, `HitTestCursor` and `ScrollTargetAt`
 already asked them. `PaintedRegions()` follows the same order: a reader that took a region by its position gets a
-different one where two match.
+different one where two match. The router reads the region list FORWARD for a field's focus-on-open request, so
+where the composite's own focus-on-open field and a child's first appear in the same frame, the child's now gets the
+keyboard (under the default; with `ChildrenUnderOwn`, the first in the region list's order).
 
 ### Say which children are over: `ChildrenUnderOwn`
 
