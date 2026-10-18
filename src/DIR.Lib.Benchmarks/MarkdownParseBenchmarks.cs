@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Reports;
 using DIR.Lib.Markdown;
 using DIR.Lib.Tests;
 
@@ -15,9 +17,17 @@ namespace DIR.Lib.Benchmarks;
 /// <para>Run with <c>dotnet run -c Release --project src/DIR.Lib.Benchmarks -- --filter "*MarkdownParse*" --memory</c>.</para>
 /// </summary>
 [MemoryDiagnoser]
+[MedianColumn]
 [SimpleJob(warmupCount: 3, iterationCount: 10)]
+[Config(typeof(Config))]
 public class MarkdownParseBenchmarks
 {
+    /// <summary>Keeps the document names whole in the summary table, so each row says which it is.</summary>
+    private sealed class Config : ManualConfig
+    {
+        public Config() => SummaryStyle = SummaryStyle.Default.WithMaxParameterColumnWidth(48);
+    }
+
     private const string AllFormulas = "formula/*";
 
     private readonly MarkdownBlockVisitor _visitor = new();
