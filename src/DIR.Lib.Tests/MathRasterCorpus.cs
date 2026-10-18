@@ -71,11 +71,12 @@ public static class MathRasterCorpus
 
     /// <summary>
     /// <paramref name="latex"/> prepared with <see cref="MarkdownMacros.TryPrepareMathBoxSource"/>, as
-    /// Console.Lib prepares display math, then parsed and built at <paramref name="style"/>. Null where the
-    /// helper turns it away or it does not lex or parse (LALR.CC throws an
-    /// <see cref="InvalidOperationException"/> for both).
+    /// Console.Lib prepares display math, and parsed into the builder that lays its box tree out at a given
+    /// style (one parse serves every size, as Console.Lib's width-fit loop uses it). Null where the helper
+    /// turns it away or it does not lex or parse (LALR.CC throws an <see cref="InvalidOperationException"/>
+    /// for both).
     /// </summary>
-    public static Box? Build(string latex, BoxStyle style)
+    public static Func<BoxStyle, Box>? Parse(string latex, BoxStyle style)
     {
         if (!MarkdownMacros.TryPrepareMathBoxSource(latex, out var source)) return null;
         var parser = Latex.BuildParser(new BoxBuildingVisitor(style));
@@ -84,13 +85,17 @@ public static class MathRasterCorpus
             using var lexer = BytesLexer.FromString(source, MarkdownMacros.MathLexerTable);
             using var tokens = new SyncLATokenIterator(lexer);
             var item = parser.ParseInput(tokens, debugger: null);
-            return item.IsError || item.Content is not Func<BoxStyle, Box> builder ? null : builder(style);
+            return item.IsError ? null : item.Content as Func<BoxStyle, Box>;
         }
         catch (InvalidOperationException)
         {
             return null;
         }
     }
+
+    /// <summary><paramref name="latex"/> parsed (<see cref="Parse"/>) and built at <paramref name="style"/>,
+    /// or null where it does not parse.</summary>
+    public static Box? Build(string latex, BoxStyle style) => Parse(latex, style)?.Invoke(style);
 
     /// <summary>The formula built at <paramref name="style"/> and rasterized, or null where it does not build.</summary>
     public static RgbaImage? Render(string latex, BoxStyle style) =>
