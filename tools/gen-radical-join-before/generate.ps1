@@ -2,8 +2,9 @@
 # Regenerates src/DIR.Lib.Tests/RadicalJoinTests.Before.cs: the square root as a base commit drew it, at
 # every point RadicalJoinTests sweeps.
 #
-# Why fe09d4a: it is the radical the whole-row clearance replaces, so the sweep compares that change with
-# the code it replaced. Until then the base was e6778fc, the radical before the radical-join rework (#115):
+# Why a442e91: it is the radical with the whole-row clearance (radical-clearance), which the stretchy-assembly
+# change branched from, so the sweep compares that change with the code it replaced. Before it the base was
+# fe09d4a, the radical the whole-row clearance replaced, for the same reason. Until then the base was e6778fc, the radical before the radical-join rework (#115):
 # math-italic (#117), which landed on main just before the rework, with the SqrtBox, StretchyVerticalBox
 # and ManagedFontRasterizer of 619f0e4, where the rework branched. Measured from 619f0e4, with upright
 # variables, the sweep counted italic's own change to the radicand as radical drift (STIX Two Math \sqrt{x}
@@ -20,7 +21,7 @@
 # src/ is built or touched except the output file. Change the point set in Program.cs and in
 # RadicalJoinTests together.
 param(
-    [string]$BaseCommit = 'fe09d4a',
+    [string]$BaseCommit = 'a442e91',
     [string]$BaseTree
 )
 $ErrorActionPreference = 'Stop'
