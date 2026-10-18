@@ -18,7 +18,7 @@ namespace DIR.Lib.Markdown;
 /// inline-Unicode output. Used by the visitors in this namespace and by
 /// <c>Console.Lib.MarkdownRenderer</c> via <c>InternalsVisibleTo</c>.
 /// </summary>
-public static class MarkdownMacros
+public static partial class MarkdownMacros
 {
     /// <summary>
     /// Cached math parser + lexer table. The LALR.CC source generator
@@ -238,12 +238,14 @@ public static class MarkdownMacros
         @"[+*/=<>]|\\(?:times|cdot|approx|equiv|leq|geq|neq|ll|gg|in|notin|subset|to|leftrightarrow|rightleftharpoons|leftarrow|rightarrow|pm|mp|mid)(?![a-zA-Z])";
 
     /// <summary>An operator with nothing before it: the formula's start, or an opening delimiter or a comma, then blanks.</summary>
-    private static readonly Regex LeadingOperatorRegex = new(
-        $@"(?<=(?:^|[{{(\[,]|\\\{{)[ \t\r\n]*)(?=(?:{OperatorPattern}))", RegexOptions.Compiled);
+    [GeneratedRegex(
+        $@"(?<=(?:^|[{{(\[,]|\\\{{)[ \t\r\n]*)(?=(?:{OperatorPattern}))")]
+    private static partial Regex LeadingOperatorRegex { get; }
 
     /// <summary>An operator with nothing after it: blanks, then the formula's end, a closing delimiter or a comma.</summary>
-    private static readonly Regex TrailingOperatorRegex = new(
-        $@"(?<=(?:{OperatorPattern}))(?=[ \t\r\n]*(?:$|[}})\],]|\\\}}))", RegexOptions.Compiled);
+    [GeneratedRegex(
+        $@"(?<=(?:{OperatorPattern}))(?=[ \t\r\n]*(?:$|[}})\],]|\\\}}))")]
+    private static partial Regex TrailingOperatorRegex { get; }
 
     /// <summary>
     /// The space TeX puts between two adjacent atoms of the given classes,
@@ -549,9 +551,9 @@ public static class MarkdownMacros
 
     /// <summary>A \textrm token, by the latex.lalr.yaml textrm rule's own pattern,
     /// so the quote pass sees the argument the lexer takes.</summary>
-    private static readonly Regex TextRmRegex = new(
-        @"\\textrm[ \t\r\n]*\{(?:[^{}\\]|\\.|\{(?:[^{}\\]|\\.|\{(?:[^{}\\]|\\.)*\})*\})*\}",
-        RegexOptions.Compiled);
+    [GeneratedRegex(
+        @"\\textrm[ \t\r\n]*\{(?:[^{}\\]|\\.|\{(?:[^{}\\]|\\.|\{(?:[^{}\\]|\\.)*\})*\})*\}")]
+    private static partial Regex TextRmRegex { get; }
 
     /// <summary>
     /// True iff the latex.lalr.yaml lexer has a tokenisation rule that matches
@@ -683,9 +685,9 @@ public static class MarkdownMacros
     /// <see cref="LatexAliases"/> pairs with <c>\left</c> follows (<c>[</c>
     /// <c>(</c> <c>\{</c> <c>|</c> <c>.</c>), and the same for <c>\right</c>
     /// (<c>]</c> <c>)</c> <c>\}</c> <c>|</c> <c>.</c>).</summary>
-    private static readonly Regex SpacedSizedDelimiterRegex = new(
-        @"\\left\s+(?=[\[(|.]|\\\{|\\l(?:floor|ceil|angle))|\\right\s+(?=[\])|.]|\\\}|\\r(?:floor|ceil|angle))",
-        RegexOptions.Compiled);
+    [GeneratedRegex(
+        @"\\left\s+(?=[\[(|.]|\\\{|\\l(?:floor|ceil|angle))|\\right\s+(?=[\])|.]|\\\}|\\r(?:floor|ceil|angle))")]
+    private static partial Regex SpacedSizedDelimiterRegex { get; }
 
     private static readonly (string From, string To)[] LatexAliases =
     [
@@ -797,9 +799,9 @@ public static class MarkdownMacros
     }
 
 
-    private static readonly Regex EnvironmentRegex = new(
-        @"\\begin\{([a-zA-Z*]+)\}(?:\s*\{[^{}]*\}|\s*\[[^\]]*\])*([\s\S]*?)\\end\{\1\}",
-        RegexOptions.Compiled);
+    [GeneratedRegex(
+        @"\\begin\{([a-zA-Z*]+)\}(?:\s*\{[^{}]*\}|\s*\[[^\]]*\])*([\s\S]*?)\\end\{\1\}")]
+    private static partial Regex EnvironmentRegex { get; }
 
     /// <summary>
     /// Plain-text rendering of an environment body: row break (<c>\\</c>) to

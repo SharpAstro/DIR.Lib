@@ -31,7 +31,7 @@ namespace DIR.Lib.Markdown;
 /// C# is the same trade-off the inline grammar makes for emphasis
 /// (delimiter-stack post-pass) and bracket disambiguation.</para>
 /// </summary>
-public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
+public sealed partial class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
 {
     private readonly MarkdownInlineVisitor _inline = new();
     private readonly Func<string, IReadOnlyList<MdInline>> _parseInline;
@@ -309,19 +309,25 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
 
     // ── Block classification ──────────────────────────────────────────
 
-    private static readonly Regex HeadingRx = new(@"^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$", RegexOptions.Compiled);
-    private static readonly Regex HeadingCloseRx = new(@"(?:^|[ \t]+)#+$", RegexOptions.Compiled);
-    private static readonly Regex SetextRx = new(@"^ {0,3}(=+|-+)[ \t]*$", RegexOptions.Compiled);
-    private static readonly Regex ThematicRx = new(@"^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$", RegexOptions.Compiled);
+    [GeneratedRegex(@"^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$")]
+    private static partial Regex HeadingRx { get; }
+    [GeneratedRegex(@"(?:^|[ \t]+)#+$")]
+    private static partial Regex HeadingCloseRx { get; }
+    [GeneratedRegex(@"^ {0,3}(=+|-+)[ \t]*$")]
+    private static partial Regex SetextRx { get; }
+    [GeneratedRegex(@"^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")]
+    private static partial Regex ThematicRx { get; }
     /// <summary>A fence's opening line: the fence and its language. A backtick
     /// fence's info string holds no backtick; a tilde fence's may (CommonMark
     /// example 146), which this used to refuse.</summary>
-    private static readonly Regex FenceOpenRx = new(
-        @"^ {0,3}(?:(?<fence>`{3,})[ \t]*(?<lang>[^\s`]*)[^`]*|(?<fence>~{3,})[ \t]*(?<lang>\S*).*)$", RegexOptions.Compiled);
+    [GeneratedRegex(
+        @"^ {0,3}(?:(?<fence>`{3,})[ \t]*(?<lang>[^\s`]*)[^`]*|(?<fence>~{3,})[ \t]*(?<lang>\S*).*)$")]
+    private static partial Regex FenceOpenRx { get; }
 
     /// <summary>A list item's first line: indent, marker (a bullet, or a number
     /// with its <c>.</c> or <c>)</c>), the number alone, the gap, then the text.</summary>
-    private static readonly Regex ListItemRx = new(@"^( {0,3})([-*+]|(\d{1,9})[.)])(?:([ \t]+)(.*))?$", RegexOptions.Compiled);
+    [GeneratedRegex(@"^( {0,3})([-*+]|(\d{1,9})[.)])(?:([ \t]+)(.*))?$")]
+    private static partial Regex ListItemRx { get; }
 
     /// <summary>Classifies a block, degrading to a raw-text paragraph on any
     /// parser/lexer error instead of throwing. Blank lines are the grouping
@@ -604,7 +610,8 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
         return cells.Count == SplitTableRow(header).Count && cells.All(cell => DelimiterCellRx.IsMatch(cell));
     }
 
-    private static readonly Regex DelimiterCellRx = new(@"^:?-+:?$", RegexOptions.Compiled);
+    [GeneratedRegex(@"^:?-+:?$")]
+    private static partial Regex DelimiterCellRx { get; }
 
     private static bool IsTableSeparator(string line)
     {
