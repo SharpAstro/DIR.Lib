@@ -1,0 +1,1 @@
+MathBlock source="e^{i\\pi} + 1 = 0" unicode="e^i\u03C0 + 1 = 0" builder=False

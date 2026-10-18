@@ -1,0 +1,1 @@
+MathBlock source="\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}" unicode="\u2211_(i = 1)\u207Fi = (n(n + 1))\u20442" builder=False

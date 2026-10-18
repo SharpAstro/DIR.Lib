@@ -1,0 +1,1 @@
+MathBlock source="\\alpha = \\frac{e^2}{4\\pi\\varepsilon_0 \\hbar c}" unicode="\u03B1 = e\u00B2\u20444\u03C0\\varepsilon\u2080\\hbarc" builder=False

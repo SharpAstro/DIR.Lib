@@ -1,0 +1,4 @@
+Paragraph
+  Literal "The formula "
+  Math display=False source="x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}" unicode="x = (\u2212b \u00B1 \u221A(b\u00B2 \u2212 4ac))\u20442a" builder=False
+  Literal " sits in this sentence."

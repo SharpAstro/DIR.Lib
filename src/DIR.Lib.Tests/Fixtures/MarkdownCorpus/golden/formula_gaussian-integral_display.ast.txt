@@ -1,0 +1,1 @@
+MathBlock source="\\int_0^\\infty e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}" unicode="\u222B\u2080^\u221Ee^(\u2212x\u00B2)dx = \u221A\u03C0\u20442" builder=False

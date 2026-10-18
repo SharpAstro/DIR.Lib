@@ -1,0 +1,1 @@
+MathBlock source="\\sqrt{x^2 + y^2}" unicode="\u221A(x\u00B2 + y\u00B2)" builder=False

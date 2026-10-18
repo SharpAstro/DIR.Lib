@@ -1,0 +1,4 @@
+Paragraph
+  Literal "The formula "
+  Math display=False source="\\lim_{x \\to 0} \\frac{\\sin x}{x} = 1" unicode="lim_(x \u2192 0) (sin x)\u2044x = 1" builder=False
+  Literal " sits in this sentence."

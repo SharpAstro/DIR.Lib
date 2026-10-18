@@ -1,0 +1,4 @@
+Paragraph
+  Literal "The formula "
+  Math display=False source="E = mc^2" unicode="E = mc\u00B2" builder=False
+  Literal " sits in this sentence."

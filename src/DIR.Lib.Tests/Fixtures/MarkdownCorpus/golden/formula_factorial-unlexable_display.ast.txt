@@ -1,0 +1,1 @@
+MathBlock source="\\prod_{k=1}^{n} k = n!" unicode="\u220F_(k = 1)\u207Fk = n!" builder=False

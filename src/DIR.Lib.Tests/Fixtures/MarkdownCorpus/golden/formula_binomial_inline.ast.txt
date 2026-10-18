@@ -1,0 +1,4 @@
+Paragraph
+  Literal "The formula "
+  Math display=False source="\\binom{n}{k}" unicode="\\binomnk" builder=False
+  Literal " sits in this sentence."

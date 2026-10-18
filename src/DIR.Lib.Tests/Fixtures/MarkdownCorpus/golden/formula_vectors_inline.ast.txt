@@ -1,0 +1,4 @@
+Paragraph
+  Literal "The formula "
+  Math display=False source="\\vec{F} = m \\vec{a}" unicode="F\u20D7 = ma\u20D7" builder=False
+  Literal " sits in this sentence."
