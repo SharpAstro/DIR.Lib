@@ -176,12 +176,13 @@
         }
 
         /// <summary>
-        /// Every text field painted this frame, this widget's and then its children's in paint order, which
-        /// is what makes Tab cycling follow the VISUAL order across a composed frame automatically.
+        /// Every text field painted this frame: this widget's own first, then its children's back to front,
+        /// which is what makes Tab cycling follow the VISUAL order across a composed frame automatically.
         /// </summary>
         /// <remarks>
-        /// Paint order here, not the reversed hit order: cycling reads the frame the way a person does,
-        /// while a hit resolves what is on top. Feeding the result to
+        /// Not the region list's order, and not moved by <see cref="ChildrenUnderOwn"/>: cycling reads the
+        /// frame the way a person does (a composite's own bar above the content it hosts), while the region
+        /// list says what is on top. Feeding the result to
         /// <see cref="TextInputFocus.BlurIfUnpainted"/> is what stops a field keeping the keyboard after
         /// it leaves the screen — and asking only the composite, or only the active child, blurs a live
         /// field every frame, which looks identical to the bug it fixes.
