@@ -107,6 +107,56 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
         rightRows.ShouldBeInRange((int)MathF.Ceiling(lo), (int)MathF.Floor(hi), $"the closing {close}");
     }
 
+    /// <summary>
+    /// The squash that fits a too-tall assembly to its request is never reached by STIX Two Math, whose size
+    /// variants and finely stretched assemblies always land within the bound: these composed glyphs, at
+    /// 32 px and 12 px, are byte for byte what they were before it (hashes taken at 157ad06).
+    /// </summary>
+    [Theory]
+    [InlineData('{', 32f, 260f, "B7BD6F3AD652DB0E")]
+    [InlineData('{', 32f, 138.15f, "4CE278826D9E4471")]
+    [InlineData('(', 12f, 97.3f, "1E963ECD9E3EA525")]
+    [InlineData(0x221A, 32f, 333.3f, "DACDCAECC56DB2A3")]
+    public void StixAssembliesAreUnchangedByTheSquash(int codepoint, float size, float request, string hash)
+    {
+        var bitmap = Rasterizer.RasterizeStretchyVerticalWithParts(FontPaths["STIX2Math"], size, new Rune(codepoint), request, out var parts);
+        parts.ShouldNotBeNull("the request should need the assembly");
+        var bytes = new byte[bitmap.Rgba.Length + 8];
+        BitConverter.TryWriteBytes(bytes.AsSpan(0, 4), bitmap.Width);
+        BitConverter.TryWriteBytes(bytes.AsSpan(4, 4), bitmap.Height);
+        bitmap.Rgba.CopyTo(bytes, 8);
+        var actual = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes))[..16];
+        output.WriteLine($"U+{codepoint:X4} {size} px request {request}: {bitmap.Width}x{bitmap.Height} {actual}");
+        actual.ShouldBe(hash);
+    }
+
+    /// <summary>
+    /// Renders DejaVu Sans's parenthesis and brace pairs around a fraction, and a brace around a nested one,
+    /// at 32 px and 12 px under <c>obj/stretchy-assembly-output</c>, 8x, for a look by eye at the squash
+    /// that fits a too-tall assembly to its request. Asserts nothing about the pixels.
+    /// </summary>
+    [Fact]
+    public void WriteSquashRenders()
+    {
+        Directory.CreateDirectory(OutputDir);
+        (string Name, string Latex)[] scenes =
+        [
+            ("paren-frac", @"\left( \frac{1}{2} \right)"),
+            ("brace-frac", @"\left\{ \frac{1}{2} \right\}"),
+            ("brace-nested-frac", @"\left\{ \frac{\frac{a}{b}}{c} \right\}"),
+        ];
+        foreach (var size in new[] { 32f, 12f })
+            foreach (var (name, latex) in scenes)
+            {
+                var style = new BoxStyle(FontPaths["DejaVuSans"], size, Ink);
+                var image = BoxRasterizer.RenderToRgba(Parse(latex, style), style);
+                var big = Upscale(image, 8);
+                var file = Path.Combine(OutputDir, $"squash-dejavu-{name}-{size:0}px.png");
+                File.WriteAllBytes(file, PngWriter.Encode(big.Pixels, big.Width, big.Height));
+                output.WriteLine(Path.GetFullPath(file));
+            }
+    }
+
     // ── the choice ──────────────────────────────────────────────────────
 
     public static IEnumerable<TheoryDataRow<string, int>> ChoiceCases() =>
