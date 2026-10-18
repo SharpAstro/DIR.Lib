@@ -397,7 +397,11 @@ public sealed class BraceSetTests
     /// Each brace of a set reads as a brace, not as a paren or an angle
     /// bracket (<see cref="BraceShapeFault"/>), whether the font draws it
     /// (STIX Two Math, DejaVu Sans) or <see cref="BracketBox"/>'s parametric
-    /// fallback does (BabelStone Xiangqi Colour, around a fraction).
+    /// fallback does (BabelStone Xiangqi Colour, around a fraction). A brace the
+    /// font designed at that size (a MATH size variant: STIX Two Math's around
+    /// the nested fraction, which TeX's shortfall now takes over the assembly)
+    /// is checked on its own shape, the cusp and the hooks, without the straight
+    /// spine an assembled brace gets from its extenders.
     /// </summary>
     [Theory]
     [InlineData("STIX2Math", @"\{1, 2, 3\}")]
@@ -411,10 +415,24 @@ public sealed class BraceSetTests
     public void BoxPath_Set_EachBraceReadsAsABrace(string font, string latex)
     {
         var style = StyleFor(font);
-        var image = BoxRasterizer.RenderToRgba(BuildBox(latex, style).ShouldBeOfType<BracketBox>(), style);
+        var bracket = BuildBox(latex, style).ShouldBeOfType<BracketBox>();
+        var image = BoxRasterizer.RenderToRgba(bracket, style);
         var runs = InkColumnRuns(image);
-        BraceShapeFault(image, runs[0], outerIsLeft: true).ShouldBeNull($"the left brace of '{latex}' in {font}");
-        BraceShapeFault(image, runs[^1], outerIsLeft: false).ShouldBeNull($"the right brace of '{latex}' in {font}");
+        var spine = !IsSizeVariant(bracket, style);
+        BraceShapeFault(image, runs[0], outerIsLeft: true, spine).ShouldBeNull($"the left brace of '{latex}' in {font}");
+        BraceShapeFault(image, runs[^1], outerIsLeft: false, spine).ShouldBeNull($"the right brace of '{latex}' in {font}");
+    }
+
+    /// <summary>Whether <paramref name="bracket"/>'s left delimiter is one of the
+    /// font's MATH size variants: neither its unstretched glyph nor an assembly
+    /// (which reports the unstretched glyph's id), nor the parametric fallback.</summary>
+    private static bool IsSizeVariant(BracketBox bracket, BoxStyle style)
+    {
+        var left = (StretchyVerticalBox?)typeof(BracketBox)
+            .GetField("_leftFont", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(bracket);
+        if (left is null) return false;
+        BoxStyle.SharedRasterizer.RasterizeStretchyVertical(style.FontPath, style.FontSize, new Rune('{'), 1f, out var baseGid);
+        return left.VariantGlyphId != baseGid;
     }
 
     /// <summary>
@@ -950,8 +968,13 @@ public sealed class BraceSetTests
     /// moves 3 and 5 pixels across the middle third. The four-stroke
     /// parametric brace this replaced had a cusp of 8 and 16 rows and moved 2
     /// pixels there.
+    /// <para>The spine is checked only where <paramref name="spine"/> says so:
+    /// an assembled brace, the unstretched glyph and the parametric fallback
+    /// all have one. A size variant the font designed may curve all the way to
+    /// its cusp (STIX Two Math's largest brace moves 2 px over the middle third
+    /// of its top half), and is a brace by its cusp and its hooks.</para>
     /// </summary>
-    private static string? BraceShapeFault(RgbaImage image, (int Start, int End) run, bool outerIsLeft)
+    private static string? BraceShapeFault(RgbaImage image, (int Start, int End) run, bool outerIsLeft, bool spine = true)
     {
         // Per row: how far the outer edge and the inner edge lie from the run's outer side.
         var rows = new List<(int Y, int Outer, int Inner)>();
@@ -990,7 +1013,7 @@ public sealed class BraceSetTests
             var middle = half.Skip(third).Take(third).ToList();
             var spineMove = middle.Max(r => r.Outer) - middle.Min(r => r.Outer);
             var halfMove = half.Max(r => r.Outer) - half.Min(r => r.Outer);
-            if (halfMove < 3 || spineMove > 1)
+            if (spine && (halfMove < 3 || spineMove > 1))
                 return $"no straight spine in the {name} half: the outer edge moves {spineMove} px over its middle third and {halfMove} px over the half";
 
             var turnIn = half.Take(2).Max(r => r.Inner) - half[half.Count / 2].Inner;
