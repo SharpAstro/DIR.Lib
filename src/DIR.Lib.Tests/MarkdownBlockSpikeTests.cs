@@ -192,6 +192,96 @@ public sealed class MarkdownBlockSpikeTests
         list.Items.Count.ShouldBe(3);
     }
 
+    // ── Interruption (CommonMark 4.2, 4.3, 4.5, 5.2, 5.3) ─────────────
+    //
+    // A heading, a fence, a display-math opener, a thematic break and a list
+    // start on the line after paragraph text, with no blank line between; only
+    // an ordered list starting at 1 may interrupt a paragraph, so prose that
+    // happens to begin "14." stays prose. GitHub's renderer and VS Code's
+    // preview (markdown-it) agree on every case here; the visitor used to split
+    // blocks at blank lines only, and so folded each of them into the paragraph.
+
+    [Theory]
+    [InlineData("# Head\ntext", "H1[L(Head)] | P[L(text)]")]
+    [InlineData("text\n# Head", "P[L(text)] | H1[L(Head)]")]
+    [InlineData("# One\n## Two\ntext", "H1[L(One)] | H2[L(Two)] | P[L(text)]")]
+    [InlineData("Where:\n* one\n* two", "P[L(Where:)] | List[P[L(one)] ; P[L(two)]]")]
+    [InlineData("Where:\n- one", "P[L(Where:)] | List[P[L(one)]]")]
+    [InlineData("Lead:\n1. one\n2. two", "P[L(Lead:)] | List[P[L(one)] ; P[L(two)]]")]
+    [InlineData("Lead:\n1) one", "P[L(Lead:)] | List[P[L(one)]]")]
+    [InlineData("text\n***", "P[L(text)] | MdThematicBreak")]
+    [InlineData("text\n```\ncode\n```", "P[L(text)] | MdCodeFence")]
+    [InlineData("### Usage\n```bash\npython x\n```", "H3[L(Usage)] | MdCodeFence")]
+    [InlineData("Before:\n$$\nx^2\n$$", "P[L(Before:)] | MdMathBlock")]
+    [InlineData("- a\n# H", "List[P[L(a)]] | H1[L(H)]")]
+    [InlineData("- a\n```\ncode\n```", "List[P[L(a)]] | MdCodeFence")]
+    public void ABlockStart_InterruptsTheBlockBefore(string md, string expected) =>
+        Describe(_visitor.Parse(md)).ShouldBe(expected);
+
+    [Theory]
+    [InlineData("The number of windows in my house is\n14.  The number of doors is 6.")]
+    [InlineData("In the year\n2. it rained")]
+    [InlineData("Not a heading\n#hashtag")]
+    public void AnOrderedListNotStartingAtOne_DoesNotInterruptAParagraph(string md)
+    {
+        var blocks = _visitor.Parse(md);
+        blocks.Count.ShouldBe(1);
+        blocks[0].ShouldBeOfType<MdParagraph>();
+    }
+
+    [Theory]
+    [InlineData("Title\n=====", "H1[L(Title)]")]
+    [InlineData("Title\n---", "H2[L(Title)]")]
+    [InlineData("Two\nlines\n===", "H1[L(Two) SB L(lines)]")]
+    public void ASetextUnderline_MakesTheParagraphAHeading(string md, string expected) =>
+        Describe(_visitor.Parse(md)).ShouldBe(expected);
+
+    [Theory]
+    [InlineData("# C#", "H1[L(C#)]")]
+    [InlineData("# Title ##", "H1[L(Title)]")]
+    [InlineData("   ## Indented", "H2[L(Indented)]")]
+    public void AHeading_DropsOnlyAClosingSequenceAfterASpace(string md, string expected) =>
+        Describe(_visitor.Parse(md)).ShouldBe(expected);
+
+    // ── List items (CommonMark 5.2) ──────────────────────────────────
+    //
+    // An item's content starts at the column after its marker and the spaces
+    // that follow it, so `*   text` is continued by a line indented four. A
+    // line that is less indented but is not a block start is a lazy
+    // continuation of the item's paragraph. Both used to be wrong: a fixed two
+    // columns were stripped, a lazy line was dropped, and an item's second line
+    // became a paragraph of its own, which a renderer cannot reflow.
+
+    [Theory]
+    [InlineData("- one\n  two", "List[P[L(one) SB L(two)]]")]
+    [InlineData("- a\nlazy", "List[P[L(a) SB L(lazy)]]")]
+    [InlineData("*   top\n    1.  first\n    2.  second", "List[P[L(top)] List[P[L(first)] ; P[L(second)]]]")]
+    [InlineData("* top\n  - a\n  - b", "List[P[L(top)] List[P[L(a)] ; P[L(b)]]]")]
+    [InlineData("4. last:\n   - a\n   - b", "List[P[L(last:)] List[P[L(a)] ; P[L(b)]]]")]
+    [InlineData("- a\n\n- b", "List[P[L(a)] ; P[L(b)]]")]
+    [InlineData("- a\n1. b", "List[P[L(a)]] | List[P[L(b)]]")]
+    public void AListItem_TakesItsLinesByTheMarkersContentColumn(string md, string expected) =>
+        Describe(_visitor.Parse(md)).ShouldBe(expected);
+
+    [Fact]
+    public void ADisplayMathLineInsideAnItem_LeavesTheNextItemAnItem()
+    {
+        // StarNet2_Architecture.md's shape: a bullet whose nested ordered items
+        // each end in a display-math line, item 3's swallowed 4 and 5.
+        var md = "*   **Workflow:**\n" +
+                 "    1.  **Analyze:** median.\n" +
+                 "    2.  **Shadows:** as:\n" +
+                 "        $$S = m$$\n" +
+                 "    3.  **Stretch:** solve:\n" +
+                 "        $$f = x$$\n" +
+                 "    4.  **Inverse:** back.\n" +
+                 "    5.  **Equalize:** each.";
+        var outer = _visitor.Parse(md).Single().ShouldBeOfType<MdList>();
+        var inner = outer.Items.Single().Body.OfType<MdList>().Single();
+        inner.Ordered.ShouldBeTrue();
+        inner.Items.Count.ShouldBe(5);
+    }
+
     // ── Tables ───────────────────────────────────────────────────────
 
     [Fact]
@@ -277,8 +367,7 @@ public sealed class MarkdownBlockSpikeTests
     {
         MdParagraph p => $"P[{Describe(p.Content)}]",
         MdHeading h => $"H{h.Level}[{Describe(h.Content)}]",
-        MdList l => $"List[{string.Join(" ; ", l.Items.Select(i => string.Join(" ", i.Body.Select(Describe))))}]",
-        _ => block.GetType().Name,
+        MdList l => $"List[{string.Join(" ; ", l.Items.Select(i => string.Join(" ", i.Body.Select(Describe))))}]",        _ => block.GetType().Name,
     };
 
     private static string Describe(System.Collections.Generic.IEnumerable<MdInline> spans) =>
