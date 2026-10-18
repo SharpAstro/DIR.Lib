@@ -50,8 +50,15 @@
          against LALR.CC HEAD and never exercises this number — only CI does.
          That is how this sat at 3.1.* through the whole 4.x line: 3.1.0 still
          exists on nuget.org, so restore succeeded and the build stayed green
-         while CI shipped a package declaring a major-behind dependency. -->
-    <PackageVersion Include="SharpAstro.LALR.CC" Version="4.7.*" />
+         while CI shipped a package declaring a major-behind dependency.
+
+         The minor matters too: a floating `4.x.*` floats on the patch only, so `4.7.*`
+         restored 4.7.0, whose BytesLexer compiled every lexer state's DFA on each
+         construction. A markdown parse builds one lexer per paragraph and per math
+         span, so that compile was ~77% of the parse's time and ~99% of its
+         allocation. 4.9 shares one compiled DFA per grammar (CompiledLexerTable);
+         do not drop below it. -->
+    <PackageVersion Include="SharpAstro.LALR.CC" Version="4.11.*" />
     <!-- YamlDotNet is build-only — consumed by the LALR.CC source generator
          to parse grammars/*.lalr.yaml. PrivateAssets="all" in the csproj
          keeps it out of the runtime closure. -->
