@@ -371,17 +371,29 @@ public sealed partial class RadicalJoinTests
     /// common below it. STIX Two Math <c>\sqrt{\frac{a}{b}}</c> at 22.2 px and
     /// <c>\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}</c> at 31.7 px went from 3 clear rows to 2 (see
     /// <see cref="TheRowsFloatPhaseCostKeepThreeClearRows"/>). The gap is now kept in whole rows at draw
-    /// time, so no row is left to rounding. Every failing point is listed in the one message.
+    /// time, so no row is left to rounding. DejaVu Sans <c>sqrt-paren-frac</c> is exempt: its radicand's
+    /// parenthesis is redrawn (the two-part assembly squashed to the fraction, see
+    /// <see cref="RadicandsRedrawnForClearRows"/>), so its layout is not the before data's and the rows of
+    /// its gap fall at another float phase; <see cref="SweepKeepsAClearRowUnderTheBar"/> still holds there.
+    /// Every failing point is listed in the one message.
     /// </summary>
     [Fact]
     public void SweepNeverHasFewerClearRowsThanBefore()
     {
         var failures = SweptPoints.Value
+            .Where(s => !RadicandsRedrawnForClearRows.Contains((s.Before.Font, s.Before.Scene)))
             .Where(s => s.ClearRows < s.Before.ClearRows)
             .Select(s => $"{s}: {s.ClearRows} clear rows under the bar, before {s.Before.ClearRows}")
             .ToList();
         failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
     }
+
+    /// <summary>Scenes, in one font each, whose radicand is drawn differently from the before data, so the
+    /// clear rows it had there describe another layout. DejaVu Sans <c>sqrt-paren-frac</c>: its parenthesis is
+    /// now the two-part assembly squashed to the fraction, where one copy of each extender made it about
+    /// twice the fraction's height; 27 points lost a row against it (18 px: 3 against 4), none its last.</summary>
+    private static readonly HashSet<(string Font, string Scene)> RadicandsRedrawnForClearRows =
+        [("DejaVuSans", "sqrt-paren-frac")];
 
     /// <summary>
     /// At every point of the sweep the radicand keeps at least one clear row under the bar. Below 21.3 px the
