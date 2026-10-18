@@ -13,8 +13,8 @@ namespace DIR.Lib.Tests;
 /// the most overlap its connectors allow, so a radicand taller than three nested fractions outgrew the
 /// radical. A delimiter does not overshoot the request: DejaVu Sans ships no size variants, only assemblies
 /// of parts 1.2 em tall, and one copy of every extender put a parenthesis around <c>\frac{1}{2}</c> at about
-/// twice the fraction's height and a brace at about three times. And a composed glyph shows no seam where
-/// its parts join.
+/// twice the fraction's height and a brace at about three times. Where no glyph the font has fits, the one
+/// that needs the least scaling to fit is scaled. And a composed glyph shows no seam where its parts join.
 /// </summary>
 public sealed class StretchyAssemblyTests(ITestOutputHelper output)
 {
@@ -108,16 +108,17 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// The squash that fits a too-tall assembly to its request is never reached by STIX Two Math, whose size
-    /// variants and finely stretched assemblies always land within the bound: these composed glyphs, at
-    /// 32 px and 12 px, are byte for byte what they were before it (hashes taken at 157ad06).
+    /// Scaling a glyph to fit, where nothing the font has fits, is never reached by STIX Two Math, whose
+    /// size variants and finely stretched assemblies always land within the bound: these composed glyphs,
+    /// at 32 px and 12 px, are byte for byte what they were before it (hashes taken at 157ad06, before the
+    /// squash that came first).
     /// </summary>
     [Theory]
     [InlineData('{', 32f, 260f, "B7BD6F3AD652DB0E")]
     [InlineData('{', 32f, 138.15f, "4CE278826D9E4471")]
     [InlineData('(', 12f, 97.3f, "1E963ECD9E3EA525")]
     [InlineData(0x221A, 32f, 333.3f, "DACDCAECC56DB2A3")]
-    public void StixAssembliesAreUnchangedByTheSquash(int codepoint, float size, float request, string hash)
+    public void StixAssembliesAreUnchangedByTheFit(int codepoint, float size, float request, string hash)
     {
         var bitmap = Rasterizer.RasterizeStretchyVerticalWithParts(FontPaths["STIX2Math"], size, new Rune(codepoint), request, out var parts);
         parts.ShouldNotBeNull("the request should need the assembly");
@@ -131,12 +132,12 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// Renders DejaVu Sans's parenthesis and brace pairs around a fraction, and a brace around a nested one,
-    /// at 32 px and 12 px under <c>obj/stretchy-assembly-output</c>, 8x, for a look by eye at the squash
-    /// that fits a too-tall assembly to its request. Asserts nothing about the pixels.
+    /// Renders DejaVu Sans's parenthesis and brace pairs around a fraction, a brace around a nested one and
+    /// a parenthesised b, at 32 px and 12 px under <c>obj/stretchy-assembly-output</c>, 8x, for a look by
+    /// eye at the glyph scaled to fit where nothing the font has fits. Asserts nothing about the pixels.
     /// </summary>
     [Fact]
-    public void WriteSquashRenders()
+    public void WriteFitRenders()
     {
         Directory.CreateDirectory(OutputDir);
         (string Name, string Latex)[] scenes =
@@ -144,6 +145,7 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
             ("paren-frac", @"\left( \frac{1}{2} \right)"),
             ("brace-frac", @"\left\{ \frac{1}{2} \right\}"),
             ("brace-nested-frac", @"\left\{ \frac{\frac{a}{b}}{c} \right\}"),
+            ("paren-b", "(b)"),
         ];
         foreach (var size in new[] { 32f, 12f })
             foreach (var (name, latex) in scenes)
@@ -151,7 +153,7 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
                 var style = new BoxStyle(FontPaths["DejaVuSans"], size, Ink);
                 var image = BoxRasterizer.RenderToRgba(Parse(latex, style), style);
                 var big = Upscale(image, 8);
-                var file = Path.Combine(OutputDir, $"squash-dejavu-{name}-{size:0}px.png");
+                var file = Path.Combine(OutputDir, $"fit-dejavu-{name}-{size:0}px.png");
                 File.WriteAllBytes(file, PngWriter.Encode(big.Pixels, big.Width, big.Height));
                 output.WriteLine(Path.GetFullPath(file));
             }
@@ -261,8 +263,11 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
     /// (TeX's <c>\delimiterfactor</c> 901 and <c>\delimitershortfall</c> 5 pt at a 10 pt design size), so it
     /// does not go a size up for content just over a variant. STIX Two Math's parenthesis at 32 px asked for
     /// 48 px takes its 45.7 px variant (glyph 1302), where the full request needs the 53.3 px one (1303),
-    /// which a radical, asking without the shortfall, still gets. An assembly is still built to the whole
-    /// request: DejaVu Sans's brace asked for 122.78 px is 123 rows either way.
+    /// which a radical, asking without the shortfall, still gets. An assembly's copy counts are candidates
+    /// too: DejaVu Sans's brace asked for 122.78 px takes no extender, three parts at their own 114 rows,
+    /// which is within the shortfall; asked for the whole request, nothing fits (one copy of each extender
+    /// is 189 px, past the bound of 153.5), and the same three parts are stretched to 123 rows, which
+    /// distorts them least (see <see cref="WhereNothingFitsTheLeastDistortedCandidateIsScaled"/>).
     /// </summary>
     [Fact]
     public void TheDelimiterChoiceTakesACandidateWithinTheShortfall()
@@ -274,9 +279,94 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
         delimiterGid.ShouldBe(1302u, "the variant within the shortfall");
         fullGid.ShouldBe(1303u, "the variant covering the whole request");
 
-        var brace = Rasterizer.RasterizeStretchyDelimiter(FontPaths["DejaVuSans"], 32f, new Rune('{'), 122.78f, out _, out var parts);
-        parts.ShouldNotBeNull("no variant: the assembly");
-        brace.Height.ShouldBe(123);
+        var dejavu = FontPaths["DejaVuSans"];
+        var brace = Rasterizer.RasterizeStretchyDelimiter(dejavu, 32f, new Rune('{'), 122.78f, out _, out var parts);
+        parts.ShouldNotBeNull("no variant: the assembly").Length.ShouldBe(3, "the assembly with no extender");
+        Math.Abs(brace.Height - 114).ShouldBeLessThanOrEqualTo(1, "rows of the assembly with no extender");
+        var full = Rasterizer.RasterizeStretchyVerticalWithParts(dejavu, 32f, new Rune('{'), 122.78f, out var fullParts);
+        fullParts.ShouldNotBeNull("no variant: the assembly").Length.ShouldBe(3, "the assembly with no extender, stretched");
+        full.Height.ShouldBe(123);
+    }
+
+    // ── where nothing fits ──────────────────────────────────────────────
+
+    public static IEnumerable<TheoryDataRow<string, float, int, uint, int, int>> FitCases() =>
+    [
+        // (b) at 96 px asks for 98 px, at least 88.3 within the shortfall; the base parenthesis is 86 rows
+        // and the assembly with no extender 227 px, past the bound of 146. The base, stretched to 89 rows.
+        new("(b)", 96f, '(', 11u, 0, 89),
+        // At 32 px the base parenthesis, 29 rows, covers the 28.8 px (b) needs: drawn as it is.
+        new("(b)", 32f, '(', 11u, 0, 29),
+        // A brace around a nested fraction asks for 122.78 px, at least 110.62: the assembly with no
+        // extender reaches 114 px as it is (one copy of each extender would be 189 px).
+        new(@"\left\{ \frac{\frac{a}{b}}{c} \right\}", 32f, '{', 0u, 0, 114),
+        // A parenthesis around a half asks for 58.93 px, at most 74.93: the assembly with no extender is
+        // 76.8 px, which squeezed to 74 rows distorts far less than the base's 29 rows stretched to 54.
+        new(@"\left( \frac{1}{2} \right)", 32f, '(', 0u, 0, 74),
+    ];
+
+    /// <summary>
+    /// Where nothing the font has covers a <c>\left..\right</c> delimiter's request within TeX's shortfall
+    /// without overshooting the bound (the larger of 1.25 times the request and the request plus half an em),
+    /// the candidate that needs the least scaling to fit is scaled, to the nearest whole row the shortfall
+    /// and the bound allow; one that fits is drawn as it is. The candidates are the base glyph, the size
+    /// variants and the assembly at each copy count. Squashing the assembly to the request, what this did
+    /// before, thinned ordinary text: <c>(b)</c> at 96 px took an assembly 2.4 em tall squashed to 98 px,
+    /// where the base parenthesis needs only 3% more height. DejaVu Sans, which has no size variants and no
+    /// room in its joins. <paramref name="glyphId"/> is the base glyph's id, or 0 for the assembly with
+    /// <paramref name="copies"/> copies of the extenders; <paramref name="rows"/> the rows drawn, within one
+    /// for a glyph drawn as it is.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(FitCases))]
+    public void WhereNothingFitsTheLeastDistortedCandidateIsScaled(string latex, float size, int codepoint, uint glyphId, int copies, int rows)
+    {
+        var style = new BoxStyle(FontPaths["DejaVuSans"], size, Ink);
+        var content = Parse(latex.Replace(@"\left\{ ", "").Replace(@" \right\}", "").Replace(@"\left( ", "").Replace(@" \right)", "")
+            .Replace("(b)", "b"), style);
+        var request = 2 * MathF.Max(content.Height - style.AxisHeight, content.Depth + style.AxisHeight);
+        Parse(latex, style).ShouldBeOfType<BracketBox>();
+        var bitmap = Rasterizer.RasterizeStretchyDelimiter(style.FontPath, size, new Rune(codepoint), request, out var gid, out var parts);
+        output.WriteLine($"{latex} at {size} px: request {request:F2} (covered from {ManagedFontRasterizer.DelimiterCovers(request, size):F2}, " +
+                         $"bound {MathF.Max(1.25f * request, request + 0.5f * size):F2}): {bitmap.Height} rows, " +
+                         $"{(parts is null ? $"glyph {gid}" : $"{parts.Length} parts")}");
+        if (glyphId != 0)
+        {
+            parts.ShouldBeNull("the base glyph, not the assembly");
+            gid.ShouldBe(glyphId);
+            bitmap.Height.ShouldBe(rows);
+        }
+        else
+        {
+            parts.ShouldNotBeNull("the assembly");
+            var perCopy = Rasterizer.GetVerticalMathConstruction(style.FontPath, new Rune(codepoint))!.Assembly!.Parts.Count(p => p.IsExtender);
+            parts.Count(p => p.IsExtender).ShouldBe(copies * perCopy, "copies of the extenders");
+            Math.Abs(bitmap.Height - rows).ShouldBeLessThanOrEqualTo(1, $"rows against {rows}");
+        }
+    }
+
+    /// <summary>
+    /// The height does not jump where the assembly starts to fit. DejaVu Sans's parenthesis at 32 px is 76.8
+    /// px with no extender; that fits once the bound reaches it, at a request of 60.8 px. Below it the
+    /// assembly used to be squashed to the request, so 60.7 px drew 61 rows and 60.9 px drew 77. Squeezed to
+    /// the bound instead, the least it must be, it meets its own height there. Swept from 45 to 80 px, past
+    /// where the base glyph stretched would distort less (42.4 px) and short of where the assembly no longer
+    /// covers within the shortfall (85.2 px): one row at most between requests 0.1 px apart.
+    /// </summary>
+    [Fact]
+    public void TheHeightDoesNotJumpWhereTheAssemblyStartsToFit()
+    {
+        var path = FontPaths["DejaVuSans"];
+        var jumps = new List<string>();
+        var previous = -1;
+        for (var tenths = 450; tenths <= 800; tenths++)
+        {
+            var request = tenths / 10f;
+            var rows = Rasterizer.RasterizeStretchyDelimiter(path, 32f, new Rune('('), request, out _, out _).Height;
+            if (previous >= 0 && Math.Abs(rows - previous) > 1) jumps.Add($"request {request:F1}: {previous} -> {rows} rows");
+            previous = rows;
+        }
+        jumps.ShouldBeEmpty(string.Join(Environment.NewLine, jumps));
     }
 
     // ── the choice ──────────────────────────────────────────────────────
@@ -292,7 +382,10 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
     /// the unstretched glyph, then each size variant, then the assembly. The assembly's candidates are its
     /// extender counts: r copies of every extender reach the heights from <see cref="AssemblyRange"/>'s
     /// least to its most, so it takes the fewest copies whose most covers the request, at the request or,
-    /// where the request falls short of that count's least, at the least. Swept at 32 px from 8 px to 12 em.
+    /// where the request falls short of that count's least, at the least. Where that overshoots the bound,
+    /// or nothing covers, the candidate that needs the least scaling to fit is scaled
+    /// (<see cref="ExpectedChoice"/>). Swept at 32 px from 8 px to 12 em, for a radical's or an operator's
+    /// request (covered in full) and a <c>\left..\right</c> delimiter's (covered within TeX's shortfall).
     /// </summary>
     [Theory]
     [MemberData(nameof(ChoiceCases))]
@@ -303,39 +396,37 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
         var rune = new Rune(codepoint);
         var construction = Rasterizer.GetVerticalMathConstruction(path, rune).ShouldNotBeNull();
         var extenders = construction.Assembly.ShouldNotBeNull().Parts.Count(p => p.IsExtender);
-        var (unitsPerEm, _) = Rasterizer.GetMathStretchInfo(path).ShouldNotBeNull();
-        var baseHeight = Rasterizer.RasterizeGlyph(path, size, rune).Height;
-        Rasterizer.RasterizeStretchyVertical(path, size, rune, 1f, out var baseGid);
         var failures = new List<string>();
 
-        for (var request = 8f; request <= 12 * size; request += 1.37f)
-        {
-            var bitmap = Rasterizer.RasterizeStretchyVerticalWithParts(path, size, rune, request, out var parts);
-            bitmap.Height.ShouldBeGreaterThan(0);
-            Rasterizer.RasterizeStretchyVertical(path, size, rune, request, out var gid);
-
-            // A glyph id names the base or a variant (STIX Two Math lists its base as variant 0); 0 the assembly.
-            uint expected;
-            var requiredUnits = (int)Math.Ceiling(request * unitsPerEm / size);
-            if (baseHeight >= request) expected = baseGid;
-            else if (construction.Variants.FirstOrDefault(v => v.AdvanceMeasurement >= requiredUnits) is { GlyphId: > 0 } v)
-                expected = v.GlyphId;
-            else expected = 0;
-            var got = parts is not null ? 0 : gid;
-
-            if (got != expected)
+        foreach (var delimiter in new[] { false, true })
+            for (var request = 8f; request <= 12 * size; request += 1.37f)
             {
-                failures.Add($"request {request:F2}: expected {(expected == 0 ? "the assembly" : $"glyph {expected}")}, " +
-                             $"got {(got == 0 ? $"the assembly, {bitmap.Height} px" : $"glyph {got}")}");
-                continue;
+                var coversFrom = delimiter ? ManagedFontRasterizer.DelimiterCovers(request, size) : request;
+                var gid = 0u;
+                ManagedFontRasterizer.AssemblyPart[]? parts;
+                var bitmap = delimiter
+                    ? Rasterizer.RasterizeStretchyDelimiter(path, size, rune, request, out gid, out parts)
+                    : Rasterizer.RasterizeStretchyVerticalWithParts(path, size, rune, request, out parts);
+                if (!delimiter) Rasterizer.RasterizeStretchyVertical(path, size, rune, request, out gid);
+                bitmap.Height.ShouldBeGreaterThan(0);
+
+                // A glyph id names the base or a variant (STIX Two Math lists its base as variant 0); 0 the assembly.
+                var expected = ExpectedChoice(path, size, rune, request, coversFrom);
+                var got = parts is not null ? 0 : gid;
+                var what = $"{(delimiter ? "delimiter" : "full")} request {request:F2}";
+
+                if (got != expected.GlyphId)
+                {
+                    failures.Add($"{what}: expected {expected}, got {(got == 0 ? $"the assembly, {bitmap.Height} px" : $"glyph {got}, {bitmap.Height} px")}");
+                    continue;
+                }
+                var drawnCopies = parts is null ? 0 : parts.Count(p => p.IsExtender) / extenders;
+                if (drawnCopies != expected.Copies)
+                    failures.Add($"{what}: expected {expected}, got {drawnCopies} copies of the extenders, {bitmap.Height} px");
+                // A glyph drawn as it is has its own rows; a scaled one, or an assembly, the height chosen for it.
+                else if ((got == 0 || expected.Scaled) && Math.Abs(bitmap.Height - expected.HeightPx) > 1f)
+                    failures.Add($"{what}: expected {expected}, got {bitmap.Height} px");
             }
-            if (got != 0) continue;
-            var (copies, height) = ExpectedAssembly(path, size, rune, request);
-            var drawnCopies = parts!.Count(p => p.IsExtender) / extenders;
-            if (drawnCopies != copies || Math.Abs(bitmap.Height - height) > 1f)
-                failures.Add($"request {request:F2}: expected {copies} copies of the extenders, {height:F2} px; " +
-                             $"got {drawnCopies}, {bitmap.Height} px");
-        }
         failures.ShouldBeEmpty($"{font} U+{codepoint:X4}:" + Environment.NewLine + string.Join(Environment.NewLine, failures));
     }
 
@@ -353,19 +444,78 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
         return (advance - most, advance - minOverlap * (parts.Count - 1));
     }
 
-    /// <summary>The fewest copies of the extenders whose range reaches <paramref name="request"/>, and the
-    /// height in pixels that count gives it: the request, or the count's least where that is taller, unless
-    /// that least overshoots the bound a delimiter may (the larger of 1.25 times the request and the request
-    /// plus half an em), where the assembly is squashed to the request.</summary>
-    private static (int Copies, float HeightPx) ExpectedAssembly(string path, float size, Rune rune, float request)
+    /// <summary>What a request should get: the base glyph or a size variant (<c>GlyphId</c>), or the
+    /// assembly (<c>GlyphId</c> 0) with <c>Copies</c> copies of every extender; <c>HeightPx</c> the height it
+    /// lands on, and whether it is <c>Scaled</c> to get there.</summary>
+    private readonly record struct Expected(uint GlyphId, int Copies, float HeightPx, bool Scaled)
     {
-        var asm = Rasterizer.GetVerticalMathConstruction(path, rune)!.Assembly!;
+        public override string ToString() =>
+            (GlyphId == 0 ? $"the assembly with {Copies} copies of the extenders" : $"glyph {GlyphId}") +
+            $", {HeightPx:F2} px{(Scaled ? ", scaled" : "")}";
+    }
+
+    /// <summary>
+    /// The choice, worked out from the font's own numbers. The least height that covers is
+    /// <paramref name="coversFrom"/> (the request, or less for a delimiter), and the most a glyph may be is
+    /// the bound, the larger of 1.25 times the request and the request plus half an em.
+    /// <list type="number">
+    /// <item>The base glyph, by its rows, or the first size variant, by its advance, that covers is drawn as
+    /// it is.</item>
+    /// <item>Else the assembly with the fewest copies whose most reaches the request (it can be built to
+    /// the whole request, so it is), at the request within its range, is drawn as it is where its ink is
+    /// within the bound.</item>
+    /// <item>Else every candidate (the base glyph, each variant, that assembly and the one with a copy fewer,
+    /// at the request within their ranges) is a height it would be scaled from to the nearest whole row
+    /// from the least that covers to the bound, and the one scaled by the factor nearest 1 wins: a glyph
+    /// twice as tall as it should be is as far off as one half as tall. One already within those is drawn
+    /// as it is.</item>
+    /// </list>
+    /// </summary>
+    private static Expected ExpectedChoice(string path, float size, Rune rune, float request, float coversFrom)
+    {
+        var construction = Rasterizer.GetVerticalMathConstruction(path, rune).ShouldNotBeNull();
         var (unitsPerEm, minOverlap) = Rasterizer.GetMathStretchInfo(path)!.Value;
-        var units = request * unitsPerEm / size;
-        var copies = 0;
-        while (AssemblyRange(asm, minOverlap, copies).Most < units) copies++;
-        var height = MathF.Max(units, AssemblyRange(asm, minOverlap, copies).Least) * size / unitsPerEm;
-        return (copies, height > MathF.Max(1.25f * request, request + 0.5f * size) ? request : height);
+        var pxPerUnit = size / unitsPerEm;
+        var bound = MathF.Max(1.25f * request, request + 0.5f * size);
+        Rasterizer.RasterizeStretchyVertical(path, size, rune, 1f, out var baseGid);
+        float baseRows = Rasterizer.RasterizeGlyph(path, size, rune).Height;
+        if (baseRows >= coversFrom) return new(baseGid, 0, baseRows, false);
+        var coversUnits = (int)Math.Ceiling(coversFrom / pxPerUnit);
+        if (construction.Variants.FirstOrDefault(v => v.AdvanceMeasurement >= coversUnits) is { GlyphId: > 0 } covering)
+            return new(covering.GlyphId, 0, covering.AdvanceMeasurement * pxPerUnit, false);
+
+        var candidates = new List<Expected> { new(baseGid, 0, baseRows, true) };
+        candidates.AddRange(construction.Variants.Select(v => new Expected(v.GlyphId, 0, v.AdvanceMeasurement * pxPerUnit, true)));
+        if (construction.Assembly is { } asm)
+        {
+            var copies = 0;
+            while (copies < 100 && AssemblyRange(asm, minOverlap, copies).Most < request / pxPerUnit) copies++;
+            var height = ComposedInkPx(path, asm, minOverlap, copies, request, pxPerUnit);
+            if (AssemblyRange(asm, minOverlap, copies).Most >= request / pxPerUnit && height <= bound)
+                return new(0, copies, height, false);
+            candidates.Add(new(0, copies, height, true));
+            if (copies > 0) candidates.Add(new(0, copies - 1, ComposedInkPx(path, asm, minOverlap, copies - 1, request, pxPerUnit), true));
+        }
+
+        var low = MathF.Ceiling(coversFrom);
+        var high = MathF.Max(low, MathF.Floor(bound));
+        var best = candidates.MinBy(c => MathF.Abs(MathF.Log(Math.Clamp(c.HeightPx, low, high) / c.HeightPx)));
+        var fits = best.HeightPx >= coversFrom && best.HeightPx <= bound;
+        return fits ? best with { Scaled = false } : best with { HeightPx = Math.Clamp(best.HeightPx, low, high) };
+    }
+
+    /// <summary>The ink height in pixels of the assembly with <paramref name="copies"/> of every extender,
+    /// its joins spread so its advances come to <paramref name="request"/> within the range they reach: each
+    /// part's ink starts where the one below it ends, so the topmost part's ink, not its advance, is the top.</summary>
+    private static float ComposedInkPx(string path, SharpAstro.Fonts.Tables.OpenTypeMath.MathGlyphAssembly asm,
+        ushort minOverlap, int copies, float request, float pxPerUnit)
+    {
+        var (least, most) = AssemblyRange(asm, minOverlap, copies);
+        var top = asm.Parts[^1];
+        Rasterizer.TryGetOpenTypeFont(path, out var font).ShouldBeTrue();
+        var bounds = new ManagedFontRasterizer.TopEdgeSink();
+        font.DrawGlyph(top.GlyphId, bounds);
+        return (Math.Clamp(request / pxPerUnit, least, most) - top.FullAdvance + bounds.YMax - bounds.YMin) * pxPerUnit;
     }
 
     // ── the composition ─────────────────────────────────────────────────
@@ -386,8 +536,8 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
     /// room the glyph is the request. Where they have none it is the next height the assembly can reach:
     /// DejaVu Sans's connectors are exactly its <c>MinConnectorOverlap</c>, 40 units, so each copy of an
     /// extender adds a fixed 1.17 em; and STIX Two Math's brace at 138.15 px falls between its no-extender
-    /// most (137.5 px) and its one-copy least (140.8 px). Where that next height overshoots the bound a
-    /// delimiter may (see <see cref="ExpectedAssembly"/>) the assembly is squashed to the request. At 32 px.
+    /// most (137.5 px) and its one-copy least (140.8 px). Where that next height overshoots the bound, the
+    /// candidate that needs the least scaling is scaled to fit (see <see cref="ExpectedChoice"/>). At 32 px.
     /// </summary>
     [Theory]
     [MemberData(nameof(CompositionCases))]
@@ -396,11 +546,12 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
         var rune = new Rune(codepoint);
         var bitmap = Rasterizer.RasterizeStretchyVerticalWithParts(FontPaths[font], 32f, rune, request, out var parts);
         parts.ShouldNotBeNull("the request should need the assembly");
-        var (copies, height) = ExpectedAssembly(FontPaths[font], 32f, rune, request);
-        output.WriteLine($"{font} U+{codepoint:X4}: request {request} px, composed {bitmap.Height} px from {parts.Length} parts " +
-                         $"({copies} copies of the extenders), which reach {height:F2} px");
-        if (font == "STIX2Math" && request != 138.15f) height.ShouldBe(request, 1e-3f, "the joins should have room to reach the request");
-        Math.Abs(bitmap.Height - height).ShouldBeLessThanOrEqualTo(1f);
+        var expected = ExpectedChoice(FontPaths[font], 32f, rune, request, request);
+        output.WriteLine($"{font} U+{codepoint:X4}: request {request} px, composed {bitmap.Height} px from {parts.Length} parts; " +
+                         $"expected {expected}");
+        expected.GlyphId.ShouldBe(0u, "the assembly");
+        if (font == "STIX2Math" && request != 138.15f) expected.HeightPx.ShouldBe(request, 0.05f, "the joins should have room to reach the request");
+        Math.Abs(bitmap.Height - expected.HeightPx).ShouldBeLessThanOrEqualTo(1f);
     }
 
     // ── seams ───────────────────────────────────────────────────────────

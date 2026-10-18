@@ -1201,7 +1201,7 @@ public sealed class ManagedFontRasterizer : IDisposable
 
     /// <summary>Collects the highest and lowest Y an outline reaches: its on-curve points and the interior
     /// extrema of its curves (a control point above the curve is not ink).</summary>
-    private sealed class TopEdgeSink : IGlyphSink
+    internal sealed class TopEdgeSink : IGlyphSink
     {
         private float _y;
 
