@@ -368,9 +368,30 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// (<paramref name="snapTop"/> false, or a colour glyph).</param>
     internal GlyphBitmap RasterizeStretchyVertical(string fontPath, float fontSize,
         Rune codepoint, float requiredHeightPx, bool snapTop, out uint variantGlyphId, out TopSnap snap)
+        => RasterizeStretchyVerticalCore(fontPath, fontSize, codepoint, requiredHeightPx, snapTop,
+            out variantGlyphId, out snap, out _);
+
+    /// <summary>
+    /// <see cref="RasterizeStretchyVertical(string, float, Rune, float)"/>, also saying where each part of an
+    /// assembly landed in the composed bitmap; <paramref name="parts"/> is null when no assembly was built
+    /// (the base glyph or a size variant covered the request).
+    /// </summary>
+    internal GlyphBitmap RasterizeStretchyVerticalWithParts(string fontPath, float fontSize,
+        Rune codepoint, float requiredHeightPx, out AssemblyPart[]? parts)
+        => RasterizeStretchyVerticalCore(fontPath, fontSize, codepoint, requiredHeightPx, snapTop: false,
+            out _, out _, out parts);
+
+    /// <summary>One part of a composed assembly as drawn: its glyph, and the rows of the composed bitmap its
+    /// ink box spans, Y down, as fractions of a pixel.</summary>
+    internal readonly record struct AssemblyPart(uint GlyphId, bool IsExtender, float Top, float Bottom);
+
+    private GlyphBitmap RasterizeStretchyVerticalCore(string fontPath, float fontSize,
+        Rune codepoint, float requiredHeightPx, bool snapTop, out uint variantGlyphId, out TopSnap snap,
+        out AssemblyPart[]? parts)
     {
         variantGlyphId = 0;
         snap = TopSnap.None;
+        parts = null;
         var font = GetOrLoad(fontPath);
         var baseGid = font.GetGlyphId((uint)codepoint.Value);
         if (baseGid == 0) return default;
@@ -418,7 +439,7 @@ public sealed class ManagedFontRasterizer : IDisposable
         {
             variantGlyphId = baseGid;
             return ComposeVerticalAssembly(font, asm, math.MinConnectorOverlap, unitsPerEm, fontSize, requiredFUnits,
-                snapTop, out snap);
+                snapTop, out snap, out parts);
         }
 
         // 3) Largest variant if any (still possibly short of the request, but
@@ -456,9 +477,10 @@ public sealed class ManagedFontRasterizer : IDisposable
     private static GlyphBitmap ComposeVerticalAssembly(
         OpenTypeFont font, Tables.OpenTypeMath.MathGlyphAssembly asm,
         ushort minOverlap, ushort unitsPerEm, float fontSize, int requiredFUnits,
-        bool snapTop, out TopSnap snap)
+        bool snapTop, out TopSnap snap, out AssemblyPart[]? placed)
     {
         snap = TopSnap.None;
+        placed = null;
         if (asm.Parts.Count == 0) return default;
 
         // Compute the total FUnit-space advance with one copy of each part
@@ -570,10 +592,12 @@ public sealed class ManagedFontRasterizer : IDisposable
         canvas.Clear(new RGBAColor32(0, 0, 0, 0));
 
         var pen = height;  // bottom edge
+        placed = new AssemblyPart[sequence.Length];
         for (var i = 0; i < sequence.Length; i++)
         {
             var bm = bitmaps[i];
             pen -= bm.Height;
+            placed[i] = new AssemblyPart(sequence[i].GlyphId, sequence[i].IsExtender, pen, pen + bm.Height);
             // Translate by minBearing so the smallest BearingX lands at x=0.
             var x = bm.BearingX - minBearing;
             if (bm.Rgba is { Length: > 0 })
@@ -584,7 +608,7 @@ public sealed class ManagedFontRasterizer : IDisposable
 
         // BearingY = height keeps the whole thing above the baseline by default;
         // callers that want a math-axis-centred placement adjust their pen.
-        return new GlyphBitmap(canvas.Pixels, width, height, BearingX: 0, BearingY: height, AdvanceX: 0f);
+        return new GlyphBitmap(canvas.Pixels, width, height, BearingX: minBearing, BearingY: height, AdvanceX: 0f);
     }
 
     /// <summary>

@@ -418,22 +418,23 @@ public sealed partial class RadicalJoinTests
     /// <see cref="ContextScenes"/> that is at most 2 rows above the reported height (one, at 7 points, since
     /// the headroom row); the glyph and bar always lie on the canvas
     /// <see cref="BoxRasterizer.RenderToRgba"/> draws on, whose margin of ceil(0.15 em) is all there is above
-    /// the outermost box; and the canvas cuts off no more of the scene's ink than it did at fe09d4a (see
-    /// <see cref="InkCutOff"/>). It does cut some: STIX Two Math <c>\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}</c>
-    /// takes a MATH assembly shorter than its radicand, whose depth path 1 does not count, so the radicand
-    /// hangs below the canvas at 119 of its 238 sizes there as here. Every failing point is listed in the
-    /// one message.
+    /// the outermost box; and the canvas cuts off none of the scene's ink (see <see cref="InkCutOff"/>). At
+    /// fe09d4a it cut some: STIX Two Math <c>\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}</c> took a MATH assembly
+    /// shorter than its radicand, so the radicand's denominator hung below the canvas at 119 of its 238
+    /// sizes. The assembly now grows to what the radical asks of it, and the radical's box holds its
+    /// radicand. Every failing point is listed in the one message.
     /// </summary>
     [Fact]
     public void TheRaisedBarNeverClips()
     {
         const int maxRowsAboveHeight = 2;
         var failures = SweptPoints.Value
-            .Where(s => s.RowsAboveHeight > maxRowsAboveHeight || !s.RadicalOnCanvas || s.InkCutOff > s.Before.CutOff)
+            .Where(s => s.RowsAboveHeight > maxRowsAboveHeight || !s.RadicalOnCanvas || s.InkCutOff > 0)
             .Select(s => $"{s}: the bar sits {s.RowsAboveHeight} rows above the reported height, the radical is " +
                          $"{(s.RadicalOnCanvas ? "on" : "off")} the canvas, which cut off {s.InkCutOff} alpha, before {s.Before.CutOff}")
             .ToList();
-        failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
+        failures.ShouldBeEmpty($"{failures.Count} of {SweptPoints.Value.Length} points" + Environment.NewLine
+                               + string.Join(Environment.NewLine, failures));
     }
 
     /// <summary>
