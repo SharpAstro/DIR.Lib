@@ -319,23 +319,27 @@ public sealed class MarkdownBlockSpikeTests
     /// <summary>
     /// A long document of lists that keep breaking parses in a flat loop (B4:
     /// each break recursed, and 2,500 alternating bullets overflowed a 1 MB
-    /// stack, which no catch survives).
+    /// stack, which no catch survives). A 256 KB stack makes the old recursion
+    /// overflow at a size the suite can afford to parse.
     /// </summary>
     [Fact]
     public void ManyListBreaks_DoNotRecurse()
     {
-        var bullets = string.Join("\n", Enumerable.Range(0, 5000).Select(i => i % 2 == 0 ? "- a" : "* b"));
-        var notes = string.Join("\n", Enumerable.Range(1, 3000).Select(i => $"{i}. step\n\n  note"));
-        IReadOnlyList<MdBlock>? fromBullets = null, fromNotes = null;
+        // Alternating bullets: each line a list of its own. Notes indented two,
+        // short of "N. "'s content column, after a blank line: each item a list,
+        // each note a paragraph.
+        var bullets = string.Join("\n", Enumerable.Range(0, 1500).Select(i => i % 2 == 0 ? "- a" : "* b"));
+        var notes = string.Join("\n\n", Enumerable.Range(1, 800).Select(i => $"{i}. step\n\n  note"));
+        System.Collections.Generic.IReadOnlyList<MdBlock>? fromBullets = null, fromNotes = null;
         var thread = new System.Threading.Thread(() =>
         {
             fromBullets = new MarkdownBlockVisitor().Parse(bullets);
             fromNotes = new MarkdownBlockVisitor().Parse(notes);
-        }, maxStackSize: 1024 * 1024);
+        }, maxStackSize: 256 * 1024);
         thread.Start();
         thread.Join();
-        fromBullets.ShouldNotBeNull().Count.ShouldBe(5000);
-        fromNotes.ShouldNotBeNull().Count.ShouldBe(6000);
+        fromBullets.ShouldNotBeNull().Count.ShouldBe(1500);
+        fromNotes.ShouldNotBeNull().Count.ShouldBe(1600);
     }
 
     /// <summary>A list item can begin with at most one blank line (CommonMark
