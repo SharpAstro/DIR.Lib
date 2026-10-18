@@ -314,7 +314,7 @@ public sealed partial class RadicalJoinTests
         }
 
         var failures = SweptPoints.Value
-            .Where(s => !RadicandRedrawnSinceTheBeforeData.Contains(s.Before.Scene))
+            .Where(s => !RadicandRedrawnSinceTheBeforeData.Contains((s.Before.Font, s.Before.Scene)))
             .Where(s => Drifts(s.Before.Height, s.Height, s) || Drifts(s.Before.Depth, s.Depth, s))
             .Select(s => $"{s}: height {s.Before.Height} -> {s.Height}, depth {s.Before.Depth} -> {s.Depth}, " +
                          $"band {s.BandRows} rows (stroke at most {s.MaxBandRows}), " +
@@ -323,11 +323,23 @@ public sealed partial class RadicalJoinTests
         failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
     }
 
-    /// <summary>Scenes whose radicand itself is drawn differently from the before data, so their before height and
-    /// depth describe another radicand and a drift says nothing about the radical. The hat over the x rides
-    /// above it by the OpenType MATH rule (PR #130), where it was drawn across the x's top rows. Every other
-    /// test of the sweep still visits them.</summary>
-    private static readonly HashSet<string> RadicandRedrawnSinceTheBeforeData = ["frac-1-sqrt-hat-x"];
+    /// <summary>Scenes, in one font each, whose radicand, or the radical's hold on it, is drawn differently
+    /// from the before data, so their before height and depth describe another layout and a drift says
+    /// nothing about the radical's own drawing. Every other test of the sweep still visits them.
+    /// <list type="bullet">
+    /// <item>STIX Two Math <c>sqrt-nested-frac</c>: the radical's MATH assembly now grows to what it asks
+    /// for, so the radical covers its radicand and its depth holds the radicand's (at 24 px 3.71 became
+    /// 42.71). The assembly used to stop at its 64-copy cap and leave the denominator hanging below the
+    /// box.</item>
+    /// <item>DejaVu Sans <c>sqrt-paren-frac</c>: the radicand's parenthesis is now the two-part assembly,
+    /// with no extender and squashed to the fraction it holds, where one copy of each extender made it
+    /// about twice the fraction's height, so the radical over it is shorter (at 32 px height 78.34 became
+    /// 44.34, depth 50.5 became 24.86).</item>
+    /// </list>
+    /// The hat scene that used to be listed here (PR #130 redrew it) is drawn the same way in the before
+    /// data since it was regenerated from a442e91.</summary>
+    private static readonly HashSet<(string Font, string Scene)> RadicandRedrawnSinceTheBeforeData =
+        [("STIX2Math", "sqrt-nested-frac"), ("DejaVuSans", "sqrt-paren-frac")];
 
     /// <summary>How far a swept point's height or depth may shrink from before: 3 px below 21.3 px where the
     /// cap at the flag's own stroke trimmed the band, 2 px everywhere else (see
@@ -652,7 +664,10 @@ public sealed partial class RadicalJoinTests
     /// Review round 2, B1. At sextant and half-block sizes STIX Two Math's flag is no wider than the stem, so
     /// the flag's last full column was the stem's and the band ran down the whole stem: at 12 px
     /// <c>\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}</c> drew a 30-row block over the radicand and grew from
-    /// 30.42 to 59.42 px tall.
+    /// 30.42 to 59.42 px tall. At the <c>sqrt-nested-frac</c> points the depth is held to cover the radicand's
+    /// rather than to the before data's: the radical's assembly now grows to its request, so its depth is
+    /// the radicand's where the old one left the radicand hanging below (see
+    /// <see cref="RadicandRedrawnSinceTheBeforeData"/>).
     /// </summary>
     [Theory]
     [InlineData("STIX2Math", "sqrt-nested-frac", 12f)]
@@ -661,7 +676,20 @@ public sealed partial class RadicalJoinTests
     [InlineData("STIX2Math", "sqrt-paren-frac", 7.1f)]
     [InlineData("STIX2Math", "sqrt-paren-frac", 7.25f)]
     public void TheStemIsNotDrawnAsTheBar(string font, string scene, float size)
-        => AssertBandAndMetrics(font, scene, size);
+    {
+        if (scene != "sqrt-nested-frac")
+        {
+            AssertBandAndMetrics(font, scene, size);
+            return;
+        }
+        var before = BeforeAt(font, scene, size);
+        var r = Render(font, size, scene);
+        var style = new BoxStyle(FontPaths[font], size, new RGBAColor32(0, 0, 0, 255));
+        var radicand = Parse(@"\frac{\frac{a}{b}}{\frac{c}{d}}", style);
+        r.Join.FlagRows.ShouldBeLessThanOrEqualTo(MaxBandRows(font, r), "rows of the bar's band");
+        r.Sqrt.Height.ShouldBe(before.Height, DriftLimitPx, "radical height");
+        r.Sqrt.Depth.ShouldBeGreaterThanOrEqualTo(radicand.Depth, "radical depth against its radicand's");
+    }
 
     /// <summary>
     /// Review round 2, B3. Where the flag's stroke is under a pixel its last full column crossed the flag's
