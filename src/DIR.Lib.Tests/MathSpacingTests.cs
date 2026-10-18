@@ -289,6 +289,28 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
         painted.ShouldBe([expected]);
     }
 
+    /// <summary>
+    /// A math space inside <c>\textrm</c>'s argument is a blank (<c>\!</c>
+    /// nothing), as the Unicode path renders it. Since the preparation keeps
+    /// <c>\, \: \; \!</c> for the grammar to lex as space (R1 Q1), the token
+    /// took each in as an escape pair and painted it back with its backslash:
+    /// <c>e.\,g.</c> (round 2 B1). Before Q1 the preparation had made it a
+    /// blank first.
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math", @"\textrm{e.\,g.}", "e. g.", "e. g.")]
+    [InlineData("STIX2Math", @"\textrm{5\;mm}", "5 mm", "5 mm")]
+    [InlineData("STIX2Math", @"\textrm{a\!b}", "ab", "ab")]
+    [InlineData("DejaVuSans", @"\textrm{e.\,g.}", "e. g.", "e. g.")]
+    [InlineData("DejaVuSans", @"\textrm{5\:mm}", "5 mm", "5 mm")]
+    public void MathSpaceInsideTheArgument_IsABlank(string font, string latex, string boxPath, string unicodePath)
+    {
+        var painted = Painted(latex, StyleFor(font));
+        painted.ShouldNotContain(t => t.Contains('\\'), $"'{latex}' painted an escape: {string.Join(" | ", painted)}");
+        painted.ShouldBe([boxPath]);
+        MarkdownMacros.RenderMathUnicode(latex).ShouldBe(unicodePath);
+    }
+
     [Theory]
     [InlineData(@"\operatorname{arg{\,}max}", "arg max")]
     [InlineData(@"\textrm{a {b} c}", "a b c")]
