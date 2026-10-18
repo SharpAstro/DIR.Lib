@@ -80,15 +80,81 @@ public sealed class VsCodeParityTests
         => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
 
     /// <summary>
-    /// An operator with no operand on a side gets <c>\null</c> there; a minus
-    /// at either end, and text, are left alone.
+    /// A formula that still does not parse falls back to its source as written:
+    /// an operand <see cref="MarkdownMacros.SupplyMissingOperands"/> added is
+    /// not printed (round 1 B1: <c>$x^*$</c> read <c>x^* \null</c>). A lone
+    /// <c>*</c> is an asterisk (TeX's <c>\ast</c>), not the middle dot of a
+    /// product: an optimum, a conjugate, an adjoint (B3: <c>x^{*}</c> read
+    /// <c>x^·</c>). A <c>'</c> after no atom is a quote, as before primes
+    /// lexed, so it does not throw the formula back to its source.
     /// </summary>
     [Theory]
-    [InlineData(@"8\times", @"8\times \null")]
-    [InlineData(@"\to", @"\null \to \null")]
-    [InlineData(@"= x", @"\null = x")]
-    [InlineData(@"(+1, 2)", @"(\null +1, 2)")]
-    [InlineData(@"\{x \mid\}", @"\{x \mid \null\}")]
+    [InlineData(@"x^*", @"x^*")]
+    [InlineData(@"x^+", @"x^+")]
+    [InlineData(@"\boxed{x^*}", @"[x^*]")]
+    [InlineData(@"x^{*}", "x^∗")]
+    [InlineData(@"\theta^{*} = \arg\min_x f(x)", "θ^∗ = arg minₓ f(x)")]
+    [InlineData(@"\alpha = '\beta'", "α = 'β'")]
+    public void UnicodePath_FallsBackAsWritten_AndALoneStarIsAnAsterisk(string latex, string expected)
+        => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
+
+    /// <summary>
+    /// An accent's mark never lands inside a placeholder still to be spliced
+    /// back (a <c>\text</c>, a math space, a character the lexer has no rule
+    /// for), which would break its name: <c>\overline{\text{abc}}</c> printed
+    /// the placeholder's name (round 1 B2).
+    /// </summary>
+    [Fact]
+    public void UnicodePath_AnAccentLeavesPlaceholdersWhole()
+    {
+        var overline = ((char)0x0305).ToString();
+        var hat = ((char)0x0302).ToString();
+        MarkdownMacros.RenderMathUnicode(@"\overline{\text{ab}}").ShouldBe("ab");
+        MarkdownMacros.RenderMathUnicode(@"\overline{a\,b}").ShouldBe($"a{overline} b{overline}");
+        MarkdownMacros.RenderMathUnicode(@"\overline{a < b}").ShouldNotContain("\\");
+        MarkdownMacros.RenderMathUnicode(@"\hat{x\,}").ShouldBe($"x{hat} ");
+    }
+
+    [Fact]
+    public void BoxPath_ALoneStarIsAnAsterisk()
+    {
+        var glyphs = BoxesIn<GlyphBox>(BuildBox(@"x^{*}", Stix).ShouldNotBeNull()).Select(g => g.Text).ToList();
+        glyphs.ShouldContain("∗");
+        glyphs.ShouldNotContain("·");
+    }
+
+    /// <summary>
+    /// <c>\vec</c>'s arrow is centred over its base in a font with no MATH
+    /// accent attachment (DejaVu Sans), as in one with it. Its glyph is the
+    /// combining U+20D7, which has no advance and draws its ink left of its
+    /// origin, so centring its origin put the arrow left of the letter (round
+    /// 1 B4).
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math.otf")]
+    [InlineData("DejaVuSans.ttf")]
+    public void BoxPath_TheVecArrowIsCentredOverItsBase(string font)
+    {
+        var style = new BoxStyle(Path.Combine(AppContext.BaseDirectory, "Fonts", font), 48f, Ink);
+        var image = BoxRasterizer.RenderToRgba(BuildBox(@"\vec{v}", style).ShouldNotBeNull(), style);
+        var runs = InkRowRuns(image);
+        runs.Count.ShouldBeGreaterThanOrEqualTo(2, "the arrow and the v");
+        var arrow = InkColumnCentre(image, runs[0]);
+        var letter = InkColumnCentre(image, runs[^1]);
+        Math.Abs(arrow - letter).ShouldBeLessThanOrEqualTo(48f * 0.15f, $"arrow centre {arrow:F1}, v centre {letter:F1}");
+    }
+
+    /// <summary>
+    /// An operator with no operand on a side gets <c>\nulloperand</c> there, an
+    /// empty atom of the supplier's own (so a failed parse can drop it again); a
+    /// minus at either end, and text, are left alone.
+    /// </summary>
+    [Theory]
+    [InlineData(@"8\times", @"8\times \nulloperand")]
+    [InlineData(@"\to", @"\nulloperand \to \nulloperand")]
+    [InlineData(@"= x", @"\nulloperand = x")]
+    [InlineData(@"(+1, 2)", @"(\nulloperand +1, 2)")]
+    [InlineData(@"\{x \mid\}", @"\{x \mid \nulloperand\}")]
     [InlineData(@"-x", @"-x")]
     [InlineData(@"e-", @"e-")]
     [InlineData(@"a + b", @"a + b")]
@@ -150,6 +216,16 @@ public sealed class VsCodeParityTests
             pixels[i + 3] = 255;
         }
         return pixels;
+    }
+
+    /// <summary>The mean column of the ink in the rows of <paramref name="rows"/>.</summary>
+    private static float InkColumnCentre(RgbaImage image, (int Start, int End) rows)
+    {
+        long sum = 0, count = 0;
+        for (int y = rows.Start; y <= rows.End; y++)
+            for (int x = 0; x < image.Width; x++)
+                if (image.Pixels[(y * image.Width + x) * 4 + 3] > 64) { sum += x; count++; }
+        return count == 0 ? -1 : (float)sum / count;
     }
 
     /// <summary>The runs of rows that hold ink, top to bottom, each as its first and last row.</summary>
