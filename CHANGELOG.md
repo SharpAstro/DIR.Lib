@@ -30,8 +30,8 @@ over it. Every combined query honours it (`HitTest`, `HitTestCursor`, `ScrollTar
 stating the children painted before the bar. One split is exact per child only: a child drawn in two passes, part
 under the composite's own content and part over it, is kept wholly over (0). Additive. **`CollectPaintedNodes`
 follows the region order**, through the same walk: the router reads both lists from the end, for the hover
-highlight and a declared shortcut as for a press, and with the composite's own nodes listed first a lit row and a
-chord resolved child-first while the press resolved own-first.
+highlight and a declared shortcut as for a press. In 11.24 both lists put the composite's own first, so a press, a
+lit row and a chord all resolved child-first; now all three resolve in the same order, by `ChildrenUnderOwn`.
 
 **A scroll bar takes the host's colours.** `ListScrollController` gains `TrackColor` and `ThumbColor`, defaulting to
 `DefaultTrackColor` and `DefaultThumbColor`. The layout engine draws the bar of a `.WithScroll` node itself and
