@@ -443,6 +443,49 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
         right.ShouldBe(left, "the closing delimiter's rows against the opening one's");
     }
 
+    public static IEnumerable<TheoryDataRow<string, string, string, string, float>> HalfOpenCases() =>
+        from font in new[] { "STIX2Math", "DejaVuSans" }
+        from pair in new[]
+        {
+            ("[", @"\frac{\frac{a}{b}}{c}, d", ")"), ("(", @"\frac{a}{\frac{b}{c}}, d", "]"), ("[", @"\frac{a}{b}, c", ")"),
+        }
+        from size in new[] { 12f, 16f, 32f }
+        select new TheoryDataRow<string, string, string, string, float>(font, pair.Item1, pair.Item2, pair.Item3, size);
+
+    /// <summary>
+    /// A half-open interval's delimiters are sized as a <see cref="BracketBox"/>'s are: the pair asks for
+    /// twice the content's larger reach from the math axis, as TeX's <c>\left..\right</c> does, may fall
+    /// short of it by TeX's shortfall, and is drawn at one height
+    /// (<see cref="StretchyVerticalBox.DelimiterPair"/>). It asked for the content's total height, with no
+    /// shortfall, so <c>[a, b)</c> and <c>[a, b]</c> were sized by different rules, and content reaching
+    /// further above the axis than below it (a numerator that is itself a fraction) poked out of
+    /// <c>[a, b)</c>. Each rendered delimiter's ink spans as many rows as that pair's glyph inks.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(HalfOpenCases))]
+    public void AHalfOpenIntervalIsSizedAsABracketPairIs(string font, string open, string content, string close, float size)
+    {
+        var style = new BoxStyle(FontPaths[font], size, Ink);
+        var inner = Parse(content, style);
+        var request = 2 * MathF.Max(inner.Height - style.AxisHeight, inner.Depth + style.AxisHeight);
+        var (opening, closing) = StretchyVerticalBox.DelimiterPair(open[0], close[0], request, style);
+        var image = BoxRasterizer.RenderToRgba(Parse(open + content + close, style), style);
+        var (left, right) = DelimiterRowSpans(image);
+        output.WriteLine($"{font} {open}{content}{close} at {size} px: request {request:F2} (total height {inner.TotalHeight:F2}); " +
+                         $"drawn rows {left.Top}..{left.Bottom} and {right.Top}..{right.Bottom}; the pair inks " +
+                         $"{InkedRows(opening.Bitmap)} and {InkedRows(closing.Bitmap)} rows");
+        (left.Bottom - left.Top + 1).ShouldBe(InkedRows(opening.Bitmap), $"rows of the opening {open}");
+        (right.Bottom - right.Top + 1).ShouldBe(InkedRows(closing.Bitmap), $"rows of the closing {close}");
+    }
+
+    /// <summary>The rows of <paramref name="bitmap"/>, from the first to the last that holds ink.</summary>
+    private static int InkedRows(GlyphBitmap bitmap)
+    {
+        var rows = Enumerable.Range(0, bitmap.Height)
+            .Where(y => Enumerable.Range(0, bitmap.Width).Any(x => Alpha(bitmap, x, y) > 0)).ToList();
+        return rows.Count == 0 ? 0 : rows[^1] - rows[0] + 1;
+    }
+
     /// <summary>The rows the leftmost and the rightmost run of inked columns span: a pair's delimiters, with
     /// the content between them.</summary>
     private static ((int Top, int Bottom) Left, (int Top, int Bottom) Right) DelimiterRowSpans(RgbaImage image)
