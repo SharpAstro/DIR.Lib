@@ -68,7 +68,7 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
         var join = sqrt.JoinAt(0, sqrt.Height, style).ShouldNotBeNull();
         output.WriteLine($"{fractions} fractions at {size} px: requested {requested:F2}, glyph {join.GlyphRows} rows, " +
                          $"radical height {sqrt.Height:F2} depth {sqrt.Depth:F2}, radicand depth {radicand.Depth:F2}");
-        join.GlyphRows.ShouldBeGreaterThanOrEqualTo((int)MathF.Floor(requested),
+        join.GlyphRows.ShouldBeGreaterThanOrEqualTo((int)MathF.Ceiling(requested),
             $"the radical's glyph against the {requested:F2} px requested of it");
         sqrt.Depth.ShouldBeGreaterThanOrEqualTo(0f);
     }
@@ -414,13 +414,23 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
         yield return new("STIX2Math", 0x221A, 32f, 150f);
         yield return new("STIX2Math", 0x221A, 32f, 333.3f);
         yield return new("STIX2Math", 0x221A, 12f, 61.7f);
+        // The radicals over four, five and six nested fractions, at what each asks of the assembly.
+        foreach (var size in new[] { 32f, 12f })
+            foreach (var fractions in new[] { 4, 5, 6 })
+            {
+                var style = new BoxStyle(FontPaths["STIX2Math"], size, Ink);
+                var radicand = Parse(NestedFractions(fractions), style);
+                yield return new("STIX2Math", 0x221A, size, radicand.TotalHeight + 2 * 0.12f * size + style.RadicalRuleThickness);
+            }
     }
 
     /// <summary>
     /// No seams. The stem columns are the columns inked in the extender's own bitmap; on every row of the
-    /// composed glyph that lies wholly inside an extender copy, the stem's alpha (summed across those
-    /// columns) is at least 0.9 times the unstretched extender's peak. A join the old composer placed by
-    /// whole pixels showed as a lighter row there.
+    /// composed glyph between its end parts, from the row the bottom end part's top crosses to the row the
+    /// top end part's bottom crosses (so every join, and the rows straddling it, among them), the stem's
+    /// alpha (summed across those columns) is at least 0.9 times the unstretched extender's peak. A join
+    /// the old composer placed by whole pixels showed as a lighter row there. A brace's middle part, which
+    /// leaves the stem for its cusp, is checked only over its connectors, where it is stem.
     /// </summary>
     [Theory]
     [MemberData(nameof(SeamCases))]
@@ -440,10 +450,21 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
         var extenderCols = stem.Select(x => x - extender.BearingX + bitmap.BearingX).ToArray();
         var peak = Enumerable.Range(0, extender.Height).Max(y => StemSum(extender, y, extenderCols));
 
-        var failures = new List<string>();
-        for (var y = 0; y < bitmap.Height; y++)
+        // Parts are bottom-up: parts[0] the bottom end, parts[^1] the top end; rows run Y down.
+        var asm = Rasterizer.GetVerticalMathConstruction(path, new Rune(codepoint))!.Assembly!;
+        var first = (int)MathF.Floor(parts[^1].Bottom);
+        var last = (int)MathF.Ceiling(parts[0].Top) - 1;
+        bool InMiddlePartAwayFromItsConnectors(int y) => parts.Skip(1).SkipLast(1).Any(p =>
         {
-            if (!parts.Any(p => p.IsExtender && p.Top <= y && y + 1 <= p.Bottom)) continue;
+            if (p.IsExtender) return false;
+            var record = asm.Parts.First(q => q.GlyphId == p.GlyphId);
+            var pxPerUnit = (p.Bottom - p.Top) / record.FullAdvance;
+            return y + 1 > p.Top + record.EndConnectorLength * pxPerUnit && y < p.Bottom - record.StartConnectorLength * pxPerUnit;
+        });
+        var failures = new List<string>();
+        for (var y = Math.Max(0, first); y <= Math.Min(bitmap.Height - 1, last); y++)
+        {
+            if (InMiddlePartAwayFromItsConnectors(y)) continue;
             var sum = StemSum(bitmap, y, stem);
             if (sum < 0.9f * peak) failures.Add($"row {y}: stem alpha {sum}, the extender's peak {peak}");
         }
