@@ -168,6 +168,12 @@ public sealed partial class RadicalJoinTests
         "frac-1-sqrt-hat-x", "frac-1-sqrt-sum-x", "frac-1-sqrt-paren-x",
     ];
 
+    /// <summary>The radicals with an index, swept over <see cref="SweepSizes"/> and in the before-data:
+    /// <c>index-box-api</c> is <c>\sqrt[3]{x}</c> built through the Box API (the parsed form draws the same
+    /// pixels, as BracketMathTests pins), <c>sqrt-n-x2-plus-1</c> a letter index over a composite radicand,
+    /// and <c>sqrt-10-x</c> a two-digit index, the widest the hook has to hold.</summary>
+    private static readonly string[] IndexScenes = ["index-box-api", "sqrt-n-x2-plus-1", "sqrt-10-x"];
+
     /// <summary>Below this size, the floor of Console.Lib's Sixel range, a radical may shrink 3 px where the
     /// stroke cap trimmed its band (see <see cref="SweepHeightAndDepthDriftAtMostTwoPixels"/>).</summary>
     private const float SmallSizeShrinkBelow = 21.3f;
@@ -207,7 +213,7 @@ public sealed partial class RadicalJoinTests
                 r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY), r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY - 1),
                 r.GlyphPastDepth, r.RowsAboveHeight, r.RadicalOnCanvas, InkCutOff(p.Font, p.Size, p.Scene, r.Image),
                 r.JoinBreak(), RgbaHash(r.Image), r.Join.InkRaise,
-                p.Scene == "index-box-api" ? IndexClearanceAt(p.Font, p.Size, r) : null, r.Sqrt.Path);
+                IndexScenes.Contains(p.Scene) ? IndexClearanceAt(p.Font, p.Size, p.Scene, r) : null, r.Sqrt.Path);
         }),
     ]);
 
@@ -231,7 +237,7 @@ public sealed partial class RadicalJoinTests
     /// <param name="JoinBreak">Where the bar fails to continue the flag, or null (<see cref="Rendered.JoinBreak"/>).</param>
     /// <param name="RgbaHash">The rendered scene's size and pixels, hashed (<see cref="RgbaHash"/>).</param>
     /// <param name="InkRaise">Rows the radicand's ink raised bar and glyph (<see cref="SqrtBox.RadicalJoin.InkRaise"/>).</param>
-    /// <param name="IndexClear">In the index scene, the clear pixels between the index and the glyph
+    /// <param name="IndexClear">In an index scene, the clear pixels between the index and the glyph
     /// (<see cref="IndexClearance"/>); null elsewhere.</param>
     /// <param name="ClearAbove">Clear rows between the bar and the ink above it (<see cref="Rendered.ClearRowsAboveBar"/>).</param>
     /// <param name="Path">The path that drew the radical (<see cref="SqrtBox.Path"/>), against the before data's
@@ -250,7 +256,7 @@ public sealed partial class RadicalJoinTests
     public void BeforeDataCoversTheSweep()
     {
         var missing = (from font in FontPaths.Keys
-                       from scene in SweepScenes.Concat(ContextScenes).Append("index-box-api")
+                       from scene in SweepScenes.Concat(ContextScenes).Concat(IndexScenes)
                        from size in SweepSizes
                        where !BeforePoints.Any(p => p.Font == font && p.Scene == scene && p.Size == size)
                        select $"{font} {scene} {size} px").ToList();
@@ -618,6 +624,25 @@ public sealed partial class RadicalJoinTests
     }
 
     /// <summary>
+    /// A root's index never touches its radical: at every swept size, in both fonts, in every
+    /// <see cref="IndexScenes"/> scene, at least one clear pixel lies between the index's ink and the glyph's,
+    /// diagonal neighbours counting as touching (<see cref="IndexClearance"/>). The index is set at
+    /// script-script size, 2 to 4 px tall at the terminal's sizes, and one merged into the V's arm is
+    /// unreadable there. Against a442e91 the index touched or overlapped the glyph at most points (see the
+    /// before-data). Every failing point is listed in the one message.
+    /// </summary>
+    [Fact]
+    public void TheIndexNeverTouchesTheGlyph()
+    {
+        var failures = SweptPoints.Value
+            .Where(s => s.IndexClear is { } clear && clear < 1)
+            .Select(s => $"{s}: {s.IndexClear} clear pixels between index and glyph, before {s.Before.IndexClear}")
+            .ToList();
+        failures.ShouldBeEmpty($"{failures.Count} of {SweptPoints.Value.Count(s => s.IndexClear is not null)} index points"
+                               + Environment.NewLine + string.Join(Environment.NewLine, failures));
+    }
+
+    /// <summary>
     /// The two points the relaxations named: STIX Two Math <c>\sqrt{\frac{a}{b}}</c> at 22.2 px and
     /// <c>\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}</c> at 31.7 px had 3 clear rows before the rework
     /// (e6778fc) and 2 after it (fe09d4a), lost to the float phase of the bar's floored row.
@@ -878,8 +903,7 @@ public sealed partial class RadicalJoinTests
             "sqrt-x" => Parse(@"\sqrt{x}", style),
             "sqrt-frac-a-b" => Parse(@"\sqrt{\frac{a}{b}}", style),
             "quadratic-formula" => Parse(@"\frac{-b \pm \sqrt{b^2-4ac}}{2a}", style),
-            // The index goes through the Box API: the grammar's \sqrt takes no optional argument.
-            "index-box-api" => IndexScene(style, blankIndex: false),
+            "index-box-api" or "sqrt-n-x2-plus-1" or "sqrt-10-x" => IndexScene(scene, style, blankIndex: false),
             "sqrt-paren-frac" => Parse(@"\sqrt{\left(\frac{a}{b}\right)}", style),
             "sqrt-nested-frac" => Parse(@"\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}", style),
             // A radical whose baseline its parent places: a fraction keeps its numerator a gap above the
@@ -913,13 +937,21 @@ public sealed partial class RadicalJoinTests
         return InkSum(renderer.Surface) - InkSum(canvas);
     }
 
-    /// <summary>The radical with an index, built through the Box API (the grammar's <c>\sqrt</c> takes no
-    /// optional argument), or the same with the index blank: a box with its metrics that draws nothing, so the
-    /// layout is the same and the two renders differ by the index's ink alone.</summary>
-    private static Box IndexScene(BoxStyle style, bool blankIndex)
+    /// <summary>A radical with an index (<see cref="IndexScenes"/>), or the same with the index blank: a box
+    /// with its metrics that draws nothing, so the layout is the same and the two renders differ by the index's
+    /// ink alone. The parsed scenes are built as the grammar builds <c>\sqrt[n]{x}</c>, the index parsed at
+    /// script-script style; tools/gen-radical-join-before builds them the same way.</summary>
+    private static Box IndexScene(string scene, BoxStyle style, bool blankIndex)
     {
-        var index = new GlyphBox("3", style.Smaller().Smaller());
-        return new SqrtBox(new MathGlyphBox("x", style, MathStyle.Italic), blankIndex ? new BlankBox(index) : index, style);
+        var ss = style.Smaller().Smaller();
+        var (radicand, index) = scene switch
+        {
+            "index-box-api" => ((Box)new MathGlyphBox("x", style, MathStyle.Italic), (Box)new GlyphBox("3", ss)),
+            "sqrt-n-x2-plus-1" => (Parse("x^2+1", style), Parse("n", ss)),
+            "sqrt-10-x" => (Parse("x", style), Parse("10", ss)),
+            _ => throw new ArgumentException($"'{scene}' is not an index scene"),
+        };
+        return new SqrtBox(radicand, blankIndex ? new BlankBox(index) : index, style);
     }
 
     /// <summary>A box with another's metrics that draws nothing.</summary>
@@ -931,11 +963,11 @@ public sealed partial class RadicalJoinTests
         public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style) { }
     }
 
-    /// <summary>The index scene's <see cref="IndexClearance"/>, its glyph's rectangle taken from the join.</summary>
-    private static int IndexClearanceAt(string font, float size, Rendered r)
+    /// <summary>An index scene's <see cref="IndexClearance"/>, its glyph's rectangle taken from the join.</summary>
+    private static int IndexClearanceAt(string font, float size, string scene, Rendered r)
     {
         var style = new BoxStyle(FontPaths[font], size, new RGBAColor32(0, 0, 0, 255));
-        var blank = BoxRasterizer.RenderToRgba(IndexScene(style, blankIndex: true), style);
+        var blank = BoxRasterizer.RenderToRgba(IndexScene(scene, style, blankIndex: true), style);
         return IndexClearance(r.Image, blank, r.Join.GlyphX, r.Join.GlyphY, r.Join.BarStartX - r.Join.GlyphX, r.Join.GlyphRows);
     }
 
