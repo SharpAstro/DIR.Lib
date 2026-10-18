@@ -315,22 +315,39 @@ public sealed class DollarRulesTests
     // ── The label scan is linear ─────────────────────────────────────
     //
     // Finding a label's `]` once per `[`, each scan running to the partner or to the end, was
-    // quadratic: 16,000 copies of `a[b ` took seconds. 64k characters of brackets that never
-    // pair must parse in well under a second.
+    // quadratic: 16,000 copies of `a[b ` took seconds. So four times the input must take about
+    // four times as long, not sixteen. The test compares two sizes rather than holding one to a
+    // wall-clock limit: a 500 ms limit failed whenever other work saturated the machine, whatever
+    // the code did, while both sizes here are timed under the same load. Each is the best of three.
 
     [Theory]
     [InlineData("a[b ")]
     [InlineData("[a](b ")]   // and tails that never close
     public void ManyUnpairedBrackets_ParseInLinearTime(string unit)
     {
-        var source = string.Concat(Enumerable.Repeat(unit, 64_000 / unit.Length));
+        var small = string.Concat(Enumerable.Repeat(unit, 16_000 / unit.Length));
+        var large = string.Concat(Enumerable.Repeat(unit, 64_000 / unit.Length));
         var parser = new MarkdownInlineVisitor();
         parser.Parse(unit);   // JIT and the static parser tables
-        var clock = System.Diagnostics.Stopwatch.StartNew();
-        var spans = parser.Parse(source);
-        clock.Stop();
-        spans.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe(source);
-        clock.ElapsedMilliseconds.ShouldBeLessThan(500);
+
+        double BestOfThree(string source)
+        {
+            var best = double.MaxValue;
+            for (var run = 0; run < 3; run++)
+            {
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                var spans = parser.Parse(source);
+                clock.Stop();
+                spans.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe(source);
+                best = Math.Min(best, clock.Elapsed.TotalMilliseconds);
+            }
+            return best;
+        }
+
+        var smallMs = BestOfThree(small);
+        var largeMs = BestOfThree(large);
+        // Linear gives about 4, quadratic about 16; 8 sits between them with room for noise.
+        (largeMs / smallMs).ShouldBeLessThan(8, $"16k chars took {smallMs:F1} ms, 64k took {largeMs:F1} ms");
     }
 
     // ── A link or colour tail that never closes is text ──────────────
