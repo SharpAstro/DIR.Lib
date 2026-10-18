@@ -85,8 +85,9 @@ public sealed class VsCodeParityTests
     /// not printed (round 1 B1: <c>$x^*$</c> read <c>x^* \null</c>). A lone
     /// <c>*</c> is an asterisk (TeX's <c>\ast</c>), not the middle dot of a
     /// product: an optimum, a conjugate, an adjoint (B3: <c>x^{*}</c> read
-    /// <c>x^·</c>). A <c>'</c> after no atom is a quote, as before primes
-    /// lexed, so it does not throw the formula back to its source.
+    /// <c>x^·</c>). A <c>'</c> after no atom does not throw the formula back
+    /// to its source (it did once primes lexed); it reads as a prime, as KaTeX
+    /// sets every <c>'</c> in math.
     /// </summary>
     [Theory]
     [InlineData(@"x^*", @"x^*")]
@@ -94,7 +95,7 @@ public sealed class VsCodeParityTests
     [InlineData(@"\boxed{x^*}", @"[x^*]")]
     [InlineData(@"x^{*}", "x^∗")]
     [InlineData(@"\theta^{*} = \arg\min_x f(x)", "θ^∗ = arg minₓ f(x)")]
-    [InlineData(@"\alpha = '\beta'", "α = 'β'")]
+    [InlineData(@"\alpha = '\beta'", "α = ′β′")]
     public void UnicodePath_FallsBackAsWritten_AndALoneStarIsAnAsterisk(string latex, string expected)
         => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
 
@@ -102,7 +103,10 @@ public sealed class VsCodeParityTests
     /// An accent's mark never lands inside a placeholder still to be spliced
     /// back (a <c>\text</c>, a math space, a character the lexer has no rule
     /// for), which would break its name: <c>\overline{\text{abc}}</c> printed
-    /// the placeholder's name (round 1 B2).
+    /// the placeholder's name (round 1 B2). A letter written straight after a
+    /// placeholder lexes into the placeholder's own command, so it takes no
+    /// mark either: <c>\overline{a\,b}</c> overlines the a only, but keeps
+    /// every character.
     /// </summary>
     [Fact]
     public void UnicodePath_AnAccentLeavesPlaceholdersWhole()
@@ -110,7 +114,7 @@ public sealed class VsCodeParityTests
         var overline = ((char)0x0305).ToString();
         var hat = ((char)0x0302).ToString();
         MarkdownMacros.RenderMathUnicode(@"\overline{\text{ab}}").ShouldBe("ab");
-        MarkdownMacros.RenderMathUnicode(@"\overline{a\,b}").ShouldBe($"a{overline} b{overline}");
+        MarkdownMacros.RenderMathUnicode(@"\overline{a\,b}").ShouldBe($"a{overline} b");
         MarkdownMacros.RenderMathUnicode(@"\overline{a < b}").ShouldNotContain("\\");
         MarkdownMacros.RenderMathUnicode(@"\hat{x\,}").ShouldBe($"x{hat} ");
     }

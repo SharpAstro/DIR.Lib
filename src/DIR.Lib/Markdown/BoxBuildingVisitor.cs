@@ -71,10 +71,12 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
     /// Against an empty side (an operand
     /// <see cref="MarkdownMacros.SupplyMissingOperands"/> supplied, which has
     /// no width) a binary operator takes no space at all, being ordinary there
-    /// in TeX, and a relation none on that side.
+    /// in TeX, and a relation none on that side. <paramref name="aloneOp"/>,
+    /// when given, is drawn instead of <paramref name="op"/> there.
     /// </summary>
     private static Func<BoxStyle, Box> BinaryOp(
-        Func<BoxStyle, Box> left, string op, Func<BoxStyle, Box> right, float kernEm = 0.25f, bool binary = true) =>
+        Func<BoxStyle, Box> left, string op, Func<BoxStyle, Box> right, float kernEm = 0.25f, bool binary = true,
+        string? aloneOp = null) =>
         style =>
         {
             var l = left(style);
@@ -84,7 +86,7 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
             var parts = new List<Box>(5);
             if (l.Width > 0) parts.Add(l);
             if (l.Width > 0 && !(binary && alone)) parts.Add(kern);
-            parts.Add(new GlyphBox(op, style));
+            parts.Add(new GlyphBox(alone && aloneOp is not null ? aloneOp : op, style));
             if (r.Width > 0 && !(binary && alone)) parts.Add(kern);
             if (r.Width > 0) parts.Add(r);
             return new HBox(parts.ToArray());
@@ -97,10 +99,14 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
 
     /// <summary>\times is ×, with TeX's medium space (4 mu) either side, as
     /// for any binary operator; * and \cdot stay the tight middle dot. \times
-    /// used to draw the dot too, so 7 \times 7 read 7·7.</summary>
-    public Func<BoxStyle, Box> Visit(Mul node) => (string)node.Arg1.Content == @"\times"
-        ? BinaryOp(Builder(node.Arg0), "×", Builder(node.Arg2), 4f / 18f)
-        : BinaryOp(Builder(node.Arg0), "·", Builder(node.Arg2), 0.15f); // U+00B7 dot
+    /// used to draw the dot too, so 7 \times 7 read 7·7. A * with nothing on a
+    /// side is an asterisk, TeX's \ast (x^{*}), not the dot of a product.</summary>
+    public Func<BoxStyle, Box> Visit(Mul node) => (string)node.Arg1.Content switch
+    {
+        @"\times" => BinaryOp(Builder(node.Arg0), "×", Builder(node.Arg2), 4f / 18f),
+        "*" => BinaryOp(Builder(node.Arg0), "·", Builder(node.Arg2), 0.15f, aloneOp: "∗"),
+        _ => BinaryOp(Builder(node.Arg0), "·", Builder(node.Arg2), 0.15f), // U+00B7 dot
+    };
 
     /// <summary>
     /// Binary relation (\approx \leq \geq \neq \equiv \ll \gg \in \notin
@@ -639,6 +645,9 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
         // — laying out ¹⁴₆C with both scripts pre-attached to C, the
         // chemistry convention.
         ["null"] = "",
+        // The empty operand MarkdownMacros.SupplyMissingOperands adds where an
+        // operator has none on a side, drawn as nothing, like null.
+        ["nulloperand"] = "",
         // LaTeX spacing macros. Inside a box-rendered formula these become
         // invisible kerns rather than literal spaces — the layout system
         // already spaces atoms appropriately; just keep the glyph empty.

@@ -55,8 +55,16 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
 
     // \times is ×, spaced as a binary operator, as KaTeX sets it: 7 × 7. It
     // used to share * and \cdot's tight middle dot, so 7 \times 7 read 7·7.
+    // A * with nothing on a side is an asterisk, TeX's \ast (x^{*}, an
+    // optimum or an adjoint), not the dot of a product.
     public string Visit(Mul node)
-        => Kept(Joined(node.Arg0, (string)node.Arg1.Content == @"\times" ? " × " : "·", node.Arg2, binary: true));
+    {
+        var raw = (string)node.Arg1.Content;
+        var op = raw == @"\times" ? " × "
+            : raw == "*" && (Of(node.Arg0).Text.Length == 0 || Of(node.Arg2).Text.Length == 0) ? "∗"
+            : "·";
+        return Kept(Joined(node.Arg0, op, node.Arg2, binary: true));
+    }
 
     public string Visit(Neg node)
     {
@@ -246,21 +254,33 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
     }
 
     /// <summary>
-    /// <c>\hat{x}</c> is x̂: the accent's combining mark after the argument's
+    /// <c>BShat{x}</c> is x̂: the accent's combining mark after the argument's
     /// last character, or after every character for <c>\overline</c>, whose
     /// line runs the argument's width. It used to print the command's name.
+    /// A <c>\name</c> run in the argument is a placeholder still to be spliced
+    /// back (a <c>\text</c>, a math space, a character the lexer has no rule
+    /// for), so it takes no mark: one inside it broke its name, and
+    /// <c>\overline{\text{abc}}</c> printed the placeholder.
+    /// A letter written straight after a placeholder lexes into the
+    /// placeholder's own command, so it is part of the run and takes none.
     /// </summary>
     public string Visit(Accented node)
     {
         var mark = MarkdownMacros.Accents[((string)node.Arg0.Content).TrimStart('\\')].Mark;
+        var everyCharacter = mark == '\u0305';
         var text = TextOf(node.Arg1);
-        if (mark != '\u0305') return Kept(new UnicodeMath(text + mark));
         var sb = new StringBuilder(text.Length * 2);
+        var inName = false;
+        var afterLastMarkable = -1;
         foreach (var c in text)
         {
+            inName = c == '\\' || (inName && char.IsAsciiLetter(c));
             sb.Append(c);
-            if (!char.IsWhiteSpace(c) && !char.IsHighSurrogate(c)) sb.Append(mark);
+            if (inName || char.IsWhiteSpace(c) || char.IsHighSurrogate(c)) continue;
+            if (everyCharacter) sb.Append(mark);
+            else afterLastMarkable = sb.Length;
         }
+        if (afterLastMarkable >= 0) sb.Insert(afterLastMarkable, mark);
         return Kept(new UnicodeMath(sb.ToString()));
     }
 
@@ -460,6 +480,9 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
         // (juxt) `U` = `²³⁸U` — the same single-row layout Phase-1
         // produced.
         ["null"] = "",
+        // The empty operand MarkdownMacros.SupplyMissingOperands adds where an
+        // operator has none on a side, drawn as nothing, like null.
+        ["nulloperand"] = "",
         // Spacing macros — render as plain spaces so juxtaposed atoms don't
         // run together when the model used them as visual separators.
         ["quad"] = "  ", ["qquad"] = "    ",
