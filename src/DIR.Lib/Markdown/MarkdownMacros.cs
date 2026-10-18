@@ -223,8 +223,12 @@ public static class MarkdownMacros
     /// The text of the braced argument of a token that carries one,
     /// <c>\textrm{X}</c> as the grammar lexes it: X as it reads, blanks
     /// included. A group's braces inside X print as
-    /// nothing, as in TeX, and an escaped brace as the brace; any other escape
-    /// pair stays as written (a placeholder still to be spliced back).
+    /// nothing, as in TeX, and an escaped brace as the brace. A math space
+    /// (<c>\, \: \;</c>, and <c>\!</c>) is a blank (nothing), as the Unicode
+    /// path renders it: the box path's preparation keeps these for the
+    /// grammar to lex, so they reach the token as written, and were painted
+    /// with their backslash. Any other escape pair stays as written (a
+    /// placeholder still to be spliced back).
     /// </summary>
     internal static string BracedArgument(string token)
     {
@@ -233,7 +237,11 @@ public static class MarkdownMacros
         var sb = new StringBuilder(body.Length);
         for (var i = 0; i < body.Length; i++)
         {
-            if (body[i] == '\\' && i + 1 < body.Length)
+            if (body[i] == '\\' && i + 1 < body.Length && body[i + 1] is ',' or ':' or ';' or '!')
+            {
+                sb.Append(RenderBackslashEscape(body[++i]));
+            }
+            else if (body[i] == '\\' && i + 1 < body.Length)
             {
                 if (body[i + 1] is not ('{' or '}')) sb.Append('\\');
                 sb.Append(body[++i]);
