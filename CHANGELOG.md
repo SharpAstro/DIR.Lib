@@ -30,7 +30,14 @@ own pixels at a fixed offset, so the result no longer depends on the pen's sub-p
 pixels, up to the vinculum or left, until one clear pixel separates them. Where it moves left, the radical's box widens
 to hold it, by at most 0.6 em for a two-digit index. Radicals without an index are unchanged.
 
-- Planned: glyph and stretched-glyph caching across `RenderToRgba` calls (#118).
+**Math rasterizes 13 to 32 times faster once warm (#136, closes #118).** `RenderToRgba` drew with a fresh
+rasterizer on every call, so each formula re-read and re-parsed its 808 KB font: 58% of the time a render took. It
+now draws with the shared one, which keeps glyph and stretched-glyph rasters across calls in two bounded caches
+(4096 glyphs and 512 stretched glyphs, at most 8 MiB each, evicted by two generations), safe to read from any thread.
+There is no whole-formula cache, and every render is byte-identical to one with the caches bypassed. A formula of
+the test corpus at 32 px with STIX Two Math went from 31.5 ms to 1.1 ms. The first formula in a process is about
+34 ms faster too: the font is parsed once, and the regexes are source-generated instead of compiled at
+startup.
 
 ## 11.25
 
