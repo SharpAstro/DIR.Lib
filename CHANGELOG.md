@@ -52,24 +52,48 @@ lit row and a chord all resolved child-first; now all three resolve in the same 
 passes no colour, so the controller is the one place a host can state them; TianWen's night palette, which holds
 blue at zero, had a blue-grey bar on every list. A colour handed to `DrawScrollBar` still wins. Additive.
 
+**The Markdown parse is 50 to 190 times faster (#131).** The `SharpAstro.LALR.CC` pin moves from `4.7.*` to
+`4.11.*`. 4.7.0 compiled every lexer state's DFA each time a lexer was built, and a parse builds one per paragraph,
+cell and math span; 4.9 and later share one compiled DFA per grammar. Real documents parse 50 to 190 times faster and
+short formula documents over 80 times, with 70 to 400 times less allocation. The parsed tree is unchanged, pinned by a
+golden over real documents and the math corpus.
+
 ## 11.24
 
-This minor collects flight CL2's math and Markdown fixes, none of which has landed yet. They are listed below as
-planned, one line each, and none is claimed done. This entry is completed, with what each change does and why, once
-they have all landed.
+Flight CL2's math and Markdown fixes, with what a real document written for VS Code's KaTeX preview needed. No
+caller's compile breaks; rendered math and Markdown change on purpose.
 
-- Set braces kept on both math paths, and rastered as curly brackets.
-- Whole clear rows kept above a radical's radicand.
-- STIX radicals that grow over very tall radicands.
-- TeX's spacing for operator names, with `\operatorname` and `\textrm` upright.
-- A `$` in a link label that pairs only inside the label, a literal fallback that reflows, and `\text{..}` in math
-  that may hold a `$`.
-- Work to make the Markdown parse faster.
-- Glyph and stretched-glyph caching across `RenderToRgba` calls (#118).
-- A heading, a list, a fence, a table or display math may interrupt a paragraph, as CommonMark and GFM set
-  them, and a list item takes its lines by its marker's content column (#129).
-- `\text`, accents, primes, `\lfloor` `\lceil` `\langle` pairs and `\mathbf` on both math paths, and an operator
-  with no operand on a side drawn as KaTeX draws it (#130).
+**Sets keep their braces on both math paths (#124).** `\{`, `\}`, `\left\{`, `\right\}`, `\lbrace` and `\rbrace` lex
+as braces: the box path draws a curly `BracketBox` that stretches with its content, and the Unicode path prints them.
+Before, `\left\{` became a bare group and `\lbrace` printed raw. A new public helper,
+`MarkdownMacros.TryPrepareMathBoxSource`, runs the box path's whole preparation, so a renderer no longer keeps its
+own copy of it.
+
+**The radical keeps whole clear rows over its radicand (#126).** The gap between the bar and the radicand is decided
+at draw time in whole pixel rows, so float phase never costs a clear row and the radicand never touches the bar.
+
+**A link label bounds its math, and no stray delimiter sends a block to the literal fallback (#125).**
+`See [the $5 plan](https://x) or pay 5$ later.` renders a link and text, where it was one literal of its source, and
+`[$a$](https://x)` keeps its math inside the label. This deliberately differs from Pandoc, whose bracket scan skips a
+math span whole. An unmatched `[`, `]` or backtick, an unclosed link URL, `![a]` and a trailing `\` are text, and
+`MarkdownInlineVisitor.Parse` never throws; a literal fallback that remains reflows its soft breaks. `\text{..}` in
+math may hold a `$`.
+
+**TeX's spacing for operator names and juxtaposition (#127).** Operator names (`\sin`, `\log`, `\lim`,
+`\operatorname{X}`, and the big operators on the box path) take a thin space before an ordinary neighbour, so
+`\sin x` no longer rasters as `sinx`, while `\sin(x)` stays tight. `\operatorname{X}` and `\textrm{X}` set X upright,
+and `\mathbb{X}` and set-builder `\mid` render as symbols, not as their names.
+
+**A heading, a list, a fence, a table or display math interrupts a paragraph (#129)**, as CommonMark and GFM set
+them and as GitHub and VS Code render them. Blocks used to split at blank lines only, so a heading written straight
+under a paragraph line folded into it (17 headings in one real document). A list item takes its lines by its marker's
+content column and is parsed like a document, so it may open with a heading, a fence or a nested list.
+
+**`\text`, accents, primes, named pairs and lone operators on both math paths (#130).** The box path accepts `\text`;
+accents (`\hat`, `\bar`, `\vec` and the rest) are drawn over their base by the OpenType MATH rule; `f'(x)` lexes;
+`\lfloor`, `\lceil` and `\langle` pair with their partners and stretch, with or without `\left` and `\right`; `\mathbf`
+is bold; and an operator with nothing on one side (`8\times`, `\to`) is drawn as KaTeX draws it. `\times` is a spaced
+times sign, and a lone `*` is an asterisk operator, not a product dot.
 
 ## 11.23
 
