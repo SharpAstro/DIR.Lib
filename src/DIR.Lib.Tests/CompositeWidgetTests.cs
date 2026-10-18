@@ -69,6 +69,27 @@ public class CompositeWidgetTests
         }
     }
 
+    /// <summary>A composite that paints one child and then a region of its own OVER it.</summary>
+    private sealed class Host(Renderer<RgbaImage> renderer) : CompositeWidget<RgbaImage>(renderer)
+    {
+        private readonly List<PixelWidgetBase<RgbaImage>> _children = [];
+
+        protected override IReadOnlyList<PixelWidgetBase<RgbaImage>> Children => _children;
+
+        /// <summary>How many presses the host's own region has answered.</summary>
+        public int Clicks { get; private set; }
+
+        public void Paint(PixelWidgetBase<RgbaImage> child, float x, float y, float w, float h)
+        {
+            BeginFrame();
+            _children.Clear();
+            _children.Add(child);
+
+            // Painted after the child, so over it.
+            RegisterClickable(x, y, w, h, new HitResult.ButtonHit("own"), _ => Clicks++, CursorKind.Pointer);
+        }
+    }
+
     private static (Chrome Chrome, Leaf Back, Leaf Front) Composed()
     {
         var renderer = new StubRenderer(200, 200);
@@ -118,6 +139,57 @@ public class CompositeWidgetTests
 
         chrome.HitTest(50f, 10f).ShouldBe(new HitResult.ButtonHit("chrome"));   // inside the bar
         chrome.HitTest(50f, 90f).ShouldBe(new HitResult.ButtonHit("under"));    // below it
+
+        // And a ROUTED press keeps that order, which is the path a host uses: the router walks
+        // CollectPaintedRegions, and the bar has to come out of it ahead of the child it covers.
+        Routing.Press(chrome, 50f, 10f).ShouldBeTrue();
+        under.Clicks.ShouldBe(0);
+        Routing.Press(chrome, 50f, 90f).ShouldBeTrue();
+        under.Clicks.ShouldBe(1);
+    }
+
+    [Fact]
+    public void AnOverlayTheCompositePaintsOverAChildTakesTheRoutedPress()
+    {
+        // TianWen's Live Session tab, which paints its Planetary child and then its mode dropdown over it.
+        // The child's capture panel scrolls, so it registers a region over its whole column, and a press
+        // on a menu row reached that region first and was swallowed.
+        var renderer = new StubRenderer(200, 200);
+        var host = new Host(renderer) { FontPath = Font };
+        var panel = new Leaf(renderer, "panel") { FontPath = Font };
+        panel.Paint(0, 0, 200, 200, CursorKind.Default);
+        host.Paint(panel, 20, 50, 60, 20);   // a menu row, over the panel
+
+        Routing.Press(host, 50f, 60f).ShouldBeTrue();
+        host.Clicks.ShouldBe(1);
+        panel.Clicks.ShouldBe(0);
+        host.HitTest(50f, 60f).ShouldBe(new HitResult.ButtonHit("own"));   // the router and HitTest agree
+
+        // Beside the row the panel still answers.
+        Routing.Press(host, 150f, 150f).ShouldBeTrue();
+        panel.Clicks.ShouldBe(1);
+        host.Clicks.ShouldBe(1);
+    }
+
+    [Fact]
+    public void AChildPaintedBehindTheCompositeIsCoveredByIt()
+    {
+        // TianWen's image viewer, which paints the sky the photograph came from and then the photograph
+        // over it. A label the sky registered under the photograph is covered there, and answers only
+        // where it shows.
+        var renderer = new StubRenderer(200, 200);
+        var host = new Host(renderer) { FontPath = Font };
+        var sky = new Leaf(renderer, "label") { FontPath = Font };
+        sky.Paint(100, 100, 80, 20, CursorKind.Pointer);   // a label on the sky
+        host.Paint(sky, 60, 60, 80, 80);                   // the photograph, over part of it
+
+        Routing.Press(host, 120f, 110f).ShouldBeTrue();    // label and photograph both
+        host.Clicks.ShouldBe(1);
+        sky.Clicks.ShouldBe(0);
+
+        Routing.Press(host, 170f, 110f).ShouldBeTrue();    // the label, clear of the photograph
+        sky.Clicks.ShouldBe(1);
+        host.Clicks.ShouldBe(1);
     }
 
     [Fact]
