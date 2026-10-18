@@ -272,6 +272,23 @@ public sealed class MarkdownInlineSpikeTests
         bold.Content[2].ShouldBeOfType<MdLiteral>().Text.ShouldBe(" c");
     }
 
+    /// <summary>
+    /// An unpaired marker inside a paired one is text too. Pairing used to
+    /// drop it from the open stack and leave it in the emphasis's content,
+    /// where the rewrite of leftover markers (top level only) never saw it,
+    /// so a transient <see cref="MdStarMarker"/> reached the public AST:
+    /// <c>*a **b*</c> gave <c>E1[L(a ) MdStarMarker L(b)]</c> (PR #125 R2 N2).
+    /// </summary>
+    [Theory]
+    [InlineData("*a **b*", "a **b")]
+    [InlineData("**a *b**", "a *b")]
+    [InlineData("*a [b**] c*", "a [b**] c")]
+    public void AnUnpairedMarkerInsideAPairedOne_IsText(string source, string inner)
+    {
+        var em = _visitor.Parse(source).ShouldHaveSingleItem().ShouldBeOfType<MdEmphasis>();
+        em.Content.ShouldHaveSingleItem().ShouldBeOfType<MdLiteral>().Text.ShouldBe(inner);
+    }
+
     [Fact]
     public void UnmatchedStar_StaysLiteral()
     {
