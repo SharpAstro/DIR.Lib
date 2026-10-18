@@ -91,92 +91,107 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
     public object Visit(MarkdownBlock.BlankItem node) =>
         new RawItem(string.Empty, IsBlank: true);
 
-    // ── Group items into blocks ──────────────────────────────────────
+    // ── Group lines into blocks ──────────────────────────────────────
 
-    /// <summary>Walks the flat item list, accumulating runs of
-    /// non-blank lines into block-sized chunks separated by blank
-    /// items. Each chunk is classified by <see cref="ClassifyBlock"/>
-    /// into the appropriate <see cref="MdBlock"/> subtype.
-    /// <para>Fenced code blocks are the exception to the blank-line rule:
-    /// once a chunk opens with a ` ``` ` / ` ~~~ ` fence, blank lines are
-    /// part of the code body, not block separators, so accumulation
-    /// continues (blanks included) until the matching closing fence — per
-    /// CommonMark. Without this the fence is shredded at its first blank
-    /// line and the orphaned closing fence is mis-lexed as inline code.</para></summary>
-    private IReadOnlyList<MdBlock> GroupIntoBlocks(IReadOnlyList<RawItem> items)
-    {
-        var blocks = new List<MdBlock>();
-        var current = new List<string>();
-        string? fence = null;   // non-null while inside an open code fence
-
-        void FlushCurrent()
-        {
-            if (current.Count > 0)
-            {
-                blocks.Add(ClassifyBlockSafe(current));
-                current = new List<string>();
-            }
-            fence = null;
-        }
-
-        foreach (var item in items)
-        {
-            if (fence is not null)
-            {
-                // Inside a fence: a blank line is content, keep going until
-                // the closing fence. A blank RawItem carries no text, so
-                // re-materialise it as an empty body line.
-                current.Add(item.IsBlank ? string.Empty : item.Line);
-                if (!item.IsBlank && item.Line.TrimStart().StartsWith(fence))
-                    FlushCurrent();
-                continue;
-            }
-
-            if (item.IsBlank) { FlushCurrent(); continue; }
-
-            if (current.Count == 0)
-            {
-                var opener = FenceOpenRx.Match(item.Line);
-                if (opener.Success) fence = opener.Groups[1].Value;
-            }
-            current.Add(item.Line);
-        }
-        FlushCurrent();
-
-        return blocks;
-    }
+    private IReadOnlyList<MdBlock> GroupIntoBlocks(IReadOnlyList<RawItem> items) =>
+        ParseLines(items.Select(item => item.IsBlank ? string.Empty : item.Line).ToList());
 
     private sealed record RawItem(string Line, bool IsBlank);
 
-    /// <summary>Same grouping logic <see cref="GroupIntoBlocks"/> uses
-    /// but applied to a pre-tokenised list of strings (e.g. the
-    /// continuation lines inside a list item). Splits at blank lines
-    /// and classifies each group via <see cref="ClassifyBlock"/>, with
-    /// the same fence-aware exception (blank lines inside a ` ``` ` /
-    /// ` ~~~ ` fence stay part of the code body).</summary>
-    private IReadOnlyList<MdBlock> ParseLineGroups(IReadOnlyList<string> lines)
+    /// <summary>What a run of lines is building, which decides what may interrupt it.</summary>
+    private enum Run { None, Paragraph, List, Table }
+
+    /// <summary>Splits lines into blocks and classifies each. A blank line
+    /// ends a block, and so does a line that starts a block CommonMark lets
+    /// interrupt it (<see cref="Interrupts"/>); a heading or a thematic break is
+    /// one line, so the line after it always starts afresh. This used to split
+    /// at blank lines only, which folded a heading, a list or a fence written
+    /// on the line after text into that text's paragraph: GitHub's renderer
+    /// and VS Code's preview split every one of them.
+    /// <para>A fenced code block runs to its closing fence, blank lines
+    /// included, per CommonMark; without that a fence is shredded at its first
+    /// blank line and its orphaned closer is lexed as inline code. A
+    /// display-math block opened by a lone <c>$$</c> or <c>\[</c> runs to its
+    /// closer. A list keeps a blank line when the line after it is indented or
+    /// is another item, so a loose list stays one list. Used for the document
+    /// and, through <see cref="BuildList"/>, for each list item's lines.</para></summary>
+    private IReadOnlyList<MdBlock> ParseLines(IReadOnlyList<string> lines)
     {
         var blocks = new List<MdBlock>();
         var current = new List<string>();
-        string? fence = null;
+        var run = Run.None;
+        string? fence = null;       // non-null while inside an open code fence
+        string? mathCloser = null;  // non-null while inside a display-math block
+        var blankInList = false;    // a blank line seen while building a list
+
         void Flush()
         {
-            if (current.Count > 0) { blocks.Add(ClassifyBlockSafe(current)); current = new List<string>(); }
+            if (current.Count > 0)
+            {
+                if (run == Run.List) blocks.AddRange(BuildListSafe(current));
+                else blocks.Add(ClassifyBlockSafe(current));
+                current = new List<string>();
+            }
+            run = Run.None;
             fence = null;
+            mathCloser = null;
+            blankInList = false;
         }
-        foreach (var line in lines)
+
+        for (int n = 0; n < lines.Count; n++)
         {
+            var line = lines[n];
             if (fence is not null)
             {
                 current.Add(line);
-                if (line.TrimStart().StartsWith(fence)) Flush();
+                if (line.TrimStart().StartsWith(fence, StringComparison.Ordinal)) Flush();
                 continue;
             }
-            if (string.IsNullOrWhiteSpace(line)) { Flush(); continue; }
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                if (run == Run.List) blankInList = true;
+                else Flush();   // a blank line also ends a display-math block left open
+                continue;
+            }
+            if (mathCloser is not null)
+            {
+                current.Add(line);
+                if (line.Trim() == mathCloser) Flush();
+                continue;
+            }
+            if (blankInList)
+            {
+                // Past a blank line a list goes on only into an indented line or another item.
+                blankInList = false;
+                if (Indentation(line) > 0 || ListItemRx.IsMatch(line)) current.Add(string.Empty);
+                else Flush();
+            }
+            if (current.Count > 0)
+            {
+                if (run == Run.Paragraph && IsTableStart(current, line))
+                    run = Run.Table;
+                else if (run == Run.Paragraph && SetextRx.Match(line) is { Success: true } underline)
+                {
+                    blocks.Add(SetextHeadingSafe(current, underline.Groups[1].Value[0] == '=' ? 1 : 2));
+                    current = new List<string>();
+                    run = Run.None;
+                    continue;
+                }
+                else if (Interrupts(run, lines, n))
+                    Flush();
+            }
             if (current.Count == 0)
             {
+                if (HeadingRx.IsMatch(line) || ThematicRx.IsMatch(line))
+                {
+                    current.Add(line);
+                    Flush();
+                    continue;
+                }
                 var opener = FenceOpenRx.Match(line);
                 if (opener.Success) fence = opener.Groups[1].Value;
+                else if (IsMathOpener(line)) mathCloser = line.Trim() == "$$" ? "$$" : @"\]";
+                else run = ListItemRx.IsMatch(line) ? Run.List : Run.Paragraph;
             }
             current.Add(line);
         }
@@ -184,13 +199,104 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
         return blocks;
     }
 
+    /// <summary>Whether <paramref name="lines"/>[<paramref name="n"/>] ends the
+    /// run being built and starts a block of its own. A paragraph gives way to a
+    /// heading, a fence, a thematic break, a display-math opener with its closer
+    /// ahead, a bullet item and an ordered item numbered 1, the last two only
+    /// with text after the marker (CommonMark 5.2: "14.  The number of doors"
+    /// on the line after prose stays prose). A list gives way to a block start
+    /// in the margin; an indented one belongs to an item, and
+    /// <see cref="BuildList"/> sorts out the rest. A table gives way to any block
+    /// start or item.</summary>
+    private static bool Interrupts(Run run, IReadOnlyList<string> lines, int n)
+    {
+        var line = lines[n];
+        return run switch
+        {
+            Run.Paragraph => StartsBlock(lines, n) || ItemInterruptsParagraph(line),
+            Run.List => Indentation(line) == 0 && StartsBlock(lines, n),
+            Run.Table => StartsBlock(lines, n) || ListItemRx.IsMatch(line),
+            _ => false,
+        };
+    }
+
+    private static bool StartsBlock(IReadOnlyList<string> lines, int n)
+    {
+        var line = lines[n];
+        if (StartsSingleLineOrFence(line)) return true;
+        if (!IsMathOpener(line)) return false;
+        // A lone `$$` interrupts only with its closer ahead in the same run of
+        // lines; otherwise it may be closing a `$$` opened inside the text.
+        var closer = line.Trim() == "$$" ? "$$" : @"\]";
+        for (int k = n + 1; k < lines.Count && !string.IsNullOrWhiteSpace(lines[k]); k++)
+            if (lines[k].Trim() == closer) return true;
+        return false;
+    }
+
+    private static bool StartsSingleLineOrFence(string line) =>
+        HeadingRx.IsMatch(line) || FenceOpenRx.IsMatch(line) || ThematicRx.IsMatch(line);
+
+    private static bool IsMathOpener(string line) => line.Trim() is "$$" or @"\[";
+
+    private static bool ItemInterruptsParagraph(string line)
+    {
+        var m = ListItemRx.Match(line);
+        return m.Success
+            && !string.IsNullOrWhiteSpace(m.Groups[5].Value)
+            && (!m.Groups[3].Success || m.Groups[3].Value.TrimStart('0') == "1");
+    }
+
+    private static bool IsTableStart(IReadOnlyList<string> current, string line) =>
+        current.Count == 1 && current[0].Contains('|') && IsTableSeparator(line);
+
+    /// <summary>A paragraph underlined by <c>===</c> or <c>---</c>: a heading
+    /// of its lines, trimmed, with their soft breaks.</summary>
+    private MdBlock SetextHeadingSafe(IReadOnlyList<string> lines, int level)
+    {
+        var text = string.Join("\n", lines.Select(l => l.Trim()));
+        try { return new MdHeading(level, ParseInline(text)); }
+        catch { return new MdHeading(level, LiteralLines(text)); }
+    }
+
+    /// <summary>The column a line's text starts at, a tab advancing to the next multiple of four.</summary>
+    private static int Indentation(string line)
+    {
+        int col = 0;
+        foreach (var c in line)
+        {
+            if (c == ' ') col++;
+            else if (c == '\t') col += 4 - col % 4;
+            else break;
+        }
+        return col;
+    }
+
+    /// <summary><paramref name="line"/> without its first <paramref name="columns"/>
+    /// columns of indentation; a tab that straddles the cut leaves its remainder as spaces.</summary>
+    private static string Unindent(string line, int columns)
+    {
+        int col = 0, i = 0;
+        while (i < line.Length && col < columns && (line[i] == ' ' || line[i] == '\t'))
+        {
+            var next = line[i] == '\t' ? col + 4 - col % 4 : col + 1;
+            if (next > columns) return new string(' ', next - columns) + line.Substring(i + 1);
+            col = next;
+            i++;
+        }
+        return line.Substring(i);
+    }
+
     // ── Block classification ──────────────────────────────────────────
 
-    private static readonly Regex HeadingRx = new(@"^(#{1,6})\s+(.*)$", RegexOptions.Compiled);
-    private static readonly Regex ThematicRx = new(@"^[ \t]*([-*_])(?:[ \t]*\1){2,}[ \t]*$", RegexOptions.Compiled);
-    private static readonly Regex FenceOpenRx = new(@"^(```|~~~)\s*([^\s]*)\s*$", RegexOptions.Compiled);
-    private static readonly Regex UnorderedItemRx = new(@"^([-*+])\s+(.*)$", RegexOptions.Compiled);
-    private static readonly Regex OrderedItemRx = new(@"^(\d+)\.\s+(.*)$", RegexOptions.Compiled);
+    private static readonly Regex HeadingRx = new(@"^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$", RegexOptions.Compiled);
+    private static readonly Regex HeadingCloseRx = new(@"(?:^|[ \t]+)#+$", RegexOptions.Compiled);
+    private static readonly Regex SetextRx = new(@"^ {0,3}(=+|-+)[ \t]*$", RegexOptions.Compiled);
+    private static readonly Regex ThematicRx = new(@"^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$", RegexOptions.Compiled);
+    private static readonly Regex FenceOpenRx = new(@"^ {0,3}(`{3,}|~{3,})[ \t]*([^\s`]*)[^`]*$", RegexOptions.Compiled);
+
+    /// <summary>A list item's first line: indent, marker (a bullet, or a number
+    /// with its <c>.</c> or <c>)</c>), the number alone, the gap, then the text.</summary>
+    private static readonly Regex ListItemRx = new(@"^( {0,3})([-*+]|(\d{1,9})[.)])(?:([ \t]+)(.*))?$", RegexOptions.Compiled);
 
     /// <summary>Classifies a block, degrading to a raw-text paragraph on any
     /// parser/lexer error instead of throwing. Blank lines are the grouping
@@ -248,13 +354,13 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
 
         var first = lines[0];
 
-        // Heading — single-line construct.
+        // Heading, a single-line construct. A closing run of `#` goes only
+        // after a space, so `# C#` keeps its `#`.
         var headingMatch = HeadingRx.Match(first);
         if (headingMatch.Success && lines.Count == 1)
         {
             var level = headingMatch.Groups[1].Value.Length;
-            var text = headingMatch.Groups[2].Value
-                .TrimEnd().TrimEnd('#').TrimEnd();
+            var text = HeadingCloseRx.Replace(headingMatch.Groups[2].Value, string.Empty);
             return new MdHeading(level, ParseInline(text));
         }
 
@@ -283,11 +389,10 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
         if (TryClassifyMathBlock(lines, out var mathBlock))
             return mathBlock!;
 
-        // Lists.
-        if (UnorderedItemRx.IsMatch(first))
-            return BuildList(lines, ordered: false);
-        if (OrderedItemRx.IsMatch(first))
-            return BuildList(lines, ordered: true);
+        // Lists. ParseLines hands a list's lines to BuildListSafe, which also
+        // parses what the list does not take; a list reaching here is whole.
+        if (ListItemRx.IsMatch(first))
+            return BuildList(lines).List;
 
         // Tables.
         if (lines.Count >= 2 && first.Contains('|') && IsTableSeparator(lines[1]))
@@ -333,66 +438,73 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
     private static string RenderMathBody(string body) =>
         MarkdownMacros.RenderMathUnicode(body);
 
-    private MdList BuildList(IReadOnlyList<string> lines, bool ordered)
+    /// <summary>The list <paramref name="lines"/> open with, then the blocks of
+    /// the lines it does not take: an item with another bullet or delimiter
+    /// starts a new list (CommonMark 5.3), and a block start that is not
+    /// indented into an item ends the list.</summary>
+    private IEnumerable<MdBlock> BuildListSafe(IReadOnlyList<string> lines)
     {
-        var marker = ordered ? OrderedItemRx : UnorderedItemRx;
-        var items = new List<MdListItem>();
-        int orderedStart = 0;
-        int i = 0;
+        MdList list;
+        int taken;
+        try { (list, taken) = BuildList(lines); }
+        catch { return new MdBlock[] { new MdParagraph(LiteralLines(string.Join("\n", lines))) }; }
+        if (taken == 0) return new MdBlock[] { ClassifyBlockSafe(lines) };
+        return taken >= lines.Count
+            ? new MdBlock[] { list }
+            : new MdBlock[] { list }.Concat(ParseLines(lines.Skip(taken).ToList()));
+    }
 
+    /// <summary>The list <paramref name="lines"/> open with, and how many lines
+    /// it took. An item's text starts at its content column, the column after
+    /// the marker and the spaces that follow it (one when there are five or
+    /// more, or none); a line indented that far belongs to the item, with that
+    /// indentation removed, and a less indented line that starts no block and
+    /// no item is a lazy continuation of its paragraph. The item's lines are
+    /// then parsed like a document, so a nested list, a fence or display math
+    /// inside an item is found the way it is at the top. This used to strip a
+    /// fixed two columns, drop a lazy line, and make an item's second line a
+    /// paragraph of its own.</summary>
+    private (MdList List, int Taken) BuildList(IReadOnlyList<string> lines)
+    {
+        var head = ListItemRx.Match(lines[0]);
+        var ordered = head.Groups[3].Success;
+        var kind = ordered ? head.Groups[2].Value[^1] : head.Groups[2].Value[0];
+        int orderedStart = 0;
+        if (ordered) int.TryParse(head.Groups[3].Value, out orderedStart);
+
+        var items = new List<MdListItem>();
+        int i = 0;
         while (i < lines.Count)
         {
-            var line = lines[i];
-            // Items at this level start at column 0 (no leading space)
-            // and have the appropriate marker. Indented marker lines
-            // are sub-list items handled below.
-            if (line.Length > 0 && line[0] == ' ') break;
+            var m = ListItemRx.Match(lines[i]);
+            if (!m.Success || m.Groups[3].Success != ordered) break;
+            if ((ordered ? m.Groups[2].Value[^1] : m.Groups[2].Value[0]) != kind) break;
 
-            var m = marker.Match(line);
-            if (!m.Success) break;
+            // The gap after the marker, in columns (the indent is spaces only).
+            int markerEnd = m.Groups[1].Length + m.Groups[2].Length, gap = 0;
+            foreach (var c in m.Groups[4].Value) gap += c == '\t' ? 4 - (markerEnd + gap) % 4 : 1;
+            var text = m.Groups[5].Value;
+            var wide = gap > 4 || string.IsNullOrWhiteSpace(text);
+            var content = markerEnd + (wide ? 1 : gap);
+            var body = new List<string> { gap > 4 ? new string(' ', gap - 1) + text : text };
 
-            if (ordered && items.Count == 0)
-                int.TryParse(m.Groups[1].Value, out orderedStart);
-
-            var firstLine = m.Groups[2].Value;
-            var indentedContinuation = new List<string>();
             int j = i + 1;
-            while (j < lines.Count && lines[j].Length > 0 && lines[j][0] == ' ')
+            var afterBlank = false;
+            while (j < lines.Count)
             {
-                // Strip up to 2 leading spaces of indentation — CommonMark
-                // uses 2-space sub-list indent by convention; deeper indents
-                // are passed through as part of the nested content.
-                indentedContinuation.Add(lines[j].Length >= 2 ? lines[j].Substring(2) : lines[j].TrimStart());
+                var line = lines[j];
+                if (string.IsNullOrWhiteSpace(line)) { body.Add(string.Empty); afterBlank = true; j++; continue; }
+                if (Indentation(line) >= content) { body.Add(Unindent(line, content)); afterBlank = false; j++; continue; }
+                if (afterBlank || ListItemRx.IsMatch(line) || StartsSingleLineOrFence(line) || IsMathOpener(line)) break;
+                body.Add(line.TrimStart());   // a lazy continuation of the item's paragraph
                 j++;
             }
 
-            // Item body: a paragraph for the first line; if indented
-            // continuation lines start with a list marker, those become
-            // a nested MdList. Otherwise they're additional paragraph
-            // lines.
-            var body = new List<MdBlock>();
-            body.Add(new MdParagraph(ParseInline(firstLine)));
-            if (indentedContinuation.Count > 0)
-            {
-                var firstCont = indentedContinuation[0];
-                if (UnorderedItemRx.IsMatch(firstCont))
-                    body.Add(BuildList(indentedContinuation, ordered: false));
-                else if (OrderedItemRx.IsMatch(firstCont))
-                    body.Add(BuildList(indentedContinuation, ordered: true));
-                else
-                {
-                    // Generic continuation — could be a math block, code
-                    // fence, additional paragraph, etc. Re-group by blank
-                    // line and classify each group the same way the
-                    // top-level GroupIntoBlocks does.
-                    body.AddRange(ParseLineGroups(indentedContinuation));
-                }
-            }
-            items.Add(new MdListItem(body));
+            items.Add(new MdListItem(ParseLines(body)));
             i = j;
         }
 
-        return new MdList(ordered, orderedStart, items);
+        return (new MdList(ordered, orderedStart, items), i);
     }
 
     private MdTable BuildTable(IReadOnlyList<string> lines)

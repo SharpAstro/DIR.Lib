@@ -595,11 +595,11 @@ public sealed class DollarRulesTests
     [Fact]
     public void FallbackListItem_KeepsItsSoftBreaks()
     {
-        // A list item's first line is one line; its continuation lines are where it can hold a newline.
+        // An item's first line and its continuation lines are one paragraph (CommonMark 5.2), so the
+        // fallback has to keep a soft break at each of its newlines.
         var list = s_failingInline.Parse("- item\n  see a[0\n  here").ShouldHaveSingleItem().ShouldBeOfType<MdList>();
         var body = list.Items.ShouldHaveSingleItem().Body;
-        body.Count.ShouldBe(2);
-        Dump(body[1].ShouldBeOfType<MdParagraph>().Content).ShouldBe("L(see a[0) SB L(here)");
+        Dump(body.ShouldHaveSingleItem().ShouldBeOfType<MdParagraph>().Content).ShouldBe("L(item) SB L(see a[0) SB L(here)");
     }
 
     [Fact]
