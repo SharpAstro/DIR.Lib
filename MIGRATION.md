@@ -6,6 +6,39 @@ listed here -- [CHANGELOG.md](CHANGELOG.md) says what changed in every version, 
 Upgrading across more than one major? Work UP the file: the sections are independent, and a 9.x
 consumer taking 10.0 needs only the 10.0 section.
 
+## 11.25 a composite's own content is asked before its children
+
+Affects a `CompositeWidget` that paints a child OVER its own content and relied on that child winning a press, the
+hover highlight or a declared shortcut where the two overlap. Nothing fails to compile; what answers there moves.
+
+`CollectPaintedRegions` and `CollectPaintedNodes` listed the composite's own regions and nodes first, and
+`InputRouter` reads both lists from the end, so a child answered a press, a lit row and a chord ahead of the
+composite's own content wherever they overlapped. Both now list the children first and the composite's own after
+them, so the composite's own regions and nodes are asked first, as `HitTest`, `HitTestCursor` and `ScrollTargetAt`
+already asked them. `PaintedRegions()` follows the same order: a reader that took a region by its position gets a
+different one where two match.
+
+### Say which children are over: `ChildrenUnderOwn`
+
+Override it with k, the number of children painted UNDER the composite's own content: children `[0, k)` are under it
+and `[k, Count)` over it, for every combined query (the region and node lists, `HitTest`, `HitTestCursor`,
+`ScrollTargetAt`). The default, `Children.Count`, is every child under.
+
+```csharp
+// A chrome that paints the active page and the rail, then its own status bar, then a popover hung from
+// the bar, which it always adds last: Children is [page, rail, popover], or [rail, popover] with no page.
+protected override int ChildrenUnderOwn => _children.Count - 1;
+
+// A viewer whose one child is drawn in two passes, a map behind the picture and its palette over it.
+protected override int ChildrenUnderOwn => 0;
+```
+
+`0` keeps every child over, which is the 11.24 order for a press, the hover highlight and a shortcut. It also makes
+`HitTest`, `HitTestCursor` and `ScrollTargetAt` ask the children first, where 11.24 asked the composite's own first,
+so an override of those that asked a child first by hand can go. A child painted in two passes, part under the
+composite's own content and part over it, cannot be split: keep it wholly over, and the part drawn underneath then
+answers over the composite's own content too, as it did in 11.24.
+
 ## 11.20 a text leaf is its line box tall
 
 Affects any pixel layout with a text node whose height is Auto (no `RowH`, `HFixed` or star height), and anyone who
