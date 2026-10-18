@@ -161,10 +161,13 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
 
     /// <summary>
     /// A <c>\left..\right</c> pair is centred on the math axis, so it covers content that reaches further
-    /// above the axis than below it (a fraction whose numerator is itself a fraction): no ink of the content
-    /// rises above the delimiters' top ink row or falls below their bottom one. The pair asks the font for
-    /// twice the content's larger reach from the axis, as TeX does, not its total height. At 32 px. Each
-    /// render is saved under <c>obj/stretchy-assembly-output</c> as <c>asymmetric-…-32px.png</c>, 8x.
+    /// above the axis than below it (a fraction whose numerator is itself a fraction). The pair asks the font
+    /// for twice the content's larger reach from the axis, as TeX does, not its total height, and takes the
+    /// first glyph at least <see cref="ManagedFontRasterizer.DelimiterCovers"/> of that: TeX's guarantee,
+    /// which this asserts, is that the delimiters' ink reaches the content's layout box to within half that
+    /// shortfall at each end. The box, not the ink: DejaVu Sans's hinted text can start inking up to 1.4 px
+    /// above its own layout top (the numerator's a here), which no layout of the delimiter sees. At 32 px.
+    /// Each render is saved under <c>obj/stretchy-assembly-output</c> as <c>asymmetric-…-32px.png</c>, 8x.
     /// </summary>
     [Theory]
     [InlineData("STIX2Math", @"\left\{ \frac{\frac{a}{b}}{c} \right\}", "brace")]
@@ -192,10 +195,24 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
 
         var (delimTop, delimBottom) = InkRowSpan(image, leftStart, leftEnd);
         var (rTop, rBottom) = InkRowSpan(image, rightStart, rightEnd);
-        var (contentTop, contentBottom) = InkRowSpan(image, leftEnd, rightStart);
-        output.WriteLine($"{font} {latex}: delimiters rows {delimTop}..{delimBottom} and {rTop}..{rBottom}, content {contentTop}..{contentBottom}");
-        contentTop.ShouldBeGreaterThanOrEqualTo(Math.Max(delimTop, rTop), "the content's top ink against the delimiters' top");
-        contentBottom.ShouldBeLessThanOrEqualTo(Math.Min(delimBottom, rBottom), "the content's bottom ink against the delimiters' bottom");
+        var (inkTop, inkBottom) = InkRowSpan(image, leftEnd, rightStart);
+
+        // The content's layout box, where the scene's draw put it: RenderToRgba sets the outermost box's
+        // baseline at the margin plus its height.
+        var box = Parse(latex, style);
+        var content = Parse(latex.Replace(@"\left\{ ", "").Replace(@" \right\}", "").Replace(@"\left( ", "").Replace(@" \right)", ""), style);
+        var margin = (image.Width - (int)MathF.Ceiling(box.Width)) / 2;
+        var baseline = margin + box.Height;
+        var boxTop = baseline - content.Height;
+        var boxBottom = baseline + content.Depth;
+        var request = 2 * MathF.Max(content.Height - style.AxisHeight, content.Depth + style.AxisHeight);
+        var allowance = (request - ManagedFontRasterizer.DelimiterCovers(request, style.FontSize)) / 2;
+        output.WriteLine($"{font} {latex}: delimiters rows {delimTop}..{delimBottom} and {rTop}..{rBottom}, content box " +
+                         $"{boxTop:F2}..{boxBottom:F2} (ink {inkTop}..{inkBottom}), request {request:F2}, allowance {allowance:F2} at each end");
+        Math.Max(delimTop, rTop).ShouldBeLessThanOrEqualTo((int)MathF.Floor(boxTop + allowance),
+            "the delimiters' top ink row against the content's layout top");
+        (Math.Min(delimBottom, rBottom) + 1).ShouldBeGreaterThanOrEqualTo((int)MathF.Ceiling(boxBottom - allowance),
+            "the delimiters' bottom ink row against the content's layout bottom");
     }
 
     /// <summary>
@@ -231,6 +248,32 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
                     break;
                 }
         return (top, bottom);
+    }
+
+    // ── the delimiter's shortfall ───────────────────────────────────────
+
+    /// <summary>
+    /// A <c>\left..\right</c> delimiter takes the first candidate at least
+    /// <see cref="ManagedFontRasterizer.DelimiterCovers"/> of its request, max(0.901 x request, request - 0.5 em)
+    /// (TeX's <c>\delimiterfactor</c> 901 and <c>\delimitershortfall</c> 5 pt at a 10 pt design size), so it
+    /// does not go a size up for content just over a variant. STIX Two Math's parenthesis at 32 px asked for
+    /// 48 px takes its 45.7 px variant (glyph 1302), where the full request needs the 53.3 px one (1303),
+    /// which a radical, asking without the shortfall, still gets. An assembly is still built to the whole
+    /// request: DejaVu Sans's brace asked for 122.78 px is 123 rows either way.
+    /// </summary>
+    [Fact]
+    public void TheDelimiterChoiceTakesACandidateWithinTheShortfall()
+    {
+        var stix = FontPaths["STIX2Math"];
+        Rasterizer.RasterizeStretchyDelimiter(stix, 32f, new Rune('('), 48f, out var delimiterGid, out _);
+        Rasterizer.RasterizeStretchyVertical(stix, 32f, new Rune('('), 48f, out var fullGid);
+        output.WriteLine($"STIX ( at 48 px: delimiter glyph {delimiterGid}, full request glyph {fullGid}");
+        delimiterGid.ShouldBe(1302u, "the variant within the shortfall");
+        fullGid.ShouldBe(1303u, "the variant covering the whole request");
+
+        var brace = Rasterizer.RasterizeStretchyDelimiter(FontPaths["DejaVuSans"], 32f, new Rune('{'), 122.78f, out _, out var parts);
+        parts.ShouldNotBeNull("no variant: the assembly");
+        brace.Height.ShouldBe(123);
     }
 
     // ── the choice ──────────────────────────────────────────────────────
