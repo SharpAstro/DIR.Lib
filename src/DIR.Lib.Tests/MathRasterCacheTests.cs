@@ -47,7 +47,7 @@ public sealed class MathRasterCacheTests
     /// <summary>
     /// The corpus rendered on eight threads at once, each in its own order and starting together on empty
     /// caches, so the threads miss, fill and read the same entries concurrently. Every image must be the
-    /// one rendered on a single thread.
+    /// one rendered on a single thread with the caches bypassed.
     /// </summary>
     [Fact]
     public void RendersOnSeveralThreadsAtOnceMatchTheSingleThreadedRenders()
@@ -60,7 +60,7 @@ public sealed class MathRasterCacheTests
             new BoxStyle(MathRasterCorpus.FontPath("DejaVuSans.ttf"), 32f, Ink),
         };
         var jobs = styles.SelectMany(style => MathRasterCorpus.Formulas.Select(f => (Style: style, f.Name, f.Source))).ToArray();
-        var expected = jobs.Select(job => MathRasterCorpus.Render(job.Source, job.Style)).ToArray();
+        var expected = WithCaches(bypass: true, () => jobs.Select(job => MathRasterCorpus.Render(job.Source, job.Style)).ToArray());
 
         BoxStyle.SharedRasterizer.ClearRasterCaches();
         var results = new RgbaImage?[threads][];
@@ -88,13 +88,17 @@ public sealed class MathRasterCacheTests
         differences.ShouldBeEmpty("renders on several threads at once differ from the single-threaded renders");
     }
 
-    private static RgbaImage?[] RenderCorpus(BoxStyle style, bool bypass)
+    private static RgbaImage?[] RenderCorpus(BoxStyle style, bool bypass) =>
+        WithCaches(bypass, () => MathRasterCorpus.Formulas.Select(f => MathRasterCorpus.Render(f.Source, style)).ToArray());
+
+    /// <summary><paramref name="render"/>'s result with the raster caches bypassed or not on this flow.</summary>
+    private static T WithCaches<T>(bool bypass, Func<T> render)
     {
         var previous = ManagedFontRasterizer.BypassRasterCaches.Value;
         ManagedFontRasterizer.BypassRasterCaches.Value = bypass;
         try
         {
-            return MathRasterCorpus.Formulas.Select(f => MathRasterCorpus.Render(f.Source, style)).ToArray();
+            return render();
         }
         finally
         {
