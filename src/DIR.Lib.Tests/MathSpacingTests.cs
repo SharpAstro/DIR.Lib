@@ -642,6 +642,49 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
         item.Content.ShouldBeOfType<string>().ShouldBe(expected);
     }
 
+    /// <summary>
+    /// Another parse on the same thread, run while this one is under way,
+    /// does not change what this one reads back of its own pieces (R1 P1c).
+    /// The side table was keyed by a piece's source offset, which every parse
+    /// shares: here a nested parse of <c>\sin</c> runs as the outer parse
+    /// fetches its last lookahead, after it has kept <c>{\sin}</c> at offset 0
+    /// as an ordinary atom and before the juxtaposition reads it back, and its
+    /// own <c>\sin</c>, an Op with the same text at the same offset, took the
+    /// group's place, so <c>{\sin} x</c> read <c>sin x</c>. Nothing in DIR.Lib
+    /// parses inside a parse today; a caller's parser and its token source can.
+    /// </summary>
+    [Fact]
+    public void PublicVisitor_ANestedParseLeavesTheOuterOnesPiecesAlone()
+    {
+        var parser = Latex.BuildParser(new LatexUnicodeVisitor());
+        using var lexer = BytesLexer.FromString(@"{\sin} x", Latex.BuildLexer());
+        using var tokens = new NestingAtEnd(new SyncLATokenIterator(lexer), () => MarkdownMacros.RenderMathUnicode(@"\sin"));
+        var item = parser.ParseInput(tokens, debugger: null);
+        item.IsError.ShouldBeFalse();
+        tokens.Nested.ShouldBe("sin", "the nested parse ran, mid-way through the outer one");
+        item.Content.ShouldBeOfType<string>().ShouldBe("sinx");
+    }
+
+    /// <summary>A token source that runs <paramref name="nested"/> the first
+    /// time the parser asks for the end of input, as a caller's source could.</summary>
+    private sealed class NestingAtEnd(SyncLATokenIterator inner, Func<string> nested) : LALR.CC.ISyncLAIterator<Item>
+    {
+        public string? Nested { get; private set; }
+
+        public Item LookAhead()
+        {
+            var next = inner.LookAhead();
+            if (ReferenceEquals(next, Item.EOF) && Nested is null) Nested = nested();
+            return next;
+        }
+
+        public Item Current => inner.Current;
+        public bool MoveNext() => inner.MoveNext();
+        public void Reset() => inner.Reset();
+        public bool SupportsResetting => inner.SupportsResetting;
+        public void Dispose() => inner.Dispose();
+    }
+
     [Fact]
     public void PublicVisitor_KeepsItsContract()
     {
