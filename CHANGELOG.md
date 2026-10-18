@@ -9,6 +9,24 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.25
+
+**A routed press asks a composite's own regions before its children's.** `CompositeWidget` has always documented
+that order (its own painting is chrome over its children), and `HitTest`, `HitTestCursor` and `ScrollTargetAt` keep
+it, but `CollectPaintedRegions` listed the composite's own regions FIRST, and `InputRouter` walks that list from the
+end, so the router asked the children first. A child's region therefore swallowed a press aimed at an overlay the
+composite painted over it: TianWen's Live Session tab paints its Planetary child and then its mode dropdown, the
+child's capture panel scrolls and so registers a region over its whole column, and a press on a menu row reached the
+panel. `CollectPaintedRegions` now appends the children's regions in paint order and the composite's own after them,
+so the router and `HitTest` agree. `PaintedRegions()` follows (children, then own, which is paint order under the
+contract); Tab cycling (`GetRegisteredTextInputs`) is unchanged. A composite that paints a child OVER its own
+content (a popover hung from its own bar, say) is now asked in the other order there and has to state its own.
+
+**A scroll bar takes the host's colours.** `ListScrollController` gains `TrackColor` and `ThumbColor`, defaulting to
+`DefaultTrackColor` and `DefaultThumbColor`. The layout engine draws the bar of a `.WithScroll` node itself and
+passes no colour, so the controller is the one place a host can state them; TianWen's night palette, which holds
+blue at zero, had a blue-grey bar on every list. A colour handed to `DrawScrollBar` still wins. Additive.
+
 ## 11.24
 
 This minor collects flight CL2's math and Markdown fixes, none of which has landed yet. They are listed below as
