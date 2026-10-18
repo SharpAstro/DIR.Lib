@@ -58,11 +58,16 @@ public sealed record BoxStyle(string FontPath, float FontSize, RGBAColor32 Foreg
 {
     /// <summary>
     /// Shared rasterizer used for all metric lookups (AxisHeight,
-    /// RadicalRuleThickness, FractionRuleThickness) and for stretchy delimiter
-    /// rasterization in <see cref="StretchyVerticalBox"/>. Single instance so
-    /// the per-font OpenType cache is hit across every BoxStyle.
+    /// RadicalRuleThickness, FractionRuleThickness), for stretchy delimiter
+    /// rasterization in <see cref="StretchyVerticalBox"/>, and for every glyph
+    /// <see cref="BoxRasterizer.RenderToRgba"/> draws. Single instance so the
+    /// per-font OpenType cache is hit across every BoxStyle and every render,
+    /// and it keeps its glyph and stretched-glyph rasters across calls
+    /// (bounded; see <see cref="ManagedFontRasterizer.GlyphRastersKept"/> and
+    /// <see cref="ManagedFontRasterizer.StretchyRastersKept"/>). The bitmaps it
+    /// hands out are shared, so nothing may write to them.
     /// </summary>
-    internal static readonly ManagedFontRasterizer SharedRasterizer = new();
+    internal static readonly ManagedFontRasterizer SharedRasterizer = new(cacheRasters: true);
 
     public BoxStyle(string fontPath, float fontSize)
         : this(fontPath, fontSize, new RGBAColor32(255, 255, 255, 255))

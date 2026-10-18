@@ -30,8 +30,8 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
     /// <summary>
     /// A renderer that draws its text with <paramref name="rasterizer"/>, which it does not own: disposing
     /// the renderer leaves the rasterizer's fonts and caches alone. <see cref="MathLayout.BoxRasterizer"/>
-    /// lends every render <see cref="MathLayout.BoxStyle.SharedRasterizer"/>, so a render does not re-read
-    /// and re-parse its fonts.
+    /// lends every render <see cref="MathLayout.BoxStyle.SharedRasterizer"/>, so a render neither re-reads
+    /// and re-parses its fonts nor rasterizes again the glyphs an earlier render drew.
     /// </summary>
     internal RgbaImageRenderer(uint width, uint height, ManagedFontRasterizer rasterizer)
         : this(width, height, rasterizer, ownsRasterizer: false) { }
