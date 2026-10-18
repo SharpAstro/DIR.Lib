@@ -46,9 +46,12 @@ public sealed class AccentBox : Box
         _base = @base;
         _accent = accent;
 
-        // Horizontal: accent attachment over base attachment.
+        // Horizontal: accent attachment over base attachment. A zero-advance
+        // mark (the combining arrow of \vec) draws its ink left of its origin,
+        // so without an attachment its ink centre stands in for half its
+        // advance, which is zero and put the arrow left of its letter.
         var baseAttach = TryGetTopAccentAttachment(@base, style) ?? @base.Width / 2f;
-        var accentAttach = TryGetTopAccentAttachment(accent, style) ?? accent.Width / 2f;
+        var accentAttach = TryGetTopAccentAttachment(accent, style) ?? InkCentreOfZeroAdvanceMark(accent, style) ?? accent.Width / 2f;
         _accentXOffset = baseAttach - accentAttach;
 
         // Vertical, as the OpenType MATH table defines it and MathJax and TeX
@@ -77,6 +80,22 @@ public sealed class AccentBox : Box
     {
         _base.Draw(renderer, penX, baselineY, style);
         _accent.Draw(renderer, penX + _accentXOffset, baselineY - _accentBaselineDrop, style);
+    }
+
+    /// <summary>
+    /// The x of a zero-advance single-rune glyph's ink centre, relative to its
+    /// origin; null for any other box. Such a glyph is a combining mark, which
+    /// a font draws over the letter before it, left of its own origin.
+    /// </summary>
+    private static float? InkCentreOfZeroAdvanceMark(Box box, BoxStyle style)
+    {
+        if (box is not GlyphBox gb || gb.Width > 0) return null;
+        var runes = gb.Text.EnumerateRunes();
+        if (!runes.MoveNext()) return null;
+        var rune = runes.Current;
+        if (runes.MoveNext()) return null;
+        var glyph = BoxStyle.SharedRasterizer.RasterizeGlyph(style.FontPath, gb.FontSize, rune);
+        return glyph.Width > 0 ? glyph.BearingX + glyph.Width / 2f : null;
     }
 
     /// <summary>

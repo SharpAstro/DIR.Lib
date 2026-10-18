@@ -111,7 +111,9 @@ public static class MarkdownMacros
         // A formula that did not parse falls back to its source text, where
         // \mathrm{X} must still read as X: Mhchem wraps every chem letter in
         // one, so \ce{H+} (a bare charge, no right operand) printed \mathrm{H}+.
-        if (!parsed) rendered = UnwrapMathrm(rendered);
+        // An operand SupplyMissingOperands added is not the source's, so it
+        // goes too: $x^*$ printed x^* \nulloperand.
+        if (!parsed) rendered = WithoutSuppliedOperands(UnwrapMathrm(rendered));
 
         // Substitute placeholders back. Multiple passes because a replacement
         // for an outer macro can itself contain a placeholder for an inner one
@@ -182,18 +184,21 @@ public static class MarkdownMacros
     private static string EscapeBraces(string text) => text.Replace("{", @"\{").Replace("}", @"\}");
 
     /// <summary>
-    /// <paramref name="source"/> with <c>\null</c>, an empty atom, wherever a
-    /// binary operator or a relation has no operand: at either end of the
-    /// formula, of a group, a bracket pair or a set, and beside a comma. So
-    /// <c>8\times</c>, <c>\to</c> and <c>= \mathbf{1024}</c> parse, where the
-    /// grammar sets an operator only between two operands and such a formula
-    /// fell back to its source text. Both visitors set the operator against an
-    /// empty side as TeX does: a binary operator becomes ordinary, with no
-    /// space either side (<c>8×</c>, and <c>\ce{H+}</c> stays <c>H+</c>), and a
-    /// relation keeps its space only on the side that has an operand. A minus
-    /// is left alone at either end: at the start it is a sign, which the
-    /// grammar has, and a trailing one is a chemist's charge (<c>\ce{e-}</c>),
-    /// which reads as written in the source text. A text argument is text.
+    /// <paramref name="source"/> with <see cref="SuppliedOperand"/>, an empty
+    /// atom, wherever a binary operator or a relation has no operand: at either
+    /// end of the formula, of a group, a bracket pair or a set, and beside a
+    /// comma. So <c>8\times</c>, <c>\to</c> and <c>= \mathbf{1024}</c> parse,
+    /// where the grammar sets an operator only between two operands and such a
+    /// formula fell back to its source text. Both visitors set the operator
+    /// against an empty side as TeX does: a binary operator becomes ordinary,
+    /// with no space either side (<c>8×</c>, and <c>\ce{H+}</c> stays
+    /// <c>H+</c>), and a relation keeps its space only on the side that has an
+    /// operand. A minus is left alone at either end: at the start it is a sign,
+    /// which the grammar has, and a trailing one is a chemist's charge
+    /// (<c>\ce{e-}</c>), which reads as written in the source text. A text
+    /// argument is text. The operand is a name of the supplier's own, not
+    /// <c>\null</c>, so a formula that still fails to parse can drop it from
+    /// the source it falls back to (<see cref="WithoutSuppliedOperands"/>).
     /// </summary>
     internal static string SupplyMissingOperands(string source)
     {
@@ -206,13 +211,23 @@ public static class MarkdownMacros
         var masked = ExpandBalancedMacro(source, "textrm", inner => Hide("textrm", inner));
         masked = ExpandBalancedMacro(masked, "text", inner => Hide("text", inner));
 
-        masked = LeadingOperatorRegex.Replace(masked, @"\null ");
-        masked = TrailingOperatorRegex.Replace(masked, @" \null");
+        masked = LeadingOperatorRegex.Replace(masked, SuppliedOperand + " ");
+        masked = TrailingOperatorRegex.Replace(masked, " " + SuppliedOperand);
 
         for (var i = texts.Count - 1; i >= 0; i--)
             masked = masked.Replace($@"\PHtext{TextStandIn(i)}", texts[i]);
         return masked;
     }
+
+    /// <summary>The empty atom <see cref="SupplyMissingOperands"/> adds; both
+    /// visitors draw it as nothing, as they draw <c>\null</c>.</summary>
+    internal const string SuppliedOperand = @"\nulloperand";
+
+    /// <summary><paramref name="text"/> without the operands
+    /// <see cref="SupplyMissingOperands"/> added, each with the blank it was
+    /// added with.</summary>
+    private static string WithoutSuppliedOperands(string text) =>
+        text.Replace(SuppliedOperand + " ", "").Replace(" " + SuppliedOperand, "").Replace(SuppliedOperand, "");
 
     /// <summary>A stand-in name's letters for the <paramref name="n"/>th text
     /// argument: letters only, so the name lexes as one command, and not a
@@ -462,7 +477,7 @@ public static class MarkdownMacros
             return key;
         });
 
-        // An operator with no operand on a side gets \null there ($8\times$, $\to$).
+        // An operator with no operand on a side gets an empty one there ($8\times$, $\to$).
         source = SupplyMissingOperands(source);
 
         // Outer-source pass over LaTeX backslash-non-letter macros (\, \; \: \!
@@ -501,17 +516,24 @@ public static class MarkdownMacros
         // U+2248 in "\sqrt{131} ≈ 11.45" kills the lex pass and \sqrt never
         // gets to render. The placeholder lexes as a cmd atom; the visitor
         // emits it verbatim; we splice the original char back in afterwards.
+        // A `'` lexes as a prime only straight after an atom (x', f''(x), x^2');
+        // anywhere else it is a placeholder, so `= '\beta'` does not throw the
+        // formula back to its source, and it splices back as a prime too.
         var sb = new StringBuilder(source.Length);
+        var previous = '\0';   // the last character that is not a blank
         foreach (var ch in source)
         {
-            if (IsLexerSafe(ch) && (lexBrackets || ch is not ('[' or ']')))
+            var quote = ch == '\'' && !(char.IsAsciiLetterOrDigit(previous) || previous is '}' or ')' or ']' or '\'');
+            if (!char.IsWhiteSpace(ch)) previous = ch;
+            if (IsLexerSafe(ch) && !quote && (lexBrackets || ch is not ('[' or ']')))
             {
                 sb.Append(ch);
             }
             else
             {
                 var key = NewPlaceholder();
-                replacements.Add(new KeyValuePair<string, string>(key, ch.ToString()));
+                // A quote is a prime with nothing before it, as KaTeX sets every ' in math.
+                replacements.Add(new KeyValuePair<string, string>(key, quote ? "′" : ch.ToString()));
                 sb.Append(key);
             }
         }
