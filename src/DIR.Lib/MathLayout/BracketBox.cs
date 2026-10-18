@@ -75,8 +75,7 @@ public sealed class BracketBox : Box
         // reaches only takes a larger step than TeX would. The visual padding
         // around the delimiters comes from Width and Height, not from the
         // request.
-        var axis = style.AxisHeight;
-        var requiredHeight = 2 * MathF.Max(inner.Height - axis, inner.Depth + axis);
+        var requiredHeight = DelimiterRequest(inner, style);
         var (leftCp, rightCp) = BracketCodepoints(kind);
         // As TeX's \left..\right, a delimiter may fall short of the request by
         // \delimiterfactor and \delimitershortfall, and the two are drawn at
@@ -87,6 +86,18 @@ public sealed class BracketBox : Box
             _leftFont = left;
             _rightFont = right;
         }
+    }
+
+    /// <summary>
+    /// The height a <c>\left..\right</c> pair asks the font for around <paramref name="inner"/>: twice the
+    /// content's larger reach from the math axis, 2 * max(height - axis, depth + axis), as TeX sizes one.
+    /// Every pair goes through it, this box's and the markdown visitor's pair of two kinds alike, so
+    /// <c>[a, b)</c> sizes its delimiters as <c>[a, b]</c> does.
+    /// </summary>
+    internal static float DelimiterRequest(Box inner, BoxStyle style)
+    {
+        var axis = style.AxisHeight;
+        return 2 * MathF.Max(inner.Height - axis, inner.Depth + axis);
     }
 
     private static (int left, int right) BracketCodepoints(BracketKind kind) => kind switch
