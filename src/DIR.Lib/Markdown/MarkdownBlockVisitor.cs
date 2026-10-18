@@ -210,12 +210,13 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
     }
 
     /// <summary>The inline content of a paragraph, heading, list item or
-    /// table cell. When the inline parse fails (a link whose URL never
-    /// closes, which the inline grammar has no rule for), the
-    /// text stays literal (<see cref="LiteralLines"/>) rather than leaving
-    /// the block empty. The
-    /// inline parser itself keeps returning an empty list on failure;
-    /// only a block knows its text has to show.</summary>
+    /// table cell. When the inline parse fails, the text stays literal
+    /// (<see cref="LiteralLines"/>) rather than leaving the block empty. No
+    /// ordinary input is known to fail it any more (an unclosed link URL,
+    /// the old example, is text since the stray-delimiter rules); the
+    /// fallback stays for whatever still does, and tests reach it through
+    /// the parser seam. The inline parser itself keeps returning an empty
+    /// list on failure; only a block knows its text has to show.</summary>
     private IReadOnlyList<MdInline> ParseInline(string text)
     {
         var spans = _parseInline(text);
