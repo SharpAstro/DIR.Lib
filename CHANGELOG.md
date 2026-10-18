@@ -19,8 +19,17 @@ composite painted over it: TianWen's Live Session tab paints its Planetary child
 child's capture panel scrolls and so registers a region over its whole column, and a press on a menu row reached the
 panel. `CollectPaintedRegions` now appends the children's regions in paint order and the composite's own after them,
 so the router and `HitTest` agree. `PaintedRegions()` follows (children, then own, which is paint order under the
-contract); Tab cycling (`GetRegisteredTextInputs`) is unchanged. A composite that paints a child OVER its own
-content (a popover hung from its own bar, say) is now asked in the other order there and has to state its own.
+contract); Tab cycling (`GetRegisteredTextInputs`) is unchanged.
+
+**A composite states where its own content falls among its children: `ChildrenUnderOwn`.** A protected virtual
+int, defaulting to `Children.Count`: children `[0, k)` are painted under the composite's own content and `[k, Count)`
+over it. Every combined query honours it (`HitTest`, `HitTestCursor`, `ScrollTargetAt`, `CollectPaintedRegions` and
+`CollectPaintedNodes`), so a composite that hangs a popover child from its own bar keeps the popover on top by
+stating the children painted before the bar. One split is exact per child only: a child drawn in two passes, part
+under the composite's own content and part over it, is kept wholly over (0). Additive. **`CollectPaintedNodes`
+follows the region order**, through the same walk: the router reads both lists from the end, for the hover
+highlight and a declared shortcut as for a press, and with the composite's own nodes listed first a lit row and a
+chord resolved child-first while the press resolved own-first.
 
 **A scroll bar takes the host's colours.** `ListScrollController` gains `TrackColor` and `ThumbColor`, defaulting to
 `DefaultTrackColor` and `DefaultThumbColor`. The layout engine draws the bar of a `.WithScroll` node itself and
