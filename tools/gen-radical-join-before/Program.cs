@@ -88,11 +88,14 @@ foreach (var font in fonts.Keys)
     foreach (var scene in contextScenes)
         foreach (var size in sweepSizes)
             Add((font, scene, size));
-// The radical with an index, over the sweep's sizes: the clear pixels between the index and the glyph
-// (review round 1, Q2).
+// The radicals with an index, over the sweep's sizes: the clear pixels between the index and the glyph
+// (review round 1, Q2). index-box-api is \sqrt[3]{x}; the other two are a letter index over a composite
+// radicand and a two-digit index (radical-index).
+string[] indexScenes = ["index-box-api", "sqrt-n-x2-plus-1", "sqrt-10-x"];
 foreach (var font in fonts.Keys)
-    foreach (var size in sweepSizes)
-        Add((font, "index-box-api", size));
+    foreach (var scene in indexScenes)
+        foreach (var size in sweepSizes)
+            Add((font, scene, size));
 
 var bf = BindingFlags.NonPublic | BindingFlags.Instance;
 var probeBar = typeof(SqrtBox).GetField("_probeBar", bf)
@@ -119,13 +122,13 @@ foreach (var (font, scene, size) in points)
     var above = barTop - 1;
     while (above >= 0 && !RowHasInk(image, above, barStart, barEnd)) above--;
     var indexClear = "null";
-    if (scene == "index-box-api")
+    if (indexScenes.Contains(scene))
     {
         // The glyph's bitmap rectangle as Draw placed it: its right edge is where the bar starts, its top the
         // bar's top less the flag's top row.
         var glyph = (GlyphBitmap)joinedRadical.GetValue(sqrt)!;
         var glyphY = barTop - (int)flagTopRow.GetValue(sqrt)!;
-        var blank = BoxRasterizer.RenderToRgba(IndexScene(style, blankIndex: true), style);
+        var blank = BoxRasterizer.RenderToRgba(IndexScene(scene, style, blankIndex: true), style);
         indexClear = IndexClearance(image, blank, barStart - glyph.Width, glyphY, glyph.Width, glyph.Height).ToString(inv);
     }
     rows.Append(CultureInfo.InvariantCulture,
@@ -182,12 +185,20 @@ static long CutOff(Box box, RgbaImage canvas, BoxStyle style)
     return Ink(renderer.Surface) - Ink(canvas);
 }
 
-// The index scene, or the same with its index blank: a box with the index's metrics that draws nothing, so
-// the layout is the same and the two renders differ by the index's ink alone.
-static Box IndexScene(BoxStyle style, bool blankIndex)
+// An index scene, or the same with its index blank: a box with the index's metrics that draws nothing, so
+// the layout is the same and the two renders differ by the index's ink alone. The parsed scenes are built
+// as the grammar builds \sqrt[n]{x}: the index parsed at script-script style.
+static Box IndexScene(string scene, BoxStyle style, bool blankIndex)
 {
-    var index = new GlyphBox("3", style.Smaller().Smaller());
-    return new SqrtBox(new MathGlyphBox("x", style, MathStyle.Italic), blankIndex ? new BlankBox(index) : index, style);
+    var ss = style.Smaller().Smaller();
+    var (radicand, index) = scene switch
+    {
+        "index-box-api" => ((Box)new MathGlyphBox("x", style, MathStyle.Italic), (Box)new GlyphBox("3", ss)),
+        "sqrt-n-x2-plus-1" => (Parse("x^2+1", style), Parse("n", ss)),
+        "sqrt-10-x" => (Parse("x", style), Parse("10", ss)),
+        _ => throw new ArgumentException($"'{scene}' is not an index scene"),
+    };
+    return new SqrtBox(radicand, blankIndex ? new BlankBox(index) : index, style);
 }
 
 // The fewest clear pixels between the index's ink (where the render with it has more alpha than the one
@@ -243,7 +254,7 @@ static Box Build(string scene, BoxStyle style) => scene switch
     "sqrt-x" => Parse(@"\sqrt{x}", style),
     "sqrt-frac-a-b" => Parse(@"\sqrt{\frac{a}{b}}", style),
     "quadratic-formula" => Parse(@"\frac{-b \pm \sqrt{b^2-4ac}}{2a}", style),
-    "index-box-api" => new SqrtBox(new MathGlyphBox("x", style, MathStyle.Italic), new GlyphBox("3", style.Smaller().Smaller()), style),
+    "index-box-api" or "sqrt-n-x2-plus-1" or "sqrt-10-x" => IndexScene(scene, style, blankIndex: false),
     "sqrt-paren-frac" => Parse(@"\sqrt{\left(\frac{a}{b}\right)}", style),
     "sqrt-nested-frac" => Parse(@"\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}", style),
     "frac-1-sqrt-x" => Parse(@"\frac{1}{\sqrt{x}}", style),
