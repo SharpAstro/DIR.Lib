@@ -58,8 +58,11 @@ namespace DIR.Lib.MathLayout;
 /// total height when MATH metrics are available, with horizontal positioning
 /// driven by <c>RadicalKernBeforeDegree</c> / <c>RadicalKernAfterDegree</c>.
 /// Falls back to TeX-style heuristics (60% raise, ~half-radical-width
-/// negative kern) when the font ships no MATH table. Pass <c>null</c> for
-/// a plain square root.</para>
+/// negative kern) when the font ships no MATH table. On the glyph paths the
+/// index is then moved, by whole pixels, up (never past the vinculum) or
+/// left until a clear pixel separates its ink from the glyph's, and a move
+/// left widens the box by what it takes (see the constructor). Pass
+/// <c>null</c> for a plain square root.</para>
 /// </summary>
 public sealed class SqrtBox : Box
 {
@@ -92,9 +95,13 @@ public sealed class SqrtBox : Box
     private readonly float _indexX;
 
     /// <summary>How far the radical (and everything after) shifts right to
-    /// accommodate the index. Equals <c>max(0, kernBefore + index.Width + kernAfter)</c> —
-    /// i.e. zero when the negative <c>kernAfter</c> swallows the index entirely
-    /// into the hook area, otherwise the leftover that pokes out the left side.</summary>
+    /// accommodate the index. From the font's kerns it is
+    /// <c>max(0, kernBefore + index.Width + kernAfter)</c>: zero when the
+    /// negative <c>kernAfter</c> swallows the index entirely into the hook
+    /// area, otherwise the leftover that pokes out the left side. On the glyph
+    /// paths it then grows by however far the index's move clear of the glyph
+    /// takes its ink past the box's left edge (see
+    /// <see cref="IndexMoveClearOfGlyph"/>), so the box still holds it.</summary>
     private readonly float _radicalShiftX;
 
     /// <summary>Distance above <c>baselineY</c> where the index's own
@@ -102,6 +109,17 @@ public sealed class SqrtBox : Box
     /// <c>raisePct · radicalTotalHeight</c> above the radical's bottom
     /// (which is itself at <c>baselineY + radicand.Depth</c>).</summary>
     private readonly float _indexBaselineLift;
+
+    /// <summary>On the glyph paths, where the index's pen and baseline sit
+    /// relative to the glyph's top-left pixel (<see cref="RadicalJoin.GlyphX"/>,
+    /// <see cref="RadicalJoin.GlyphY"/>). Draw places the index from there, so
+    /// index and glyph rasterize the same way at every pen position and the
+    /// clear pixel <see cref="IndexMoveClearOfGlyph"/> found holds wherever the
+    /// box is drawn.</summary>
+    private readonly float _indexGlyphX;
+
+    /// <summary>See <see cref="_indexGlyphX"/>.</summary>
+    private readonly float _indexGlyphY;
 
     /// <summary>Box height (above baseline) including any index extension —
     /// <c>max(radicand.Height + gap + vinculumThickness, indexTopAboveBaseline)</c>.</summary>
@@ -451,6 +469,32 @@ public sealed class SqrtBox : Box
             if (_indexBaselineLift > maxBaselineLift)
                 _indexBaselineLift = maxBaselineLift;
 
+            // On the glyph paths the index is then placed against the glyph's
+            // own pixels, so it never touches them. The kerns and the raise
+            // above are the font's, and they put a script-script index right
+            // on the radical's hook: at the sizes a terminal draws math at
+            // the index is 2 to 4 px tall and its ink merged into the hook's
+            // (against a442e91, 918 of 1429 points of RadicalJoinTests' index
+            // sweep touched). The index is drawn at a fixed offset from the
+            // glyph's top-left pixel (see Draw), so the two rasterize the same
+            // way at every pen position and the clearance can be found here,
+            // once: IndexMoveClearOfGlyph moves the index up or left, by the
+            // fewest whole pixels, until a clear pixel separates its ink from
+            // the glyph's. A move left widens the box by what the index then
+            // takes to the left of the glyph, so the index stays inside it.
+            if (_radicalFont is not null || HasScaledGlyph)
+            {
+                var glyphTopAbove = -GlyphTop(0f);
+                var ox = _indexX - _radicalShiftX;
+                var oy = glyphTopAbove - _indexBaselineLift;
+                var (dx, dy, inkLeft) = IndexMoveClearOfGlyph(index, ox, oy, style);
+                _indexGlyphX = ox + dx;
+                _indexGlyphY = oy + dy;
+                _radicalShiftX = MathF.Max(MathF.Max(0f, kernBefore - _indexGlyphX), -(inkLeft ?? 0));
+                _indexX = _radicalShiftX + _indexGlyphX;
+                _indexBaselineLift = glyphTopAbove - _indexGlyphY;
+            }
+
             var indexTopLift = _indexBaselineLift + index.Height;
             _heightWithIndex = MathF.Max(_radicalH + _raiseRowReserve, indexTopLift);
         }
@@ -658,8 +702,13 @@ public sealed class SqrtBox : Box
             // Smaller().Smaller() — so the small "n" is rasterized at the
             // appropriate em size; we just place the box. Where the radicand's
             // ink raised the glyph, the index rises with it, so the V's arm
-            // keeps its distance from the index.
-            _index.Draw(renderer, penX + _indexX, baselineY - _indexBaselineLift - (join?.InkRaise ?? 0), style);
+            // keeps its distance from the index. On the glyph paths it is
+            // placed from the glyph's top-left pixel, at the offset the
+            // constructor found clear of the glyph's ink.
+            if (join is not null)
+                _index.Draw(renderer, join.GlyphX + _indexGlyphX, join.GlyphY + _indexGlyphY, style);
+            else
+                _index.Draw(renderer, penX + _indexX, baselineY - _indexBaselineLift, style);
         }
 
         if (join is not null)
@@ -835,6 +884,120 @@ public sealed class SqrtBox : Box
             else InkScratch.Add(pooled);
         }
     }
+
+    /// <summary>
+    /// How far the index, its pen and baseline at (<paramref name="ox"/>,
+    /// <paramref name="oy"/>) from the glyph's top-left pixel, must move, in
+    /// whole pixels, for a clear pixel to lie between its ink and the glyph's
+    /// (diagonal neighbours counting as touching), and where its leftmost ink
+    /// then is, in the same frame (null for an index with no ink, which is
+    /// not moved). The fewest pixels win, and of those the
+    /// fewest to the left, since a move left widens the box; a move up stops
+    /// where the index's top would rise above the row over the bar's top
+    /// (see <see cref="IndexRowsAboveBar"/>), an index whose top starts
+    /// above that row is first moved down to it, and the index never moves
+    /// right, towards the stem. Moving left past the glyph always clears
+    /// it, so a move is always found.
+    /// <para>
+    /// The index is drawn into a scratch surface at the offset Draw will use
+    /// and the glyph is <see cref="_joinedRadical"/> as Draw blits it, so the
+    /// pixels compared are the pixels drawn. The index draws with
+    /// <paramref name="style"/>'s font, as Draw passes it.
+    /// </para>
+    /// </summary>
+    private (int Dx, int Dy, int? InkLeft) IndexMoveClearOfGlyph(Box index, float ox, float oy, BoxStyle style)
+    {
+        var glyph = _joinedRadical;
+        // Room around the index's box for ink its metrics do not hold (a
+        // text run is placed by the face's ascent, not its ink), so the
+        // window starts well clear of it on every side.
+        var pad = (int)MathF.Ceiling(_fontSize + index.TotalHeight + index.Width) + 2;
+        var left = (int)MathF.Floor(MathF.Min(0f, ox)) - pad;
+        var top = (int)MathF.Floor(MathF.Min(0f, oy - index.Height)) - pad;
+        var right = (int)MathF.Ceiling(MathF.Max(glyph.Width, ox + index.Width)) + pad;
+        var bottom = (int)MathF.Ceiling(MathF.Max(glyph.Height, oy + index.Depth)) + pad;
+
+        var ink = new List<(int X, int Y)>();
+        var measure = style with { Foreground = new RGBAColor32(0, 0, 0, 255) };
+        if (!InkScratch.TryTake(out var pooled)) pooled = new InkScratchRenderer();
+        pooled.Sizes.Add((style.FontPath, MathF.Round(_fontSize)));
+        var scratch = pooled.Renderer;
+        try
+        {
+            // The index is drawn at (ox - left, oy - top), the window's own
+            // pixels, rather than at (ox, oy) under a content transform: a
+            // text run truncates its glyphs' positions, and truncation rounds
+            // a negative coordinate (an index above or left of the glyph's
+            // top-left pixel) the other way from a positive one, which put
+            // the index a row higher on the canvas than it was measured. In
+            // the window, as on the canvas, every coordinate is positive, and
+            // a whole-pixel shift between the two moves the ink by exactly
+            // that shift.
+            scratch.Resize((uint)(right - left), (uint)(bottom - top));
+            scratch.ContentTransform = ContentTransform.Identity;
+            index.Draw(scratch, ox - left, oy - top, measure);
+            var surface = scratch.Surface;
+            for (var y = 0; y < surface.Height; y++)
+                for (var x = 0; x < surface.Width; x++)
+                    if (surface.Pixels[(y * surface.Width + x) * 4 + 3] != 0) ink.Add((x + left, y + top));
+        }
+        finally
+        {
+            scratch.ContentTransform = ContentTransform.Identity;
+            if (pooled.Sizes.Count > InkScratchSizesKept) scratch.Dispose();
+            else InkScratch.Add(pooled);
+        }
+        if (ink.Count == 0) return (0, 0, null);
+
+        // The radical's ink: the glyph, and the bar's band carried on to its
+        // right, where an index wider than the hook could reach.
+        bool RadicalInk(int x, int y) =>
+            y >= 0 && y < glyph.Height && x >= 0 &&
+            (x < glyph.Width ? glyph.Rgba[(y * glyph.Width + x) * 4 + 3] != 0
+                             : y >= _flagTopRow && y < _flagTopRow + _flagProfile.Length);
+        bool ClearAt(int dx, int dy)
+        {
+            foreach (var (x, y) in ink)
+                for (var ny = y + dy - 1; ny <= y + dy + 1; ny++)
+                    for (var nx = x + dx - 1; nx <= x + dx + 1; nx++)
+                        if (RadicalInk(nx, ny)) return false;
+            return true;
+        }
+
+        int inkLeft = int.MaxValue, inkRight = int.MinValue, inkTop = int.MaxValue;
+        foreach (var (x, y) in ink)
+        {
+            inkLeft = Math.Min(inkLeft, x);
+            inkRight = Math.Max(inkRight, x);
+            inkTop = Math.Min(inkTop, y);
+        }
+        // The highest the index's top may go is the pixel form of the
+        // constructor's cap, and it holds for an index that starts higher
+        // too: the cap put the index's box top at the vinculum's in float,
+        // but a text run floors its rectangle's top and truncates each
+        // glyph's, so its ink can start a row above where its box says, and
+        // its antialiased top a row above that (before this move the index's
+        // ink started two rows over the bar at 60 of RadicalJoinTests' 1429
+        // index points). Such an index moves down to it (rise is then
+        // negative), and no further.
+        var rise = inkTop - (_flagTopRow - IndexRowsAboveBar);
+        var down = Math.Max(0, -rise);
+        var maxUp = Math.Max(0, rise);
+        // Every index pixel two columns left of the glyph is clear of it.
+        var maxLeft = Math.Max(0, inkRight + 2);
+        for (var cost = 0; cost <= maxLeft + maxUp; cost++)
+            for (var leftMove = Math.Max(0, cost - maxUp); leftMove <= Math.Min(cost, maxLeft); leftMove++)
+                if (ClearAt(-leftMove, down - (cost - leftMove)))
+                    return (-leftMove, down - (cost - leftMove), inkLeft - leftMove);
+        return (-maxLeft, down, inkLeft - maxLeft);
+    }
+
+    /// <summary>How many rows above the bar's top row the index's ink may
+    /// start, when <see cref="IndexMoveClearOfGlyph"/> moves it up: one, the
+    /// row the layout's cap already allows (the cap puts the index's box top
+    /// at the vinculum's, and a text run's ink can start a row above its
+    /// box). No further, so the index does not rise past the vinculum.</summary>
+    private const int IndexRowsAboveBar = 1;
 
     /// <summary>What <see cref="MeasureInkTop"/> found, per <see cref="InkKey"/>: the
     /// radicand's top inked row relative to the baseline's pixel row, or
