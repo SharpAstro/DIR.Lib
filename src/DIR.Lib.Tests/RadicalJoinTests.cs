@@ -213,7 +213,7 @@ public sealed partial class RadicalJoinTests
                 r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY), r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY - 1),
                 r.GlyphPastDepth, r.RowsAboveHeight, r.RadicalOnCanvas, InkCutOff(p.Font, p.Size, p.Scene, r.Image),
                 r.JoinBreak(), RgbaHash(r.Image), r.Join.InkRaise,
-                IndexScenes.Contains(p.Scene) ? IndexClearanceAt(p.Font, p.Size, p.Scene, r) : null, r.Sqrt.Path);
+                IndexScenes.Contains(p.Scene) ? IndexPlacementAt(p.Font, p.Size, p.Scene, r) : null, r.Sqrt.Width, r.Sqrt.Path);
         }),
     ]);
 
@@ -237,15 +237,20 @@ public sealed partial class RadicalJoinTests
     /// <param name="JoinBreak">Where the bar fails to continue the flag, or null (<see cref="Rendered.JoinBreak"/>).</param>
     /// <param name="RgbaHash">The rendered scene's size and pixels, hashed (<see cref="RgbaHash"/>).</param>
     /// <param name="InkRaise">Rows the radicand's ink raised bar and glyph (<see cref="SqrtBox.RadicalJoin.InkRaise"/>).</param>
-    /// <param name="IndexClear">In an index scene, the clear pixels between the index and the glyph
-    /// (<see cref="IndexClearance"/>); null elsewhere.</param>
+    /// <param name="Index">In an index scene, where the index's ink lies against the glyph and the box
+    /// (<see cref="IndexPlacement"/>); null elsewhere.</param>
     /// <param name="ClearAbove">Clear rows between the bar and the ink above it (<see cref="Rendered.ClearRowsAboveBar"/>).</param>
+    /// <param name="Width">The radical's <see cref="Box.Width"/>.</param>
     /// <param name="Path">The path that drew the radical (<see cref="SqrtBox.Path"/>), against the before data's
     /// <see cref="BeforePoint.Path"/>.</param>
     private sealed record Swept(BeforePoint Before, float Height, float Depth, int ClearRows, int ClearAbove, int BandRows, int MaxBandRows,
         bool CapTrimmed, int FlagTopAlpha, int AboveFlagAlpha, float GlyphPastDepth, int RowsAboveHeight,
-        bool RadicalOnCanvas, long InkCutOff, string? JoinBreak, ulong RgbaHash, int InkRaise, int? IndexClear, int Path)
+        bool RadicalOnCanvas, long InkCutOff, string? JoinBreak, ulong RgbaHash, int InkRaise, IndexPlacement? Index, float Width, int Path)
     {
+        /// <summary>In an index scene, the clear pixels between the index and the glyph
+        /// (<see cref="IndexClearance"/>); null elsewhere.</summary>
+        public int? IndexClear => Index?.Clear;
+
         public bool Touches => ClearRows == 0;
 
         public override string ToString() => $"{Before.Font} {Before.Scene} {Before.Size} px";
@@ -643,6 +648,60 @@ public sealed partial class RadicalJoinTests
     }
 
     /// <summary>
+    /// The index, moved clear of the glyph, stays in the radical's hook at every index point. Its ink starts
+    /// no higher than the row over the bar's top row, so it never rises past the vinculum: the layout caps the
+    /// index's box top at the vinculum's top, and a text run's ink can start a row above its box (it floors its
+    /// rectangle's top), which is the row that cap already allowed; before the move the index's ink started
+    /// two rows over the bar at 60 of the 1429 points. Its ink never starts left of the column the radical's
+    /// box starts in, the left edge the layout reports, and it ends left of the bar, never reaching over the
+    /// radicand. Every failing point is listed in the one message.
+    /// </summary>
+    [Fact]
+    public void TheIndexStaysInTheHook()
+    {
+        static string? OutOfTheHook(Swept s) =>
+            s.Index is { } i && (i.InkTop < i.BarTop - 1 || i.InkLeft < i.BoxLeft || i.InkRight >= i.BarStart)
+                ? $"{s}: index ink rows from {i.InkTop}, columns {i.InkLeft}..{i.InkRight}; " +
+                  $"bar from row {i.BarTop}, column {i.BarStart}; box from column {i.BoxLeft}"
+                : null;
+
+        var failures = SweptPoints.Value.Select(OutOfTheHook).OfType<string>().ToList();
+        failures.ShouldBeEmpty($"{failures.Count} of {SweptPoints.Value.Count(s => s.Index is not null)} index points"
+                               + Environment.NewLine + string.Join(Environment.NewLine, failures));
+    }
+
+    /// <summary>
+    /// Moving the index clear of the glyph is the only change to the radical's width. Across the sweep a
+    /// radical with no index is exactly as wide as before (but for the scenes redrawn since the before data,
+    /// <see cref="WidthRedrawnSinceTheBeforeData"/>), and one with an index is never narrower: where the
+    /// index moves left past the box's left edge, the box widens by what it takes, so it still holds the
+    /// index (<see cref="TheIndexStaysInTheHook"/>). Against a442e91 that widens 670 of the 1429 index
+    /// points, by at most 0.594 em (DejaVu Sans <c>\sqrt[10]{x}</c> at 9.2 px) and 22 px (the same
+    /// at 96 px); at Console.Lib's 32 px Sixel size STIX Two Math <c>\sqrt[3]{x}</c> is 4.12 px wider and
+    /// DejaVu Sans <c>\sqrt[10]{x}</c> 9 px, and <c>\sqrt[n]{x^2+1}</c> is nowhere wider. Every failing point
+    /// is listed in the one message.
+    /// </summary>
+    [Fact]
+    public void OnlyTheIndexWidensTheRadical()
+    {
+        const float floatNoise = 1e-3f;
+        var failures = SweptPoints.Value
+            .Where(s => !WidthRedrawnSinceTheBeforeData.Contains((s.Before.Font, s.Before.Scene)))
+            .Where(s => s.Index is null ? MathF.Abs(s.Width - s.Before.Width) > floatNoise : s.Width < s.Before.Width - floatNoise)
+            .Select(s => $"{s}: width {s.Before.Width} -> {s.Width}, {(s.Index is null ? "no index" : "with an index")}")
+            .ToList();
+        failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
+    }
+
+    /// <summary>Scenes, in one font each, whose radical or radicand the stretchy-assembly change redrew, so
+    /// their before width is another layout's: STIX Two Math <c>sqrt-nested-frac</c>, whose radical's MATH
+    /// assembly now grows to its request (at 24.8 px 96.68 px wide became 55.68), and <c>sqrt-paren-frac</c>
+    /// in both fonts, whose parenthesis is sized anew (DejaVu Sans at 16 px 83.08 became 65.08). They are
+    /// the only points without an index whose width moved.</summary>
+    private static readonly HashSet<(string Font, string Scene)> WidthRedrawnSinceTheBeforeData =
+        [("STIX2Math", "sqrt-nested-frac"), ("DejaVuSans", "sqrt-paren-frac"), ("STIX2Math", "sqrt-paren-frac")];
+
+    /// <summary>
     /// The two points the relaxations named: STIX Two Math <c>\sqrt{\frac{a}{b}}</c> at 22.2 px and
     /// <c>\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}</c> at 31.7 px had 3 clear rows before the rework
     /// (e6778fc) and 2 after it (fe09d4a), lost to the float phase of the bar's floored row.
@@ -809,7 +868,7 @@ public sealed partial class RadicalJoinTests
     private static BeforePoint BeforeAt(string font, string scene, float size) =>
         BeforePoints.Single(p => p.Font == font && p.Scene == scene && p.Size == size);
 
-    private sealed record Rendered(RgbaImage Image, SqrtBox Sqrt, SqrtBox.RadicalJoin Join, float BaselineY)
+    private sealed record Rendered(RgbaImage Image, SqrtBox Sqrt, SqrtBox.RadicalJoin Join, float BaselineY, float PenX)
     {
         /// <summary>How far, in pixels, the glyph's bitmap reaches below the radical's reported bottom,
         /// <c>baselineY + Depth</c>; zero or less when it stays inside.</summary>
@@ -892,7 +951,7 @@ public sealed partial class RadicalJoinTests
         var join = probe.Sqrt.JoinAt(penX, baselineY, drawnStyle).ShouldNotBeNull("the radical has no flag and bar (parametric path?)");
         join.FlagRows.ShouldBeGreaterThan(0);
         join.BarEndX.ShouldBeGreaterThan(join.FlagLastFullX);
-        return new Rendered(image, probe.Sqrt, join, baselineY);
+        return new Rendered(image, probe.Sqrt, join, baselineY, penX);
     }
 
     private static Box BuildScene(string scene, BoxStyle style) =>
@@ -937,10 +996,10 @@ public sealed partial class RadicalJoinTests
         return InkSum(renderer.Surface) - InkSum(canvas);
     }
 
-    /// <summary>A radical with an index (<see cref="IndexScenes"/>), or the same with the index blank: a box
-    /// with its metrics that draws nothing, so the layout is the same and the two renders differ by the index's
-    /// ink alone. The parsed scenes are built as the grammar builds <c>\sqrt[n]{x}</c>, the index parsed at
-    /// script-script style; tools/gen-radical-join-before builds them the same way.</summary>
+    /// <summary>A radical with an index (<see cref="IndexScenes"/>), or the same with the index blank: hidden
+    /// once the radical is built, so the layout is the same and the two renders differ by the index's ink alone
+    /// (see <see cref="HideableBox"/>). The parsed scenes are built as the grammar builds <c>\sqrt[n]{x}</c>,
+    /// the index parsed at script-script style; tools/gen-radical-join-before builds them the same way.</summary>
     private static Box IndexScene(string scene, BoxStyle style, bool blankIndex)
     {
         var ss = style.Smaller().Smaller();
@@ -951,24 +1010,54 @@ public sealed partial class RadicalJoinTests
             "sqrt-10-x" => (Parse("x", style), Parse("10", ss)),
             _ => throw new ArgumentException($"'{scene}' is not an index scene"),
         };
-        return new SqrtBox(radicand, blankIndex ? new BlankBox(index) : index, style);
+        if (!blankIndex) return new SqrtBox(radicand, index, style);
+        var hideable = new HideableBox(index);
+        var sqrt = new SqrtBox(radicand, hideable, style);
+        hideable.Hidden = true;
+        return sqrt;
     }
 
-    /// <summary>A box with another's metrics that draws nothing.</summary>
-    private sealed class BlankBox(Box metrics) : Box
+    /// <summary>Another box, metrics and draw, until <see cref="Hidden"/> is set, and after that its metrics
+    /// alone, drawing nothing. A radical places its index against the index's own ink when it is built (see
+    /// <see cref="SqrtBox"/>), so an index blank from the start would be laid out as an index with no ink; this
+    /// one is hidden only once the radical is built, so the layout is the visible index's.</summary>
+    private sealed class HideableBox(Box inner) : Box
     {
-        public override float Width => metrics.Width;
-        public override float Height => metrics.Height;
-        public override float Depth => metrics.Depth;
-        public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style) { }
+        public bool Hidden { get; set; }
+
+        public override float Width => inner.Width;
+        public override float Height => inner.Height;
+        public override float Depth => inner.Depth;
+
+        public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style)
+        {
+            if (!Hidden) inner.Draw(renderer, penX, baselineY, style);
+        }
     }
 
-    /// <summary>An index scene's <see cref="IndexClearance"/>, its glyph's rectangle taken from the join.</summary>
-    private static int IndexClearanceAt(string font, float size, string scene, Rendered r)
+    /// <summary>Where an index scene's index lies: the clear pixels between its ink and the glyph's
+    /// (<see cref="IndexClearance"/>), its ink's top row, leftmost and rightmost columns, the column the
+    /// radical's box starts in (the pixel holding its pen), and the bar's top row and first column, in surface
+    /// pixels.</summary>
+    private sealed record IndexPlacement(int Clear, int InkTop, int InkLeft, int InkRight, int BoxLeft, int BarTop, int BarStart);
+
+    /// <summary>An index scene's <see cref="IndexPlacement"/>, its glyph's rectangle taken from the join and
+    /// its index's ink found as <see cref="IndexClearance"/> finds it.</summary>
+    private static IndexPlacement IndexPlacementAt(string font, float size, string scene, Rendered r)
     {
         var style = new BoxStyle(FontPaths[font], size, new RGBAColor32(0, 0, 0, 255));
         var blank = BoxRasterizer.RenderToRgba(IndexScene(scene, style, blankIndex: true), style);
-        return IndexClearance(r.Image, blank, r.Join.GlyphX, r.Join.GlyphY, r.Join.BarStartX - r.Join.GlyphX, r.Join.GlyphRows);
+        int top = int.MaxValue, left = int.MaxValue, right = int.MinValue;
+        for (var i = 0; i < r.Image.Width * r.Image.Height; i++)
+        {
+            if (r.Image.Pixels[i * 4 + 3] <= blank.Pixels[i * 4 + 3]) continue;
+            int x = i % r.Image.Width, y = i / r.Image.Width;
+            top = Math.Min(top, y);
+            left = Math.Min(left, x);
+            right = Math.Max(right, x);
+        }
+        var clear = IndexClearance(r.Image, blank, r.Join.GlyphX, r.Join.GlyphY, r.Join.BarStartX - r.Join.GlyphX, r.Join.GlyphRows);
+        return new IndexPlacement(clear, top, left, right, (int)MathF.Floor(r.PenX), r.Join.FlagTopY, r.Join.BarStartX);
     }
 
     /// <summary>

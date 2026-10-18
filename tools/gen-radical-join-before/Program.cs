@@ -132,7 +132,7 @@ foreach (var (font, scene, size) in points)
         indexClear = IndexClearance(image, blank, barStart - glyph.Width, glyphY, glyph.Width, glyph.Height).ToString(inv);
     }
     rows.Append(CultureInfo.InvariantCulture,
-        $"        new(\"{font}\", \"{scene}\", {F(size)}, {path}, {F(sqrt.Height)}, {F(sqrt.Depth)}, {y - barBottom}, {barTop - 1 - above}, {CutOff(box, image, style)}, {indexClear}),\n");
+        $"        new(\"{font}\", \"{scene}\", {F(size)}, {path}, {F(sqrt.Height)}, {F(sqrt.Depth)}, {y - barBottom}, {barTop - 1 - above}, {CutOff(box, image, style)}, {indexClear}, {F(sqrt.Width)}),\n");
 }
 
 var output = $$"""
@@ -151,8 +151,9 @@ public sealed partial class RadicalJoinTests
     /// measured as <see cref="Rendered.ClearRowsUnderBar"/> does, those between the bar and the ink above
     /// it, measured as <see cref="Rendered.ClearRowsAboveBar"/> does, and the alpha the canvas
     /// <see cref="MathLayout.BoxRasterizer.RenderToRgba"/> drew the scene on cut off, measured as
-    /// <see cref="InkCutOff"/> does, and for the index scene the clear pixels between the index's ink and the
-    /// glyph's, measured as <see cref="IndexClearance"/> does. Floats are printed round-trip, so they are exact.
+    /// <see cref="InkCutOff"/> does, for the index scenes the clear pixels between the index's ink and the
+    /// glyph's, measured as <see cref="IndexClearance"/> does, and the radical's <see cref="MathLayout.Box.Width"/>.
+    /// Floats are printed round-trip, so they are exact.
     /// {{points.Count}} points.
     /// </summary>
     private static readonly BeforePoint[] BeforePoints =
@@ -162,7 +163,7 @@ public sealed partial class RadicalJoinTests
 
     private readonly record struct BeforePoint(
         string Font, string Scene, float Size, int Path, float Height, float Depth, int ClearRows, int ClearAbove,
-        long CutOff, int? IndexClear);
+        long CutOff, int? IndexClear, float Width);
 }
 
 """;
@@ -187,7 +188,9 @@ static long CutOff(Box box, RgbaImage canvas, BoxStyle style)
 
 // An index scene, or the same with its index blank: a box with the index's metrics that draws nothing, so
 // the layout is the same and the two renders differ by the index's ink alone. The parsed scenes are built
-// as the grammar builds \sqrt[n]{x}: the index parsed at script-script style.
+// as the grammar builds \sqrt[n]{x}: the index parsed at script-script style. The base commits lay the index
+// out by its metrics alone, so it can be blank from the start here; RadicalJoinTests, whose radical places
+// the index against its ink, hides it only once the radical is built.
 static Box IndexScene(string scene, BoxStyle style, bool blankIndex)
 {
     var ss = style.Smaller().Smaller();
