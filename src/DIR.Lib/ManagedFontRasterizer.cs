@@ -56,7 +56,7 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// <see cref="GlyphRastersKept"/> entries and <see cref="GlyphRasterBytesKept"/> bytes, evicted by
     /// generation (<see cref="BoundedCache{TKey, TValue}"/>).
     /// </summary>
-    private readonly BoundedCache<GlyphRasterKey, (GlyphBitmap Bitmap, TopSnap Snap)>? _glyphRasters;
+    private readonly BoundedCache<GlyphRasterKey, GlyphRaster>? _glyphRasters;
 
     /// <summary>
     /// Stretched glyphs (radicals, <c>\left..\right</c> delimiters, big operators) from
@@ -79,8 +79,18 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// <summary>The most bytes of stretched-glyph rasters a caching rasterizer keeps: 8 MiB.</summary>
     internal const long StretchyRasterBytesKept = 8L << 20;
 
+    // The keys and values are classes, not structs, on purpose: over reference types the cache runs
+    // generic code the runtime shares between them (the font table's ConcurrentDictionary has compiled
+    // most of it already), where a struct key or value has the dictionary compiled anew for it. On the
+    // first formula's tree build, struct keys cost a cold start about 7 ms and classes about 4; the key
+    // allocated per lookup is small beside the rasters a render allocates.
+
     /// <summary>A glyph raster's key (see <see cref="_glyphRasters"/>).</summary>
-    private readonly record struct GlyphRasterKey(string FontPath, float FontSize, int Codepoint, bool SnapTop);
+    private sealed record GlyphRasterKey(string FontPath, float FontSize, int Codepoint, bool SnapTop);
+
+    /// <summary>A kept glyph raster, and what its top snap learned (<see cref="TopSnap.None"/> where none
+    /// was asked for).</summary>
+    private sealed record GlyphRaster(GlyphBitmap Bitmap, TopSnap Snap);
 
     /// <summary>
     /// A stretched glyph's key: the font, the size, the code point, the height requested, the least height
@@ -90,7 +100,7 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// rest of the key fixes, so the flag is what the key needs; without it the radical
     /// <see cref="MathLayout.SqrtBox"/> measures unsnapped and then draws snapped would be one entry.
     /// </summary>
-    private readonly record struct StretchyRasterKey(string FontPath, float FontSize, int Codepoint, float RequestPx,
+    private sealed record StretchyRasterKey(string FontPath, float FontSize, int Codepoint, float RequestPx,
         float CoversFromPx, float? ExactPx, bool SnapTop);
 
     /// <summary>What <see cref="RasterizeStretchyVerticalCore"/> returns, kept whole.</summary>
@@ -128,7 +138,7 @@ public sealed class ManagedFontRasterizer : IDisposable
         (_glyphRasters?.Count ?? 0, _glyphRasters?.Bytes ?? 0, _stretchyRasters?.Count ?? 0, _stretchyRasters?.Bytes ?? 0);
 
     /// <summary><see cref="_glyphRasters"/>, or null where there is none or the test switch bypasses it.</summary>
-    private BoundedCache<GlyphRasterKey, (GlyphBitmap Bitmap, TopSnap Snap)>? GlyphRasters =>
+    private BoundedCache<GlyphRasterKey, GlyphRaster>? GlyphRasters =>
         _glyphRasters is { } cache && !BypassRasterCaches.Value ? cache : null;
 
     /// <summary><see cref="_stretchyRasters"/>, or null where there is none or the test switch bypasses it.</summary>
@@ -178,14 +188,20 @@ public sealed class ManagedFontRasterizer : IDisposable
         // is enough for the resolver's "render 'A'" probe and any Unicode-keyed draw of basic Latin.
         if (_type1Fonts.TryGetValue(fontPath, out var t1))
             return RenderType1(t1, ResolveType1Name(fontPath, t1, (uint)codepoint.Value), fontSize);
-        var cache = GlyphRasters;
+        if (GlyphRasters is not { } cache) return RenderCodepoint(fontPath, fontSize, codepoint);
         var key = new GlyphRasterKey(fontPath, fontSize, codepoint.Value, SnapTop: false);
-        if (cache is not null && cache.TryGet(key, out var kept)) return kept.Bitmap;
+        if (cache.TryGet(key, out var kept)) return kept.Bitmap;
+        var bitmap = RenderCodepoint(fontPath, fontSize, codepoint);
+        cache.Add(key, new GlyphRaster(bitmap, TopSnap.None));
+        return bitmap;
+    }
+
+    /// <summary><see cref="RasterizeGlyph"/> of an OpenType face, without the cache.</summary>
+    private GlyphBitmap RenderCodepoint(string fontPath, float fontSize, Rune codepoint)
+    {
         var font = GetOrLoad(fontPath);
         var gid = font.GetGlyphId((uint)codepoint.Value);
-        var bitmap = gid == 0 ? default : Render(font, gid, fontSize);
-        cache?.Add(key, (bitmap, TopSnap.None));
-        return bitmap;
+        return gid == 0 ? default : Render(font, gid, fontSize);
     }
 
     /// <summary>
@@ -215,18 +231,25 @@ public sealed class ManagedFontRasterizer : IDisposable
     {
         snap = TopSnap.None;
         if (_type1Fonts.ContainsKey(fontPath)) return RasterizeGlyph(fontPath, fontSize, codepoint);
-        var cache = GlyphRasters;
+        if (GlyphRasters is not { } cache) return RenderCodepointTopSnapped(fontPath, fontSize, codepoint, out snap);
         var key = new GlyphRasterKey(fontPath, fontSize, codepoint.Value, SnapTop: true);
-        if (cache is not null && cache.TryGet(key, out var kept))
+        if (cache.TryGet(key, out var kept))
         {
             snap = kept.Snap;
             return kept.Bitmap;
         }
+        var bitmap = RenderCodepointTopSnapped(fontPath, fontSize, codepoint, out snap);
+        cache.Add(key, new GlyphRaster(bitmap, snap));
+        return bitmap;
+    }
+
+    /// <summary><see cref="RasterizeGlyphTopSnapped"/> of an OpenType face, without the cache.</summary>
+    private GlyphBitmap RenderCodepointTopSnapped(string fontPath, float fontSize, Rune codepoint, out TopSnap snap)
+    {
+        snap = TopSnap.None;
         var font = GetOrLoad(fontPath);
         var gid = font.GetGlyphId((uint)codepoint.Value);
-        var bitmap = gid == 0 ? default : RenderTopSnapped(font, gid, fontSize, out snap);
-        cache?.Add(key, (bitmap, snap));
-        return bitmap;
+        return gid == 0 ? default : RenderTopSnapped(font, gid, fontSize, out snap);
     }
 
     /// <summary>
