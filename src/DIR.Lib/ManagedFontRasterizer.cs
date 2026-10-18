@@ -438,7 +438,8 @@ public sealed class ManagedFontRasterizer : IDisposable
         if (construction.Assembly is { } asm)
         {
             variantGlyphId = baseGid;
-            return ComposeVerticalAssembly(font, asm, math.MinConnectorOverlap, unitsPerEm, fontSize, requiredFUnits,
+            return ComposeVerticalAssembly(font, asm, math.MinConnectorOverlap, unitsPerEm, fontSize,
+                requiredHeightPx * unitsPerEm / fontSize,
                 snapTop, out snap, out parts);
         }
 
@@ -461,164 +462,187 @@ public sealed class ManagedFontRasterizer : IDisposable
     }
 
     /// <summary>
-    /// Compose a stretchy vertical glyph from an OT MATH assembly recipe.
-    /// Stacks the parts (extenders repeated as needed) into a single RGBA
-    /// bitmap, using the maximum permissible overlap between adjacent pieces
-    /// — clamped to the table's <c>MinConnectorOverlap</c>. Parts are listed
-    /// bottom-up by spec; we draw from the bottom of the canvas upward.
-    ///
-    /// <para>This is a pragmatic "stack the rasterized bitmaps with FUnit-derived
-    /// overlap" implementation. Visible seams between extender repeats may
-    /// occur because the part bitmaps are positioned by their visible-ink
-    /// extents rather than by FullAdvance + bearings — the parts were designed
-    /// to mate seamlessly, but the math depends on subpixel-precise placement.
-    /// Adequate for renderer-grade output at typical math sizes.</para>
+    /// Compose a stretchy vertical glyph from an OpenType MATH assembly recipe, as the specification (and
+    /// MathML Core after it) lays one out. Parts are listed bottom-up.
+    /// <list type="number">
+    /// <item>Every extender appears the same number of times, r, from none upward: the fewest whose height
+    /// reaches the request with every join at the table's <c>MinConnectorOverlap</c>, the least it may
+    /// overlap. Taking the most the connectors allow instead (what this did) lets an extender whose
+    /// connectors are as long as itself add next to nothing a copy: STIX Two Math's radical extender
+    /// (FullAdvance 651, connectors 650) added one font unit, so the loop met its cap a little over two em
+    /// tall and the radical came out shorter than its radicand. And always one copy of each extender put
+    /// DejaVu Sans's parenthesis at 3.5 em where the two ends alone make 2.4.</item>
+    /// <item>The overlap left over, the height past the request, is spread evenly across the joins, each
+    /// held between <c>MinConnectorOverlap</c> and what its two connectors allow, so the glyph lands on the
+    /// request. It is shorter only at the cap, and taller only where no extender at all already overshoots
+    /// (the assembly's minimum).</item>
+    /// <item>The parts are placed in font units, each one's ink box starting where the one below ends less
+    /// the join's overlap, and drawn as one outline at those fractional offsets. A join is then a union of
+    /// overlapping ink, never two antialiased edges stacked on whole pixels, so it shows no seam.</item>
+    /// </list>
+    /// The parts' design outlines are drawn, not hinted ones: a hinter fits each part to the pixel grid on
+    /// its own, which moves its ends, and they would no longer meet where the font units say.
+    /// <para>With <paramref name="snapTop"/> the whole outline moves up by under half a pixel so the top of
+    /// the topmost part (the radical's flag) lands on a pixel row, and the stroke at its top-right is
+    /// measured on that part alone, as <see cref="RenderTopSnapped"/> does for a single glyph. Moving every
+    /// part by the one shift keeps the joins where they were.</para>
     /// </summary>
+    /// <param name="requiredUnits">The height asked for, in font units.</param>
+    /// <param name="placed">Each part as drawn, bottom-up: its ink box in the bitmap's rows (Y down).</param>
     private static GlyphBitmap ComposeVerticalAssembly(
         OpenTypeFont font, Tables.OpenTypeMath.MathGlyphAssembly asm,
-        ushort minOverlap, ushort unitsPerEm, float fontSize, int requiredFUnits,
+        ushort minOverlap, ushort unitsPerEm, float fontSize, float requiredUnits,
         bool snapTop, out TopSnap snap, out AssemblyPart[]? placed)
     {
         snap = TopSnap.None;
         placed = null;
         if (asm.Parts.Count == 0) return default;
 
-        // Compute the total FUnit-space advance with one copy of each part
-        // and max overlap between adjacent pairs.
-        var advanceWithOnce = 0;
-        for (var i = 0; i < asm.Parts.Count; i++) advanceWithOnce += asm.Parts[i].FullAdvance;
+        var sequence = AssemblySequence(asm, minOverlap, requiredUnits);
+        var overlaps = SpreadOverlaps(sequence, minOverlap, requiredUnits);
 
-        var startOverlap = 0;
-        for (var i = 0; i < asm.Parts.Count - 1; i++)
-            startOverlap += ClampedOverlap(asm.Parts[i], asm.Parts[i + 1], minOverlap);
-        var totalFUnits = advanceWithOnce - startOverlap;
-
-        // Repeat the first extender until we reach the target.
-        var extenderRepeats = new int[asm.Parts.Count];
-        for (var i = 0; i < asm.Parts.Count; i++) extenderRepeats[i] = 1;
-
-        var firstExtender = -1;
-        for (var i = 0; i < asm.Parts.Count; i++)
-            if (asm.Parts[i].IsExtender) { firstExtender = i; break; }
-
-        if (firstExtender >= 0)
-        {
-            const int safetyCap = 64;  // assemblies of >64 extenders are pathological
-            while (totalFUnits < requiredFUnits && extenderRepeats[firstExtender] < safetyCap)
-            {
-                var p = asm.Parts[firstExtender];
-                var selfOv = ClampedOverlap(p, p, minOverlap);
-                totalFUnits += p.FullAdvance - selfOv;
-                extenderRepeats[firstExtender]++;
-            }
-        }
-
-        // Materialise the runtime sequence (extenders unrolled) and rasterize each
-        // unique part once — extenders share a single bitmap across copies.
-        var totalParts = 0;
-        for (var i = 0; i < asm.Parts.Count; i++) totalParts += extenderRepeats[i];
-        var sequence = new Tables.OpenTypeMath.MathGlyphPart[totalParts];
-        var sIdx = 0;
-        for (var i = 0; i < asm.Parts.Count; i++)
-            for (var r = 0; r < extenderRepeats[i]; r++)
-                sequence[sIdx++] = asm.Parts[i];
-
-        var bitmapCache = new Dictionary<ushort, GlyphBitmap>();
-        var bitmaps = new GlyphBitmap[sequence.Length];
-
-        // Snapping: only the topmost part (drawn last, at canvas row 0, and the
-        // one carrying the radical's flag) is snapped. Moving the other parts by
-        // the same shift would not keep them in one sub-pixel phase anyway: the
-        // stacking below places each part by its bitmap's height, not by where
-        // its outline sits in it. And it would change those heights. STIX Two
-        // Math's radical extender (FullAdvance 651, connectors 650) overlaps
-        // itself by its whole bitmap height, so the loop above repeats it to the
-        // 64-copy cap and each copy adds nothing; a shift that gives it one more
-        // row adds 63 rows to the radical.
+        // Each part's ink box, from its outline: the part is placed by where its ink starts, which for these
+        // parts is its FullAdvance tall (STIX Two Math's and DejaVu Sans's alike, to a unit).
+        var inkBottom = new float[sequence.Length];
+        var bottoms = new float[sequence.Length];
+        var boundsCache = new Dictionary<ushort, (float YMin, float YMax)>();
         for (var i = 0; i < sequence.Length; i++)
         {
             var gid = sequence[i].GlyphId;
-            if (snapTop && i == sequence.Length - 1)
+            if (!boundsCache.TryGetValue(gid, out var bounds))
             {
-                bitmaps[i] = RenderTopSnapped(font, gid, fontSize, out snap);
-                continue;
+                var sink = new TopEdgeSink();
+                font.DrawGlyph(gid, sink);
+                bounds = sink.HasPoints ? (sink.YMin, sink.YMax) : (0f, sequence[i].FullAdvance);
+                boundsCache[gid] = bounds;
             }
-            if (!bitmapCache.TryGetValue(gid, out var bm))
-            {
-                bm = Render(font, gid, fontSize);
-                bitmapCache[gid] = bm;
-            }
-            bitmaps[i] = bm;
+            inkBottom[i] = bounds.YMin;
+            bottoms[i] = i == 0 ? 0f : bottoms[i - 1] + sequence[i - 1].FullAdvance - overlaps[i - 1];
         }
 
-        // Pixel-space overlaps between adjacent sequence positions.
-        var overlapPx = new int[Math.Max(0, sequence.Length - 1)];
-        for (var i = 0; i < sequence.Length - 1; i++)
+        var scale = fontSize / unitsPerEm;
+        var top = sequence.Length - 1;
+        var topUnits = bottoms[top] + boundsCache[sequence[top].GlyphId].YMax - inkBottom[top];
+        void Walk(IGlyphSink sink, float shift)
         {
-            var ovFunits = ClampedOverlap(sequence[i], sequence[i + 1], minOverlap);
-            overlapPx[i] = (int)Math.Round(ovFunits * fontSize / unitsPerEm);
+            for (var i = 0; i < sequence.Length; i++)
+                font.DrawGlyph(sequence[i].GlyphId, new ScaleShiftSink(sink, scale, (bottoms[i] - inkBottom[i]) * scale + shift));
         }
 
-        // Canvas dimensions:
-        //   width  = the bbox spanning every part's inked extent — for each
-        //            part, its ink lives in [BearingX, BearingX + Width).
-        //            Different parts often have different BearingX values
-        //            (extender bitmaps are narrower than hook bitmaps), so
-        //            we take the union, not just the max width.
-        //   height = sum of part heights minus per-pair overlaps.
-        // Parts are positioned by their BearingX: the font designer assigned
-        // each part a BearingX that makes the parts mate seamlessly when
-        // drawn at the same glyph-origin. Centring bitmaps horizontally
-        // (the older bug) misaligned wider hooks against narrower extenders,
-        // producing two visible vertical strokes for paren assemblies — the
-        // hook's ink at canvas-x=0 and the extender's ink at canvas-x=~half-width.
-        var height = 0;
-        var minBearing = int.MaxValue;
-        var maxRight = int.MinValue;
-        for (var i = 0; i < bitmaps.Length; i++)
+        // The bottom of the ink on a row boundary, or the top on one when snapping (see RenderTopSnapped).
+        var shiftPx = 0f;
+        float row = 0, strokeBottomPx = float.NaN;
+        if (snapTop)
         {
-            height += bitmaps[i].Height;
-            if (bitmaps[i].BearingX < minBearing) minBearing = bitmaps[i].BearingX;
-            var right = bitmaps[i].BearingX + bitmaps[i].Width;
-            if (right > maxRight) maxRight = right;
+            var topPx = topUnits * scale;
+            row = MathF.Round(topPx);
+            if (!(row - topPx is >= 0f and <= SnapInsetPx)) shiftPx = row - SnapInsetPx - topPx;
+            var stroke = new TopStrokeSink();
+            font.DrawGlyph(sequence[top].GlyphId, stroke);
+            var strokeUnits = stroke.TopRunBottom(stroke.XMax - 0.01f * unitsPerEm);
+            strokeBottomPx = (strokeUnits + bottoms[top] - inkBottom[top]) * scale + shiftPx;
         }
-        for (var i = 0; i < overlapPx.Length; i++) height -= overlapPx[i];
-        var width = maxRight - minBearing;
-        if (height <= 0) height = 1;
-        if (width <= 0) width = 1;
 
-        // Composite bottom-up: parts[0] sits at the bottom of the canvas.
-        var canvas = new RgbaImage(width, height);
-        canvas.Clear(new RGBAColor32(0, 0, 0, 0));
+        var gray = Rast.SmoothRasterizer.Rasterize(sink => Walk(sink, shiftPx), pixelsPerEm: 1f, unitsPerEm: 1);
+        if (gray.IsEmpty) return default;
+        if (snapTop) snap = new TopSnap(gray.Top - (int)row, StrokeRows(row, strokeBottomPx));
 
-        var pen = height;  // bottom edge
         placed = new AssemblyPart[sequence.Length];
         for (var i = 0; i < sequence.Length; i++)
         {
-            var bm = bitmaps[i];
-            pen -= bm.Height;
-            placed[i] = new AssemblyPart(sequence[i].GlyphId, sequence[i].IsExtender, pen, pen + bm.Height);
-            // Translate by minBearing so the smallest BearingX lands at x=0.
-            var x = bm.BearingX - minBearing;
-            if (bm.Rgba is { Length: > 0 })
-                canvas.BlitRgba(x, pen, bm.Rgba, bm.Width, bm.Height);
-            // Slide back down by overlap so the next part sits inside this one's footprint.
-            if (i < overlapPx.Length) pen += overlapPx[i];
+            var bottomY = gray.Top - (bottoms[i] * scale + shiftPx);
+            placed[i] = new AssemblyPart(sequence[i].GlyphId, sequence[i].IsExtender,
+                bottomY - sequence[i].FullAdvance * scale, bottomY);
         }
 
         // BearingY = height keeps the whole thing above the baseline by default;
         // callers that want a math-axis-centred placement adjust their pen.
-        return new GlyphBitmap(canvas.Pixels, width, height, BearingX: minBearing, BearingY: height, AdvanceX: 0f);
+        var bitmap = FromGray(gray, advanceX: 0f);
+        return bitmap with { BearingY = bitmap.Height };
+    }
+
+    /// <summary>The most copies of the extenders an assembly is given; past it the glyph is short of the
+    /// request. A hundred copies of the shortest extender in the fonts here is over 30 em.</summary>
+    private const int MaxExtenderRepeats = 100;
+
+    /// <summary>
+    /// The assembly's parts bottom-up with every extender repeated r times: the fewest, from none, whose
+    /// height with every join at <paramref name="minOverlap"/> (the most an assembly can be stretched to)
+    /// reaches <paramref name="requiredUnits"/>, up to <see cref="MaxExtenderRepeats"/>.
+    /// </summary>
+    private static Tables.OpenTypeMath.MathGlyphPart[] AssemblySequence(
+        Tables.OpenTypeMath.MathGlyphAssembly asm, ushort minOverlap, float requiredUnits)
+    {
+        int fixedAdvance = 0, fixedParts = 0, extenderAdvance = 0, extenderParts = 0;
+        foreach (var p in asm.Parts)
+        {
+            if (p.IsExtender) { extenderAdvance += p.FullAdvance; extenderParts++; }
+            else { fixedAdvance += p.FullAdvance; fixedParts++; }
+        }
+
+        var repeats = 0;
+        if (extenderParts > 0)
+        {
+            // Height at r copies, least overlap: fixed + r * ext - minOverlap * (parts(r) - 1).
+            var perRepeat = extenderAdvance - minOverlap * extenderParts;
+            var atNone = fixedAdvance - minOverlap * (fixedParts - 1);
+            if (perRepeat > 0 && requiredUnits > atNone)
+                repeats = Math.Min(MaxExtenderRepeats, (int)Math.Ceiling((requiredUnits - atNone) / perRepeat));
+        }
+
+        var sequence = new List<Tables.OpenTypeMath.MathGlyphPart>(fixedParts + repeats * extenderParts);
+        foreach (var p in asm.Parts)
+            for (var r = p.IsExtender ? repeats : 1; r > 0; r--)
+                sequence.Add(p);
+        return [.. sequence];
     }
 
     /// <summary>
-    /// Permissible overlap between part <paramref name="lower"/> (below) and
-    /// part <paramref name="upper"/> (above), in FUnits. Per OT MATH spec the
-    /// overlap may be in [MinConnectorOverlap, max], where
-    /// max = min(lower.EndConnectorLength, upper.StartConnectorLength). We
-    /// pick the maximum to keep the assembly compact.
+    /// The overlap at each join of <paramref name="sequence"/>, in font units, so that the parts' advances
+    /// less the overlaps come to <paramref name="requiredUnits"/>: the same at every join, each held between
+    /// <paramref name="minOverlap"/> and what its two connectors allow (<see cref="MaxOverlap"/>). Where even
+    /// the most overlap leaves the parts taller than the request, every join takes its most; where even the
+    /// least leaves them shorter (at the cap), its least.
     /// </summary>
-    private static int ClampedOverlap(
+    private static float[] SpreadOverlaps(Tables.OpenTypeMath.MathGlyphPart[] sequence, ushort minOverlap, float requiredUnits)
+    {
+        var joins = Math.Max(0, sequence.Length - 1);
+        var overlaps = new float[joins];
+        if (joins == 0) return overlaps;
+
+        var advance = 0f;
+        foreach (var p in sequence) advance += p.FullAdvance;
+        var wanted = advance - requiredUnits;
+
+        // Every join at min(minOverlap + t, its most); find t by bisection, the total being monotonic in it.
+        float Total(float t)
+        {
+            var sum = 0f;
+            for (var i = 0; i < joins; i++) sum += MathF.Min(minOverlap + t, MaxOverlap(sequence[i], sequence[i + 1], minOverlap));
+            return sum;
+        }
+        var widest = 0f;
+        for (var i = 0; i < joins; i++) widest = MathF.Max(widest, MaxOverlap(sequence[i], sequence[i + 1], minOverlap) - minOverlap);
+        float lo = 0f, hi = widest;
+        if (Total(hi) <= wanted) lo = hi;
+        else if (Total(0f) < wanted)
+            for (var k = 0; k < 40; k++)
+            {
+                var mid = (lo + hi) / 2;
+                if (Total(mid) < wanted) lo = mid; else hi = mid;
+            }
+
+        for (var i = 0; i < joins; i++)
+            overlaps[i] = MathF.Min(minOverlap + lo, MaxOverlap(sequence[i], sequence[i + 1], minOverlap));
+        return overlaps;
+    }
+
+    /// <summary>
+    /// The most part <paramref name="lower"/> (below) and part <paramref name="upper"/> (above) may overlap,
+    /// in font units: the shorter of the two connectors that meet, by the OpenType MATH specification, and
+    /// never less than the table's <paramref name="minOverlap"/>.
+    /// </summary>
+    private static int MaxOverlap(
         Tables.OpenTypeMath.MathGlyphPart lower,
         Tables.OpenTypeMath.MathGlyphPart upper,
         ushort minOverlap)
@@ -1142,13 +1166,16 @@ public sealed class ManagedFontRasterizer : IDisposable
         }
     }
 
-    /// <summary>Collects the highest Y an outline reaches: its on-curve points and the interior
+    /// <summary>Collects the highest and lowest Y an outline reaches: its on-curve points and the interior
     /// extrema of its curves (a control point above the curve is not ink).</summary>
     private sealed class TopEdgeSink : IGlyphSink
     {
         private float _y;
 
         public float YMax { get; private set; } = float.NegativeInfinity;
+
+        /// <summary>The lowest Y, found the same way: an assembly part is placed by where its ink starts.</summary>
+        public float YMin { get; private set; } = float.PositiveInfinity;
 
         public bool HasPoints => !float.IsNegativeInfinity(YMax);
 
@@ -1209,6 +1236,7 @@ public sealed class ManagedFontRasterizer : IDisposable
         private void Note(float y, bool keepCurrent = false)
         {
             if (y > YMax) YMax = y;
+            if (y < YMin) YMin = y;
             if (!keepCurrent) _y = y;
         }
     }
