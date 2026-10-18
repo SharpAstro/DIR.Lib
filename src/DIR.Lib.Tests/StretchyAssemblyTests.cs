@@ -117,9 +117,10 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
 
     /// <summary>
     /// What a request gets is the smallest candidate that covers it, in the order OpenType MATH sets them:
-    /// the unstretched glyph, then each size variant, then the assembly, which counts as covering at
-    /// the larger of the request and its own minimum (no extender, every join at the most overlap the
-    /// connectors allow). Swept at 32 px from 8 px to 12 em.
+    /// the unstretched glyph, then each size variant, then the assembly. The assembly's candidates are its
+    /// extender counts: r copies of every extender reach the heights from <see cref="AssemblyRange"/>'s
+    /// least to its most, so it takes the fewest copies whose most covers the request, at the request or,
+    /// where the request falls short of that count's least, at the least. Swept at 32 px from 8 px to 12 em.
     /// </summary>
     [Theory]
     [MemberData(nameof(ChoiceCases))]
@@ -129,11 +130,10 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
         var path = FontPaths[font];
         var rune = new Rune(codepoint);
         var construction = Rasterizer.GetVerticalMathConstruction(path, rune).ShouldNotBeNull();
-        var (unitsPerEm, minOverlap) = Rasterizer.GetMathStretchInfo(path).ShouldNotBeNull();
-        var scale = size / unitsPerEm;
+        var extenders = construction.Assembly.ShouldNotBeNull().Parts.Count(p => p.IsExtender);
+        var (unitsPerEm, _) = Rasterizer.GetMathStretchInfo(path).ShouldNotBeNull();
         var baseHeight = Rasterizer.RasterizeGlyph(path, size, rune).Height;
         Rasterizer.RasterizeStretchyVertical(path, size, rune, 1f, out var baseGid);
-        var asmMinimum = AssemblyMinimum(construction.Assembly.ShouldNotBeNull(), minOverlap) * scale;
         var failures = new List<string>();
 
         for (var request = 8f; request <= 12 * size; request += 1.37f)
@@ -151,25 +151,46 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
             else expected = 0;
             var got = parts is not null ? 0 : gid;
 
-            string Name(uint g) => g == 0 ? $"the assembly at {MathF.Max(request, asmMinimum):F1} px" : $"glyph {g}";
             if (got != expected)
-                failures.Add($"request {request:F2}: expected {Name(expected)}, got {(got == 0 ? $"the assembly, {bitmap.Height} px" : Name(got))}");
-            else if (got == 0 && bitmap.Height > MathF.Ceiling(MathF.Max(request, asmMinimum)) + 1)
-                failures.Add($"request {request:F2}: expected {Name(0)}, got the assembly at {bitmap.Height} px");
+            {
+                failures.Add($"request {request:F2}: expected {(expected == 0 ? "the assembly" : $"glyph {expected}")}, " +
+                             $"got {(got == 0 ? $"the assembly, {bitmap.Height} px" : $"glyph {got}")}");
+                continue;
+            }
+            if (got != 0) continue;
+            var (copies, height) = ExpectedAssembly(path, size, rune, request);
+            var drawnCopies = parts!.Count(p => p.IsExtender) / extenders;
+            if (drawnCopies != copies || Math.Abs(bitmap.Height - height) > 1f)
+                failures.Add($"request {request:F2}: expected {copies} copies of the extenders, {height:F2} px; " +
+                             $"got {drawnCopies}, {bitmap.Height} px");
         }
-        failures.ShouldBeEmpty($"{font} U+{codepoint:X4}, assembly minimum {asmMinimum:F1} px:" + Environment.NewLine
-                               + string.Join(Environment.NewLine, failures));
+        failures.ShouldBeEmpty($"{font} U+{codepoint:X4}:" + Environment.NewLine + string.Join(Environment.NewLine, failures));
     }
 
-    /// <summary>The assembly's shortest height in font units: each non-extender part once, no extender, every
-    /// join at the most overlap its connectors allow (never less than the table's minimum).</summary>
-    private static int AssemblyMinimum(SharpAstro.Fonts.Tables.OpenTypeMath.MathGlyphAssembly asm, ushort minOverlap)
+    /// <summary>The heights, in font units, an assembly with <paramref name="copies"/> of every extender can
+    /// take: from every join at the most overlap its two connectors allow (never under the table's minimum)
+    /// to every join at the table's minimum.</summary>
+    private static (int Least, int Most) AssemblyRange(
+        SharpAstro.Fonts.Tables.OpenTypeMath.MathGlyphAssembly asm, ushort minOverlap, int copies)
     {
-        var ends = asm.Parts.Where(p => !p.IsExtender).ToList();
-        var height = ends.Sum(p => p.FullAdvance);
-        for (var i = 0; i < ends.Count - 1; i++)
-            height -= Math.Max(minOverlap, Math.Min(ends[i].EndConnectorLength, ends[i + 1].StartConnectorLength));
-        return height;
+        var parts = asm.Parts.SelectMany(p => Enumerable.Repeat(p, p.IsExtender ? copies : 1)).ToList();
+        var advance = parts.Sum(p => p.FullAdvance);
+        var most = 0;
+        for (var i = 0; i < parts.Count - 1; i++)
+            most += Math.Max(minOverlap, Math.Min(parts[i].EndConnectorLength, parts[i + 1].StartConnectorLength));
+        return (advance - most, advance - minOverlap * (parts.Count - 1));
+    }
+
+    /// <summary>The fewest copies of the extenders whose range reaches <paramref name="request"/>, and the
+    /// height in pixels that count gives it: the request, or the count's least where that is taller.</summary>
+    private static (int Copies, float HeightPx) ExpectedAssembly(string path, float size, Rune rune, float request)
+    {
+        var asm = Rasterizer.GetVerticalMathConstruction(path, rune)!.Assembly!;
+        var (unitsPerEm, minOverlap) = Rasterizer.GetMathStretchInfo(path)!.Value;
+        var units = request * unitsPerEm / size;
+        var copies = 0;
+        while (AssemblyRange(asm, minOverlap, copies).Most < units) copies++;
+        return (copies, MathF.Max(units, AssemblyRange(asm, minOverlap, copies).Least) * size / unitsPerEm);
     }
 
     // ── the composition ─────────────────────────────────────────────────
@@ -178,24 +199,32 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
     [
         new("STIX2Math", 0x221A, 100f), new("STIX2Math", 0x221A, 151.3f), new("STIX2Math", 0x221A, 237.6f),
         new("STIX2Math", 0x221A, 400f), new("STIX2Math", '(', 150.5f), new("STIX2Math", '{', 222.2f),
+        new("STIX2Math", '{', 138.15f),
         new("DejaVuSans", '(', 120f), new("DejaVuSans", '(', 201.7f), new("DejaVuSans", '[', 333.3f),
         new("DejaVuSans", '{', 250.4f),
     ];
 
     /// <summary>
     /// For a request between the assembly's minimum and its cap, the composed glyph lands within one pixel of
-    /// the request: the extenders are counted with the table's least overlap, and what is left over is
-    /// spread across the joins. At 32 px.
+    /// the height its extender count can reach nearest the request: the extenders are counted with the
+    /// table's least overlap, and what is left over is spread across the joins, so wherever the joins have
+    /// room the glyph is the request. Where they have none it is the next height the assembly can reach:
+    /// DejaVu Sans's connectors are exactly its <c>MinConnectorOverlap</c>, 40 units, so each copy of an
+    /// extender adds a fixed 1.17 em; and STIX Two Math's brace at 138.15 px falls between its no-extender
+    /// most (137.5 px) and its one-copy least (140.8 px). At 32 px.
     /// </summary>
     [Theory]
     [MemberData(nameof(CompositionCases))]
     public void TheComposedHeightLandsOnTheRequest(string font, int codepoint, float request)
     {
-        var bitmap = Rasterizer.RasterizeStretchyVerticalWithParts(FontPaths[font], 32f, new Rune(codepoint), request, out var parts);
+        var rune = new Rune(codepoint);
+        var bitmap = Rasterizer.RasterizeStretchyVerticalWithParts(FontPaths[font], 32f, rune, request, out var parts);
         parts.ShouldNotBeNull("the request should need the assembly");
-        output.WriteLine($"{font} U+{codepoint:X4}: request {request} px, composed {bitmap.Height} px from {parts.Length} parts, " +
-                         $"{parts.Count(p => p.IsExtender)} extenders");
-        Math.Abs(bitmap.Height - request).ShouldBeLessThanOrEqualTo(1f);
+        var (copies, height) = ExpectedAssembly(FontPaths[font], 32f, rune, request);
+        output.WriteLine($"{font} U+{codepoint:X4}: request {request} px, composed {bitmap.Height} px from {parts.Length} parts " +
+                         $"({copies} copies of the extenders), which reach {height:F2} px");
+        if (font == "STIX2Math" && request != 138.15f) height.ShouldBe(request, 1e-3f, "the joins should have room to reach the request");
+        Math.Abs(bitmap.Height - height).ShouldBeLessThanOrEqualTo(1f);
     }
 
     // ── seams ───────────────────────────────────────────────────────────
