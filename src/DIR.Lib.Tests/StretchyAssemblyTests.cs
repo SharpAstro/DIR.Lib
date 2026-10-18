@@ -372,6 +372,91 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
         jumps.ShouldBeEmpty(string.Join(Environment.NewLine, jumps));
     }
 
+    // ── pairs ───────────────────────────────────────────────────────────
+
+    /// <summary>Content of a given height and depth that draws nothing, for a pair to be sized to.</summary>
+    private sealed class Strut(float width, float height, float depth) : Box
+    {
+        public override float Width => width;
+        public override float Height => height;
+        public override float Depth => depth;
+        public override void Draw(RgbaImageRenderer renderer, float penX, float baselineY, BoxStyle style) { }
+    }
+
+    public static IEnumerable<TheoryDataRow<string, BracketKind>> PairCases() =>
+        from font in new[] { "STIX2Math", "DejaVuSans" }
+        from kind in new[] { BracketKind.Paren, BracketKind.Square, BracketKind.Curly }
+        select new TheoryDataRow<string, BracketKind>(font, kind);
+
+    /// <summary>
+    /// A pair's delimiters share one height. Each side's glyph is chosen on its own, and the two need not
+    /// come out alike: DejaVu Sans's <c>[</c> and <c>]</c> have parts of different advances (the extender
+    /// 2445 units against 2430, the ends 2421 and 2417 against 2406 and 2417), so one request can take a
+    /// different copy count, or a different candidate where nothing fits, on each side (at 16 px, asked
+    /// for 150 px, <c>[</c> drew 151 rows and <c>]</c> 169 under the squash); STIX Two Math's braces end in
+    /// connectors of different lengths, so where their joins run out of room they land a few rows apart.
+    /// Swept from 1 em to 12 em in 1.5 px steps at 12, 16 and 32 px, a <see cref="BracketBox"/> around
+    /// content centred on the axis: its two delimiters' ink spans the same rows.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(PairCases))]
+    public void APairsDelimitersShareOneHeight(string font, BracketKind kind)
+    {
+        var failures = new List<string>();
+        foreach (var size in new[] { 12f, 16f, 32f })
+        {
+            var style = new BoxStyle(FontPaths[font], size, Ink);
+            for (var request = size; request <= 12 * size; request += 1.5f)
+            {
+                var content = new Strut(0.5f * size, style.AxisHeight + request / 2, MathF.Max(0f, request / 2 - style.AxisHeight));
+                var image = BoxRasterizer.RenderToRgba(new BracketBox(content, kind, style), style);
+                var (left, right) = DelimiterRowSpans(image);
+                if (left != right)
+                    failures.Add($"{size} px, request {request:F1}: rows {left.Top}..{left.Bottom} on the left, {right.Top}..{right.Bottom} on the right");
+            }
+        }
+        failures.ShouldBeEmpty($"{font} {kind}, {failures.Count} requests:" + Environment.NewLine + string.Join(Environment.NewLine, failures));
+    }
+
+    public static IEnumerable<TheoryDataRow<string, string, float>> MixedPairCases() =>
+        from font in new[] { "STIX2Math", "DejaVuSans" }
+        from latex in new[]
+        {
+            @"[\frac{a}{b}, c)", @"[\frac{\frac{a}{b}}{c}, d)", @"(\frac{\frac{\frac{a}{b}}{c}}{d}, e]",
+            @"\lfloor \frac{\frac{a}{b}}{c} \rfloor",
+        }
+        from size in new[] { 12f, 16f, 32f }
+        select new TheoryDataRow<string, string, float>(font, latex, size);
+
+    /// <summary>
+    /// The same for a pair of two kinds, the half-open intervals and the named pairs, which a
+    /// <see cref="BracketBox"/> cannot draw: the opening and the closing delimiter's ink spans the same rows.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(MixedPairCases))]
+    public void AMixedPairsDelimitersShareOneHeight(string font, string latex, float size)
+    {
+        var style = new BoxStyle(FontPaths[font], size, Ink);
+        var image = BoxRasterizer.RenderToRgba(Parse(latex, style), style);
+        var (left, right) = DelimiterRowSpans(image);
+        output.WriteLine($"{font} {latex} at {size} px: rows {left.Top}..{left.Bottom} and {right.Top}..{right.Bottom}");
+        right.ShouldBe(left, "the closing delimiter's rows against the opening one's");
+    }
+
+    /// <summary>The rows the leftmost and the rightmost run of inked columns span: a pair's delimiters, with
+    /// the content between them.</summary>
+    private static ((int Top, int Bottom) Left, (int Top, int Bottom) Right) DelimiterRowSpans(RgbaImage image)
+    {
+        bool Inked(int x) => Enumerable.Range(0, image.Height).Any(y => image.Pixels[(y * image.Width + x) * 4 + 3] > 0);
+        var leftStart = Enumerable.Range(0, image.Width).First(Inked);
+        var leftEnd = leftStart;
+        while (Inked(leftEnd)) leftEnd++;
+        var rightEnd = Enumerable.Range(0, image.Width).Last(Inked) + 1;
+        var rightStart = rightEnd - 1;
+        while (Inked(rightStart - 1)) rightStart--;
+        return (InkRowSpan(image, leftStart, leftEnd), InkRowSpan(image, rightStart, rightEnd));
+    }
+
     // ── the choice ──────────────────────────────────────────────────────
 
     public static IEnumerable<TheoryDataRow<string, int>> ChoiceCases() =>
