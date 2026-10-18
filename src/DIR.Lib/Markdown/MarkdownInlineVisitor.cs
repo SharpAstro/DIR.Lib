@@ -706,14 +706,15 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
             }
 
             // Collapse: drop any intervening unpaired openers (they didn't
-            // find a match, so they revert to literal in the rewrite step
-            // below) and wrap the content between opener and this marker
-            // in an MdEmphasis.
+            // find a match) and wrap the content between opener and this
+            // marker in an MdEmphasis. Those openers are text, and are made
+            // text here: the rewrite below sees the top level only, so one
+            // left in the content reached the public AST as a marker.
             int openerOutputIdx = openStack[matchIdx].Index;
             openStack.RemoveRange(matchIdx, openStack.Count - matchIdx);
             var content = new List<MdInline>(output.Count - openerOutputIdx - 1);
             for (int k = openerOutputIdx + 1; k < output.Count; k++)
-                content.Add(output[k]);
+                content.Add(output[k] is MdStarMarker unpaired ? MarkerText(unpaired) : output[k]);
             output.RemoveRange(openerOutputIdx, output.Count - openerOutputIdx);
             output.Add(new MdEmphasis(marker.Level, content));
         }
@@ -723,13 +724,17 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
         for (int i = 0; i < output.Count; i++)
         {
             if (output[i] is MdStarMarker m)
-                output[i] = new MdLiteral(m.Level switch { 3 => "***", 2 => "**", _ => "*" });
+                output[i] = MarkerText(m);
         }
 
         return output;
     }
 
     // ── Span-list assembly (epsilon-base + cons recursion) ────────────
+    /// <summary>An unpaired marker as the text it was written as.</summary>
+    private static MdLiteral MarkerText(MdStarMarker marker) =>
+        new(marker.Level switch { 3 => "***", 2 => "**", _ => "*" });
+
 
     public object Visit(MarkdownInline.SpansEmpty node) => new SpansBuilder();
 
