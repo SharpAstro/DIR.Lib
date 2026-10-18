@@ -1468,7 +1468,7 @@ public sealed class ManagedFontRasterizer : IDisposable
         }
     }
 
-    /// <summary>Scales an outline to pixels (its Y by <c>yScale</c>, the same as X unless an assembly is squashed)
+    /// <summary>Scales an outline to pixels (its Y by <c>yScale</c>, the same as X unless the glyph is scaled to fit)
     /// and moves it up by <c>dy</c> pixels (Y is up here), for the rasterizer to draw at identity scale.</summary>
     private sealed class ScaleShiftSink(IGlyphSink inner, float scale, float dy, float yScale) : IGlyphSink
     {

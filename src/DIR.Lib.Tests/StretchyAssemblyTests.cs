@@ -167,8 +167,11 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
     /// for twice the content's larger reach from the axis, as TeX does, not its total height, and takes the
     /// first glyph at least <see cref="ManagedFontRasterizer.DelimiterCovers"/> of that: TeX's guarantee,
     /// which this asserts, is that the delimiters' ink reaches the content's layout box to within half that
-    /// shortfall at each end. The box, not the ink: DejaVu Sans's hinted text can start inking up to 1.4 px
-    /// above its own layout top (the numerator's a here), which no layout of the delimiter sees. At 32 px.
+    /// shortfall at each end. TeX's shortfall replaces strict coverage of the box here, as decided in the
+    /// first review round: STIX Two Math's brace and parenthesis around this fraction leave a few pixels of
+    /// the box uncovered at the top, within the shortfall, as TeX's would. The box, not the ink: DejaVu
+    /// Sans's hinted text can start inking up to 1.4 px above its own layout top (the numerator's a here),
+    /// which no layout of the delimiter sees. At 32 px.
     /// Each render is saved under <c>obj/stretchy-assembly-output</c> as <c>asymmetric-…-32px.png</c>, 8x.
     /// </summary>
     [Theory]

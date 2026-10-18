@@ -41,11 +41,14 @@ public sealed class StretchyVerticalBox : Box
     private readonly ManagedFontRasterizer.TopSnap _topSnap;
 
     /// <summary>
-    /// Compose a stretchy delimiter for <paramref name="codepoint"/> covering
-    /// at least <paramref name="requiredHeightPx"/> using <paramref name="style"/>'s
-    /// font + size. If the font has no MATH coverage for this codepoint the
-    /// box reports <see cref="IsAvailable"/> = false and zero metrics — the
-    /// caller should pick another rendering path.
+    /// Compose a stretchy delimiter for <paramref name="codepoint"/> at about
+    /// <paramref name="requiredHeightPx"/> using <paramref name="style"/>'s
+    /// font + size: the base glyph or a size variant that covers it, else the
+    /// assembly built to it, else the candidate scaled least to fit (see
+    /// <see cref="ManagedFontRasterizer.RasterizeStretchyVertical(string, float, Rune, float)"/>).
+    /// If the font has no MATH coverage for this codepoint the box reports
+    /// <see cref="IsAvailable"/> = false and zero metrics; the caller should
+    /// pick another rendering path.
     /// </summary>
     public StretchyVerticalBox(int codepoint, float requiredHeightPx, BoxStyle style)
         : this(codepoint, requiredHeightPx, style, snapTopEdge: false)
@@ -54,7 +57,7 @@ public sealed class StretchyVerticalBox : Box
     /// <summary>
     /// As the public constructor, and with <paramref name="snapTopEdge"/> the glyph is moved vertically
     /// by under half a pixel so the top of its outline lands on a pixel row (see
-    /// <see cref="ManagedFontRasterizer.RasterizeStretchyVertical(string, float, Rune, float, bool, out uint, out int)"/>).
+    /// <see cref="ManagedFontRasterizer.RasterizeStretchyVertical(string, float, Rune, float, bool, out uint, out ManagedFontRasterizer.TopSnap)"/>).
     /// Only <see cref="SqrtBox"/> asks for it: the radical's flag is the glyph's top, and the vinculum
     /// continuing it needs that edge crisp. Brackets and every other delimiter keep the unsnapped glyph.
     /// </summary>
