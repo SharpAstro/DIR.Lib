@@ -519,11 +519,16 @@ public static class MarkdownMacros
         // A `'` lexes as a prime only straight after an atom (x', f''(x), x^2');
         // anywhere else it is a placeholder, so `= '\beta'` does not throw the
         // formula back to its source, and it splices back as a prime too.
+        // A \textrm argument is text, so its quotes stay as written.
+        var inText = new bool[source.Length];
+        foreach (Match text in TextRmRegex.Matches(source))
+            Array.Fill(inText, true, text.Index, text.Length);
         var sb = new StringBuilder(source.Length);
         var previous = '\0';   // the last character that is not a blank
-        foreach (var ch in source)
+        for (var i = 0; i < source.Length; i++)
         {
-            var quote = ch == '\'' && !(char.IsAsciiLetterOrDigit(previous) || previous is '}' or ')' or ']' or '\'');
+            var ch = source[i];
+            var quote = ch == '\'' && !inText[i] && !(char.IsAsciiLetterOrDigit(previous) || previous is '}' or ')' or ']' or '\'');
             if (!char.IsWhiteSpace(ch)) previous = ch;
             if (IsLexerSafe(ch) && !quote && (lexBrackets || ch is not ('[' or ']')))
             {
@@ -541,6 +546,12 @@ public static class MarkdownMacros
 
         return (source, replacements);
     }
+
+    /// <summary>A \textrm token, by the latex.lalr.yaml textrm rule's own pattern,
+    /// so the quote pass sees the argument the lexer takes.</summary>
+    private static readonly Regex TextRmRegex = new(
+        @"\\textrm[ \t\r\n]*\{(?:[^{}\\]|\\.|\{(?:[^{}\\]|\\.|\{(?:[^{}\\]|\\.)*\})*\})*\}",
+        RegexOptions.Compiled);
 
     /// <summary>
     /// True iff the latex.lalr.yaml lexer has a tokenisation rule that matches
