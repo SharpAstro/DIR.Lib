@@ -79,7 +79,8 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
     /// DejaVu Sans at 32 px: <c>\left( \frac{1}{2} \right)</c> and <c>\left\{ \frac{1}{2} \right\}</c> draw
     /// each delimiter between 0.901 times the request (TeX's <c>\delimiterfactor</c> 901) and the larger of
     /// 1.25 times it and the request plus half an em. The request is what <see cref="BracketBox"/> asks of
-    /// the font, the content's own total height. The delimiter's drawn height is its ink rows in the render,
+    /// the font: twice the content's larger extent from the math axis, which for a fraction centred on the
+    /// axis is its own total height (58.93 px here). The delimiter's drawn height is its ink rows in the render,
     /// in the columns its glyph covers.
     /// </summary>
     [Theory]
