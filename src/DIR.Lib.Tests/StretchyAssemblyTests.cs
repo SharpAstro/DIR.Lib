@@ -217,12 +217,15 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
 
     /// <summary>
     /// Content as far above the axis as below it asks for the same size as before the symmetric request:
-    /// <c>\left( \frac{1}{2} \right)</c> at 32 px renders byte for byte as it did (hashes taken at d03fa45).
+    /// <c>\left( \frac{1}{2} \right)</c> at 32 px. DejaVu Sans, with no size variants, renders byte for byte
+    /// as it did (hash taken at d03fa45). STIX Two Math takes the variant TeX's shortfall allows, 53.3 px
+    /// (glyph 1303) for the 58.93 px request where the full request took the 61 px one (1304); its hash is
+    /// taken at 65ed40d, which introduced the shortfall.
     /// </summary>
     [Theory]
-    [InlineData("STIX2Math", "9B26212D199341F2")]
+    [InlineData("STIX2Math", "9D7B4F1A22ACBA9E")]
     [InlineData("DejaVuSans", "9E30A697D91269FF")]
-    public void SymmetricContentIsUnchanged(string font, string hash)
+    public void SymmetricContentKeepsItsSizeWithinTheShortfall(string font, string hash)
     {
         var style = new BoxStyle(FontPaths[font], 32f, Ink);
         var image = BoxRasterizer.RenderToRgba(Parse(@"\left( \frac{1}{2} \right)", style), style);
