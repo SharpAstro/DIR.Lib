@@ -79,9 +79,9 @@ public sealed class BracketBox : Box
         var requiredHeight = 2 * MathF.Max(inner.Height - axis, inner.Depth + axis);
         var (leftCp, rightCp) = BracketCodepoints(kind);
         // As TeX's \left..\right, a delimiter may fall short of the request by
-        // \delimiterfactor and \delimitershortfall (StretchyVerticalBox.Delimiter).
-        var left = StretchyVerticalBox.Delimiter(leftCp, requiredHeight, style);
-        var right = StretchyVerticalBox.Delimiter(rightCp, requiredHeight, style);
+        // \delimiterfactor and \delimitershortfall, and the two are drawn at
+        // one height (StretchyVerticalBox.DelimiterPair).
+        var (left, right) = StretchyVerticalBox.DelimiterPair(leftCp, rightCp, requiredHeight, style);
         if (left.IsAvailable && right.IsAvailable)
         {
             _leftFont = left;
