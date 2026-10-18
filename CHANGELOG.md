@@ -23,6 +23,10 @@ they have all landed.
   that may hold a `$`.
 - Work to make the Markdown parse faster.
 - Glyph and stretched-glyph caching across `RenderToRgba` calls (#118).
+- A heading, a list, a fence, a table or display math may interrupt a paragraph, as CommonMark and GFM set
+  them, and a list item takes its lines by its marker's content column (#129).
+- `\text`, accents, primes, `\lfloor` `\lceil` `\langle` pairs and `\mathbf` on both math paths, and an operator
+  with no operand on a side drawn as KaTeX draws it (#130).
 
 ## 11.23
 
