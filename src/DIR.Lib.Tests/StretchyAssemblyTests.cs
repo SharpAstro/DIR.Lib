@@ -232,7 +232,9 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
     }
 
     /// <summary>The fewest copies of the extenders whose range reaches <paramref name="request"/>, and the
-    /// height in pixels that count gives it: the request, or the count's least where that is taller.</summary>
+    /// height in pixels that count gives it: the request, or the count's least where that is taller, unless
+    /// that least overshoots the bound a delimiter may (the larger of 1.25 times the request and the request
+    /// plus half an em), where the assembly is squashed to the request.</summary>
     private static (int Copies, float HeightPx) ExpectedAssembly(string path, float size, Rune rune, float request)
     {
         var asm = Rasterizer.GetVerticalMathConstruction(path, rune)!.Assembly!;
@@ -240,7 +242,8 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
         var units = request * unitsPerEm / size;
         var copies = 0;
         while (AssemblyRange(asm, minOverlap, copies).Most < units) copies++;
-        return (copies, MathF.Max(units, AssemblyRange(asm, minOverlap, copies).Least) * size / unitsPerEm);
+        var height = MathF.Max(units, AssemblyRange(asm, minOverlap, copies).Least) * size / unitsPerEm;
+        return (copies, height > MathF.Max(1.25f * request, request + 0.5f * size) ? request : height);
     }
 
     // ── the composition ─────────────────────────────────────────────────
@@ -261,7 +264,8 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
     /// room the glyph is the request. Where they have none it is the next height the assembly can reach:
     /// DejaVu Sans's connectors are exactly its <c>MinConnectorOverlap</c>, 40 units, so each copy of an
     /// extender adds a fixed 1.17 em; and STIX Two Math's brace at 138.15 px falls between its no-extender
-    /// most (137.5 px) and its one-copy least (140.8 px). At 32 px.
+    /// most (137.5 px) and its one-copy least (140.8 px). Where that next height overshoots the bound a
+    /// delimiter may (see <see cref="ExpectedAssembly"/>) the assembly is squashed to the request. At 32 px.
     /// </summary>
     [Theory]
     [MemberData(nameof(CompositionCases))]
