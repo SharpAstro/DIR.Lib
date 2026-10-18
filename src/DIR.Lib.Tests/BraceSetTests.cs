@@ -44,9 +44,9 @@ public sealed class BraceSetTests
     /// own name. <c>\{1, 2, 3\}</c> already kept them.
     /// </summary>
     [Theory]
-    [InlineData(@"\left\{ 1, 2 \right\}", "{1,2}")]
+    [InlineData(@"\left\{ 1, 2 \right\}", "{1, 2}")]
     [InlineData(@"\lbrace x \rbrace", "{x}")]
-    [InlineData(@"\{1, 2, 3\}", "{1,2,3}")]
+    [InlineData(@"\{1, 2, 3\}", "{1, 2, 3}")]
     [InlineData(@"\left\lbrace x \right\rbrace", "{x}")]
     [InlineData(@"\left\{ \frac{1}{2} \right\}", "{1⁄2}")]
     public void UnicodePath_SetKeepsBothBraces(string latex, string expected)
@@ -74,8 +74,8 @@ public sealed class BraceSetTests
     [Theory]
     [InlineData(@"\{x", "{x")]
     [InlineData(@"x\}", "x}")]
-    [InlineData(@"\{a, b", "{a,b")]
-    [InlineData(@"a, b\}", "a,b}")]
+    [InlineData(@"\{a, b", "{a, b")]
+    [InlineData(@"a, b\}", "a, b}")]
     [InlineData(@"\{\}", "{}")]
     public void UnicodePath_UnbalancedRendersAsBefore(string latex, string expected)
         => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
@@ -481,18 +481,33 @@ public sealed class BraceSetTests
     // ── The preparation helper ─────────────────────────────────────────
 
     /// <summary>
-    /// <c>\text</c> and environments have no box yet, so the helper turns
-    /// them away, before or after the <c>\boxed</c> and <c>\ce</c>
-    /// expansions.
+    /// Environments have no box yet, so the helper turns them away, before or
+    /// after the <c>\boxed</c> and <c>\ce</c> expansions.
     /// </summary>
     [Theory]
-    [InlineData(@"\text{if } x > 0")]
-    [InlineData(@"x + \text{y}")]
     [InlineData(@"\begin{pmatrix} a & b \\ c & d \end{pmatrix}")]
-    [InlineData(@"\boxed{\text{done}}")]
     [InlineData(@"f(x) = \left\{ \begin{array}{ll} x & x > 0 \\ 0 & \text{otherwise} \end{array} \right.")]
-    public void Helper_DeclinesTextAndEnvironments(string latex)
+    public void Helper_DeclinesEnvironments(string latex)
         => MarkdownMacros.TryPrepareMathBoxSource(latex, out _).ShouldBeFalse();
+
+    /// <summary>
+    /// <c>\text{X}</c> reaches the grammar as <c>\textrm{X}</c>, a text run
+    /// with its blanks, where the helper used to turn the formula away, which
+    /// sent nearly every display formula a document wrote for KaTeX to the
+    /// Unicode path. X is resolved as the Unicode path resolves it, with its
+    /// braces escaped so the token keeps them.
+    /// </summary>
+    [Theory]
+    [InlineData(@"\text{if } x > 0", @"\textrm{if } x > 0")]
+    [InlineData(@"x + \text{y}", @"x + \textrm{y}")]
+    [InlineData(@"\boxed{\text{done}}", @"\textrm{done}")]
+    [InlineData(@"\text{a\ b\_c}", @"\textrm{a b_c}")]
+    [InlineData(@"\text{\{x\}}", @"\textrm{\{x\}}")]
+    public void Helper_SpellsTextAsTextrm(string latex, string expected)
+    {
+        MarkdownMacros.TryPrepareMathBoxSource(latex, out var prepared).ShouldBeTrue();
+        prepared.ShouldBe(expected);
+    }
 
     /// <summary>
     /// For any formula without an escaped brace, the helper prepares exactly
@@ -510,7 +525,11 @@ public sealed class BraceSetTests
     /// match. Also left out are those with a math space (<c>\,</c> <c>\:</c>
     /// <c>\;</c> <c>\!</c>), which the helper now keeps for the grammar to
     /// lex as space where the old sequence made each a blank
-    /// (<see cref="MathSpacingTests"/> pins that).</para>
+    /// (<see cref="MathSpacingTests"/> pins that). Left out too are those
+    /// with <c>\text</c>, which the helper now prepares as <c>\textrm</c>
+    /// where the old sequence turned it away (<see cref="Helper_SpellsTextAsTextrm"/>),
+    /// and those with an operator missing an operand, which it now supplies
+    /// (<see cref="VsCodeParityTests"/>).</para>
     /// </summary>
     [Fact]
     public void Helper_MatchesConsoleLibSequence_WithoutEscapedBraces()
@@ -520,7 +539,9 @@ public sealed class BraceSetTests
             .Concat(RadicalScenes)
             .Concat(BoxedAndChemCorpus)
             .Where(latex => !ConsoleLibTurnsAwayBraces(latex) && !SpacedLeftOrRight.IsMatch(latex)
-                            && !MathSpaceEscape.IsMatch(latex))
+                            && !MathSpaceEscape.IsMatch(latex)
+                            && !MarkdownMacros.ContainsMacro(latex, "text")
+                            && MarkdownMacros.SupplyMissingOperands(MarkdownMacros.NormalizeLatexAliases(latex)) == MarkdownMacros.NormalizeLatexAliases(latex))
             .Distinct(StringComparer.Ordinal)
             .ToList();
 

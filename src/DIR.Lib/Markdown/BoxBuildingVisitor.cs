@@ -66,19 +66,41 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
 
     private static Func<BoxStyle, Box> Builder(Item item) => (Func<BoxStyle, Box>)item.Content;
 
+    /// <summary>
+    /// Left, the operator, right, with <paramref name="kernEm"/> either side.
+    /// Against an empty side (an operand
+    /// <see cref="MarkdownMacros.SupplyMissingOperands"/> supplied, which has
+    /// no width) a binary operator takes no space at all, being ordinary there
+    /// in TeX, and a relation none on that side.
+    /// </summary>
     private static Func<BoxStyle, Box> BinaryOp(
-        Func<BoxStyle, Box> left, string op, Func<BoxStyle, Box> right, float kernEm = 0.25f) =>
+        Func<BoxStyle, Box> left, string op, Func<BoxStyle, Box> right, float kernEm = 0.25f, bool binary = true) =>
         style =>
         {
+            var l = left(style);
+            var r = right(style);
             var kern = new KernBox(style.FontSize * kernEm);
-            return new HBox(left(style), kern, new GlyphBox(op, style), kern, right(style));
+            var alone = l.Width <= 0 || r.Width <= 0;
+            var parts = new List<Box>(5);
+            if (l.Width > 0) parts.Add(l);
+            if (l.Width > 0 && !(binary && alone)) parts.Add(kern);
+            parts.Add(new GlyphBox(op, style));
+            if (r.Width > 0 && !(binary && alone)) parts.Add(kern);
+            if (r.Width > 0) parts.Add(r);
+            return new HBox(parts.ToArray());
         };
 
     public Func<BoxStyle, Box> Visit(Add node)      => BinaryOp(Builder(node.Arg0), "+", Builder(node.Arg2));
     public Func<BoxStyle, Box> Visit(Subtract node) => BinaryOp(Builder(node.Arg0), "−", Builder(node.Arg2)); // U+2212 minus
-    public Func<BoxStyle, Box> Visit(Eq node)       => BinaryOp(Builder(node.Arg0), "=", Builder(node.Arg2), 0.35f);
-    public Func<BoxStyle, Box> Visit(Mul node)      => BinaryOp(Builder(node.Arg0), "·", Builder(node.Arg2), 0.15f); // U+00B7 dot
+    public Func<BoxStyle, Box> Visit(Eq node)       => BinaryOp(Builder(node.Arg0), "=", Builder(node.Arg2), 0.35f, binary: false);
     public Func<BoxStyle, Box> Visit(Div node)      => BinaryOp(Builder(node.Arg0), "/", Builder(node.Arg2));
+
+    /// <summary>\times is ×, with TeX's medium space (4 mu) either side, as
+    /// for any binary operator; * and \cdot stay the tight middle dot. \times
+    /// used to draw the dot too, so 7 \times 7 read 7·7.</summary>
+    public Func<BoxStyle, Box> Visit(Mul node) => (string)node.Arg1.Content == @"\times"
+        ? BinaryOp(Builder(node.Arg0), "×", Builder(node.Arg2), 4f / 18f)
+        : BinaryOp(Builder(node.Arg0), "·", Builder(node.Arg2), 0.15f); // U+00B7 dot
 
     /// <summary>
     /// Binary relation (\approx \leq \geq \neq \equiv \ll \gg \in \notin
@@ -94,7 +116,8 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
         var raw = (string)node.Arg1.Content;
         var name = raw.Length > 1 && raw[0] == '\\' ? raw.Substring(1) : raw;
         var glyph = Commands.TryGetValue(name, out var g) ? g : raw;
-        return BinaryOp(Builder(node.Arg0), glyph, Builder(node.Arg2), 0.35f);
+        // \pm and \mp lex as relations but are binary operators in TeX: ±0.2.
+        return BinaryOp(Builder(node.Arg0), glyph, Builder(node.Arg2), 0.35f, binary: name is "pm" or "mp");
     }
 
     /// <summary>
@@ -304,6 +327,48 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
     /// </summary>
     public Func<BoxStyle, Box> Visit(MathBb node) => InAlphabet(MathStyle.DoubleStruck, Builder(node.Arg1));
 
+    /// <summary><c>\mathbf{X}</c>: X's letters and digits in the font's
+    /// mathematical bold, as <c>\mathbb</c>'s are double-struck.</summary>
+    public Func<BoxStyle, Box> Visit(MathBf node) => InAlphabet(MathStyle.Bold, Builder(node.Arg1));
+
+    /// <summary>
+    /// <c>\hat{x}</c> and the other accents: the accent's spacing glyph set
+    /// over the argument by <see cref="AccentBox"/>, which centres it on the
+    /// base's top-accent attachment from the font's MATH table. AccentBox was
+    /// only reachable from code; the grammar had no accent, so <c>\hat</c>
+    /// drew its own name.
+    /// </summary>
+    public Func<BoxStyle, Box> Visit(Accented node)
+    {
+        var glyph = MarkdownMacros.Accents[((string)node.Arg0.Content).TrimStart('\\')].Glyph;
+        var @base = Builder(node.Arg1);
+        return style => new AccentBox(@base(style), new GlyphBox(glyph, style), style);
+    }
+
+    /// <summary>
+    /// <c>\lfloor E \rfloor</c>, <c>\lceil E \rceil</c> and
+    /// <c>\langle E \rangle</c>: the pair stretched to E as parens are, with or
+    /// without <c>\left</c> and <c>\right</c>
+    /// (<see cref="DelimiterPairBox"/>, which takes any two codepoints).
+    /// </summary>
+    public Func<BoxStyle, Box> Visit(NamedPair node)
+    {
+        var open = MarkdownMacros.NamedDelimiters[((string)node.Arg0.Content).TrimStart('\\')];
+        var close = MarkdownMacros.NamedDelimiters[((string)node.Arg2.Content).TrimStart('\\')];
+        var inner = Builder(node.Arg1);
+        return style => new DelimiterPairBox(inner(style), open, close, style);
+    }
+
+    /// <summary><c>x'</c>: the prime glyph after the atom. U+2032 is a
+    /// spacing prime, drawn raised by the font, so it is set at the body size,
+    /// as MathJax sets it with a Unicode math font.</summary>
+    public Func<BoxStyle, Box> Visit(Primed node)
+    {
+        var @base = Builder(node.Arg0);
+        var primes = MarkdownMacros.Primes(((string)node.Arg1.Content).Length);
+        return style => new HBox(@base(style), new GlyphBox(primes, style));
+    }
+
     /// <summary>
     /// <c>\operatorname{X}</c>: X as an operator name of the writer's own,
     /// one Op atom, so it is spaced like <c>\sin</c> and its scripts go to
@@ -400,6 +465,10 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
                 return style => new BigOpScaffold(new GlyphBox(opName, style), null, null, style);
             return style => new AtomBox(new GlyphBox(opName, style), AtomClass.Op);
         }
+        // \quad is an em of space and \qquad two, as in TeX; a space glyph is
+        // a third of that.
+        if (name is "quad" or "qquad")
+            return style => new KernBox(style.FontSize * (name == "quad" ? 1f : 2f));
         var glyph = Commands.TryGetValue(name, out var g) ? g : raw;
         if (BigOperators.Contains(name))
         {

@@ -213,12 +213,12 @@ public sealed class BracketMathTests
         => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
 
     [Theory]
-    [InlineData(@"[0, 1)", "[0,1)")]
-    [InlineData(@"(0, 1]", "(0,1]")]
+    [InlineData(@"[0, 1)", "[0, 1)")]
+    [InlineData(@"(0, 1]", "(0, 1]")]
     [InlineData(@"\left( x \right]", "(x]")]
     // A `-` straight after `[` is unary now, as it is after `(`. While `[`
     // was an opaque atom this read as a binary minus: "[ − 1,1]".
-    [InlineData(@"[-1, 1]", "[−1,1]")]
+    [InlineData(@"[-1, 1]", "[−1, 1]")]
     // Whitespace between \left or \right and its delimiter, as LaTeX allows.
     [InlineData(@"\left \{ x \right \}", "{x}")]
     [InlineData(@"\left ( x \right )", "(x)")]
@@ -237,26 +237,28 @@ public sealed class BracketMathTests
     /// them, each pinned to the exact string the old grammar produced (captured
     /// from the build before this change). Unbalanced brackets take the
     /// placeholder retry in <see cref="MarkdownMacros.RenderMathUnicode"/>.
+    /// Since then a comma takes a space after it outside a script, as KaTeX and
+    /// the box path set one (<c>f(x, y)</c>), and <c>\times</c> is a spaced ×.
     /// </summary>
     [Theory]
-    [InlineData(@"[a, b]", "[a,b]")]
-    [InlineData(@"[a,b]", "[a,b]")]
-    [InlineData(@"x \in [0, 1]", "x ∈ [0,1]")]
-    [InlineData(@"f(x, y)", "f(x,y)")]
-    [InlineData(@"f(x,y) = x^2 + y^2", "f(x,y) = x² + y²")]
+    [InlineData(@"[a, b]", "[a, b]")]
+    [InlineData(@"[a,b]", "[a, b]")]
+    [InlineData(@"x \in [0, 1]", "x ∈ [0, 1]")]
+    [InlineData(@"f(x, y)", "f(x, y)")]
+    [InlineData(@"f(x,y) = x^2 + y^2", "f(x, y) = x² + y²")]
     [InlineData(@"x = 1,", "x = 1,")]
-    [InlineData(@", x", ",x")]
-    [InlineData(@"a, b, c", "a,b,c")]
+    [InlineData(@", x", ", x")]
+    [InlineData(@"a, b, c", "a, b, c")]
     [InlineData(@"x_{i,j}", "x_i,j")]
     [InlineData(@"a_{n,m}^{2}", "a_n,m²")]
-    [InlineData(@"a,b^2", "a,b²")]
-    [InlineData(@"x,\alpha", "x,α")]
+    [InlineData(@"a,b^2", "a, b²")]
+    [InlineData(@"x,\alpha", "x, α")]
     [InlineData(@"x^[2]", "x^[2]")]
     [InlineData(@"[a+b]^2", "[a + b]²")]
     [InlineData(@"[a+b]^{10}", "[a + b]¹⁰")]
     [InlineData(@"[x]^{-1}", "[x]^(−1)")]
-    [InlineData(@"\frac{1}{[a, b]}", "1⁄[a,b]")]
-    [InlineData(@"\frac{a,b}{c}", "a,b⁄c")]
+    [InlineData(@"\frac{1}{[a, b]}", "1⁄[a, b]")]
+    [InlineData(@"\frac{a,b}{c}", "(a, b)⁄c")]
     [InlineData(@"-[a]", "−[a]")]
     [InlineData(@"(-1, -2)", "(−1, − 2)")]
     [InlineData(@"\left[ x \right]", "[x]")]
@@ -267,19 +269,19 @@ public sealed class BracketMathTests
     [InlineData(@"\sum_{i=1}^{n} [x_i]", "∑_(i = 1)ⁿ[xᵢ]")]
     [InlineData(@"\left[ \sum_{k=0}^{n} a_k \right]^2", "[∑_(k = 0)ⁿaₖ]²")]
     [InlineData(@"\sin[\alpha + \beta]", "sin[α + β]")]
-    [InlineData(@"[a, b] \times [c, d]", "[a,b]·[c,d]")]
+    [InlineData(@"[a, b] \times [c, d]", "[a, b] × [c, d]")]
     [InlineData(@"\int_{[0,1]} f", "∫_[0,1]f")]
-    [InlineData(@"\sqrt{[a, b]}", "√[a,b]")]
-    [InlineData(@"\boxed{[a,b]}", "[[a,b]]")]
-    [InlineData(@"\text{if } x \in [0,1]", "if x ∈ [0,1]")]
+    [InlineData(@"\sqrt{[a, b]}", "√[a, b]")]
+    [InlineData(@"\boxed{[a,b]}", "[[a, b]]")]
+    [InlineData(@"\text{if } x \in [0,1]", "if x ∈ [0, 1]")]
     [InlineData(@"\ce{[Cu(NH3)4]^{2+}}", "[Cu(NH₃)₄]²⁺")]
     [InlineData(@"[]", "[]")]
     // Unbalanced: the bracket-as-placeholder retry.
-    [InlineData(@"[0, 1[", "[0,1[")]
-    [InlineData(@"]0, 1[", "]0,1[")]
-    [InlineData(@"x \in ]0, 1]", "x ∈ ]0,1]")]
+    [InlineData(@"[0, 1[", "[0, 1[")]
+    [InlineData(@"]0, 1[", "]0, 1[")]
+    [InlineData(@"x \in ]0, 1]", "x ∈ ]0, 1]")]
     [InlineData(@"\left[ x \right.", "[x")]
-    [InlineData(@"\sqrt[a, b]", "√[a,b]")]
+    [InlineData(@"\sqrt[a, b]", "√[a, b]")]
     [InlineData(@"[", "[")]
     [InlineData(@"]", "]")]
     public void UnicodePath_RendersAsBefore(string latex, string expected)

@@ -148,11 +148,15 @@ public sealed class MathItalicTests
     /// <summary>
     /// On the Unicode path <c>\mathrm{X}</c> is <c>X</c>, and so it stays
     /// when the formula around it fails to parse for another reason (here a
-    /// trailing <c>+</c>) and falls back to its source text.
+    /// <c>+</c> straight before an <c>=</c>) and falls back to its source
+    /// text. A trailing <c>+</c> used to be that reason; it parses now
+    /// (<see cref="MarkdownMacros.SupplyMissingOperands"/>), set tight as TeX
+    /// sets a binary operator with nothing after it.
     /// </summary>
     [Theory]
     [InlineData(@"\mathrm{d}x", "dx")]
-    [InlineData(@"\mathrm{d}x +", "dx +")]
+    [InlineData(@"\mathrm{d}x + = 1", "dx + = 1")]
+    [InlineData(@"\mathrm{d}x +", "dx+")]
     public void UnicodePath_MathrmIsItsArgument(string latex, string expected)
         => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
 

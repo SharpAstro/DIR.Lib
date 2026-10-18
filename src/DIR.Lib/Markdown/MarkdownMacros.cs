@@ -142,14 +142,17 @@ public static class MarkdownMacros
     /// <see cref="Latex"/>'s parser, bound to a <see cref="BoxBuildingVisitor"/>,
     /// should read. False when the box path cannot build the formula, which
     /// the caller then renders with <see cref="RenderMathUnicode"/>: a
-    /// <c>\text{...}</c> or a <c>\begin{...}...\end{...}</c> environment, for
-    /// which there is no box yet.
+    /// <c>\begin{...}...\end{...}</c> environment, for which there is no box yet.
     ///
-    /// <para>The steps, in order: turn away <c>\text</c> and environments;
+    /// <para>The steps, in order: turn away environments;
     /// <see cref="NormalizeLatexAliases"/>; <c>\boxed{X}</c> to X (there is no
     /// boxed frame); <c>\ce{X}</c> to <see cref="Mhchem.ToLatex"/> of X; turn
-    /// away again, since either expansion can bring one in; then
-    /// <see cref="ResolveBackslashEscapes(string)"/>, except that <c>\{</c> and
+    /// away again, since either expansion can bring one in;
+    /// <see cref="SupplyMissingOperands"/>; <c>\text{X}</c> to
+    /// <c>\textrm{X}</c>, X as the Unicode path renders it (a text run, upright,
+    /// its blanks kept: a formula holding <c>\text</c> used to be turned away,
+    /// and almost every display formula a document writes for KaTeX holds one);
+    /// then <see cref="ResolveBackslashEscapes(string)"/>, except that <c>\{</c> and
     /// <c>\}</c> stay as written. The grammar lexes those as a set's braces,
     /// which the visitor draws as a curly <see cref="BracketBox"/>; resolved to
     /// a bare <c>{</c> they would open an invisible group. So
@@ -168,9 +171,64 @@ public static class MarkdownMacros
         source = ExpandBalancedMacro(source, "boxed", inner => inner);
         source = ExpandBalancedMacro(source, "ce", inner => Mhchem.ToLatex(inner));
         if (!BoxPathCanBuild(source)) return false;
+        source = SupplyMissingOperands(source);
+        source = ExpandBalancedMacro(source, "text", inner => @"\textrm{" + EscapeBraces(RenderTextBody(inner)) + "}");
         prepared = ResolveBackslashEscapes(source, keepLexed: true);
         return true;
     }
+
+    /// <summary><paramref name="text"/> with each brace escaped, so a run of
+    /// text keeps its braces as glyphs inside a <c>\textrm{...}</c> token.</summary>
+    private static string EscapeBraces(string text) => text.Replace("{", @"\{").Replace("}", @"\}");
+
+    /// <summary>
+    /// <paramref name="source"/> with <c>\null</c>, an empty atom, wherever a
+    /// binary operator or a relation has no operand: at either end of the
+    /// formula, of a group, a bracket pair or a set, and beside a comma. So
+    /// <c>8\times</c>, <c>\to</c> and <c>= \mathbf{1024}</c> parse, where the
+    /// grammar sets an operator only between two operands and such a formula
+    /// fell back to its source text. Both visitors set the operator against an
+    /// empty side as TeX does: a binary operator becomes ordinary, with no
+    /// space either side (<c>8×</c>, and <c>\ce{H+}</c> stays <c>H+</c>), and a
+    /// relation keeps its space only on the side that has an operand. A minus
+    /// is left alone at either end: at the start it is a sign, which the
+    /// grammar has, and a trailing one is a chemist's charge (<c>\ce{e-}</c>),
+    /// which reads as written in the source text. A text argument is text.
+    /// </summary>
+    internal static string SupplyMissingOperands(string source)
+    {
+        var texts = new List<string>();
+        string Hide(string name, string inner)
+        {
+            texts.Add($@"\{name}{{{inner}}}");
+            return $@"\PHtext{TextStandIn(texts.Count - 1)}";
+        }
+        var masked = ExpandBalancedMacro(source, "textrm", inner => Hide("textrm", inner));
+        masked = ExpandBalancedMacro(masked, "text", inner => Hide("text", inner));
+
+        masked = LeadingOperatorRegex.Replace(masked, @"\null ");
+        masked = TrailingOperatorRegex.Replace(masked, @" \null");
+
+        for (var i = texts.Count - 1; i >= 0; i--)
+            masked = masked.Replace($@"\PHtext{TextStandIn(i)}", texts[i]);
+        return masked;
+    }
+
+    /// <summary>A stand-in name's letters for the <paramref name="n"/>th text
+    /// argument: letters only, so the name lexes as one command, and not a
+    /// prefix of another stand-in's.</summary>
+    private static string TextStandIn(int n) => new string((char)('a' + n % 26), 1 + n / 26) + "z";
+
+    private const string OperatorPattern =
+        @"[+*/=<>]|\\(?:times|cdot|approx|equiv|leq|geq|neq|ll|gg|in|notin|subset|to|leftrightarrow|rightleftharpoons|leftarrow|rightarrow|pm|mp|mid)(?![a-zA-Z])";
+
+    /// <summary>An operator with nothing before it: the formula's start, or an opening delimiter or a comma, then blanks.</summary>
+    private static readonly Regex LeadingOperatorRegex = new(
+        $@"(?<=(?:^|[{{(\[,]|\\\{{)[ \t\r\n]*)(?=(?:{OperatorPattern}))", RegexOptions.Compiled);
+
+    /// <summary>An operator with nothing after it: blanks, then the formula's end, a closing delimiter or a comma.</summary>
+    private static readonly Regex TrailingOperatorRegex = new(
+        $@"(?<=(?:{OperatorPattern}))(?=[ \t\r\n]*(?:$|[}})\],]|\\\}}))", RegexOptions.Compiled);
 
     /// <summary>
     /// The space TeX puts between two adjacent atoms of the given classes,
@@ -220,6 +278,45 @@ public static class MarkdownMacros
     };
 
     /// <summary>
+    /// The accents the grammar lexes, each with the spacing glyph the box path
+    /// sets over its argument (<see cref="AccentBox"/>, the forms MathJax uses
+    /// with a Unicode math font) and the combining mark the Unicode path puts
+    /// after it. The wide forms take the narrow glyph: nothing stretches an
+    /// accent yet.
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<string, (string Glyph, char Mark)> Accents =
+        new Dictionary<string, (string, char)>(StringComparer.Ordinal)
+        {
+            ["hat"] = ("ˆ", '\u0302'), ["widehat"] = ("ˆ", '\u0302'),
+            ["tilde"] = ("˜", '\u0303'), ["widetilde"] = ("˜", '\u0303'),
+            ["bar"] = ("¯", '\u0304'), ["overline"] = ("¯", '\u0305'),
+            ["vec"] = ("\u20D7", '\u20D7'),
+            ["dot"] = ("˙", '\u0307'), ["ddot"] = ("¨", '\u0308'),
+            ["check"] = ("ˇ", '\u030C'), ["breve"] = ("˘", '\u0306'),
+            ["acute"] = ("´", '\u0301'), ["grave"] = ("`", '\u0300'),
+        };
+
+    /// <summary>The glyph of each named delimiter the grammar pairs
+    /// (<c>\lfloor x \rfloor</c>, <c>\lceil x \rceil</c>, <c>\langle x \rangle</c>).</summary>
+    internal static readonly IReadOnlyDictionary<string, char> NamedDelimiters =
+        new Dictionary<string, char>(StringComparer.Ordinal)
+        {
+            ["lfloor"] = '⌊', ["rfloor"] = '⌋',
+            ["lceil"] = '⌈', ["rceil"] = '⌉',
+            ["langle"] = '⟨', ["rangle"] = '⟩',
+        };
+
+    /// <summary><paramref name="count"/> primes as KaTeX sets them: ′, then ″
+    /// and ‴ for two and three, which Unicode has as characters of their own.</summary>
+    internal static string Primes(int count) => count switch
+    {
+        1 => "′",
+        2 => "″",
+        3 => "‴",
+        _ => new string('′', count),
+    };
+
+    /// <summary>
     /// The text of the braced argument of a token that carries one,
     /// <c>\textrm{X}</c> as the grammar lexes it: X as it reads, blanks
     /// included. A group's braces inside X print as
@@ -255,9 +352,9 @@ public static class MarkdownMacros
     }
 
     /// <summary>False when <paramref name="source"/> holds what only the
-    /// Unicode path can draw: <c>\text</c> or an environment.</summary>
+    /// Unicode path can draw: an environment.</summary>
     private static bool BoxPathCanBuild(string source)
-        => !ContainsMacro(source, "text") && !source.Contains(@"\begin", StringComparison.Ordinal);
+        => !source.Contains(@"\begin", StringComparison.Ordinal);
 
     /// <summary>
     /// Expands the LaTeX macros that the math-only grammar can't represent.
@@ -365,6 +462,9 @@ public static class MarkdownMacros
             return key;
         });
 
+        // An operator with no operand on a side gets \null there ($8\times$, $\to$).
+        source = SupplyMissingOperands(source);
+
         // Outer-source pass over LaTeX backslash-non-letter macros (\, \; \: \!
         // \\ \{ \} \_ \$ \% \# \&). Each becomes a placeholder mapping to its
         // rendered equivalent so the lexer doesn't choke on the orphan `\` +
@@ -434,7 +534,7 @@ public static class MarkdownMacros
         if (c == '.') return true;
         if (IsAsciiLetter(c)) return true;
         return c is '+' or '-' or '*' or '/' or '=' or '^' or '_'
-                or '(' or ')' or '[' or ']' or '{' or '}' or ',' or '\\';
+                or '(' or ')' or '[' or ']' or '{' or '}' or ',' or '\\' or '\'';
     }
 
     /// <summary>
@@ -551,7 +651,7 @@ public static class MarkdownMacros
     /// <c>(</c> <c>\{</c> <c>|</c> <c>.</c>), and the same for <c>\right</c>
     /// (<c>]</c> <c>)</c> <c>\}</c> <c>|</c> <c>.</c>).</summary>
     private static readonly Regex SpacedSizedDelimiterRegex = new(
-        @"\\left\s+(?=[\[(|.]|\\\{)|\\right\s+(?=[\])|.]|\\\})",
+        @"\\left\s+(?=[\[(|.]|\\\{|\\l(?:floor|ceil|angle))|\\right\s+(?=[\])|.]|\\\}|\\r(?:floor|ceil|angle))",
         RegexOptions.Compiled);
 
     private static readonly (string From, string To)[] LatexAliases =
@@ -572,6 +672,14 @@ public static class MarkdownMacros
         (@"\right|",  "|"),
         (@"\left.",   ""),   // null delimiter
         (@"\right.",  ""),
+        // The named pairs are grammar tokens that stretch on the box path
+        // whether \left and \right size them or not.
+        (@"\left\lfloor", @"\lfloor"),
+        (@"\right\rfloor", @"\rfloor"),
+        (@"\left\lceil",  @"\lceil"),
+        (@"\right\rceil", @"\rceil"),
+        (@"\left\langle", @"\langle"),
+        (@"\right\rangle", @"\rangle"),
         // Manual size prefixes — strip, keep the delimiter that follows.
         (@"\biggl",   ""),
         (@"\biggr",   ""),
