@@ -312,6 +312,7 @@ public sealed partial class RadicalJoinTests
         }
 
         var failures = SweptPoints.Value
+            .Where(s => !RadicandRedrawnSinceTheBeforeData.Contains(s.Before.Scene))
             .Where(s => Drifts(s.Before.Height, s.Height, s) || Drifts(s.Before.Depth, s.Depth, s))
             .Select(s => $"{s}: height {s.Before.Height} -> {s.Height}, depth {s.Before.Depth} -> {s.Depth}, " +
                          $"band {s.BandRows} rows (stroke at most {s.MaxBandRows}), " +
@@ -319,6 +320,12 @@ public sealed partial class RadicalJoinTests
             .ToList();
         failures.ShouldBeEmpty(Environment.NewLine + string.Join(Environment.NewLine, failures));
     }
+
+    /// <summary>Scenes whose radicand itself is drawn differently since fe09d4a, so their before height and
+    /// depth describe another radicand and a drift says nothing about the radical. The hat over the x rides
+    /// above it by the OpenType MATH rule (PR #130), where it was drawn across the x's top rows. Every other
+    /// test of the sweep still visits them.</summary>
+    private static readonly HashSet<string> RadicandRedrawnSinceTheBeforeData = ["frac-1-sqrt-hat-x"];
 
     /// <summary>How far a swept point's height or depth may shrink from before: 3 px below 21.3 px where the
     /// cap at the flag's own stroke trimmed the band, 2 px everywhere else (see
