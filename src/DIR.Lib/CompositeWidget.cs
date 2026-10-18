@@ -110,7 +110,7 @@
         }
 
         /// <summary>
-        /// Every text field painted this frame, this widget's and then its children's in paint order — which
+        /// Every text field painted this frame, this widget's and then its children's in paint order, which
         /// is what makes Tab cycling follow the VISUAL order across a composed frame automatically.
         /// </summary>
         /// <remarks>
