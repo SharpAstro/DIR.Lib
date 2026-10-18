@@ -20,12 +20,18 @@
 #   \operatorname{tr} A, \textrm{if}       (an operator name; upright text)
 #   \operatorname*{arg\,max}_x             (\, \: \; \!: TeX's math spaces)
 #   \{ x \in \mathbb{R} \mid x > 0 \}     (set-builder: \mid, \mathbb, < and >)
+#   \hat{x}, \bar{\psi}, \vec{v}          (accents over their argument)
+#   \mathbf{1024}                         (bold letters and digits)
+#   \lfloor x \rfloor, \lceil x \rceil    (named delimiter pairs, \left/\right or not)
+#   f'(x), x''                            (primes)
 #
 # Things that don't:
 #   - \begin{...}\end{...} environments, alignments, multi-line displays.
 #   - Macro definitions (\def, \newcommand) and any TeX programming.
-#   - String content inside \text{...} (treated as opaque \cmd). \textrm{...}
-#     is lexed whole, so its blanks survive, with groups inside two deep.
+#   - String content inside \text{...} on the Unicode path (treated as an opaque
+#     \cmd there). The box path's preparation spells it \textrm{...}, which is
+#     lexed whole, so its blanks survive, with groups inside two deep.
+#   - A named delimiter without its partner (\lfloor x): it does not parse.
 #   - Implicit prefix unary minus inside group-arguments without parens
 #     (e.g. \frac{-1}{2} works because -1 reduces via F -> '-' F, but
 #     \sqrt -2 does not — write \sqrt{-2}).
@@ -102,6 +108,11 @@ symbols:
   - opname     # 33  \operatorname or \operatorname* (binds one atom argument, a name in upright letters)
   - textrm     # 34  \textrm{X}, its braced text in the token
   - mspace     # 35  a math space: \, \: \; \!
+  - accent     # 36  \hat \bar \tilde \vec \dot \ddot ... (binds one atom argument, which it sets the accent over)
+  - cmdmathbf  # 37  \mathbf (binds one atom argument, which it sets bold)
+  - ldelim     # 38  \lfloor \lceil \langle : a named opening delimiter
+  - rdelim     # 39  \rfloor \rceil \rangle : its closing partner
+  - prime      # 40  ' (one or more): a prime on the atom before it
 
 productions:
   # Start production. Single-non-terminal so it trims at parse time and the
@@ -151,6 +162,7 @@ productions:
     rules:
       - { lhs: P, rhs: [P, '^', A], action: sup }
       - { lhs: P, rhs: [P, '_', A], action: subscript }
+      - { lhs: P, rhs: [P, prime],  action: primed }
       - { lhs: P, rhs: [A] }
 
   # Atoms: leaves of the expression tree. \frac takes A-typed arguments and
@@ -195,6 +207,9 @@ productions:
       - { lhs: A0, rhs: [opname, A],       action: operatorName }
       - { lhs: A0, rhs: [textrm],          action: textRm }
       - { lhs: A0, rhs: [mspace],          action: mathSpace }
+      - { lhs: A0, rhs: [accent, A],       action: accented }
+      - { lhs: A0, rhs: [cmdmathbf, A],    action: mathBf }
+      - { lhs: A0, rhs: [ldelim, E, rdelim], action: namedPair }
 
 # Single lexer state. Ordering matters: `\frac`, `\sqrt`, `\mathrm`, `\mathbb`, `\operatorname` (and the explicit
 # multiplication aliases `\cdot` / `\times`) must come before the `\\[a-zA-Z]+`
@@ -207,6 +222,13 @@ lexer:
     - { symbol: cmdsqrt, match: '\\sqrt' }
     - { symbol: cmdmathrm, match: '\\mathrm' }
     - { symbol: cmdmathbb, match: '\\mathbb' }
+    - { symbol: cmdmathbf, match: '\\mathbf' }
+    # Accents. A longer name (\dots, \barwedge, \vecx) is another command
+    # and still goes to `cmd` by longest match.
+    - { symbol: accent,  match: '\\(hat|widehat|bar|overline|tilde|widetilde|vec|dot|ddot|check|breve|acute|grave)' }
+    - { symbol: ldelim,  match: '\\(lfloor|lceil|langle)' }
+    - { symbol: rdelim,  match: '\\(rfloor|rceil|rangle)' }
+    - { symbol: prime,   match: "'+" }
     # \operatorname's argument is math, as in amsmath, so it is an atom like
     # \mathrm's; the star (limits) may follow a blank, as TeX's \@ifstar
     # allows.

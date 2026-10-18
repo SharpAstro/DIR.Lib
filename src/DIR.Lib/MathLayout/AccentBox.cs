@@ -20,16 +20,13 @@ namespace DIR.Lib.MathLayout;
 /// otherwise it defaults to half the box's advance — the spec-default
 /// centre.</para>
 ///
-/// <para><b>Vertical placement:</b> the accent's <i>top</i> sits at
-/// <c>max(base.Height, AccentBaseHeight)</c> above the base's baseline.
-/// We anchor the top rather than the bottom because real macron / hat /
-/// tilde glyphs put their visible mark near the top of the glyph cell
-/// with empty space below — anchoring on the bottom makes the bar float
-/// <c>accent.Height</c> too far above the base. Two effects still fall
-/// out: (1) accents stay at a consistent height over
-/// short bases (x̄ and ε̄ get the same macron position), and (2) accents
-/// ride above the actual glyph top for tall bases (so a hat over a
-/// big-summation doesn't intersect the operator).</para>
+/// <para><b>Vertical placement:</b> the accent's baseline is raised
+/// <c>max(0, base.Height − AccentBaseHeight)</c> above the base's, the
+/// OpenType MATH rule: a math font draws its accents to sit over an
+/// x-height base with the baselines level. So accents stay at one height
+/// over short bases (x̄ and ε̄ get the same macron position), and ride
+/// above the glyph top of a tall base (a hat over a big summation clears
+/// the operator).</para>
 ///
 /// <para>The box's reported <see cref="Box.Width"/> is the base's width —
 /// the accent is allowed to overhang horizontally without pushing
@@ -54,29 +51,21 @@ public sealed class AccentBox : Box
         var accentAttach = TryGetTopAccentAttachment(accent, style) ?? accent.Width / 2f;
         _accentXOffset = baseAttach - accentAttach;
 
-        // Vertical: place the accent's TOP at (refTop + gap) above base
-        // baseline. The accent's top in its own coords is
-        // (accent_baseline - accent.Height), so:
-        //     accent_baseline = base_baseline - (refTop + gap) + accent.Height
-        // i.e. the baseline drop (positive = above base baseline) is
-        //     refTop + gap - accent.Height.
+        // Vertical, as the OpenType MATH table defines it and MathJax and TeX
+        // set it: an accent glyph is drawn to sit over a base no taller than
+        // AccentBaseHeight (an x-height letter) with the two baselines level,
+        // so it is raised only by however much taller its base is.
         //
-        // Without the gap, the visible mark inside the accent glyph (which
-        // sits near the cell's top edge in any sensible font design) lands
-        // exactly at base.Height above baseline — i.e., ON the base's top
-        // edge — and disappears into the base's hairline. The gap is a
-        // small fraction of font size; OpenType MATH supplies no per-
-        // accent constant for this (only OverbarVerticalGap, which the
-        // explicit \overline primitive uses), so we fall back to a TeX-
-        // style heuristic of 5% em. Visually that's ~5 px at the 96 px
-        // baseline render and stays proportional at smaller sizes.
-        var refTop = MathF.Max(@base.Height, style.AccentBaseHeight);
-        var gap = style.FontSize * 0.05f;
-        _accentBaselineDrop = refTop + gap - accent.Height;
+        // This used to put the accent's TOP a 5% em gap above
+        // max(base.Height, AccentBaseHeight). An accent's ink is a band at
+        // the top of its box (STIX's U+02C6 at 32 px: 5 rows at the top of a
+        // 22 px box), so the band landed inside the base: a hat over x was
+        // drawn across the x's top rows and could not be seen. It never met a
+        // real formula, since nothing but a hand-built test reached this box.
+        _accentBaselineDrop = MathF.Max(0f, @base.Height - style.AccentBaseHeight);
 
-        // Height extends from base baseline up to top of accent — which is
-        // exactly refTop + gap by construction.
-        _height = refTop + gap;
+        // Height runs from the base baseline to whichever top is higher.
+        _height = MathF.Max(@base.Height, _accentBaselineDrop + accent.Height);
         _depth = @base.Depth;
     }
 

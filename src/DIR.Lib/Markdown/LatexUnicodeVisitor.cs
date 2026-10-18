@@ -48,11 +48,15 @@ internal sealed record UnicodeMath(string Text)
 /// </summary>
 public sealed class LatexUnicodeVisitor : IVisitor<string>
 {
-    public string Visit(Add node)      => Kept(Joined(node.Arg0, " + ", node.Arg2));
-    public string Visit(Subtract node) => Kept(Joined(node.Arg0, " − ", node.Arg2));
-    public string Visit(Eq node)       => Kept(Joined(node.Arg0, " = ", node.Arg2));
-    public string Visit(Mul node)      => Kept(Joined(node.Arg0, "·", node.Arg2));
-    public string Visit(Div node)      => Kept(Joined(node.Arg0, "/", node.Arg2));
+    public string Visit(Add node)      => Kept(Joined(node.Arg0, " + ", node.Arg2, binary: true));
+    public string Visit(Subtract node) => Kept(Joined(node.Arg0, " − ", node.Arg2, binary: true));
+    public string Visit(Eq node)       => Kept(Joined(node.Arg0, " = ", node.Arg2, binary: false));
+    public string Visit(Div node)      => Kept(Joined(node.Arg0, "/", node.Arg2, binary: true));
+
+    // \times is ×, spaced as a binary operator, as KaTeX sets it: 7 × 7. It
+    // used to share * and \cdot's tight middle dot, so 7 \times 7 read 7·7.
+    public string Visit(Mul node)
+        => Kept(Joined(node.Arg0, (string)node.Arg1.Content == @"\times" ? " × " : "·", node.Arg2, binary: true));
 
     public string Visit(Neg node)
     {
@@ -73,7 +77,9 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
         var right = Of(node.Arg1);
         if (left.Text.Length == 0) return Kept(right);
         if (right.Text.Length == 0) return Kept(left);
-        var space = MarkdownMacros.ThinSpaceBetween(left.Last, right.First) ? " " : "";
+        // A comma takes a space after it, as TeX's thin space after punctuation
+        // (the box path's Punct carries it): max(0, x), not max(0,x).
+        var space = MarkdownMacros.ThinSpaceBetween(left.Last, right.First) || left.Last == MathAtomClass.Punct ? " " : "";
         return Kept(new UnicodeMath($"{left.Text}{space}{right.Text}")
         {
             First = left.First,
@@ -121,11 +127,21 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
     private static string TextOf(Item item) => (string)item.Content;
 
     /// <summary>Left, <paramref name="op"/>, right: the ends are the
-    /// operands' outer ones.</summary>
-    private static UnicodeMath Joined(Item leftItem, string op, Item rightItem)
+    /// operands' outer ones. Against an empty side (an operand
+    /// <see cref="MarkdownMacros.SupplyMissingOperands"/> supplied) a
+    /// <paramref name="binary"/> operator loses its spaces, being ordinary
+    /// there in TeX (<c>8×</c>), and a relation its space on that side only
+    /// (<c>= x</c>, and <c>→</c> alone).</summary>
+    private static UnicodeMath Joined(Item leftItem, string op, Item rightItem, bool binary)
     {
         var left = Of(leftItem);
         var right = Of(rightItem);
+        if (left.Text.Length == 0 || right.Text.Length == 0)
+        {
+            if (binary) op = op.Trim();
+            else if (left.Text.Length == 0) op = op.TrimStart();
+            if (right.Text.Length == 0) op = op.TrimEnd();
+        }
         return new UnicodeMath($"{left.Text}{op}{right.Text}")
         {
             First = left.First,
@@ -145,7 +161,11 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
     // raw bytes; RenderCommand looks up the bare glyph and the format
     // string places the outer spaces structurally.
     public string Visit(Rel node)
-        => Kept(Joined(node.Arg0, $" {RenderCommand((string)node.Arg1.Content)} ", node.Arg2));
+    {
+        // \pm and \mp lex as relations but are binary operators in TeX: ±0.2.
+        var raw = (string)node.Arg1.Content;
+        return Kept(Joined(node.Arg0, $" {RenderCommand(raw)} ", node.Arg2, binary: raw is @"\pm" or @"\mp"));
+    }
 
     public string Visit(Sup node) => Kept(Scripted(node.Arg0, node.Arg2, Superscripts, '^'));
     public string Visit(Subscript node) => Kept(Scripted(node.Arg0, node.Arg2, Subscripts, '_'));
@@ -162,10 +182,12 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
     {
         var @base = Of(baseItem);
         var script = Of(scriptItem);
-        var suffix = TryUnicodeScript(script.Text, table, out var mapped)
-                     || (script.Tight is { } tight && TryUnicodeScript(tight, table, out mapped))
+        // A script is set tight, the space after its commas included: x_{i,j} is x_i,j.
+        var text = script.Text.Replace(", ", ",", StringComparison.Ordinal);
+        var suffix = TryUnicodeScript(text, table, out var mapped)
+                     || (script.Tight is { } tight && TryUnicodeScript(tight.Replace(", ", ",", StringComparison.Ordinal), table, out mapped))
             ? mapped
-            : $"{mark}{Wrap(script.Text)}";
+            : $"{mark}{Wrap(text)}";
         return @base with { Text = $"{@base.Text}{suffix}", Tight = @base.Tight is { } t ? $"{t}{suffix}" : null };
     }
 
@@ -202,20 +224,60 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
     // \mathbb{X}: X's Latin letters and digits double-struck, ℝ for R, from
     // wherever Unicode put each (Letterlike Symbols for ℂ ℍ ℕ ℙ ℚ ℝ ℤ). The
     // letters of a \name in X (a placeholder still to be spliced back) stay.
-    public string Visit(MathBb node)
+    public string Visit(MathBb node) => Kept(new UnicodeMath(InAlphabet(TextOf(node.Arg1), MathStyle.DoubleStruck)));
+
+    // \mathbf{X}: X's Latin letters and digits in Unicode's mathematical
+    // bold, as \mathbb's are double-struck: 𝟏𝟎𝟐𝟒.
+    public string Visit(MathBf node) => Kept(new UnicodeMath(InAlphabet(TextOf(node.Arg1), MathStyle.Bold)));
+
+    private static string InAlphabet(string text, MathStyle style)
     {
-        var text = TextOf(node.Arg1);
         var sb = new StringBuilder(text.Length * 2);
         var inName = false;
         foreach (var c in text)
         {
             inName = c == '\\' || (inName && char.IsAsciiLetter(c));
-            if (!inName && char.IsAsciiLetterOrDigit(c) && MathAlphanumerics.MapCodepoint(c, MathStyle.DoubleStruck) is { } mapped)
+            if (!inName && char.IsAsciiLetterOrDigit(c) && MathAlphanumerics.MapCodepoint(c, style) is { } mapped)
                 sb.Append(char.ConvertFromUtf32((int)mapped));
             else
                 sb.Append(c);
         }
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// <c>\hat{x}</c> is x̂: the accent's combining mark after the argument's
+    /// last character, or after every character for <c>\overline</c>, whose
+    /// line runs the argument's width. It used to print the command's name.
+    /// </summary>
+    public string Visit(Accented node)
+    {
+        var mark = MarkdownMacros.Accents[((string)node.Arg0.Content).TrimStart('\\')].Mark;
+        var text = TextOf(node.Arg1);
+        if (mark != '\u0305') return Kept(new UnicodeMath(text + mark));
+        var sb = new StringBuilder(text.Length * 2);
+        foreach (var c in text)
+        {
+            sb.Append(c);
+            if (!char.IsWhiteSpace(c) && !char.IsHighSurrogate(c)) sb.Append(mark);
+        }
         return Kept(new UnicodeMath(sb.ToString()));
+    }
+
+    // \lfloor E \rfloor, \lceil E \rceil and \langle E \rangle: E between the
+    // pair's glyphs, as (E) between parens.
+    public string Visit(NamedPair node) => Kept(Delimited(
+        MarkdownMacros.NamedDelimiters[((string)node.Arg0.Content).TrimStart('\\')].ToString(),
+        node.Arg1,
+        MarkdownMacros.NamedDelimiters[((string)node.Arg2.Content).TrimStart('\\')].ToString()));
+
+    // x' is x′, x'' is x″: a prime is part of the atom it follows, as a
+    // script is, so it keeps the atom's class.
+    public string Visit(Primed node)
+    {
+        var @base = Of(node.Arg0);
+        var primes = MarkdownMacros.Primes(((string)node.Arg1.Content).Length);
+        return Kept(@base with { Text = @base.Text + primes, Tight = @base.Tight is { } t ? t + primes : null });
     }
 
     public string Visit(Paren node) => Kept(Delimited("(", node.Arg1, ")"));
@@ -287,12 +349,27 @@ public sealed class LatexUnicodeVisitor : IVisitor<string>
     {
         if (string.IsNullOrEmpty(s)) return s;
         if (s.Length == 1) return s;
+        if (IsOneDelimitedGroup(s)) return s;   // [a, b] needs no parens round it
         foreach (var c in s)
         {
             if (c == ' ' || c == '+' || c == '−' || c == '=' || c == '/' || c == '·' || c == '⁄')
                 return $"({s})";
         }
         return s;
+    }
+
+    /// <summary>Whether <paramref name="s"/> is one bracketed group: it opens
+    /// with ( [ { ⌊ ⌈ or ⟨ and that delimiter's partner is its last character.</summary>
+    private static bool IsOneDelimitedGroup(string s)
+    {
+        if (s[0] is not ('(' or '[' or '{' or '⌊' or '⌈' or '⟨')) return false;
+        var depth = 0;
+        for (var i = 0; i < s.Length; i++)
+        {
+            if (s[i] is '(' or '[' or '{' or '⌊' or '⌈' or '⟨') depth++;
+            else if (s[i] is ')' or ']' or '}' or '⌋' or '⌉' or '⟩' && --depth == 0) return i == s.Length - 1;
+        }
+        return false;
     }
 
     private static bool TryUnicodeScript(string s, IReadOnlyDictionary<char, char> table, out string? mapped)
