@@ -100,6 +100,19 @@ public sealed class VsCodeParityTests
         => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
 
     /// <summary>
+    /// A <c>'</c> inside a <c>\textrm{...}</c> argument is text and stays a
+    /// quote; only a quote in math reads as a prime (round 2 B1:
+    /// <c>\textrm{'a'}</c> read <c>′a'</c>).
+    /// </summary>
+    [Theory]
+    [InlineData(@"\textrm{'a'}", "'a'")]
+    [InlineData(@"x = \textrm{'raw' input}", "x = 'raw' input")]
+    [InlineData(@"\textrm{('x')}", "('x')")]
+    [InlineData(@"\textrm{'a'} = 'b'", "'a' = ′b′")]
+    public void UnicodePath_AQuoteInTextStaysAQuote(string latex, string expected)
+        => MarkdownMacros.RenderMathUnicode(latex).ShouldBe(expected);
+
+    /// <summary>
     /// An accent's mark never lands inside a placeholder still to be spliced
     /// back (a <c>\text</c>, a math space, a character the lexer has no rule
     /// for), which would break its name: <c>\overline{\text{abc}}</c> printed
