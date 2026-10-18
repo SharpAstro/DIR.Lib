@@ -1,0 +1,2031 @@
+Heading 1
+  Literal "Changelog"
+Paragraph
+  Literal "Release notes for Console.Lib, one entry per "
+  Code "Major.Minor"
+  Literal ", newest first."
+Paragraph
+  Literal "The version NUMBER is not here: it lives in "
+  Code "src/Directory.Build.props"
+  Literal " ("
+  Code "VersionMajorMinor"
+  Literal "), and the"
+  LineBreak soft
+  Literal "build job reads that property back rather than restating it, so a package can never declare a version"
+  LineBreak soft
+  Literal "this file disagrees with. Bump it there and add the entry here, in the same commit."
+Paragraph
+  Literal "Breaking changes carry their migration steps in "
+  Link url="MIGRATION.md"
+    Literal "MIGRATION.md"
+  Literal "; this file says what"
+  LineBreak soft
+  Literal "changed and why."
+Heading 2
+  Literal "5.9"
+Paragraph
+  Emphasis 2
+    Literal "Display math that holds "
+    Code "\\text"
+    Literal " or an escaped brace rasters."
+  Literal " The renderer prepared the raster path's source with"
+  LineBreak soft
+  Literal "its own copy of DIR.Lib's preparation, which turned away "
+  Code "\\text"
+  Literal " and every escaped brace, so most formulas a document"
+  LineBreak soft
+  Literal "writes for KaTeX (eight of the nine display formulas in a real architecture note) printed as one row of Unicode. It"
+  LineBreak soft
+  Literal "now calls DIR.Lib's "
+  Code "MarkdownMacros.TryPrepareMathBoxSource"
+  Literal ", which turns away only environments; a set's braces"
+  LineBreak soft
+  Literal "raster as curly brackets (DIR.Lib 11.24). This reverses 5.8's routing of escaped braces to the Unicode path."
+Paragraph
+  Emphasis 2
+    Literal "Display math is centred"
+  Literal ", as KaTeX and LaTeX centre it: in the width for a block, and in the item's text column for"
+  LineBreak soft
+  Literal "one inside a list item, where it used to sit at column 0, left of the item's own text. The Unicode fallback is centred"
+  LineBreak soft
+  Literal "too where its line fits. Every rastered entry of the math parity golden moved by its indent."
+Paragraph
+  Emphasis 2
+    Literal "A list item keeps its marker when it opens with no paragraph."
+  Literal " DIR.Lib now parses an item's lines like a document,"
+  LineBreak soft
+  Literal "so an item may open with a heading, a fence or a nested list, or hold nothing ("
+  Code "1. ## Step"
+  Literal ", "
+  Code "- - foo"
+  Literal ", an empty"
+  LineBreak soft
+  Code "-"
+  Literal "). The marker used to print only ahead of a paragraph, so such an item lost it; it now takes a line of its own."
+Paragraph
+  Emphasis 2
+    Literal "DIR.Lib 11.25's Markdown and math fixes reach mdcat through the pin"
+  Literal ", which moves from "
+  Code "11.24.*"
+  Literal " to "
+  Code "11.25.*"
+  Literal ". A"
+  LineBreak soft
+  Literal "heading, a list, a fence, a table or display math interrupts a paragraph, as CommonMark and GFM set them, so a heading"
+  LineBreak soft
+  Literal "written straight under a paragraph line no longer folds into it. On both math paths: "
+  Code "\\text"
+  Literal ", accents ("
+  Code "\\hat"
+  Literal ", "
+  Code "\\bar"
+  Literal ","
+  LineBreak soft
+  Code "\\vec"
+  Literal ", ...) drawn over their base, primes, "
+  Code "\\lfloor"
+  Literal " "
+  Code "\\lceil"
+  Literal " "
+  Code "\\langle"
+  Literal " pairs that stretch, "
+  Code "\\mathbf"
+  Literal ", TeX's spacing for"
+  LineBreak soft
+  Literal "operator names and juxtaposition, and an operator with no operand on a side ("
+  Code "8\\times"
+  Literal ", "
+  Code "\\to"
+  Literal "). The radical keeps whole"
+  LineBreak soft
+  Literal "clear rows over its radicand. DIR.Lib's own "
+  Code "## 11.24"
+  Literal " and "
+  Code "## 11.25"
+  Literal " entries say how and why."
+Heading 2
+  Literal "5.8"
+Paragraph
+  Emphasis 2
+    Literal "Display math written inside a paragraph rasters as a block."
+  Literal " "
+  Code "$$..$$"
+  Literal " and "
+  Code "\\[..\\]"
+  Literal " are display math wherever they"
+  LineBreak soft
+  Literal "sit, as in Pandoc, so a paragraph that holds one now splits into its text before, the raster, and its text after; a"
+  LineBreak soft
+  Literal "one-line "
+  Code "$$x$$"
+  Literal " rasters byte for byte as the fenced block does. Before, display math rasterized only when its"
+  LineBreak soft
+  Literal "delimiters sat on lines of their own, and anything else printed as one row of Unicode. A list item's paragraph splits"
+  LineBreak soft
+  Literal "the same way (its marker leads the first text, or takes a line of its own when the item opens with the raster)."
+  LineBreak soft
+  Code "$x$"
+  Literal " and "
+  Code "\\(x\\)"
+  Literal " are inline math and stay one row of Unicode, as does display math inside emphasis or a link;"
+  LineBreak soft
+  Literal "display math in a heading or a table cell stays inline too, since a raster cannot fit in that one row. A span the"
+  LineBreak soft
+  Literal "raster path turns away ("
+  Code "\\text"
+  Literal ") stays in its text as Unicode, and under "
+  Code "ColorMode.None"
+  Literal ", or with no raster mode,"
+  LineBreak soft
+  Literal "nothing changes."
+Paragraph
+  Emphasis 2
+    Literal "Escaped curly braces keep display math on the Unicode path."
+  Literal " The raster path has no curly-brace glyphs, and an"
+  LineBreak soft
+  Literal "escaped brace reduces to a bare group on the way to it, so 5.7 already rastered "
+  Code "\\{a\\}"
+  Literal " as "
+  Code "a"
+  Literal " and"
+  LineBreak soft
+  Code "\\left\\{ x \\right\\}"
+  Literal " as "
+  Code "x"
+  Literal ". A set with a comma, such as "
+  Code "\\{1, 2, 3\\}"
+  Literal ", kept its braces only because the comma sent it"
+  LineBreak soft
+  Literal "to the Unicode path; DIR.Lib 11.23 lexes "
+  Code "["
+  Literal ", "
+  Code "]"
+  Literal " and "
+  Code ","
+  Literal ", so it would have lost them too. A source with "
+  Code "\\{"
+  Literal ", "
+  Code "\\}"
+  Literal ","
+  LineBreak soft
+  Code "\\lbrace"
+  Literal " or "
+  Code "\\rbrace"
+  Literal " (which also catches "
+  Code "\\left\\{"
+  Literal " and "
+  Code "\\right\\}"
+  Literal ") now takes the Unicode path, so "
+  Code "\\{1, 2, 3\\}"
+  LineBreak soft
+  Literal "keeps its braces and "
+  Code "\\{a\\}"
+  Literal " gets them back. Known gap: on that path "
+  Code "\\left\\{ x \\right\\}"
+  Literal " and"
+  LineBreak soft
+  Code "\\left\\{ 1, 2 \\right\\}"
+  Literal " still lose theirs ("
+  Code "x"
+  Literal ", "
+  Code "1,2"
+  Literal "), and "
+  Code "\\lbrace x \\rbrace"
+  Literal " prints raw ("
+  Code "\\lbracex\\rbrace"
+  Literal "),"
+  LineBreak soft
+  Literal "because DIR.Lib's alias table maps "
+  Code "\\left\\{"
+  Literal " to a bare group and knows no "
+  Code "\\lbrace"
+  Literal ". That predates this release and"
+  LineBreak soft
+  Literal "is DIR.Lib's to fix; the tests pin only the routing, so they stay green when it is."
+Paragraph
+  Emphasis 2
+    Literal "DIR.Lib 11.23's math fixes reach mdcat through the pin"
+  Literal ", which moves from "
+  Code "11.1.*"
+  Literal " to "
+  Code "11.23.*"
+  Literal ", a floor, since the"
+  LineBreak soft
+  Literal "renderer reads "
+  Code "MdMathInline.IsDisplay"
+  Literal " and that property does not exist before 11.23. On the raster path the"
+  LineBreak soft
+  Literal "radical's bar joins its flag as one stroke; variables are set in math italic with STIX Two Math, while "
+  Code "\\mathrm{..}"
+  LineBreak soft
+  Literal "and chemistry ("
+  Code "\\ce{H2O}"
+  Literal ") stay upright; "
+  Code "\\sqrt[n]{x}"
+  Literal " and "
+  Code "[a, b]"
+  Literal " raster instead of falling back. In text, a "
+  Code "$"
+  LineBreak soft
+  Literal "is math only by Pandoc's rule, so "
+  Code "It costs $5 today."
+  Literal " prints as written, and an unmatched delimiter is text where it"
+  LineBreak soft
+  Literal "used to blank its whole paragraph. DIR.Lib's own "
+  Code "## 11.23"
+  Literal " entry says how and why."
+Paragraph
+  Emphasis 2
+    Literal "Display math costs less, with the same bytes out."
+  Literal " Fitting a formula to the width used to rasterize it at each"
+  LineBreak soft
+  Literal "size it tried; it now parses once, sizes each candidate from the box, and rasterizes only the size that fits, or"
+  LineBreak soft
+  Literal "nothing when even the smallest is too wide and the formula goes to the Unicode path (across the test corpus,"
+  LineBreak soft
+  Literal "measured on DIR.Lib 11.1, 170 rasterizations became 117; on 11.23 the corpus rasterizes 116 times, since with the"
+  LineBreak soft
+  Literal "wider italic glyphs one formula no longer fits at half-block width 30 and falls back). The Sixel encoder is about"
+  LineBreak soft
+  Literal "2.3 times as fast on a math raster and emits the same stream byte for byte; on other images 2.3 to 3.1 times, except"
+  LineBreak soft
+  Literal "those with tens of thousands of colours, where the nearest-colour search dominates and is unchanged. A golden of the"
+  LineBreak soft
+  Literal "corpus in Sixel, sextant and half-block at three widths, captured before the rework, pins the output; it was"
+  LineBreak soft
+  Literal "re-captured once, on purpose, for the 11.23 pin, and every entry that moved traced to one of DIR.Lib's PRs."
+Paragraph
+  Literal "A minor, not a major: no public API was removed or changed in shape. "
+  Code "MarkdownRenderer.Render"
+  Literal ", both "
+  Code "RenderLines"
+  LineBreak soft
+  Literal "overloads, "
+  Code "BoxRenderer"
+  Literal " and "
+  Code "SixelEncoder.Encode"
+  Literal " keep their 5.7 signatures, and everything added is internal. What"
+  LineBreak soft
+  Literal "changes is output: a paragraph with display math in it renders differently, as it should, and a rastered formula"
+  LineBreak soft
+  Literal "differs from 5.7's wherever DIR.Lib 11.23 draws it differently. The pin brings along 11.23's four new "
+  Code "Visit"
+  LineBreak soft
+  Literal "overloads on the public "
+  Code "Latex.IVisitor<T>"
+  Literal ", which break only code that implements that interface itself; nothing in"
+  LineBreak soft
+  Literal "the SharpAstro org does."
+Paragraph
+  Literal "None of this is new to a consumer of the latest 5.7 build. CI publishes Console.Lib and mdcat on every push to main,"
+  LineBreak soft
+  Literal "so #37 went out in 5.7.2131 (on DIR.Lib 11.1) and #38, with the 11.23 pin, in 5.7.2151. 5.8 is the release that names"
+  LineBreak soft
+  Literal "them."
+Heading 2
+  Literal "5.7"
+Paragraph
+  Emphasis 2
+    Code "list_instances"
+    Literal " finds a DEBUG terminal app that binds nothing but loopback."
+  Literal " From DIR.Lib 11.21 an app's"
+  LineBreak soft
+  Literal "inspector registers a descriptor file in a per-user folder ("
+  Code "DIR.Lib/inspector"
+  Literal " under "
+  Code "LocalApplicationData"
+  Literal ") and no"
+  LineBreak soft
+  Literal "longer answers the UDP multicast query unless asked to, because that bind is what made Windows Firewall prompt once"
+  LineBreak soft
+  Literal "per executable path, so once per git worktree. The "
+  Code "Console.Lib.Inspector"
+  Literal " sidecar now reads that folder first, which"
+  LineBreak soft
+  Literal "needs no network at all, and then multicasts as before, for an app on another machine and for builds older than"
+  LineBreak soft
+  Literal "11.21, which answer the query and do not register. The folder is read by the contract in DIR.Lib's"
+  LineBreak soft
+  Code "src/DIR.Lib/Diagnostics/inspector-registry.md"
+  Literal ", without referencing DIR.Lib: a descriptor whose process has exited,"
+  LineBreak soft
+  Literal "or whose pid now belongs to a later process (its start time is more than 2 s from the recorded one), is not listed,"
+  LineBreak soft
+  Literal "and nothing in the folder is ever deleted, since the apps sweep it themselves. The second kind of skip is said, on"
+  LineBreak soft
+  Literal "stderr and at the end of "
+  Code "list_instances"
+  Literal " ("
+  Code "descriptor skipped: start-time mismatch (<file>)"
+  Literal "), because on Linux a"
+  LineBreak soft
+  Literal "wall-clock step moves a live process's start time too, and that instance would otherwise just vanish. An app found"
+  LineBreak soft
+  Literal "both ways is listed once, at 127.0.0.1; an app on another machine is kept even when it has the same pid as a local"
+  LineBreak soft
+  Literal "one. A query that cannot be sent now yields an empty multicast result instead of failing the whole listing."
+Paragraph
+  Literal "The library itself is unchanged. Its "
+  Code "ConsoleDebugInspector"
+  Literal " starts its core with the defaults, so it registers, and"
+  LineBreak soft
+  Literal "stops answering multicast, as soon as it is built against DIR.Lib 11.21."
+Heading 2
+  Literal "5.6"
+Paragraph
+  Emphasis 2
+    Literal "A command-line tool colours its own stdout or stderr through "
+    Code "StreamColor"
+    Literal "."
+  Literal " "
+  Code "StreamColor.For(StandardStream)"
+  LineBreak soft
+  Literal "answers whether a plain stream, written line by line rather than owned by a "
+  Code "VirtualTerminal"
+  Literal ", may take a colour"
+  LineBreak soft
+  Literal "escape: not when it is redirected to a file or a pipe, not when "
+  Code "NO_COLOR"
+  Literal " asks for none, and on Windows only once the"
+  LineBreak soft
+  Literal "console accepts virtual-terminal processing on that stream's own handle, which it switches on the first time it is"
+  LineBreak soft
+  Literal "asked. "
+  Code "StreamColor.Paint(text, color, mode)"
+  Literal " wraps the text in the colour and a reset, or leaves it alone under"
+  LineBreak soft
+  Code "ColorMode.None"
+  Literal ". TianWen's CLI printed its errors in red through the Pastel package for this one line; it needs only"
+  LineBreak soft
+  Literal "Console.Lib now. Stderr was the gap: the existing Windows switch covered stdin and stdout together, and gave up when"
+  LineBreak soft
+  Literal "stdin was redirected."
+Paragraph
+  Emphasis 2
+    Code "NO_COLOR"
+    Literal " is read in one place, as https://no-color.org states it"
+  Literal " ("
+  Code "StreamColor.NoColorRequested"
+  Literal "): set to"
+  LineBreak soft
+  Literal "anything but the empty string. "
+  Code "VirtualTerminal"
+  Literal " treated an EMPTY "
+  Code "NO_COLOR"
+  Literal " as a request for no colour while mdcat did"
+  LineBreak soft
+  Literal "not; both now follow the convention, so "
+  Code "NO_COLOR="
+  Literal " with no value leaves colour on in the TUI too."
+Heading 2
+  Literal "5.5"
+Paragraph
+  Emphasis 2
+    Literal "A table fits the width, and a long word breaks where the host wants it to."
+  Literal " A Markdown table was"
+  LineBreak soft
+  Literal "never given the render width, so each column was as wide as its widest cell. One long prose cell (mdcat"
+  LineBreak soft
+  Literal "on a package list, 2026-09-25) put every line of the table past the terminal's edge, and the terminal"
+  LineBreak soft
+  Literal "wrapped the borders along with the text. A table now fits: its widest columns shrink first, so a short"
+  LineBreak soft
+  Literal "column keeps its natural width while a prose column wraps. Cells wrap between words, and a word too long"
+  LineBreak soft
+  Literal "for its column breaks after a hyphen or slash, mid-character only as a last resort. When any row wraps,"
+  LineBreak soft
+  Literal "every row is ruled off from the next. A table that already fitted renders byte for byte as in 5.4."
+Paragraph
+  Literal "A word too long for a line of its own is now the caller's call. By default it stays whole and overflows,"
+  LineBreak soft
+  Literal "which is right for scrollback: the terminal soft-wraps it and rejoins it on copy, so a URL stays"
+  LineBreak soft
+  Literal "copyable. "
+  Code "MarkdownWidget"
+  Literal " breaks it instead, because a viewport clips what overflows and the URL lost"
+  LineBreak soft
+  Literal "its tail."
+Paragraph
+  Literal "Two fixes to how escapes are measured. An OSC 8 hyperlink was skipped only up to the first "
+  Code "m"
+  Literal ", and"
+  LineBreak soft
+  Literal "URLs routinely contain one ("
+  Code ".com"
+  Literal ", "
+  Code ".md"
+  Literal "). So a link's column came out too wide, and a paragraph that"
+  LineBreak soft
+  Literal "wrapped inside a link started its next line with a truncated, unterminated link sequence. A wrapped line"
+  LineBreak soft
+  Literal "now closes the link it is inside and the next line re-opens it with the full URL, so neither the line"
+  LineBreak soft
+  Literal "break nor the indent is clickable."
+Paragraph
+  Literal "Additive, as overloads rather than new optional parameters, so a consumer compiled against 5.4 still"
+  LineBreak soft
+  Literal "binds: "
+  Code "TextTable.Render(..., output, maxWidth, ...)"
+  Literal " and"
+  LineBreak soft
+  Code "MarkdownRenderer.RenderLines(markdown, width, breakLongWords, ...)"
+  Literal ". The existing forms keep their 5.4"
+  LineBreak soft
+  Literal "behaviour for long words; only tables change, and only when they did not fit."
+Heading 2
+  Literal "5.4"
+Paragraph
+  Emphasis 2
+    Literal "On DIR.Lib 11.1, and its new tick has a glyph."
+  Literal " "
+  Code "IconKind.Check"
+  Literal " spells U+2713 on a terminal: the"
+  LineBreak soft
+  Literal "plain check mark, not the heavy one and never the emoji, so it takes the cell's pen like every other"
+  LineBreak soft
+  Literal "mark. Without it the kind fell back to the "
+  Code "?"
+  Literal " placeholder. DIR.Lib 11.1 is additive (declared button"
+  LineBreak soft
+  Literal "groups, checkboxes and double-clicks), so Console.Lib's own API is unchanged."
+Heading 2
+  Literal "5.3"
+Paragraph
+  Emphasis 2
+    Literal "On DIR.Lib 11.0, and a terminal pointer move carries its modifiers."
+  Literal " The SGR mouse report states"
+  LineBreak soft
+  Literal "the held modifiers on motion as on a press; they were dropped on the way into a "
+  Code "MouseMove"
+  Literal ", which"
+  LineBreak soft
+  Literal "until DIR.Lib 11.0 had nowhere to put them. They now reach "
+  Code "MouseMove.Modifiers"
+  Literal ", so a hover that"
+  LineBreak soft
+  Literal "answers to a held key works in a terminal as it does on the desktop. Console.Lib's own API is"
+  LineBreak soft
+  Literal "unchanged; the DIR.Lib pin moves from 10.2 to 11.0 (whose one break, the frame-counted caret, never"
+  LineBreak soft
+  Literal "reached a terminal: a terminal's caret is the terminal's)."
+Heading 2
+  Literal "5.2"
+Paragraph
+  Emphasis 2
+    Literal "Without colour the selection is reverse video."
+  Literal " A list's cursor row states itself through its pens, and"
+  LineBreak soft
+  Code "ColorMode.None"
+  Literal " ("
+  Code "NO_COLOR"
+  Literal ", or output that is not a terminal) suppresses every pen, so a selected row"
+  LineBreak soft
+  Literal "looked exactly like the rest: in the TianWen planner a click appeared to select nothing (2026-09-19)."
+  LineBreak soft
+  Code "ScrollableList"
+  Literal " now paints its cursor row, and "
+  Code "TreeView"
+  Literal " its selected row from the twirl on, in reverse"
+  LineBreak soft
+  Literal "video when there is no colour. Reverse video is an attribute rather than a colour, so "
+  Code "NO_COLOR"
+  Literal " leaves it"
+  LineBreak soft
+  Literal "alone; the cell buffer already modelled it apart from the pen and the flush already stated it in every"
+  LineBreak soft
+  Literal "mode. With colour nothing changes, and a coloured frame is byte-identical to 5.1's."
+Paragraph
+  Literal "Additive: "
+  Code "CellLayout.Paint(viewport, arranged, drawFill, reverse)"
+  Literal " paints a tree in reverse video, every"
+  LineBreak soft
+  Literal "run and fill carrying the attribute after its pen. It is an overload rather than a new optional parameter,"
+  LineBreak soft
+  Literal "so a consumer compiled against 5.1's three-parameter form still binds."
+Heading 2
+  Literal "5.1"
+Paragraph
+  Emphasis 2
+    Literal "Rebuilt against DIR.Lib 10.2"
+  Literal ", which is additive: popover triggers and groups ("
+  Code "Node.Opens"
+  Literal ","
+  LineBreak soft
+  Code "PopoverGroup"
+  Literal "), presses declared on a tab item ("
+  Code "TabItem.OnPress"
+  Literal ", "
+  Code "OnClose"
+  Literal ", "
+  Code "TabBar.OnNewTab"
+  Literal "), and"
+  LineBreak soft
+  Literal "layout scroll containers (a "
+  Code ".WithScroll"
+  Literal " stack now tells its controller the extent and slides its rows)."
+  LineBreak soft
+  Literal "Nothing in this library changed and all 527 tests pass as they were; the minor keeps the chain in step,"
+  LineBreak soft
+  Literal "so a consumer taking 5.1 gets the DIR.Lib this was built and tested against. Two router behaviours move"
+  LineBreak soft
+  Literal "with it for every host, and neither needs anything here: a press whose own handler focuses a field no"
+  LineBreak soft
+  Literal "longer has that focus blurred by the same press, and a declared dropdown longer than its "
+  Code "maxHeight"
+  LineBreak soft
+  Literal "scrolls instead of overflowing with its hidden rows still taking presses."
+Heading 2
+  Literal "5.0"
+Paragraph
+  Emphasis 2
+    Literal "Rebuilt against DIR.Lib 10.0, and one list model instead of two."
+Paragraph
+  Emphasis 2
+    Literal "The major is not the dependency's"
+  Literal ", and it is worth saying so because the reflex is wrong here:"
+  LineBreak soft
+  Literal "DIR.Lib 9.0 was a major too and this library went 4.32 to 4.33 across it, as SdlVulkan.Renderer went"
+  LineBreak soft
+  Literal "7.x to 7.x. A rebuild is a minor. It is a decision taken for the 10.0 chain: "
+  Code "ScrollableList<T>"
+  Literal " is"
+  LineBreak soft
+  Literal "the most-used widget in this library and its navigation and scrolling are a different implementation"
+  LineBreak soft
+  Literal "underneath, so the number says \"the model moved\" even though the API did not. Nothing here was removed"
+  LineBreak soft
+  Literal "or renamed, and every existing test passed through untouched."
+List ordered=False start=0 items=3
+  Item
+    Paragraph
+      Emphasis 2
+        Code "ScrollableList<T>"
+        Literal " is a "
+        Code "ListCursor"
+        Literal " and a "
+        Code "ListScrollController"
+      Literal ", where it used to hold its own"
+      LineBreak soft
+      Literal "index, its own clamp and its own ensure-visible beside the engine's. It shared the tree and the hit"
+      LineBreak soft
+      Literal "test with a pixel list already; navigation and scrolling were the halves written twice, and \"the same"
+      LineBreak soft
+      Literal "list steps differently under the arrows depending which surface it is on\" is a difference nothing"
+      LineBreak soft
+      Literal "would have reported. Every one of the 36 existing cursor tests passed through the rebase unchanged,"
+      LineBreak soft
+      Literal "which is the evidence that the behaviour was already the engine's."
+    List ordered=False start=0 items=4
+      Item
+        Paragraph
+          Literal "The walk is "
+          Code "ListCursor.Step"
+          Literal ", handed the window of rows the list shows -- the cell-surface answer"
+          LineBreak soft
+          Literal "to what a pixel widget reads off its registered regions. So a step onto a row below the fold, a gap"
+          LineBreak soft
+          Literal "in the indices, and the stop at either end all behave the same on both surfaces by construction."
+      Item
+        Paragraph
+          Literal "Scrolling into view hangs off "
+          Code "ListCursor.Moved"
+          Literal " once, rather than being remembered at each of the"
+          LineBreak soft
+          Literal "four places that move the cursor."
+      Item
+        Paragraph
+          Literal "The scrollbar is still drawn HERE, in box-drawing characters: the controller's painter works in"
+          LineBreak soft
+          Literal "pixel rects, which a cell grid cannot express. What is shared is the model the bar reports."
+      Item
+        Paragraph
+          Literal "New: "
+          Code "ScrollableList<T>.CursorListId"
+          Literal ", the list id the cursor is opened in."
+  Item
+    Paragraph
+      Emphasis 2
+        Code "CellLayout"
+        Literal " states its (absent) painted geometry"
+      Literal " on the "
+      Code "TextInputHit"
+      Literal " it registers."
+      LineBreak soft
+      Code "HitResult.TextInputHit.Painted"
+      Literal " is required in 10.0, and "
+      Code "default"
+      Literal " now SAYS that this surface does"
+      LineBreak soft
+      Literal "not resolve a press to a character -- a terminal reports a cell, and the caret moves with the arrows."
+  Item
+    Paragraph
+      Emphasis 2
+        Literal "A field is focused through "
+        Code "TextInputFocus"
+      Literal ", "
+      Code "TextInputState.Activate"
+      Literal " and the "
+      Code "IsActive"
+      Literal " setter"
+      LineBreak soft
+      Literal "having become internal. No production code here did either; the paint tests say it the way a host does."
+Heading 2
+  Literal "4.37"
+Paragraph
+  Emphasis 2
+    Literal "Rebuilt against DIR.Lib 9.4."
+  Literal " Three additions to "
+  Code "Layout.Node.Wrap"
+  Literal ", all of which a cell surface"
+  LineBreak soft
+  Literal "gets for free because the wrap engine is shared: "
+  Code "FirstLineReserve"
+  Literal " (only the FIRST line stops short,"
+  LineBreak soft
+  Literal "so a run flows UNDER a floated corner instead of beside it on every line the way a "
+  Code "Dock"
+  Literal " would),"
+  LineBreak soft
+  Code "LeadingGap"
+  Literal " on a child (group separation that is suppressed when the child starts a line, where a"
+  LineBreak soft
+  Literal "spacer node between groups would indent the wrapped row), and "
+  Code "MaxLines"
+  Literal " (past the cap the tail is"
+  LineBreak soft
+  Literal "DROPPED rather than clipped -- a clipped child still registers its region and keeps taking the clicks"
+  LineBreak soft
+  Literal "aimed at whatever covers it)."
+Paragraph
+  Literal "Nothing in Console.Lib calls them yet. This is a currency rebuild, so the declared dependency range"
+  LineBreak soft
+  Literal "moves and nothing else does."
+Heading 2
+  Literal "4.36"
+Paragraph
+  Emphasis 2
+    Literal "Rebuilt against DIR.Lib 9.3"
+  Literal ", which adds "
+  Code "Layout.Builder.Dropdown"
+  Literal " and "
+  Code "PopoverState.ContentKeys"
+  Literal "."
+  LineBreak soft
+  Literal "Nothing here changes: the rebuild exists because a consuming surface has to be compiled against the same"
+  LineBreak soft
+  Literal "engine the rest of the chain is, and 9.1 is the reason that is mandatory rather than a nicety -- an"
+  LineBreak soft
+  Literal "optional parameter added to a record's primary constructor is source-compatible and a BINARY break, so a"
+  LineBreak soft
+  Literal "Console.Lib built against 9.0 threw "
+  Code "MissingMethodException"
+  Literal " on every terminal hit test against the"
+  LineBreak soft
+  Literal "published 9.1."
+Paragraph
+  Literal "The cell surface gains nothing automatically. "
+  Code "ScrollableList<T>"
+  Literal " is still a second implementation of"
+  LineBreak soft
+  Code "ListCursor"
+  Literal " + "
+  Code "ListScrollController"
+  Literal ", and rebasing it on those two is C1, still outstanding."
+Heading 2
+  Literal "4.35"
+Paragraph
+  Literal "Rebuilt against "
+  Emphasis 2
+    Literal "DIR.Lib 9.2"
+  Literal " (from 9.1), the wave that gave the engine the router, the slider and the"
+  LineBreak soft
+  Literal "popover. Nothing in 9.2 is a source break for this library and no cell code changed to accommodate it, so"
+  LineBreak soft
+  Literal "the rebuild is mostly hygiene. One thing is not."
+Paragraph
+  Emphasis 2
+    Literal "The caret family grew a horizontal pair, and a cell glyph is the other half of adding one."
+  LineBreak soft
+  Code "IconKind.CaretLeft"
+  Literal " and "
+  Code "CaretRight"
+  Literal " are new in 9.2, drawn there as filled triangles for the pixel"
+  LineBreak soft
+  Literal "surface; this release spells them "
+  Code "\u25C0"
+  Literal " and "
+  Code "\u25B6"
+  Literal ", from the same block as the vertical pair so all"
+  LineBreak soft
+  Literal "four share a weight. Without them both kinds fall back to the placeholder in every terminal."
+Paragraph
+  Literal "Worth stating plainly, because it is the running cost of the one-node-two-drawings design: "
+  Emphasis 2
+    Literal "adding an"
+    LineBreak soft
+    Code "IconKind"
+    Literal " upstream is a two-repo change"
+  Literal ", and this is the half that is easy to forget, since DIR.Lib's"
+  LineBreak soft
+  Literal "own tests pass without it. What catches it is"
+  LineBreak soft
+  Code "CellLayoutIconTests.EveryIconKindHasAGlyph_SoNoneFallsBackToThePlaceholder"
+  Literal ", which enumerates the enum"
+  LineBreak soft
+  Literal "rather than listing the kinds it already knows, so a kind added upstream fails it the moment the pin"
+  LineBreak soft
+  Literal "moves. That is how these two were found, before 9.2 shipped rather than after."
+Heading 2
+  Literal "4.34"
+Paragraph
+  Literal "Rebuilt against "
+  Emphasis 2
+    Literal "DIR.Lib 9.1"
+  Literal " (from 9.0), and this time the rebuild is the fix, not the hygiene."
+Paragraph
+  Literal "DIR.Lib 9.1 turned "
+  Code "HitResult.TextInputHit(TextInputState)"
+  Literal " into "
+  Code "TextInputHit(TextInputState,\nTextInputGeometry Painted = default)"
+  Literal ". In source that is additive, and the 9.1 notes say so; in the"
+  LineBreak soft
+  Literal "assembly it is not, because an optional parameter on a record's primary constructor REPLACES the old"
+  LineBreak soft
+  Literal "constructor rather than adding beside it. "
+  Code "CellLayout.HitOf"
+  Literal " constructs that record with one argument,"
+  LineBreak soft
+  Literal "so 4.33, compiled against 9.0, throws "
+  Code "MissingMethodException"
+  Literal " from every mouse hit test the moment a"
+  LineBreak soft
+  Literal "consumer resolves DIR.Lib 9.1 next to it. It is the only site in this library that constructs the type,"
+  LineBreak soft
+  Literal "and no source here changes: recompiling against 9.1 binds the new constructor."
+Paragraph
+  Literal "Found on the package path, where CI and every consumer live. It is invisible on a dev box that builds"
+  LineBreak soft
+  Literal "DIR.Lib from the sibling checkout, which is why it shipped: a sibling that pins "
+  Code "9.0.*"
+  Literal " and a consumer"
+  LineBreak soft
+  Literal "that moves to "
+  Code "9.1.*"
+  Literal " unify silently on 9.1, and only the runtime notices. The lesson is DIR.Lib's to"
+  LineBreak soft
+  Literal "carry (a record a sibling constructs gains a parameter through an explicit old-arity constructor, or"
+  LineBreak soft
+  Literal "through a major); this entry is the half a consumer can act on."
+Heading 2
+  Literal "4.33"
+Paragraph
+  Literal "Rebuilt against "
+  Emphasis 2
+    Literal "DIR.Lib 9.0"
+  Literal " (from 8.20)."
+Paragraph
+  Emphasis 2
+    Literal "No code change here, and none was needed."
+  Literal " DIR.Lib 9.0's break is in the pre-layout scale's"
+  LineBreak soft
+  Literal "currency: "
+  Code "ListScrollController.SetExtent"
+  Literal ", "
+  Code "TapOrDragGesture.Arm"
+  Literal ", "
+  Code "FloatingPalette"
+  Literal "'s offsets and"
+  LineBreak soft
+  Literal "the layout helpers' "
+  Code "dpiScale:"
+  Literal " argument now take a "
+  Code "DesignScale"
+  Literal " \u2014 surface units per design unit, per"
+  LineBreak soft
+  Literal "axis \u2014 instead of a bare float. This backend calls none of them, which was checked rather than"
+  LineBreak soft
+  Literal "assumed."
+Paragraph
+  Literal "It is released anyway, and that is the point of a lockstep: a consumer holding two backends that pin"
+  LineBreak soft
+  Literal "different DIR.Lib majors does not get a choice about which one wins, it gets whichever NuGet unifies"
+  LineBreak soft
+  Literal "to. 9.0 is the first DIR.Lib major where that would be a break rather than a surprise."
+  LineBreak soft
+  Emphasis 1
+    Literal "Later in 4.33:"
+  Literal " "
+  Code "Console.Lib.Inspector"
+  Literal " joined central package management. It had pinned inline on"
+  LineBreak soft
+  Literal "the reasoning that a sidecar referencing nothing from the library should own its versions \u2014 true of"
+  LineBreak soft
+  Literal "the dependency, but it put the numbers where no repo-wide sweep reads them, and both had drifted."
+  LineBreak soft
+  Literal "Versions are unchanged, so consumers see nothing."
+Paragraph
+  Emphasis 1
+    Literal "Later in 4.33:"
+  Literal " republished so the "
+  Emphasis 2
+    Literal "DIR.Lib floor this package declares"
+  Literal " moves onto the 9.0 build"
+  LineBreak soft
+  Literal "that takes "
+  Code "SharpAstro.Fonts"
+  Literal " 1.12.901, and with it "
+  Code "SharpAstro.Png"
+  Literal " 3.14. Nothing here changed: the"
+  LineBreak soft
+  Literal "pin is "
+  Code "9.0.*"
+  Literal " and floats onto it by itself. The publish is the whole of it. A package declares the"
+  LineBreak soft
+  Literal "floor its own pack resolved, and NuGet hands a consumer exactly that floor for a transitive"
+  LineBreak soft
+  Literal "dependency, never the newest \u2014 so anyone reaching Png only through this backend was restoring a"
+  LineBreak soft
+  Literal "decoder six published families behind the Codecs repo, and would have kept restoring it however often"
+  LineBreak soft
+  Literal "Fonts.Lib or DIR.Lib republished."
+Heading 2
+  Literal "4.31"
+Paragraph
+  Literal "Rebuilt against "
+  Emphasis 2
+    Literal "DIR.Lib 8.19"
+  Literal " (from 8.9) and "
+  Emphasis 2
+    Literal "SharpAstro.Codecs 3.14"
+  Literal " (from 3.8), so the backend"
+  LineBreak soft
+  Literal "is compiled and tested against the versions a consumer will actually load rather than relying on"
+  LineBreak soft
+  Literal "NuGet unifying it upward by luck."
+Paragraph
+  Literal "Ten minors of DIR.Lib is the widest gap any backend had. Two of them are worth naming:"
+List ordered=False start=0 items=2
+  Item
+    Paragraph
+      Emphasis 2
+        Literal "8.13 moved the text baseline onto the FACE"
+      Literal " rather than the measured ink of each run, which is a"
+      LineBreak soft
+      Literal "flagged behaviour change and the reason this bump is not a formality. It needed no code here: the"
+      LineBreak soft
+      Literal "cell surface positions text by cell, not by baseline, so the change lands entirely in the pixel"
+      LineBreak soft
+      Literal "renderer's favour \u2014 rows that used to stair-step now line up \u2014 and all 521 tests pass unchanged."
+  Item
+    Paragraph
+      Emphasis 2
+        Literal "8.11 and 8.12 added three "
+        Code "IconKind"
+        Literal "s"
+      Literal " ("
+      Code "Search"
+      Literal ", "
+      Code "Pan"
+      Literal ", "
+      Code "IBeam"
+      Literal ") for a tool palette, which the"
+      LineBreak soft
+      Literal "cell surface had no glyphs for. "
+      Code "CellLayoutIconTests"
+      Literal " caught it exactly as designed: they were"
+      LineBreak soft
+      Literal "falling back to the \"?\" placeholder. Now mapped, each to a block a monospace face actually covers"
+      LineBreak soft
+      Literal "rather than to the pictograph that most resembles the pixel drawing \u2014 U+2315 TELEPHONE RECORDER for"
+      LineBreak soft
+      Literal "the lens (DIR.Lib's own note names it as the narrow-cell choice, and a cell is permanently the"
+      LineBreak soft
+      Literal "narrow case), U+271C HEAVY OPEN CENTRE CROSS for the pan, and U+2336 APL FUNCTIONAL SYMBOL I-BEAM,"
+      LineBreak soft
+      Literal "which is named for the shape it is asked to draw."
+Heading 2
+  Literal "4.30"
+Paragraph
+  Literal "Local Markdown links didn't open. "
+  Code "[docs](docs/foo.md)"
+  Literal " rendered as an OSC 8 hyperlink the same as any"
+  LineBreak soft
+  Code "https://"
+  Literal " link, but the target was the raw href verbatim -- a bare relative path, not a URI -- and"
+  LineBreak soft
+  Literal "Windows Terminal (rightly) refuses to Ctrl+Click one, reporting \"invalid link\". Images already had a"
+  LineBreak soft
+  Literal "host-supplied resolver for exactly this ("
+  Code "MarkdownImageOptions.Resolver"
+  Literal "); links had no equivalent."
+Paragraph
+  Code "MarkdownRenderer.Render"
+  Literal " / "
+  Code "RenderLines"
+  Literal " (and "
+  Code "MarkdownWidget.LinkResolver"
+  Literal ") now take an optional"
+  LineBreak soft
+  Code "Func<string, string>? linkResolver"
+  Literal ", threaded through every place a link can appear -- paragraphs,"
+  LineBreak soft
+  Literal "headings, lists, table cells. It rewrites only the OSC 8 target; the visible "
+  Code "(url)"
+  Literal " text after the"
+  LineBreak soft
+  Literal "label still shows the original href, so plain-text dumps and copy-paste are unaffected."
+Paragraph
+  Literal "mdcat wires one up: an href that already parses as an absolute URI ("
+  Code "http(s)://"
+  Literal ", "
+  Code "mailto:"
+  Literal ", an"
+  LineBreak soft
+  Literal "already-"
+  Code "file://"
+  Literal " link, a rooted Windows path) passes through unchanged; a "
+  Code "#anchor"
+  Literal "-only href is left"
+  LineBreak soft
+  Literal "alone too, since there's nothing on disk to point at; everything else resolves against the document's"
+  LineBreak soft
+  Literal "directory -- the same base dir local images already resolve against -- into a "
+  Code "file://"
+  Literal " URI."
+Heading 2
+  Literal "4.29"
+Paragraph
+  Literal "The debug inspector can drive a DRAG. It had exactly one pointer verb, "
+  Code "click"
+  Literal ", which injects a press"
+  LineBreak soft
+  Literal "and a release at the same cell with no motion between them, so no terminal app could have a drag"
+  LineBreak soft
+  Literal "synthesized against it at all -- which meant anything that follows the pointer (a drag ghost, a"
+  LineBreak soft
+  Literal "rubber band, a pan) was unverifiable end-to-end no matter how well it worked."
+Paragraph
+  Literal "Four verbs now: "
+  Code "press"
+  Literal ", "
+  Code "move"
+  Literal ", "
+  Code "release"
+  Literal ", and an atomic "
+  Code "drag"
+  Literal " built from them."
+Paragraph
+  Emphasis 2
+    Literal "Prefer the stepped verbs, and this is the whole reason they exist."
+  Literal " An atomic "
+  Code "drag"
+  Literal " lands in the"
+  LineBreak soft
+  Literal "input queue all at once, so a consumer that coalesces motion -- drop the render when another event is"
+  LineBreak soft
+  Literal "already queued, carry its damage forward -- correctly renders NONE of the intermediate positions. The"
+  LineBreak soft
+  Literal "gesture completes, every report arrives, and nothing mid-drag is ever painted. So "
+  Code "drag"
+  Literal " can prove a"
+  LineBreak soft
+  Literal "gesture but can never prove the thing that follows the pointer; only one event in flight at a time"
+  LineBreak soft
+  Literal "reproduces a human drag closely enough to observe it. Coalescing is what a well-behaved consumer does,"
+  LineBreak soft
+  Literal "so this is not a niche case."
+Paragraph
+  Literal "Two details keep the synthesized stream faithful to what a terminal can actually emit:"
+List ordered=False start=0 items=2
+  Item
+    Paragraph
+      Emphasis 2
+        Code "move"
+        Literal " is refused when no button is held"
+      Literal ", rather than injected anyway. Mode 1002 is BUTTON-motion"
+      LineBreak soft
+      Literal "tracking, so a terminal never sends a hover report. Synthesizing one would let hover-driven behaviour"
+      LineBreak soft
+      Literal "pass a test through a door that is nailed shut in production -- the failure this prevents is a GREEN"
+      LineBreak soft
+      Literal "test, not a red one. This is a deliberate divergence from SdlVulkan.Renderer's inspector, which does"
+      LineBreak soft
+      Literal "have a bare "
+      Code "move"
+      Literal ", because on a GPU host hover is real."
+  Item
+    Paragraph
+      Emphasis 2
+        Literal "Motion is reported once per cell CROSSED"
+      Literal ", not once per interpolation step: a terminal reports a"
+      LineBreak soft
+      Literal "position when it changes, and its resolution is a cell. Asking for more "
+      Code "steps"
+      Literal " than the path has"
+      LineBreak soft
+      Literal "cells yields the cells, not repeats."
+Paragraph
+  Literal "The MCP server exposes all four as tools."
+Heading 2
+  Literal "4.28"
+Paragraph
+  Literal "Honours "
+  Code "TextTrim.Middle"
+  Literal ", added in DIR.Lib 8.9 for a run whose two ENDS both carry meaning -- a file"
+  LineBreak soft
+  Literal "path, or a filter-curve provenance line naming a product and its measured peak. Unlike "
+  Code "Shrink"
+  Literal " and"
+  LineBreak soft
+  Code "None"
+  Literal ", this policy needs no degradation on a character grid: it is a character-count cut like "
+  Code "Start"
+  LineBreak soft
+  Literal "and "
+  Code "End"
+  Literal ", so "
+  Code "CellLayout"
+  Literal " implements it exactly rather than falling back to end-trimming."
+Paragraph
+  Literal "The tie-break matches the one the single-cell case already made: the ellipsis takes the odd cell and"
+  LineBreak soft
+  Literal "the head keeps the remainder, so at width 2 the tail is what goes."
+Heading 2
+  Literal "4.27"
+Paragraph
+  Literal "Rebuilt against DIR.Lib 8.8, whose layout capture is now unconditional -- the arranged tree is what"
+  LineBreak soft
+  Literal "damage-based repaint diffs against, so it is no longer gated on the inspector being attached. Nothing"
+  LineBreak soft
+  Literal "in Console.Lib changes behaviour: a cell surface already paints by diffing ("
+  Code "CellBuffer"
+  Literal "), which is the"
+  LineBreak soft
+  Literal "model the pixel side has now adopted, and "
+  Code "LayoutInspection"
+  Literal " survives as an obsolete no-op so no call"
+  LineBreak soft
+  Literal "site here needed touching."
+Heading 2
+  Literal "4.26"
+Paragraph
+  Literal "CellLayout maps DIR.Lib 8.3's IconKind.Plus and Minus: ASCII \"+\", and U+2212 MINUS SIGN rather than"
+  LineBreak soft
+  Literal "the ASCII hyphen. The pair exists so the two marks line up in a stepper, and hyphen-minus is the one"
+  LineBreak soft
+  Literal "character that reliably breaks that -- most faces draw it shorter and higher than the plus's crossbar,"
+  LineBreak soft
+  Literal "being a hyphen first and an operator second. U+2212 sits on the same axis by definition, and comes"
+  LineBreak soft
+  Literal "from the Mathematical Operators block the list icon already draws from."
+Paragraph
+  Literal "It also fills a hole that had been open for four minor versions. CaretUp and CaretDown arrived in"
+  LineBreak soft
+  Literal "DIR.Lib 7.23 and were never mapped here, so both rendered as the \"?\" placeholder on every terminal."
+  LineBreak soft
+  Literal "Nothing failed, which is exactly the problem: the fallback exists so a forgotten kind degrades rather"
+  LineBreak soft
+  Literal "than throws, and that also makes it silent. They are U+25B2 and U+25BC now, filled to match the pixel"
+  LineBreak soft
+  Literal "drawings, whose reason for being filled rather than chevrons applies here too -- one cell holds a"
+  LineBreak soft
+  Literal "two-stroke chevron as a hairline with a hole in it, and hinting closes the hole first."
+Paragraph
+  Literal "So the change that matters is the test. EveryIconKindHasAGlyph enumerates IconKind and fails on any"
+  LineBreak soft
+  Literal "kind that falls back, which turns \"the next person remembers\" into something the build says out loud."
+  LineBreak soft
+  Literal "The vocabulary is documented as costing a drawing upstream and a glyph here, and nothing was"
+  LineBreak soft
+  Literal "collecting the second half."
+Paragraph
+  Literal "Requires DIR.Lib 8.3, a FLOOR rather than a follow, since the two enum members do not exist before it."
+  LineBreak soft
+  Literal "The pin therefore cannot move ahead of a published DIR.Lib: 8.3 goes to nuget.org first, this second."
+Heading 2
+  Literal "4.25"
+Paragraph
+  Literal "No-code lockstep rebuild against DIR.Lib 7.29. Required rather than bookkeeping this time:"
+  LineBreak soft
+  Literal "7.29 is binary-breaking (TextInputRenderer.Render returns the caret rect and takes a fallback"
+  LineBreak soft
+  Literal "resolver, DropdownMenuState is generic, IPixelWidget gains Ui), and CellLayout links against"
+  LineBreak soft
+  Literal "that assembly. Nothing in the TUI changes -- the cell painter reads TextInputRenderer.Colors,"
+  LineBreak soft
+  Literal "which is untouched -- and the point of moving is that the graph keeps resolving ONE DIR.Lib"
+  LineBreak soft
+  Literal "rather than two."
+Heading 2
+  Literal "4.24"
+Paragraph
+  Literal "CellLayout paints DIR.Lib 7.28's Layout.Content.TextInput, so an editable field is ONE"
+  LineBreak soft
+  Literal "declaration that works on a terminal and a GPU surface alike. Three things a cell surface"
+  LineBreak soft
+  Literal "has to answer differently, each a decision rather than a limitation: the FILL is the field"
+  LineBreak soft
+  Literal "(a one-row box cannot also carry a border, so focus is the background alone), the caret is"
+  LineBreak soft
+  Literal "the terminal's REAL one via SetCaret (a painted block can be neither thin nor blinking), and"
+  LineBreak soft
+  Literal "an over-long value SCROLLS rather than ellipsizing -- an ellipsis in an editable field sits"
+  LineBreak soft
+  Literal "exactly where the text being edited belongs, and the caret would have no real cell to land"
+  LineBreak soft
+  Literal "on. CellLayout.HitTest derives a field's hit from the CONTENT, matching the pixel painter, so"
+  LineBreak soft
+  Literal "a field is clickable because it is a field. CellLayout.TextInputs(arranged) is the cell"
+  LineBreak soft
+  Literal "answer to IPixelWidget.GetRegisteredTextInputs: it feeds TextInputInteraction's TabFields, so"
+  LineBreak soft
+  Literal "a terminal host shares Tab cycling instead of hand-rolling it, in the order the fields were"
+  LineBreak soft
+  Literal "painted. Describe names a focused field, because \"which box has the keyboard\" is the"
+  LineBreak soft
+  Literal "question a text-input bug starts from and is otherwise invisible in a text dump."
+Heading 2
+  Literal "4.23"
+Paragraph
+  Literal "Follows DIR.Lib to 7.21, whose Layout.CrossAlign this library gets for free: the cell"
+  LineBreak soft
+  Literal "painter arranges through the same engine, so a TUI row can now centre its controls across"
+  LineBreak soft
+  Literal "its axis with .CrossCenter() instead of padding the container. DIR.Lib 7.20 is in this range"
+  LineBreak soft
+  Literal "too (an icon draws at its declared size, not stretched to its cell), which affects only the"
+  LineBreak soft
+  Literal "pixel painter. No code change here."
+Heading 2
+  Literal "4.22"
+Paragraph
+  Literal "The cell half of DIR.Lib 7.19's three theme marks. CellLayout maps ThemeLight /"
+  LineBreak soft
+  Literal "ThemeSystem / ThemeDark to the geometric-shapes circles U+25CB / U+25D0 / U+25CF, so a theme"
+  LineBreak soft
+  Literal "control authored once paints a sun, a divided disc and a crescent on a GPU surface and an"
+  LineBreak soft
+  Literal "empty, half and full circle here. Deliberately NOT the sun and moon of U+2600..263F, which is"
+  LineBreak soft
+  Literal "where the pixel drawings point: that block is pictographic and a monospace face is under no"
+  LineBreak soft
+  Literal "obligation to carry it, and not gambling on coverage is the whole reason an icon names its"
+  LineBreak soft
+  Literal "meaning instead of spelling a codepoint. The circles keep the light-to-dark ordering, which"
+  LineBreak soft
+  Literal "is what survives the crossing to a single cell."
+Heading 2
+  Literal "4.21"
+Paragraph
+  Literal "CellLayout paints DIR.Lib 7.18's Content.Icon: the same node the pixel painter constructs"
+  LineBreak soft
+  Literal "from rectangles becomes a centred glyph here, because a character grid cannot draw those"
+  LineBreak soft
+  Literal "rectangles. Grid is U+259E (quadrant blocks), List is U+2261, Auto is plain ASCII A -- one"
+  LineBreak soft
+  Literal "cell has no room for its viewfinder brackets, and the meaning is what has to survive the"
+  LineBreak soft
+  Literal "crossing. Every glyph is drawn from the ranges a terminal font is relied on to carry, which"
+  LineBreak soft
+  Literal "is the same well every border, scrollbar and tree marker in this library already draws from."
+  LineBreak soft
+  Literal "Re-pins DIR.Lib 7.14 -> 7.18. Also adds a shared CellBufferViewport to the test project:"
+  LineBreak soft
+  Literal "four test files each carried a private copy, and a fifth was the wrong answer."
+Heading 2
+  Literal "4.20"
+Paragraph
+  Literal "Lockstep rebuild against DIR.Lib 7.14 (7.11 -> 7.14). No Console.Lib code change. Two of the"
+  LineBreak soft
+  Literal "three minors in that range change measured text WIDTH, which reaches this package because it ships"
+  LineBreak soft
+  Literal "pixel painters (RgbaImageRenderer, SixelRgbaImageRenderer) as well as the cell grid. The CELL surface"
+  LineBreak soft
+  Literal "is untouched by both: there one character is one cell, whatever the font's metrics say."
+  LineBreak soft
+  Literal "DIR.Lib 7.12 is additive -- TextInputRenderer takes a palette, the shape TabBar got in 7.10 -- and is"
+  LineBreak soft
+  Literal "the upstream half of this package's own TextInputBar theming."
+  LineBreak soft
+  Literal "DIR.Lib 7.13 bounds the SDF atlas's rasterize retry (a glyph that can never rasterize is given up on"
+  LineBreak soft
+  Literal "instead of pinning IsDirty true forever) and ALSO, unannounced at the time and only written up in"
+  LineBreak soft
+  Literal "7.14's notes, takes a whitespace advance from the font instead of borrowing the 'n' glyph's. In DejaVu"
+  LineBreak soft
+  Literal "every measured space had been 1.99x too wide, so on a pixel surface a space-padded run now measures"
+  LineBreak soft
+  Literal "nearly half a space narrower per space. Any column lined up with space padding therefore moves; pad"
+  LineBreak soft
+  Literal "with U+2007 FIGURE SPACE instead, which a font defines to advance like a digit."
+  LineBreak soft
+  Literal "DIR.Lib 7.14 makes TextFit.ShrinkToWidth return a size it actually measured, so a run fitted with"
+  LineBreak soft
+  Literal "TextTrim.Shrink no longer draws a fraction of a pixel past the rect it was just fitted to. Shrink is"
+  LineBreak soft
+  Literal "opt-in and the default is End, so a caller that never asks for it renders byte-identically."
+  LineBreak soft
+  Literal "Released alongside SdlVulkan.Renderer 7.11 and WebGl.Renderer 1.18 rather than alone: a consumer"
+  LineBreak soft
+  Literal "holding two backends built against different DIR.Lib minors unifies on the higher one by luck, not"
+  LineBreak soft
+  Literal "by intent, which is how WebGl.Renderer twice ended up two minors behind."
+Heading 2
+  Literal "4.19"
+Paragraph
+  Literal "TextBar.Caret(column, style): the caret for a bar whose text the CALLER composes. TextInputBar"
+  LineBreak soft
+  Literal "derives the column from its own TextInputState, but a bar packing several fields into one line (tianwen's"
+  LineBreak soft
+  Literal "site row: Lat / Lon / Elev) composes the string itself, so it passes the column in. The bar owns the"
+  LineBreak soft
+  Literal "CLIPPING decision, because it owns the truncation -- a column the ellipsis ate, or one past the room the"
+  LineBreak soft
+  Literal "right text left, withdraws the caret instead of parking it on a cell that shows something else. Caret is"
+  LineBreak soft
+  Literal "opt-in per bar and, once called, that bar reasserts or withdraws every Render: a bar that never calls it"
+  LineBreak soft
+  Literal "never touches the caret, so a status bar painted after the focused editor cannot erase the editor's"
+  LineBreak soft
+  Literal "caret. A row squeezed to zero width withdraws too. ADDITIVE. 7 test cases."
+Heading 2
+  Literal "4.18"
+Paragraph
+  Literal "The caret is the terminal's REAL cursor. TextInputBar and TextArea gain an opt-in"
+  LineBreak soft
+  Literal "Caret(CaretStyle) that parks the actual cursor at the insertion point (DECSCUSR shapes 1-6;"
+  LineBreak soft
+  Literal "BlinkingBar is the thin editor bar) instead of painting a reverse-video cell -- the terminal draws"
+  LineBreak soft
+  Literal "and blinks the caret itself, which no cell paint can imitate: a painted caret can never be thinner"
+  LineBreak soft
+  Literal "than a cell, nor blink without repaint traffic. Plumbing: ITerminalViewport.SetCaret/HideCaret"
+  LineBreak soft
+  Literal "(default no-ops, so fakes and capture surfaces ignore them), TerminalViewport translates like any"
+  LineBreak soft
+  Literal "cell write, and VirtualTerminal applies the request at the END of Flush -- after the cell diff,"
+  LineBreak soft
+  Literal "retracted during the paint so a visible cursor never rides the runs (or a raw Sixel blit). Shape and"
+  LineBreak soft
+  Literal "visibility emit only on a CHANGE (the pen's emit-less rule); position emits every time, because the"
+  LineBreak soft
+  Literal "paint just moved the real cursor as a side effect of writing. Sticky until HideCaret: the focus"
+  LineBreak soft
+  Literal "owner decides when the caret goes away, since an on-demand painter may not re-render every frame."
+  LineBreak soft
+  Literal "ColorMode.None suppresses it like every other escape. Dispose restores the user's configured shape"
+  LineBreak soft
+  Literal "(DECSCUSR 0) iff one was ever set -- the shape is NOT alternate-screen state and would otherwise"
+  LineBreak soft
+  Literal "survive into the shell prompt -- and hands a normal-buffer session its cursor back. Widgets land the"
+  LineBreak soft
+  Literal "caret on the exact cell the painted block occupied: label + separator for the bar (surrogate pair ="
+  LineBreak soft
+  Literal "one cell), gutter + the click mapping's cell accounting for the area (tab = TabWidth, pair = 1), so"
+  LineBreak soft
+  Literal "a click and the caret it places round-trip to the same cell; a cursor clipped off the content area"
+  LineBreak soft
+  Literal "withdraws the caret rather than leaving it standing on the wrong cell. Terminals without DECSCUSR"
+  LineBreak soft
+  Literal "show their default cursor at the parked cell -- degraded to a block, never wrong. ADDITIVE: new"
+  LineBreak soft
+  Literal "CaretStyle enum + default interface members. 24 test cases."
+Heading 2
+  Literal "4.17"
+Paragraph
+  Literal "ConsoleSize reads the terminal's real size when stdout is REDIRECTED, which is the case"
+  LineBreak soft
+  Literal "System.Console cannot answer: WindowWidth/Height size via GetStdHandle(STD_OUTPUT_HANDLE), and that"
+  LineBreak soft
+  Literal "handle IS the pipe once output is piped or captured, so the properties throw \"handle is invalid\""
+  LineBreak soft
+  Literal "exactly when something is consuming our output. mdcat caught that and rendered at a hard-coded 80"
+  LineBreak soft
+  Literal "columns; the console was still attached and still 120 wide, only the handle asked was the wrong one,"
+  LineBreak soft
+  Literal "and because the number is a fallback rather than a failure nothing ever looked wrong -- output was"
+  LineBreak soft
+  Literal "merely narrower than the window forever. CONOUT$ opened with CreateFileW names the ATTACHED CONSOLE's"
+  LineBreak soft
+  Literal "active screen buffer independent of stdout, so GetConsoleScreenBufferInfo still answers; size comes"
+  LineBreak soft
+  Literal "from srWindow (Right-Left+1, the edges being INCLUSIVE) and NOT from dwSize, whose height is the"
+  LineBreak soft
+  Literal "scrollback -- commonly 9001 rows against a 25-row window, a wrong answer that looks like a right one."
+  LineBreak soft
+  Literal "Read at call time, so a live RESIZE lands on the next read instead of being baked in at startup; a"
+  LineBreak soft
+  Literal "width passed at invocation could not do that. The handle is opened once per process and cached,"
+  LineBreak soft
+  Literal "failure included (no console at all: a detached service, CI), because VirtualTerminal.Size is read on"
+  LineBreak soft
+  Literal "every idle poll and nothing here attaches/detaches a console mid-run. VirtualTerminal keeps setting"
+  LineBreak soft
+  Literal "_noConsole under a redirected stdout even though CONOUT$ can now measure the window: the DA1 and"
+  LineBreak soft
+  Literal "cell-size probes WRITE to stdout and read the reply back, so clearing it would inject escape"
+  LineBreak soft
+  Literal "sequences into the consumer's pipe and then stall ~200ms awaiting an answer that cannot arrive."
+  LineBreak soft
+  Literal "Measuring is safe; asking is not. mdcat's GetConsoleWidth and its byte-identical twin in"
+  LineBreak soft
+  Literal "examples/MarkdownConsole both delegate to ConsoleSize.GetWidth() and are deleted. Non-Windows"
+  LineBreak soft
+  Literal "behaviour is unchanged (System.Console throughout; no /dev/tty work). ADDITIVE: new public type, no"
+  LineBreak soft
+  Literal "existing signature moves. 6 tests over the srWindow arithmetic -- the inclusive +1 and the dwSize"
+  LineBreak soft
+  Literal "confusion are the two ways to be plausibly wrong here; the CONOUT$ handle path needs a real console"
+  LineBreak soft
+  Literal "and stays untested by design, as the rest of WindowsConsoleInput is."
+Heading 2
+  Literal "4.16"
+Paragraph
+  Literal "CellLayout states what the two NEW TextTrim members mean on a character grid (DIR.Lib 7.8, which"
+  LineBreak soft
+  Literal "teaches the pixel painter to fit a run to its arranged rect). Neither is expressible here, so each gets"
+  LineBreak soft
+  Literal "the nearest cell behaviour instead of falling through Ellipsize's not-Start branch by accident: Shrink"
+  LineBreak soft
+  Literal "asks for a smaller face and a grid has exactly one size, so it end-trims (a shorter WHOLE run being"
+  LineBreak soft
+  Literal "unavailable, the head is the next best thing); None asks to overflow, which here would overwrite the"
+  LineBreak soft
+  Literal "neighbouring cells, so it hard-clips -- the same cut with NO ellipsis, because nothing should claim a"
+  LineBreak soft
+  Literal "removal the author asked not to make. That degradation is what keeps one authored tree meaning the same"
+  LineBreak soft
+  Literal "thing on a pixel surface and a cell one, which is the whole premise of sharing the tree. Repins DIR.Lib"
+  LineBreak soft
+  Literal "7.7."
+  Emphasis 1
+    Literal " -> 7.8."
+  Literal ". 3 tests, one of which pins Shrink against End so the two cannot silently diverge."
+  LineBreak soft
+  Literal "Later in 4.16, no X.Y bump and NO published value changes: VersionPrefix and AssemblyVersion moved out"
+  LineBreak soft
+  Literal "of the csprojs and into src/Directory.Build.props, next to the number they derive from. Both were"
+  LineBreak soft
+  Literal "already derived here, so Console.Lib still builds 4.16.0.0 -- this is about there being one place"
+  LineBreak soft
+  Literal "instead of four to forget. DIR.Lib and SdlVulkan.Renderer had the same restatement NOT derived and"
+  LineBreak soft
+  Literal "shipped 6.4.0.0 and 6.11.0.0 for two majors; the family now states the rule once per repo, in the props."
+  LineBreak soft
+  Literal "One behaviour change, local only: Console.Lib.Inspector no longer carries VersionPrefix 1.0.0. It was"
+  LineBreak soft
+  Literal "there to mark the inspector as separately versioned, but CI's solution-wide -p:Version overrode it on"
+  LineBreak soft
+  Literal "every run, so nuget.org has only ever had it in lockstep (4.3.1341 first, 4.16.1511 latest, never a"
+  LineBreak soft
+  Literal "1.0.0). The literal delivered no separate versioning and only made local packs disagree with published"
+  LineBreak soft
+  Literal "ones; a local pack now reads 4.16.0, matching CI. Genuine divergence would need its own"
+  LineBreak soft
+  Literal "VersionMajorMinor and pack step."
+Heading 2
+  Literal "4.14"
+Paragraph
+  Literal "CellLayout honours Layout.Content.Text.Trim (DIR.Lib 7.7), so a run says which end it loses"
+  LineBreak soft
+  Literal "when it does not fit. The painter always had to cut somewhere -- a cell surface measures in whole"
+  LineBreak soft
+  Literal "characters -- and it always cut the tail, which is right for a label and useless for a path: every"
+  LineBreak soft
+  Literal "path on a machine shares its head, so \"C:\\Users\\seb\\repos\\so\u2026\" identifies nothing where"
+  LineBreak soft
+  Literal "\"\u2026\\ftw\\Program.cs\" is the part being read. Callers used to pre-truncate against the column width to"
+  LineBreak soft
+  Literal "get the other behaviour, and a row's width is exactly what the engine took over in 4.10, so the"
+  LineBreak soft
+  Literal "workaround stopped existing and path columns silently lost their filenames. At a width of one there"
+  LineBreak soft
+  Literal "is no room for a glyph AND an ellipsis, so the cell goes to the surviving end's character rather than"
+  LineBreak soft
+  Literal "to a lone \"\u2026\" that says less. ADDITIVE: TextTrim.End is the default and the previous behaviour, so"
+  LineBreak soft
+  Literal "every existing run paints byte-identically. Repins DIR.Lib 7.5."
+  Emphasis 1
+    Literal " -> 7.7."
+  Literal ". 10 tests."
+  LineBreak soft
+  Literal "4.15! - FIX: TreeView drew its scroll bar wherever the row left the cursor. The bar is written with a"
+  LineBreak soft
+  Literal "bare Write, which was correct until 4.10 because a row was then one string of exactly contentWidth"
+  LineBreak soft
+  Literal "cells emitted in sequence, so the cursor arrived at the bar's column by itself. Rows are layout trees"
+  LineBreak soft
+  Literal "now: CellLayout positions per text run and leaves the cursor after the LAST GLYPH it drew, so the bar"
+  LineBreak soft
+  Literal "landed immediately right of each row's rightmost text -- a different column on every row, reading as a"
+  LineBreak soft
+  Literal "stray block beside every label rather than as a scroll bar. ScrollableList already positioned its own"
+  LineBreak soft
+  Literal "bar; TreeView was missed in the 4.10 port. The widget's own class comment has documented"
+  LineBreak soft
+  Literal "\"col width-1: scrollbar\" throughout, so the contract never changed -- only the code drifted from it."
+  LineBreak soft
+  Literal "It appears ONLY once the tree overflows, and looks exactly like a font that cannot draw a glyph, which"
+  LineBreak soft
+  Literal "is how it survived being stared at directly. First TreeView tests in the repo: 4, two of which fail"
+  LineBreak soft
+  Literal "without the fix, over a fixture with deliberately RAGGED label widths -- uniform labels put the"
+  LineBreak soft
+  Literal "misplaced bar in one column and look identical to a correct one."
+Heading 2
+  Literal "4.12"
+Paragraph
+  Literal "Lockstep rebuild against DIR.Lib 7.5, no code change here. 7.5 resolves a font by its DECLARED"
+  LineBreak soft
+  Literal "family rather than by file identity, so every face in a family is reachable and a run that a face"
+  LineBreak soft
+  Literal "cannot cover falls back per run instead of per request. Rebuilt to keep the whole sibling family on"
+  LineBreak soft
+  Literal "one DIR.Lib."
+  LineBreak soft
+  Literal "4.13! - OSC 8 HYPERLINKS on the cell path. A node states a link by carrying a HitResult.LinkHit -- the"
+  LineBreak soft
+  Literal "hit it already needed for the click -- and CellLayout paints that leaf's text inside an OSC 8 pair,"
+  LineBreak soft
+  Literal "resolved through the same nearest-enclosing walk as the background, so a link stated on a wrapper"
+  LineBreak soft
+  Literal "reaches the text under it. Reusing the hit rather than adding a Layout.Node property is what makes the"
+  LineBreak soft
+  Literal "drawn region and the clickable region the same arranged rect by construction. Cell gains Link, and"
+  LineBreak soft
+  Literal "CellBuffer MODELS OSC 8 instead of giving up on it: a link used to make the pen unmodellable, so every"
+  LineBreak soft
+  Literal "linked cell was Opaque and re-emitted every frame -- invisible on one link, and on a file list where"
+  LineBreak soft
+  Literal "every row carries one it bypasses the diff for the whole column while the emitted-cell count still"
+  LineBreak soft
+  Literal "looks small. A linked row now diffs like any other. BREAKING: ICellSink gains SetLink(string?) with no"
+  LineBreak soft
+  Literal "default implementation -- a sink that dropped it would emit frames that look complete and have lost"
+  LineBreak soft
+  Literal "every link in them. The console sink emits an id= so a link the diff splits across runs stays one link"
+  LineBreak soft
+  Literal "to the terminal. mdcat's inline links ride the same sequences (Osc8) and become diffable with them; the"
+  LineBreak soft
+  Literal "inspector's "
+  Code "cell"
+  Literal " verb reports \"link\" when there is one."
+Heading 2
+  Literal "4.11"
+Paragraph
+  Literal "Lockstep rebuild against DIR.Lib 7.4, no code change here. 7.4 closes the asymmetry around"
+  LineBreak soft
+  Literal "CellMeasureContext: since 4.10 a PIXEL-authored tree could be carried onto cells via"
+  LineBreak soft
+  Literal "CellMeasureContext.PixelAuthored, but nothing carried a CELL-authored tree the other way, so"
+  LineBreak soft
+  Literal "PixelMeasureContext gains per-axis scales and a matching CellAuthored factory (same nominal 8x16"
+  LineBreak soft
+  Literal "cell). It also adds PixelWidgetBase Arrange/Paint/RenderLayout overloads that take the measure"
+  LineBreak soft
+  Literal "CONTEXT rather than a bare dpiScale, which is what makes per-axis safe: dpiScale used to be threaded"
+  LineBreak soft
+  Literal "separately into the measure context and the paint loop, two copies kept in step by hand, and a"
+  LineBreak soft
+  Literal "per-axis context would have turned that into text painted at a size it was never measured at. All"
+  LineBreak soft
+  Literal "additive; the scalar overloads delegate to the context ones with an isotropic context, so existing"
+  LineBreak soft
+  Literal "callers paint byte-identically. Rebuilt so the whole sibling family sits on one DIR.Lib."
+Heading 2
+  Literal "4.10"
+Paragraph
+  Literal "List and tree rows are LAYOUT TREES. IRowFormatter is deleted; ITreeNode.FormatNodeContent is"
+  LineBreak soft
+  Literal "deleted. Both are replaced by a method returning a DIR.Lib.Layout.Node and taking the shared new"
+  LineBreak soft
+  Literal "RowContext(Selected, SelectedColumn, ColumnCount). No compatibility shim, on purpose: a"
+  LineBreak soft
+  Literal "default-implementation bridge is what lets a codebase sit half-ported, and a row that quietly kept the"
+  LineBreak soft
+  Literal "old shape would keep all three defects below while appearing to work. The old contract was"
+  LineBreak soft
+  Code "string FormatRow(int width, ColorMode, ...)"
+  Literal " documented as \"must include VT escape codes and pad to"
+  LineBreak soft
+  Literal "the full width\", so every row hand-rolled its own layout, padding, truncation and escapes. That cost:"
+  LineBreak soft
+  Literal "(1) an inline button on a row had NO hit region -- no arranged rect to bind to, so a caller re-derived"
+  LineBreak soft
+  Literal "its columns beside the drawing code, and since the row's usable width is not the viewport width (the"
+  LineBreak soft
+  Literal "scrollbar takes a column once the list overflows) a right-aligned button drifted by one column exactly"
+  LineBreak soft
+  Literal "when the list scrolled; (2) a row could not state a colour it did not own, because foreground-only"
+  LineBreak soft
+  Literal "writes leaned on leftover SGR state -- which a real terminal forgives and 4.8's diffing cell buffer"
+  LineBreak soft
+  Literal "cannot; (3) the same row is often also a GPU row, so authoring it twice let the two drift, which is how"
+  LineBreak soft
+  Literal "a terminal row ended up missing a button its GPU twin had. "
+  Code "width"
+  Literal " and "
+  Code "ColorMode"
+  Literal " are gone as"
+  LineBreak soft
+  Literal "parameters (the widget owns the rect it already computed; CellLayout owns the pen), and the"
+  LineBreak soft
+  Literal "three-overload cascade collapses to fields on RowContext so the next capability adds a field rather"
+  LineBreak soft
+  Literal "than a fourth rung an implementation can silently ignore. RegisterRowHits / RegisterRowSpanHits /"
+  LineBreak soft
+  Literal "RowSpan are DELETED -- hits ride on .Clickable and resolve through the new DispatchRowHit, which tests"
+  LineBreak soft
+  Literal "against the trees as last ARRANGED. That is what makes it correct: the four ways the old helpers could"
+  LineBreak soft
+  Literal "silently disagree with the paint (pixel origin from the viewport offset, the header row, the SCROLLED"
+  LineBreak soft
+  Literal "item index, the scrollbar column) are no longer expressible. HitTestRow is unchanged. ITreeNode keeps"
+  LineBreak soft
+  Literal "Children / HasChildren / EnsureChildrenLoaded defaults -- those are optional BEHAVIOUR, not a second"
+  LineBreak soft
+  Literal "way to satisfy one obligation. Port recipe in MIGRATION.md."
+Heading 2
+  Literal "4.9"
+Paragraph
+  Literal "EnableCellBuffer seeds the size that Flush's resize-detection compares against. It did not, so the"
+  LineBreak soft
+  Literal "field stayed (0,0) and the FIRST Flush of a buffered app always read as a RESIZE: it called Resize again,"
+  LineBreak soft
+  Literal "which reallocates the back buffer and fills it with blanks, discarding everything the frame had already"
+  LineBreak soft
+  Literal "painted. What reached the screen was only whatever happened to be written AFTER that flush. The reason"
+  LineBreak soft
+  Literal "this hid behind 4.8's five fixes is that the two consumers that found those repaint unconditionally every"
+  LineBreak soft
+  Literal "frame, so frame two restored the loss and the bug was a one-frame flicker at startup. An app that paints"
+  LineBreak soft
+  Literal "ON DEMAND and leaves cells standing has no frame two: periodic-table-viewer renders on selection change,"
+  LineBreak soft
+  Literal "so its table, header, detail panel and status bar were destroyed permanently and the terminal showed only"
+  LineBreak soft
+  Literal "its orbital panel -- which survived precisely because it blits Sixel BEFORE writing its text, putting that"
+  LineBreak soft
+  Literal "text after the wiping flush. Diagnosed with 4.8's own accounting: ~12.7k flushed cells for a 202x63 grid"
+  LineBreak soft
+  Literal "is exactly one full-screen repaint, and CollectFlushDiagnostics named the surviving runs as the orbital"
+  LineBreak soft
+  Literal "column alone. NOT unit-tested: the seed is only observable through Flush, which needs Size, which needs a"
+  LineBreak soft
+  Literal "real console -- the same wall 4.8 hit for its cursor-move fix, and there is no pure function to extract"
+  LineBreak soft
+  Literal "here. Verified against the running TUI through the debug inspector instead."
+Heading 2
+  Literal "4.8"
+Paragraph
+  Literal "The diffing cell buffer survives contact with a real app. TianWen's TUI turned it on and exposed"
+  LineBreak soft
+  Literal "five latent bugs, four of them the same shape: RELYING ON LEFTOVER TERMINAL STATE, which a live terminal"
+  LineBreak soft
+  Literal "forgives and a buffer that must name a colour per cell cannot. (1) VtStyle treated alpha zero as a colour"
+  LineBreak soft
+  Literal "and emitted it as opaque BLACK; a terminal cell does not composite, so alpha zero means UNSTATED and now"
+  LineBreak soft
+  Literal "emits SGR 39/49 (the terminal's default), which the buffer's parser round-trips as a modelled pen rather"
+  LineBreak soft
+  Literal "than degrading the cell to Opaque. (2) CellLayout painted text foreground-only, inheriting the background"
+  LineBreak soft
+  Literal "from whatever SGR the previous write left behind -- so a row's colour depended on which SIBLING painted"
+  LineBreak soft
+  Literal "first, and rows following a Reset went black-on-black (TianWen's Guider/Camera rows rendered as gaps)."
+  LineBreak soft
+  Literal "Paint now resolves a text cell's background from the TREE via a depth-keyed stack of enclosing"
+  LineBreak soft
+  Literal "backgrounds; the rounded-corner clip states its quadrant's backdrop the same way. (3) The cell sink"
+  LineBreak soft
+  Literal "emitted ReverseOn and never ReverseOff, so one reversed cell (a text cursor) inverted everything painted"
+  LineBreak soft
+  Literal "after it -- headers became solid bars. Reverse is now stated in both directions on change. (4) THE BIG"
+  LineBreak soft
+  Literal "ONE: TerminalViewport.SetCursorPosition called parent.Flush() per cursor move, which on a buffered"
+  LineBreak soft
+  Literal "terminal ships the HALF-PAINTED diff -- background blanks over the old text, then each label flushed back"
+  LineBreak soft
+  Literal "one by one. On screen that is erase-then-redraw at exactly the repaint cadence: TianWen's once-per-second"
+  LineBreak soft
+  Literal "top-bar flicker, which survived four fixes aimed at the emitted bytes because the bytes were right and"
+  LineBreak soft
+  Literal "their TIMING was not. A cursor move now does nothing but translate and forward; only the frame's owner"
+  LineBreak soft
+  Literal "flushes, and the sink's own moves ride the SAME byte stream as the glyphs (CUP escape, not Win32"
+  LineBreak soft
+  Literal "SetCursorPosition -- one ordered sequence, one delivery mechanism). (5) Unrelated but found by the same"
+  LineBreak soft
+  Literal "user: the byte table special-cased 0x08 as Backspace, SHADOWING the general 0x01..0x1A -> letter+Ctrl"
+  LineBreak soft
+  Literal "rule three lines below it -- Ctrl+H was the one letter no app could bind, while the Backspace KEY sends"
+  LineBreak soft
+  Literal "DEL 0x7F, which the table already handled. The special case is deleted, nothing else changed."
+  LineBreak soft
+  Literal "Diagnostics shipped with the fixes, because the flicker was only found by measuring: VirtualTerminal"
+  LineBreak soft
+  Literal "exposes FlushedCellsTotal / FlushedOpaqueCellsTotal (TOTALS, deliberately -- a per-last-flush read is how"
+  LineBreak soft
+  Literal "the mid-paint flush hid from the first version of the accounting while being the whole problem), and"
+  LineBreak soft
+  Literal "CellBuffer.CollectFlushDiagnostics records each emitted run's position and text, answering WHICH cells"
+  LineBreak soft
+  Literal "went out -- the question the front buffer cannot answer after the fact, because its final state always"
+  LineBreak soft
+  Literal "looks right. Re-pins DIR.Lib 7.2."
+  Emphasis 1
+    Literal " -> 7.3."
+  Literal "."
+Heading 2
+  Literal "4.7"
+Paragraph
+  Literal "The inspector's "
+  Code "key"
+  Literal " verb carries MODIFIERS, so a chorded binding is drivable at last. It hardcoded"
+  LineBreak soft
+  Literal "ConsoleModifiers zero, which made every chord unreachable -- Chess.Console flips its board on Ctrl+F and"
+  LineBreak soft
+  Literal "no driver could ask for it. The real byte parser already handled this (a terminal sends Ctrl+letter as one"
+  LineBreak soft
+  Literal "control byte, decoded to (ConsoleKey.A + n, Control) at VirtualTerminal.cs:732), so what is injected now is"
+  LineBreak soft
+  Literal "exactly what a keypress produces and the app's genuine binding is exercised, not an inspector-only path."
+  LineBreak soft
+  Literal "Spelling follows the SDL inspector's "
+  Code "mods"
+  Literal " string -- substring-matched, case-insensitive, so \"Ctrl\","
+  LineBreak soft
+  Literal "\"ctrl+shift\" and \"CtrlShift\" all work -- so one convention covers both inspectors. DIVERGES from SDL in"
+  LineBreak soft
+  Literal "one way, on purpose: unrecognised modifier text is REFUSED rather than resolved to None. Dropping it would"
+  LineBreak soft
+  Literal "deliver a bare key, and a bare key is often a different valid binding rather than a no-op (bare "
+  Code "f"
+  Literal " is"
+  LineBreak soft
+  Literal "chess's file-f selector), so the failure would read as the app ignoring a correct chord. The reply echoes"
+  LineBreak soft
+  Literal "the resolved modifiers for the same reason. The sidecar's "
+  Code "key"
+  Literal " tool gains an optional "
+  Code "mods"
+  Literal " parameter and"
+  LineBreak soft
+  Literal "a Json.Obj to build it, mirroring SdlVulkan.Renderer.Inspector's."
+Heading 2
+  Literal "4.6"
+Paragraph
+  Literal "The MCP sidecar stops using reflective JSON. Library UNCHANGED; the sidecar rides this version"
+  LineBreak soft
+  Literal "prefix, so shipping it needs a bump. It escapes its own strings now instead of calling"
+  LineBreak soft
+  Literal "JsonSerializer.Serialize, which throws at runtime under trimming or AOT (both set"
+  LineBreak soft
+  Literal "JsonSerializerIsReflectionEnabledByDefault=false) even for a plain string. That is not hypothetical: the"
+  LineBreak soft
+  Literal "same call in the APP half failed exactly that way against Chess.Console, surfacing as a socket that closed"
+  LineBreak soft
+  Literal "the instant it was written to. A "
+  Code "dnx"
+  Literal " tool is a plausible future AOT candidate, so leaving it armed on the"
+  LineBreak soft
+  Literal "driver side made no sense. It cannot reuse DebugInspectorCore.Quote -- that is behind #if DEBUG and so is"
+  LineBreak soft
+  Literal "absent from a published DIR.Lib -- hence a local copy, which also keeps this project referencing nothing"
+  LineBreak soft
+  Literal "from the framework. (SdlVulkan.Renderer's in-process inspector already avoids the serializer for the same"
+  LineBreak soft
+  Literal "reason, with a comment about IL2026/IL3050; its sidecar still has the call.)"
+Heading 2
+  Literal "4.5"
+Paragraph
+  Literal "The discovery "
+  Code "kind"
+  Literal " for a terminal is \"tui\", not \"console\". DIR.Lib 7.2 introduced the field so a"
+  LineBreak soft
+  Literal "sidecar can filter replies to surfaces it knows how to drive, and \"tui\"/\"sdl\"/\"webgl\" is the vocabulary"
+  LineBreak soft
+  Literal "worth keeping -- \"console\" named the library rather than the surface, and pairs badly with \"sdl\". Renamed"
+  LineBreak soft
+  Literal "while nothing outside these repos depends on it. The sidecar accepts BOTH, because 4.4 shipped the older"
+  LineBreak soft
+  Literal "word for one afternoon and dropping it would make that build invisible rather than merely mislabelled."
+Heading 2
+  Literal "4.4"
+Paragraph
+  Literal "ConsoleDebugInspector.Detached: the same verbs with NO transport, no TCP listener and no multicast"
+  LineBreak soft
+  Literal "bind. Added because the 4.3 tests opened a real socket for EVERY assertion, and almost none of them were"
+  LineBreak soft
+  Literal "about the wire: what a row of cells reads back as, how a key name maps, where a click's pixel centre"
+  LineBreak soft
+  Literal "lands. Driving that through a socket makes each one depend on port availability and on joining a"
+  LineBreak soft
+  Literal "multicast group, for nothing. Invoke() was already the seam; only construction had to stop starting the"
+  LineBreak soft
+  Literal "server. The unit tests now run socket-free (11 in ~50ms, down from ~300ms) and ONE test carries"
+  LineBreak soft
+  Literal "Trait Category=Functional for the wire contract -- id echoed back, unknown verb answered as an error."
+  LineBreak soft
+  Code "dotnet test --filter Category!=Functional"
+  Literal " is now a meaningfully hermetic run."
+Heading 2
+  Literal "4.3"
+Paragraph
+  Literal "A front/back CELL BUFFER with a diffing flush, plus the terminal backend for DIR.Lib 7.1's"
+  LineBreak soft
+  Literal "DebugInspectorCore. Console.Lib was immediate-mode: a widget wrote its whole region as one string of SGR"
+  LineBreak soft
+  Literal "plus padded text, which is invisible for a redraw the user asked for and very visible once a second on a"
+  LineBreak soft
+  Literal "clock -- every cell in the row repainted, padding included, which reads as a FLASH. TianWen hit exactly"
+  LineBreak soft
+  Literal "that. CellBuffer emits only what changed: a 40-cell clock row rewritten in full per tick emits ONE cell."
+  LineBreak soft
+  Literal "Write() parses the SGR Console.Lib itself generates back into a pen; anything outside that vocabulary"
+  LineBreak soft
+  Literal "(an OSC hyperlink from mdcat, a cursor move, \\e[1m bold) makes the pen unmodellable and its cells Opaque"
+  LineBreak soft
+  Literal "-- always re-emitted, never diffed, degrading to the old behaviour instead of being modelled wrongly. An"
+  LineBreak soft
+  Literal "unrecognised SGR PARAMETER goes opaque too, because a pen that is only mostly right shows up as a MISSING"
+  LineBreak soft
+  Literal "repaint, the one failure a diff must not have. A Sixel blit writes pixels through OutputStream, which the"
+  LineBreak soft
+  Literal "buffer never sees, so MarkImage declares that region and the diff never writes a glyph into it."
+  LineBreak soft
+  Literal "OPT-IN via VirtualTerminal.EnableCellBuffer(): every consumer currently relies on immediate writes, so"
+  LineBreak soft
+  Literal "flipping the default would change mdcat and every hosted app at once. Unbuffered cost is one null test."
+  LineBreak soft
+  Literal "ConsoleDebugInspector is the inspector's first backend, and its CELL PLANE is what a GPU surface cannot"
+  LineBreak soft
+  Literal "offer: the screen readable as TEXT (\"the status bar reads "
+  Code "White to move."
+  Literal "\") straight off the FRONT"
+  LineBreak soft
+  Literal "buffer -- what was actually emitted, not a parallel model that can drift. Verbs: screen, row, cell,"
+  LineBreak soft
+  Literal "appState, inputLog, key, click, size. Injected input goes through a DEBUG-only queue on VirtualTerminal,"
+  LineBreak soft
+  Literal "drained ahead of the real stream so a synthetic event cannot land mid escape sequence. Inspector and"
+  LineBreak soft
+  Literal "queue are both #if DEBUG (401 tests in Release, 412 in Debug); the cell buffer ships in both."
+  LineBreak soft
+  Literal "Console.Lib.Inspector 1.0 ships alongside: a published MCP-server package (PackageType=McpServer,"
+  LineBreak soft
+  Literal "consumed via "
+  Code "dnx Console.Lib.Inspector"
+  Literal ") that DISCOVERS running Debug-build TUI apps and drives them."
+  LineBreak soft
+  Literal "It references nothing from Console.Lib -- it speaks the JSON protocol -- because the in-process half is"
+  LineBreak soft
+  Literal "#if DEBUG and a sidecar linking the library would be coupled to a configuration it cannot see. Tools:"
+  LineBreak soft
+  Literal "list_instances, screen/row/cell, app_state, input_log, key/keys/click, size, ping. Filters discovery to"
+  LineBreak soft
+  Literal "kind==\"console\" (DIR.Lib 7.2), so a GPU app answering the same multicast group is not offered "
+  Code "screen"
+  Literal "."
+  LineBreak soft
+  Literal "Re-pins DIR.Lib 6.23."
+  Emphasis 1
+    Literal " -> 7.2."
+  Literal " for DebugInspectorCore + discovery."
+Heading 2
+  Literal "4.2"
+Paragraph
+  Literal "SixelEncoder.Encode takes a "
+  Code "reserved"
+  Literal " colour list: entries claim palette indices 0..n-1 before"
+  LineBreak soft
+  Literal "any frequency ranking, and keep them whether or not the frame contains a pixel of them. The palette is"
+  LineBreak soft
+  Literal "otherwise chosen purely by pixel FREQUENCY, which is right for flat regions and wrong for anything that"
+  LineBreak soft
+  Literal "carries meaning in a few pixels. Measured on a real chess board render: 1966 distinct colours for 255"
+  LineBreak soft
+  Literal "slots, THREE of them (background + the two square fills) covering ~95% of the surface, and the"
+  LineBreak soft
+  Literal "255th-ranked colour occupying twelve pixels -- the rest of the budget consumed by glyph antialiasing. A"
+  LineBreak soft
+  Literal "selection tint or a 3px last-move border is ranked against that tail on area alone, and when it loses,"
+  LineBreak soft
+  Literal "FindNearest snaps it to the closest survivor; since the survivors are overwhelmingly near-duplicates of"
+  LineBreak soft
+  Literal "the background and the board, losing does not shift the hue slightly, it makes the accent INVISIBLE."
+  LineBreak soft
+  Literal "Reserving also makes the index stable, which two things need: a partial strip re-derives its palette"
+  LineBreak soft
+  Literal "from that strip's histogram alone and could otherwise represent the same accent differently from the"
+  LineBreak soft
+  Literal "full frame before it, and an animated stream would reshuffle indices every frame as the histogram"
+  LineBreak soft
+  Literal "shifts (shimmer, plus no possibility of inter-frame delta encoding). A list of 255 entries leaves the"
+  LineBreak soft
+  Literal "frequency pass nothing to allocate and so IS a fixed palette -- the limit case is deliberate, so"
+  LineBreak soft
+  Literal "animation needs no separate mode. SixelRgbaImageRenderer.ReservedColors feeds BOTH encode paths."
+  LineBreak soft
+  Literal "Default empty = historical behaviour byte for byte, which the pinned output hashes assert."
+Heading 2
+  Literal "4.1"
+Paragraph
+  Literal "ALSO: CellLayout softens a filled rect's corners with three-quadrant blocks (U+2599, U+259B,"
+  LineBreak soft
+  Literal "U+259C, U+259F) instead of the arc glyphs 3.14 introduced. A filled rect and a bordered one want"
+  LineBreak soft
+  Literal "different glyphs and this is the filled one: an arc is a thin STROKE, so a corner cell drawn that way is"
+  LineBreak soft
+  Literal "~90% parent colour and reads as a bite punched out of the card rather than a softened corner (on"
+  LineBreak soft
+  Literal "TianWen's home board -- a blue card on a near-black page -- it read as damage). A three-quadrant block"
+  LineBreak soft
+  Literal "covers three quarters of the cell, so the corner loses a QUARTER cell rather than a whole one, which is"
+  LineBreak soft
+  Literal "the smallest bite a character grid can express. No arc branch remains: both FillCells call sites are"
+  LineBreak soft
+  Literal "gated on a fill and the layout DSL has no border chrome, so an unfilled rounded box is currently"
+  LineBreak soft
+  Literal "unexpressible -- if Layout.Node gains a border, the arcs are what should render ITS corners, at that"
+  LineBreak soft
+  Literal "call site. RoundCorners -> ClipFilledCorners (private)."
+Paragraph
+  Literal "ConsoleInputMapping stops classifying mouse MOTION as a press. xterm mode 1002 reports pointer"
+  LineBreak soft
+  Literal "movement with the HELD BUTTON still in the button field and IsRelease false, and ToInputEvent asked only"
+  LineBreak soft
+  Literal "\"is this a release?\", so every motion report became an InputEvent.MouseDown at the pointer. MouseEvent has"
+  LineBreak soft
+  Literal "documented IsMotion as a drag report since it was added; the mapping simply never consulted it, and"
+  LineBreak soft
+  Literal "InputEvent.MouseMove existed in DIR.Lib and was never produced. For a consumer that acts on MouseDown this"
+  LineBreak soft
+  Literal "is not cosmetic: a click whose pointer drifts one pixel is delivered TWICE, and a drag is delivered as a"
+  LineBreak soft
+  Literal "click on every cell crossed. Found in Chess.Console, where the second delivery landed after the engine had"
+  LineBreak soft
+  Literal "already replied and so re-selected the piece the player had just moved (legal-move hints and all), and"
+  LineBreak soft
+  Literal "where dragging with a piece selected would play a move at whatever square the pointer passed over."
+  LineBreak soft
+  Literal "Thumb-drag consumers improve too: ListScrollController wants MouseMove and was never getting it in a"
+  LineBreak soft
+  Literal "terminal. Motion now maps to MouseMove; the wheel check still comes first, so a wheel report carrying the"
+  LineBreak soft
+  Literal "motion bit stays a Scroll."
+  LineBreak soft
+  Literal "4.0! - a layout tree can finally cross surface kinds. CellMeasureContext hardcoded one design unit ="
+  LineBreak soft
+  Literal "one cell, which is right for every hand-written TUI tree (RowH(1) is one row) and wrong for a tree"
+  LineBreak soft
+  Literal "authored on a pixel surface (RowH(16) is one line of text). The convention belongs to the TREE, so it"
+  LineBreak soft
+  Literal "is now a constructor parameter with two presets: CellAuthored (1:1, the default) and PixelAuthored (a"
+  LineBreak soft
+  Literal "nominal 8x16 cell). MAJOR because this is the capability the layout stack had been claiming without"
+  LineBreak soft
+  Literal "delivering -- Layout.Node was always shared and Engine.Arrange always generic, but no tree had ever"
+  LineBreak soft
+  Literal "crossed between a pixel surface and a terminal, since a 250-unit card became 250 COLUMNS: type-correct"
+  LineBreak soft
+  Literal "and geometrically meaningless. Needs DIR.Lib 6.23 because the conventions differ by a DIFFERENT factor"
+  LineBreak soft
+  Literal "PER AXIS (250 units is 31 columns across but 8 rows down) and one scalar could not say that, hence"
+  LineBreak soft
+  Literal "ToSurfaceX / ToSurfaceY; the axis-free ToSurface (corner radius) resolves against the COLUMN size, the"
+  LineBreak soft
+  Literal "finer of a terminal's two resolutions. Proven end to end by TianWen's home board: one HomeBoardLayout"
+  LineBreak soft
+  Literal "tree, one palette, one card projection, rendered by both the GPU tab and the TUI tab. Existing callers"
+  LineBreak soft
+  Literal "are unaffected -- the default is still 1:1 -- so the break is in what the type MEANS, not in what"
+  LineBreak soft
+  Literal "compiles."
+Heading 2
+  Literal "3.16"
+Paragraph
+  Literal "ScrollableList.HitTestRow: the same geometry read in the opposite direction, for a host that"
+  LineBreak soft
+  Literal "resolves a click when one arrives rather than registering regions up front and so has nowhere to put"
+  LineBreak soft
+  Literal "a ClickableRegionTracker. Pixel point in; item index, item, and the column WITHIN the content area"
+  LineBreak soft
+  Literal "plus the content width out. Null for the header, the scrollbar column, outside the viewport, or a row"
+  LineBreak soft
+  Literal "past the last item. The scrollbar column is why this belongs in the widget: Widget.HitTest reports it"
+  LineBreak soft
+  Literal "like any other column, so a host dividing a row into fields by Viewport.Size.Width treats clicks on"
+  LineBreak soft
+  Literal "the track as content -- and whether a scrollbar shows depends on the item count, so it changes under"
+  LineBreak soft
+  Literal "the caller. Returning the content width alongside the column is what keeps them out of it."
+Heading 2
+  Literal "3.15"
+Paragraph
+  Literal "ScrollableList.RegisterRowSpanHits: clickable spans WITHIN a row (inline buttons), the"
+  LineBreak soft
+  Literal "column-range counterpart to 3.14's whole-row RegisterRowHits. Both now share one ForEachVisibleRow"
+  LineBreak soft
+  Literal "walk, so the four things that must be right (origin from the viewport OFFSET, the header row, the"
+  LineBreak soft
+  Literal "SCROLLED item index, the scrollbar column) are computed once instead of per call site. Spans clamp"
+  LineBreak soft
+  Literal "to the content width, so int.MaxValue means \"to the end of the row\" and cannot overlap the"
+  LineBreak soft
+  Literal "scrollbar. New public RowSpan record struct."
+Heading 2
+  Literal "3.14"
+Paragraph
+  Literal "CellLayout honours DIR.Lib 6.21's Layout.Node.CornerRadius: a non-zero radius knocks one"
+  LineBreak soft
+  Literal "cell off each corner of a background fill and draws an arc glyph there (U+256D..U+2570), so one"
+  LineBreak soft
+  Literal "tree renders rounded on both the pixel and cell surfaces. The radius MAGNITUDE is ignored -- a grid"
+  LineBreak soft
+  Literal "cannot round by fractions of a cell, and Unicode has arc forms for corners only (no rounded tee or"
+  LineBreak soft
+  Literal "cross), so one cell is the honest approximation; skipped below 3x3 where the corners are the shape."
+  LineBreak soft
+  Literal "ScrollableList.RegisterRowHits binds a clickable region per visible row, so a host stops"
+  LineBreak soft
+  Literal "reconstructing the widget's geometry: the pixel origin is viewport OFFSET x cell size, row 0 is"
+  LineBreak soft
+  Literal "ScrollOffset and not item 0, the header steals a row, and the scrollbar column must be left alone"
+  LineBreak soft
+  Literal "or the thumb can never be grabbed. Every host had a slightly different version of that arithmetic."
+  LineBreak soft
+  Literal "Lockstep rebuild against DIR.Lib 6.21."
+Heading 2
+  Literal "3.13"
+Paragraph
+  Literal "Shared table rendering. BorderStyle / BorderChars (Light, Heavy, Double, Rounded,"
+  LineBreak soft
+  Literal "Ascii) and TextTable.Render are the one place box-drawing junctions and column-width"
+  LineBreak soft
+  Literal "arithmetic live; the markdown renderer's four private table helpers were deleted in favour"
+  LineBreak soft
+  Literal "of it, so mdcat picks it up transitively with no change of its own. Column widths measure"
+  LineBreak soft
+  Literal "via VisibleLength, so SGR escapes in a cell do not inflate the column. TerminalViewport.UpdateGeometry"
+  LineBreak soft
+  Literal "widens internal -> public so a layout tree can host a widget at a Fill leaf and re-point it"
+  LineBreak soft
+  Literal "per frame. Lockstep rebuild against DIR.Lib 6.20."
+Heading 2
+  Literal "3.3"
+Paragraph
+  Literal "Lockstep rebuild against DIR.Lib 6.0 (layout namespace + Layout.Builder DSL)."
+Heading 2
+  Literal "3.1"
+Paragraph
+  Literal "Markdown images. MarkdownRenderer gains a MarkdownImageOptions"
+  LineBreak soft
+  Literal "parameter: an image alone on its own line ("
+  Image url="src"
+    Literal "alt"
+  Literal ") rasterises via the"
+  LineBreak soft
+  Literal "same Sixel / sextant / half-block path as display math (BoxRenderer.EncodeImage),"
+  LineBreak soft
+  Literal "decoding through StbImageSharp; inline / unresolvable images fall back to alt"
+  LineBreak soft
+  Literal "text. mdcat wires a local-file resolver (no network). Repins DIR.Lib -> 5.1.*"
+  LineBreak soft
+  Literal "for the new MdImage AST node."
+Heading 2
+  Literal "2.17"
+Paragraph
+  Literal "ScrollableList and TreeView gain opt-in AutoHandleWheel / WheelStep"
+  LineBreak soft
+  Literal "properties. When set, HandleMouse auto-routes wheel events (button 64/65)"
+  LineBreak soft
+  Literal "into HandleWheel at the configured step. Default off keeps existing wheel"
+  LineBreak soft
+  Literal "consumers \u2014 which do their own button-64/65 dispatch \u2014 unaffected."
+Heading 2
+  Literal "2.16"
+Paragraph
+  Literal "MarkdownWidget gains MathMode + MathFontPath properties, so widget"
+  LineBreak soft
+  Literal "consumers can opt display-math blocks ("
+  Math display=True source=" \u2026 " unicode="\u2026" builder=False
+  Literal ") into the pixel-render path"
+  LineBreak soft
+  Literal "(Sixel / sextant / half-block) without bypassing the widget and reaching"
+  LineBreak soft
+  Literal "for MarkdownRenderer.RenderLines directly. Defaults stay at single-row"
+  LineBreak soft
+  Literal "Unicode, so existing callers are unaffected."
+Heading 2
+  Literal "2.15"
+Paragraph
+  Literal "Mhchem Phase-2 picks up box layout in display math. TryRenderMathBox"
+  LineBreak soft
+  Literal "now expands \\ce{...} via DIR.Lib.Markdown.Mhchem.ToLatex (paired with the"
+  LineBreak soft
+  Literal "DIR.Lib 4.2 chem-to-LaTeX rewrite). Display chem inside "
+  Math display=True source=" \u2026 " unicode="\u2026" builder=False
+  Literal " rasterises"
+  LineBreak soft
+  Literal "via the same Sixel / sextant / half-block dispatcher as math."

@@ -1,0 +1,1 @@
+MathBlock source="\\left( \\frac{a}{b} \\right)^2" unicode="(a\u2044b)\u00B2" builder=False

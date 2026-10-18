@@ -1,0 +1,18 @@
+# Console.Lib src/Console.Lib.Tests/MathCorpus.cs Formulas at 866810d4 (name<TAB>LaTeX source).
+quadratic	x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+hypotenuse	\sqrt{x^2 + y^2}
+fraction-sum	\frac{a}{b} + \frac{c}{d}
+gauss-sum	\sum_{i=1}^{n} i = \frac{n(n+1)}{2}
+gaussian-integral	\int_0^\infty e^{-x^2} dx = \frac{\sqrt{\pi}}{2}
+left-right	\left( \frac{a}{b} \right)^2
+euler	e^{i\pi} + 1 = 0
+mass-energy	E = mc^2
+pythagoras	a^2 + b^2 = c^2
+continued-fraction	\frac{1}{1 + \frac{1}{1 + \frac{1}{x}}}
+definite-integral	\int_a^b f(x) dx = F(b) - F(a)
+fine-structure	\alpha = \frac{e^2}{4\pi\varepsilon_0 \hbar c}
+fourteen-terms	a + b + c + d + e + f + g + h + i + j + k + l + m + n
+limit	\lim_{x \to 0} \frac{\sin x}{x} = 1
+binomial	\binom{n}{k}
+vectors	\vec{F} = m \vec{a}
+factorial-unlexable	\prod_{k=1}^{n} k = n!

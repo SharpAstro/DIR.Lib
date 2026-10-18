@@ -1,0 +1,1 @@
+MathBlock source="\\frac{a}{b} + \\frac{c}{d}" unicode="a\u2044b + c\u2044d" builder=False
