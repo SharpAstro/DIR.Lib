@@ -157,7 +157,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                     case '$' when At(s, i + 1) == '$':
                     {
                         int end = DisplayDollarEnd(s, i, bound, textDollars ??= new());
-                        if (end > 0) { MarkTextDollars(); i = end; break; }
+                        if (end > 0) { MarkTextDollars(textDollars); i = end; break; }
                         Mark(i, UnpairedDollar);
                         Mark(i + 1, UnpairedDollar);
                         i += 2;
@@ -166,7 +166,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
                     case '$':
                     {
                         int end = InlineDollarEnd(s, i, bound, textDollars ??= new());
-                        if (end > 0) { MarkTextDollars(); i = end; break; }
+                        if (end > 0) { MarkTextDollars(textDollars); i = end; break; }
                         Mark(i, UnpairedDollar);
                         i++;
                         break;
@@ -285,9 +285,10 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
             }
         }
 
-        void MarkTextDollars()
+        // The list is passed in, rather than read from the local, so no null-forgiving `!` is needed.
+        void MarkTextDollars(List<int> dollars)
         {
-            foreach (int at in textDollars!) Mark(at, UnpairedDollar);
+            foreach (int at in dollars) Mark(at, UnpairedDollar);
         }
 
         // Index of the `]` that closes the bracket whose label starts at
@@ -730,11 +731,11 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
         return output;
     }
 
-    // ── Span-list assembly (epsilon-base + cons recursion) ────────────
     /// <summary>An unpaired marker as the text it was written as.</summary>
     private static MdLiteral MarkerText(MdStarMarker marker) =>
         new(marker.Level switch { 3 => "***", 2 => "**", _ => "*" });
 
+    // ── Span-list assembly (epsilon-base + cons recursion) ────────────
 
     public object Visit(MarkdownInline.SpansEmpty node) => new SpansBuilder();
 
