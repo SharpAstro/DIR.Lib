@@ -16,6 +16,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The display-math corpus MathRasterCacheTests renders with the raster caches on and off, so the
+         MathRaster benchmark times the formulas the test pins. It finds the fixture fonts in the source tree. -->
+    <Compile Include="..\DIR.Lib.Tests\MathRasterCorpus.cs" Link="MathRasterCorpus.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\DIR.Lib\DIR.Lib.csproj" />
   </ItemGroup>
 
