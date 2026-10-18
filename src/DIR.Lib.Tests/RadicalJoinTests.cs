@@ -207,7 +207,7 @@ public sealed partial class RadicalJoinTests
                 r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY), r.Alpha(r.Join.FlagLastFullX, r.Join.FlagTopY - 1),
                 r.GlyphPastDepth, r.RowsAboveHeight, r.RadicalOnCanvas, InkCutOff(p.Font, p.Size, p.Scene, r.Image),
                 r.JoinBreak(), RgbaHash(r.Image), r.Join.InkRaise,
-                p.Scene == "index-box-api" ? IndexClearanceAt(p.Font, p.Size, r) : null);
+                p.Scene == "index-box-api" ? IndexClearanceAt(p.Font, p.Size, r) : null, r.Sqrt.Path);
         }),
     ]);
 
@@ -234,9 +234,11 @@ public sealed partial class RadicalJoinTests
     /// <param name="IndexClear">In the index scene, the clear pixels between the index and the glyph
     /// (<see cref="IndexClearance"/>); null elsewhere.</param>
     /// <param name="ClearAbove">Clear rows between the bar and the ink above it (<see cref="Rendered.ClearRowsAboveBar"/>).</param>
+    /// <param name="Path">The path that drew the radical (<see cref="SqrtBox.Path"/>), against the before data's
+    /// <see cref="BeforePoint.Path"/>.</param>
     private sealed record Swept(BeforePoint Before, float Height, float Depth, int ClearRows, int ClearAbove, int BandRows, int MaxBandRows,
         bool CapTrimmed, int FlagTopAlpha, int AboveFlagAlpha, float GlyphPastDepth, int RowsAboveHeight,
-        bool RadicalOnCanvas, long InkCutOff, string? JoinBreak, ulong RgbaHash, int InkRaise, int? IndexClear)
+        bool RadicalOnCanvas, long InkCutOff, string? JoinBreak, ulong RgbaHash, int InkRaise, int? IndexClear, int Path)
     {
         public bool Touches => ClearRows == 0;
 
@@ -315,8 +317,8 @@ public sealed partial class RadicalJoinTests
 
         var failures = SweptPoints.Value
             .Where(s => !RadicandRedrawnSinceTheBeforeData.Contains((s.Before.Font, s.Before.Scene)))
-            .Where(s => Drifts(s.Before.Height, s.Height, s)
-                        || (!DepthOnlyExempt.Contains((s.Before.Font, s.Before.Scene)) && Drifts(s.Before.Depth, s.Depth, s)))
+            .Where(s => (!HeightExempt(s) && Drifts(s.Before.Height, s.Height, s))
+                        || (!AssemblyGrownSinceTheBeforeData.Contains((s.Before.Font, s.Before.Scene)) && Drifts(s.Before.Depth, s.Depth, s)))
             .Select(s => $"{s}: height {s.Before.Height} -> {s.Height}, depth {s.Before.Depth} -> {s.Depth}, " +
                          $"band {s.BandRows} rows (stroke at most {s.MaxBandRows}), " +
                          $"{(s.CapTrimmed ? "trimmed" : "not trimmed")} by the stroke cap")
@@ -342,12 +344,37 @@ public sealed partial class RadicalJoinTests
     private static readonly HashSet<(string Font, string Scene)> RadicandRedrawnSinceTheBeforeData =
         [("DejaVuSans", "sqrt-paren-frac"), ("STIX2Math", "sqrt-paren-frac")];
 
-    /// <summary>Scenes whose depth alone is exempt from the drift rule; their height is still held to it.
-    /// STIX Two Math <c>sqrt-nested-frac</c>: the radical's MATH assembly now grows to what it asks for, so
-    /// the radical covers its radicand and its depth holds the radicand's (at 24 px 3.71 became 42.71). The
-    /// assembly used to stop at its 64-copy cap and leave the denominator hanging below the box. Its height
-    /// is the radicand's plus the gap and the bar, as before.</summary>
-    private static readonly HashSet<(string Font, string Scene)> DepthOnlyExempt = [("STIX2Math", "sqrt-nested-frac")];
+    /// <summary>Scenes whose radical's MATH assembly now grows to what it asks for, exempt from the drift
+    /// rule for their depth at every point, and for their height only where the path changed
+    /// (<see cref="HeightExempt"/>). STIX Two Math <c>sqrt-nested-frac</c>: the radical covers its radicand
+    /// and its depth holds the radicand's (at 24 px 3.71 became 42.71); the assembly used to stop at its
+    /// 64-copy cap and leave the denominator hanging below the box.</summary>
+    private static readonly HashSet<(string Font, string Scene)> AssemblyGrownSinceTheBeforeData = [("STIX2Math", "sqrt-nested-frac")];
+
+    /// <summary>
+    /// Whether a swept point's height is exempt from the drift rule: in a scene of
+    /// <see cref="AssemblyGrownSinceTheBeforeData"/>, at a point drawn on another path than the before
+    /// data's, read from its path column. There STIX Two Math's radical moved from path 2, the base glyph
+    /// scaled about 3.5 times, to path 1, the assembly, which now lands on its request (111 of the scene's
+    /// 238 points, 13 to 31.3 px). The bar on path 1 is the font's own stroke, 1 to 3 rows, not a scaled
+    /// flag of about 4 to 8, so the height falls by the thinner band, not by lost clearance: by 2.91 to 5.00
+    /// px at 56 of those points, past the 2 px limit (at 13 px the band went from about 4 rows to 1 and the
+    /// height from 38.33 to 35.33, the glyph still 60 rows for its 59.16 px request). The 127 points that
+    /// stayed on path 1 keep the height rule.
+    /// </summary>
+    private static bool HeightExempt(Swept s) =>
+        AssemblyGrownSinceTheBeforeData.Contains((s.Before.Font, s.Before.Scene)) && s.Path != s.Before.Path;
+
+    /// <summary>The height exemption is not the whole scene: some of its points changed path and are exempt,
+    /// and some did not and are held to the height rule.</summary>
+    [Fact]
+    public void TheHeightExemptionIsOnlyWhereThePathChanged()
+    {
+        var scene = SweptPoints.Value.Where(s => AssemblyGrownSinceTheBeforeData.Contains((s.Before.Font, s.Before.Scene))).ToList();
+        var exempt = scene.Count(HeightExempt);
+        exempt.ShouldBeGreaterThan(0, "points whose path changed since the before data");
+        exempt.ShouldBeLessThan(scene.Count, $"points whose height is exempt, of {scene.Count}");
+    }
 
     /// <summary>How far a swept point's height or depth may shrink from before: 3 px below 21.3 px where the
     /// cap at the flag's own stroke trimmed the band, 2 px everywhere else (see
@@ -698,7 +725,8 @@ public sealed partial class RadicalJoinTests
     /// 30.42 to 59.42 px tall. At the <c>sqrt-nested-frac</c> points the depth is held to cover the radicand's
     /// rather than to the before data's: the radical's assembly now grows to its request, so its depth is
     /// the radicand's where the old one left the radicand hanging below (see
-    /// <see cref="DepthOnlyExempt"/>). The path and the height are held to the before data as before.
+    /// <see cref="AssemblyGrownSinceTheBeforeData"/>). The path and the height are held to the before data as
+    /// before: these sizes stayed on the path they had.
     /// </summary>
     [Theory]
     [InlineData("STIX2Math", "sqrt-nested-frac", 12f)]
