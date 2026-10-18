@@ -157,6 +157,82 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
             }
     }
 
+    // ── asymmetric content ──────────────────────────────────────────────
+
+    /// <summary>
+    /// A <c>\left..\right</c> pair is centred on the math axis, so it covers content that reaches further
+    /// above the axis than below it (a fraction whose numerator is itself a fraction): no ink of the content
+    /// rises above the delimiters' top ink row or falls below their bottom one. The pair asks the font for
+    /// twice the content's larger reach from the axis, as TeX does, not its total height. At 32 px. Each
+    /// render is saved under <c>obj/stretchy-assembly-output</c> as <c>asymmetric-…-32px.png</c>, 8x.
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math", @"\left\{ \frac{\frac{a}{b}}{c} \right\}", "brace")]
+    [InlineData("STIX2Math", @"\left( \frac{\frac{a}{b}}{c} \right)", "paren")]
+    [InlineData("DejaVuSans", @"\left\{ \frac{\frac{a}{b}}{c} \right\}", "brace")]
+    [InlineData("DejaVuSans", @"\left( \frac{\frac{a}{b}}{c} \right)", "paren")]
+    public void DelimitersCoverAsymmetricContent(string font, string latex, string name)
+    {
+        var style = new BoxStyle(FontPaths[font], 32f, Ink);
+        var image = BoxRasterizer.RenderToRgba(Parse(latex, style).ShouldBeOfType<BracketBox>(), style);
+        Directory.CreateDirectory(OutputDir);
+        var big = Upscale(image, 8);
+        var file = Path.Combine(OutputDir, $"asymmetric-{font}-{name}-nested-frac-32px.png");
+        File.WriteAllBytes(file, PngWriter.Encode(big.Pixels, big.Width, big.Height));
+        output.WriteLine(Path.GetFullPath(file));
+
+        // The delimiters are the first and last runs of inked columns; the content is what lies between.
+        bool Inked(int x) => Enumerable.Range(0, image.Height).Any(y => image.Pixels[(y * image.Width + x) * 4 + 3] > 0);
+        var leftStart = Enumerable.Range(0, image.Width).First(Inked);
+        var leftEnd = leftStart;
+        while (Inked(leftEnd)) leftEnd++;
+        var rightEnd = Enumerable.Range(0, image.Width).Last(Inked) + 1;
+        var rightStart = rightEnd - 1;
+        while (Inked(rightStart - 1)) rightStart--;
+
+        var (delimTop, delimBottom) = InkRowSpan(image, leftStart, leftEnd);
+        var (rTop, rBottom) = InkRowSpan(image, rightStart, rightEnd);
+        var (contentTop, contentBottom) = InkRowSpan(image, leftEnd, rightStart);
+        output.WriteLine($"{font} {latex}: delimiters rows {delimTop}..{delimBottom} and {rTop}..{rBottom}, content {contentTop}..{contentBottom}");
+        contentTop.ShouldBeGreaterThanOrEqualTo(Math.Max(delimTop, rTop), "the content's top ink against the delimiters' top");
+        contentBottom.ShouldBeLessThanOrEqualTo(Math.Min(delimBottom, rBottom), "the content's bottom ink against the delimiters' bottom");
+    }
+
+    /// <summary>
+    /// Content as far above the axis as below it asks for the same size as before the symmetric request:
+    /// <c>\left( \frac{1}{2} \right)</c> at 32 px renders byte for byte as it did (hashes taken at d03fa45).
+    /// </summary>
+    [Theory]
+    [InlineData("STIX2Math", "9B26212D199341F2")]
+    [InlineData("DejaVuSans", "9E30A697D91269FF")]
+    public void SymmetricContentIsUnchanged(string font, string hash)
+    {
+        var style = new BoxStyle(FontPaths[font], 32f, Ink);
+        var image = BoxRasterizer.RenderToRgba(Parse(@"\left( \frac{1}{2} \right)", style), style);
+        var bytes = new byte[image.Pixels.Length + 8];
+        BitConverter.TryWriteBytes(bytes.AsSpan(0, 4), image.Width);
+        BitConverter.TryWriteBytes(bytes.AsSpan(4, 4), image.Height);
+        image.Pixels.CopyTo(bytes, 8);
+        var actual = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes))[..16];
+        output.WriteLine($"{font}: {image.Width}x{image.Height} {actual}");
+        actual.ShouldBe(hash);
+    }
+
+    /// <summary>The first and last rows with ink in columns [<paramref name="x0"/>, <paramref name="x1"/>).</summary>
+    private static (int Top, int Bottom) InkRowSpan(RgbaImage image, int x0, int x1)
+    {
+        int top = -1, bottom = -1;
+        for (var y = 0; y < image.Height; y++)
+            for (var x = x0; x < x1; x++)
+                if (image.Pixels[(y * image.Width + x) * 4 + 3] > 0)
+                {
+                    if (top < 0) top = y;
+                    bottom = y;
+                    break;
+                }
+        return (top, bottom);
+    }
+
     // ── the choice ──────────────────────────────────────────────────────
 
     public static IEnumerable<TheoryDataRow<string, int>> ChoiceCases() =>
