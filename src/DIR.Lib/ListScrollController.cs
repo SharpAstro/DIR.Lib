@@ -120,6 +120,19 @@ public sealed class ListScrollController
     /// <summary>Scroll axis. Defaults to <see cref="ScrollAxis.Vertical"/>.</summary>
     public ScrollAxis Axis { get; set; } = ScrollAxis.Vertical;
 
+    /// <summary>The track's fill wherever this bar is drawn. Defaults to <see cref="DefaultTrackColor"/>.</summary>
+    /// <remarks>
+    /// On the controller because the layout engine draws the bar of a <see cref="Layout.Node.WithScroll"/>
+    /// node itself and passes no colour, so the controller is the one thing a host can reach. A host with a
+    /// palette of its own states both here: a night palette that holds blue at zero got a blue-grey bar on
+    /// every list otherwise. An explicit colour handed to <see cref="DrawScrollBar"/> still wins.
+    /// </remarks>
+    public RGBAColor32 TrackColor { get; set; } = DefaultTrackColor;
+
+    /// <summary>The thumb's fill wherever this bar is drawn. Defaults to <see cref="DefaultThumbColor"/>; see
+    /// <see cref="TrackColor"/>.</summary>
+    public RGBAColor32 ThumbColor { get; set; } = DefaultThumbColor;
+
     /// <summary>
     /// When true, the offset is rounded to a whole atom at the end of a drag (row-snapped lists).
     /// Wheel scrolling always keeps its fractional carry regardless — that carry is the accumulator
@@ -476,7 +489,8 @@ public sealed class ListScrollController
     /// <summary>
     /// Draw the scrollbar via the widget's float <c>FillRect</c> (typically passed as a method group).
     /// No-op when the list fits or <see cref="Mode"/> is <see cref="ScrollBarMode.None"/>. The
-    /// interactive-vs-decorative distinction is purely about input; the drawing is identical.
+    /// interactive-vs-decorative distinction is purely about input; the drawing is identical. A null
+    /// <paramref name="track"/> or <paramref name="thumb"/> paints <see cref="TrackColor"/> or <see cref="ThumbColor"/>.
     /// </summary>
     public void DrawScrollBar(Action<float, float, float, float, RGBAColor32> fillRect, RGBAColor32? track = null, RGBAColor32? thumb = null)
     {
@@ -491,14 +505,14 @@ public sealed class ListScrollController
         if (Axis == ScrollAxis.Vertical)
         {
             var colX = _viewport.Right - width;
-            fillRect(colX, trackStart, width, trackExtent, track ?? DefaultTrackColor);
-            fillRect(colX + 1f, thumbStart, width - 2f, thumbExtent, thumb ?? DefaultThumbColor);
+            fillRect(colX, trackStart, width, trackExtent, track ?? TrackColor);
+            fillRect(colX + 1f, thumbStart, width - 2f, thumbExtent, thumb ?? ThumbColor);
         }
         else
         {
             var colY = _viewport.Bottom - width;
-            fillRect(trackStart, colY, trackExtent, width, track ?? DefaultTrackColor);
-            fillRect(thumbStart, colY + 1f, thumbExtent, width - 2f, thumb ?? DefaultThumbColor);
+            fillRect(trackStart, colY, trackExtent, width, track ?? TrackColor);
+            fillRect(thumbStart, colY + 1f, thumbExtent, width - 2f, thumb ?? ThumbColor);
         }
     }
 
