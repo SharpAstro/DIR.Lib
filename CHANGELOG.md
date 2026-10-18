@@ -11,15 +11,26 @@ changed and why.
 
 ## 11.26
 
-This minor collects the rest of flight CL2's math work, none of which has landed yet. It changes rendered math, so it
-opens a minor of its own: Console.Lib 5.9 pins `11.25.*`, and its golden pins raster bytes. The changes are listed
-below as planned, one line each, and none is claimed done. This entry is completed, with what each change does and
-why, once they have all landed.
+The rest of flight CL2's math work. It changes rendered math, so it is a minor of its own: Console.Lib 5.9 pins
+`11.25.*`, and its golden pins raster bytes. No caller's compile breaks.
 
-- Stretchy vertical glyphs drawn the size asked for: assemblies grow to the request, delimiters do not overshoot it,
-  and a pair's two sides share one height (#132).
-- A root's index that never touches the radical glyph.
-- Glyph and stretched-glyph caching across `RenderToRgba` calls (#118).
+**Stretchy delimiters, radicals and big operators are the size asked for (#132).** Assemblies follow the OpenType
+MATH spec: extenders repeat from zero up to the fewest that reach the request, the leftover overlap is spread across
+the joins, and the parts are drawn as one outline, so there are no lighter seams. Before, STIX Two Math's radical
+extender added one font unit per copy and stopped at its 64-copy cap, so every tall radical was 80 rows at 32 px and
+its radicand ran out under it. `\left..\right` pairs are sized as TeX sizes them: the request is twice the content's
+larger reach from the math axis, a candidate covers from TeX's shortfall (`\delimiterfactor` 901,
+`\delimitershortfall` 5 pt), and both delimiters of a pair, half-open intervals included, are drawn at one height. A
+font with no candidate that fits (DejaVu Sans's parentheses, brackets, braces and display integral, which were up to
+4 times too tall) takes the least distorted candidate, scaled to the nearest whole-row height that fits. STIX Two
+Math's baselines are unchanged apart from one matrix's parentheses.
+
+**A root's index never touches the radical glyph (#134).** The index (`\sqrt[n]{x}`) is placed against the glyph's
+own pixels at a fixed offset, so the result no longer depends on the pen's sub-pixel position, and moves by whole
+pixels, up to the vinculum or left, until one clear pixel separates them. Where it moves left, the radical's box widens
+to hold it, by at most 0.6 em for a two-digit index. Radicals without an index are unchanged.
+
+- Planned: glyph and stretched-glyph caching across `RenderToRgba` calls (#118).
 
 ## 11.25
 
