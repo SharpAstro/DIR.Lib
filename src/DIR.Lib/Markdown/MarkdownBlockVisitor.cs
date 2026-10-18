@@ -121,7 +121,7 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
     /// and a document of lists that kept breaking recursed once per break and
     /// overflowed the stack (PR #129 round 1). Used for the document and,
     /// through <see cref="BuildList"/>, for each list item's lines.</para></summary>
-    private IReadOnlyList<MdBlock> ParseLines(IReadOnlyList<string> lines)
+    private IReadOnlyList<MdBlock> ParseLines(IReadOnlyList<string> lines, int depth = 0)
     {
         var blocks = new List<MdBlock>();
         var current = new List<string>();
@@ -150,7 +150,7 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
                 if (line.TrimStart().StartsWith(fence, StringComparison.Ordinal)) Flush();
                 continue;
             }
-            if (string.IsNullOrWhiteSpace(line))
+            if (IsBlankLine(line))
             {
                 Flush();   // a blank line also ends a display-math block left open
                 continue;
@@ -185,7 +185,7 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
                 }
                 if (ListItemRx.IsMatch(line))
                 {
-                    n += BuildListSafe(lines, n, blocks) - 1;
+                    n += BuildListSafe(lines, n, blocks, depth) - 1;
                     continue;
                 }
                 var opener = FenceOpenRx.Match(line);
@@ -221,7 +221,7 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
     /// <summary>Whether <paramref name="lines"/>[<paramref name="n"/>] is a table's
     /// header row: it holds a <c>|</c> and the line after it is a delimiter row.</summary>
     private static bool IsTableHeader(IReadOnlyList<string> lines, int n) =>
-        lines[n].Contains('|') && n + 1 < lines.Count && IsTableSeparator(lines[n + 1]);
+        lines[n].Contains('|') && n + 1 < lines.Count && IsDelimiterRowFor(lines[n], lines[n + 1]);
 
     private static bool StartsBlock(IReadOnlyList<string> lines, int n)
     {
@@ -231,7 +231,7 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
         // A lone `$$` interrupts only with its closer ahead in the same run of
         // lines; otherwise it may be closing a `$$` opened inside the text.
         var closer = line.Trim() == "$$" ? "$$" : @"\]";
-        for (int k = n + 1; k < lines.Count && !string.IsNullOrWhiteSpace(lines[k]); k++)
+        for (int k = n + 1; k < lines.Count && !IsBlankLine(lines[k]); k++)
             if (lines[k].Trim() == closer) return true;
         return false;
     }
@@ -250,7 +250,7 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
     }
 
     private static bool IsTableStart(IReadOnlyList<string> current, string line) =>
-        current.Count == 1 && current[0].Contains('|') && IsTableSeparator(line);
+        current.Count == 1 && current[0].Contains('|') && IsDelimiterRowFor(current[0], line);
 
     /// <summary>A paragraph underlined by <c>===</c> or <c>---</c>: a heading
     /// of its lines, trimmed, with their soft breaks.</summary>
@@ -406,13 +406,13 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
         }
 
         // Tables.
-        if (lines.Count >= 2 && first.Contains('|') && IsTableSeparator(lines[1]))
+        if (lines.Count >= 2 && first.Contains('|') && IsDelimiterRowFor(first, lines[1]))
             return BuildTable(lines);
 
         // Default: paragraph. Join lines (newlines become soft breaks
         // via the inline grammar's `soft_break` token), each without the
-        // whitespace it opens with, as CommonMark strips a paragraph line's.
-        var joined = string.Join("\n", lines.Select(line => line.TrimStart()));
+        // spaces and tabs it opens with, as CommonMark strips a paragraph line's.
+        var joined = string.Join("\n", lines.Select(line => line.TrimStart(' ', '\t')));
         return new MdParagraph(ParseInline(joined));
     }
 
@@ -456,11 +456,11 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
     /// with another bullet or delimiter (CommonMark 5.3) or a block start that
     /// is not indented into an item is parsed by the caller's own loop. On an
     /// error the first line stays as text.</summary>
-    private int BuildListSafe(IReadOnlyList<string> lines, int start, List<MdBlock> blocks)
+    private int BuildListSafe(IReadOnlyList<string> lines, int start, List<MdBlock> blocks, int depth)
     {
         try
         {
-            var (list, taken) = BuildList(lines, start);
+            var (list, taken) = BuildList(lines, start, depth);
             blocks.Add(list);
             return Math.Max(1, taken);
         }
@@ -481,7 +481,7 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
     /// inside an item is found the way it is at the top. This used to strip a
     /// fixed two columns, drop a lazy line, and make an item's second line a
     /// paragraph of its own.</summary>
-    private (MdList List, int Taken) BuildList(IReadOnlyList<string> lines, int start)
+    private (MdList List, int Taken) BuildList(IReadOnlyList<string> lines, int start, int depth = 0)
     {
         var head = ListItemRx.Match(lines[start]);
         var ordered = head.Groups[3].Success;
@@ -512,15 +512,27 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
                 var line = lines[j];
                 // An item can begin with at most one blank line (CommonMark 5.2):
                 // an empty marker followed by a blank line is an empty item.
-                if (string.IsNullOrWhiteSpace(line) && j == i + 1 && string.IsNullOrWhiteSpace(text)) break;
-                if (string.IsNullOrWhiteSpace(line)) { body.Add(string.Empty); afterBlank = true; j++; continue; }
+                if (IsBlankLine(line) && j == i + 1 && string.IsNullOrWhiteSpace(text))
+                {
+                    // Blank lines between it and the next item still belong to the list.
+                    var next = j;
+                    while (next < lines.Count && IsBlankLine(lines[next])) next++;
+                    if (next < lines.Count && ListItemRx.IsMatch(lines[next])) j = next;
+                    break;
+                }
+                if (IsBlankLine(line)) { body.Add(string.Empty); afterBlank = true; j++; continue; }
                 if (Indentation(line) >= content) { body.Add(Unindent(line, content)); afterBlank = false; j++; continue; }
                 if (afterBlank || ListItemRx.IsMatch(line) || StartsSingleLineOrFence(line) || IsMathOpener(line)) break;
-                body.Add(line.TrimStart());   // a lazy continuation of the item's paragraph
+                body.Add(line.TrimStart(' ', '\t'));   // a lazy continuation of the item's paragraph
                 j++;
             }
 
-            items.Add(new MdListItem(ParseLines(body)));
+            // Past MaxListDepth an item's lines are its text: each level is a
+            // parse, and a line of nested markers ("- - - ... x") recursed once
+            // per marker until the stack ran out, which no catch survives.
+            items.Add(new MdListItem(depth >= MaxListDepth
+                ? new MdBlock[] { new MdParagraph(ParseInline(string.Join("\n", body))) }
+                : ParseLines(body, depth + 1)));
             i = j;
         }
 
@@ -550,6 +562,31 @@ public sealed class MarkdownBlockVisitor : MarkdownBlock.IVisitor<object>
         if (trimmed.EndsWith("|")) trimmed = trimmed.Substring(0, trimmed.Length - 1);
         return trimmed.Split('|').Select(c => c.Trim()).ToArray();
     }
+
+    /// <summary>How deep lists nest before an item's lines are taken as its text.</summary>
+    private const int MaxListDepth = 32;
+
+    /// <summary>A blank line, as CommonMark counts one: spaces and tabs only, so a
+    /// line holding a full-width or no-break space is text.</summary>
+    private static bool IsBlankLine(string line)
+    {
+        foreach (var c in line)
+            if (c is not (' ' or '\t')) return false;
+        return true;
+    }
+
+    /// <summary>Whether <paramref name="delimiter"/> is a GFM delimiter row for
+    /// <paramref name="header"/>: as many cells, each <c>:?-+:?</c>. A dash line
+    /// under prose that holds a pipe is otherwise a setext underline or a
+    /// thematic break, as on GitHub, not a header-only table.</summary>
+    private static bool IsDelimiterRowFor(string header, string delimiter)
+    {
+        if (!IsTableSeparator(delimiter)) return false;
+        var cells = SplitTableRow(delimiter);
+        return cells.Count == SplitTableRow(header).Count && cells.All(cell => DelimiterCellRx.IsMatch(cell));
+    }
+
+    private static readonly Regex DelimiterCellRx = new(@"^:?-+:?$", RegexOptions.Compiled);
 
     private static bool IsTableSeparator(string line)
     {
