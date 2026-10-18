@@ -236,9 +236,10 @@ public class CompositeWidgetTests
     [Fact]
     public void AChildPaintedBehindTheCompositeIsCoveredByIt()
     {
-        // TianWen's image viewer, which paints the sky the photograph came from and then the photograph
-        // over it. A label the sky registered under the photograph is covered there, and answers only
-        // where it shows.
+        // A backdrop child drawn wholly behind the composite's own content, the default order: a sky with
+        // a photograph painted over it. A label the sky registered under the photograph is covered there,
+        // and answers only where it shows. (TianWen's image viewer is not this shape: its sky map also
+        // floats a palette over the picture, so it keeps the map wholly over, ChildrenUnderOwn = 0, below.)
         var renderer = new StubRenderer(200, 200);
         var host = new Host(renderer) { FontPath = Font };
         var sky = new Leaf(renderer, "label") { FontPath = Font };
