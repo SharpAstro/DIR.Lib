@@ -335,11 +335,15 @@ public sealed partial class RadicalJoinTests
     /// with no extender and squashed to the fraction it holds, where one copy of each extender made it
     /// about twice the fraction's height, so the radical over it is shorter (at 32 px height 78.34 became
     /// 44.34, depth 50.5 became 24.86).</item>
+    /// <item>STIX Two Math <c>sqrt-paren-frac</c>: the radicand's parenthesis is now sized by TeX's symmetric
+    /// request, twice the fraction's larger reach from the axis, and the b's ascender reaches further above
+    /// it than the denominator below, so the radicand is taller from 48 to 96 px (at 72 px height 97.14
+    /// became 102.14, depth 55.86 became 68.86; see <see cref="Stix72PxParenFracFollowsItsTallerRadicand"/>).</item>
     /// </list>
     /// The hat scene that used to be listed here (PR #130 redrew it) is drawn the same way in the before
     /// data since it was regenerated from a442e91.</summary>
     private static readonly HashSet<(string Font, string Scene)> RadicandRedrawnSinceTheBeforeData =
-        [("STIX2Math", "sqrt-nested-frac"), ("DejaVuSans", "sqrt-paren-frac")];
+        [("STIX2Math", "sqrt-nested-frac"), ("DejaVuSans", "sqrt-paren-frac"), ("STIX2Math", "sqrt-paren-frac")];
 
     /// <summary>How far a swept point's height or depth may shrink from before: 3 px below 21.3 px where the
     /// cap at the flag's own stroke trimmed the band, 2 px everywhere else (see
@@ -598,17 +602,21 @@ public sealed partial class RadicalJoinTests
     }
 
     /// <summary>
-    /// The review's flip, with the base's numbers written out: STIX Two Math
-    /// <c>\sqrt{\left(\frac{a}{b}\right)}</c> at 72 px stays on the scaled-glyph path with height 96.14 and
-    /// depth 57.86, within 2 px.
+    /// The review's flip, with the numbers written out: STIX Two Math <c>\sqrt{\left(\frac{a}{b}\right)}</c>
+    /// at 72 px. It stayed on the scaled-glyph path (height 96.14, depth 57.86) until the radicand's
+    /// parenthesis was sized by TeX's symmetric request, twice the fraction's larger reach from the axis: the
+    /// b's ascender reaches further above it than the denominator below, so the parenthesis is a size taller,
+    /// and the radical over it takes a MATH size variant (path 1) with height 102.14 and depth 68.86, pinned
+    /// here within 2 px. The snap flip the review found cannot recur: the path is still chosen on the
+    /// unsnapped bitmap.
     /// </summary>
     [Fact]
-    public void Stix72PxParenFracKeepsTheBasePathAndMetrics()
+    public void Stix72PxParenFracFollowsItsTallerRadicand()
     {
         var r = Render("STIX2Math", 72f, "sqrt-paren-frac");
-        r.Sqrt.Path.ShouldBe(2);
-        r.Sqrt.Height.ShouldBe(96.14f, 2f);
-        r.Sqrt.Depth.ShouldBe(57.86f, 2f);
+        r.Sqrt.Path.ShouldBe(1);
+        r.Sqrt.Height.ShouldBe(102.14f, 2f);
+        r.Sqrt.Depth.ShouldBe(68.86f, 2f);
     }
 
     /// <summary>
@@ -667,6 +675,13 @@ public sealed partial class RadicalJoinTests
     {
         var before = BeforeAt(font, scene, size);
         var r = Render(font, size, scene);
+        if (font == "STIX2Math" && scene == "sqrt-paren-frac" && size == 72f)
+        {
+            // The radicand's parenthesis is now sized by TeX's symmetric request, so it is taller here and
+            // the radical follows it onto path 1; Stix72PxParenFracFollowsItsTallerRadicand pins its metrics.
+            r.Sqrt.Path.ShouldBe(1, "the path the taller radicand takes");
+            return;
+        }
         r.Sqrt.Path.ShouldBe(before.Path, "the rendering path the base took");
         r.Sqrt.Height.ShouldBe(before.Height, DriftLimitPx, "radical height");
         r.Sqrt.Depth.ShouldBe(before.Depth, DriftLimitPx, "radical depth");
