@@ -739,11 +739,15 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
 
     /// <summary>
     /// Two different delimiters around content, for the half-open intervals
-    /// <c>[a, b)</c> and <c>(a, b]</c>. Laid out like <see cref="BracketBox"/>'s
-    /// MATH-driven path: each side is a <see cref="StretchyVerticalBox"/> sized
-    /// to the content's extent, centred on the math axis, with the same 0.15 em
-    /// of padding either side of the content. A font with no MATH variant for
-    /// either codepoint gets the plain glyphs, unstretched.
+    /// <c>[a, b)</c> and <c>(a, b]</c> and the named pairs. Laid out like
+    /// <see cref="BracketBox"/>'s MATH-driven path and sized by the same rule:
+    /// the pair asks for <see cref="BracketBox.DelimiterRequest"/> (twice the
+    /// content's larger reach from the math axis), may fall short of it by
+    /// TeX's shortfall, and is drawn at one height
+    /// (<see cref="StretchyVerticalBox.DelimiterPair"/>), each side centred on
+    /// the math axis, with the same 0.15 em of padding either side of the
+    /// content. A font with no MATH variant for either codepoint gets the
+    /// plain glyphs, unstretched.
     /// </summary>
     private sealed class DelimiterPairBox : Box
     {
@@ -756,8 +760,7 @@ public sealed class BoxBuildingVisitor : IVisitor<Func<BoxStyle, Box>>
         {
             _inner = inner;
             _padding = style.FontSize * 0.15f;
-            var left = new StretchyVerticalBox(open, inner.TotalHeight, style);
-            var right = new StretchyVerticalBox(close, inner.TotalHeight, style);
+            var (left, right) = StretchyVerticalBox.DelimiterPair(open, close, BracketBox.DelimiterRequest(inner, style), style);
             if (left.IsAvailable && right.IsAvailable)
             {
                 _left = left;
