@@ -353,6 +353,67 @@ public sealed class MarkdownBlockSpikeTests
     public void ATildeFencesInfoString_MayHoldABacktick() =>
         _visitor.Parse("~~~ aa ``` ~~~\nfoo\n~~~").Single().ShouldBeOfType<MdCodeFence>().Lines.ShouldBe(new[] { "foo" });
 
+    // ── Round 2 of PR #129 ───────────────────────────────────────────
+
+    /// <summary>
+    /// List nesting is capped, so a line of nested markers cannot exhaust the
+    /// stack: past the cap an item's lines are text (R2 B1: 1,000 "- " before
+    /// an x overflowed a 1 MB stack, one parse per level).
+    /// </summary>
+    [Fact]
+    public void DeepListNesting_DoesNotExhaustTheStack()
+    {
+        var md = string.Concat(Enumerable.Repeat("- ", 5000)) + "x";
+        System.Collections.Generic.IReadOnlyList<MdBlock>? blocks = null;
+        var thread = new System.Threading.Thread(() => blocks = new MarkdownBlockVisitor().Parse(md), maxStackSize: 256 * 1024);
+        thread.Start();
+        thread.Join();
+        blocks.ShouldNotBeNull().ShouldHaveSingleItem().ShouldBeOfType<MdList>();
+    }
+
+    /// <summary>
+    /// An empty item followed by a blank line and another item stays in the
+    /// one list (R2 B2: it ended the list, and the next item started a new one
+    /// with its own number); followed by anything else, it still ends it.
+    /// </summary>
+    [Theory]
+    [InlineData("1. a\n1.\n\n1. b", 3)]
+    [InlineData("- a\n-\n\n- b", 3)]
+    [InlineData("1.\n\n1.\n\n1.", 3)]
+    public void AnEmptyItemBeforeABlankLine_StaysInItsList(string md, int items) =>
+        _visitor.Parse(md).ShouldHaveSingleItem().ShouldBeOfType<MdList>().Items.Count.ShouldBe(items);
+
+    /// <summary>
+    /// A paragraph line drops the spaces and tabs it opens with, as CommonMark
+    /// strips them, and nothing else: a full-width space (the usual Japanese
+    /// paragraph indent) or a no-break space stays (R2 B3), and a line of one
+    /// is not blank.
+    /// </summary>
+    [Fact]
+    public void AParagraphLine_DropsOnlyLeadingSpacesAndTabs()
+    {
+        var ideographic = ((char)0x3000).ToString();
+        var noBreak = ((char)0x00A0).ToString();
+        Describe(_visitor.Parse("  foo\n\t bar")).ShouldBe("P[L(foo) SB L(bar)]");
+        Describe(_visitor.Parse(ideographic + "para")).ShouldBe($"P[L({ideographic}para)]");
+        Describe(_visitor.Parse(noBreak + "x")).ShouldBe($"P[L({noBreak}x)]");
+        _visitor.Parse("a\n" + ideographic + "\nb").ShouldHaveSingleItem().ShouldBeOfType<MdParagraph>();
+    }
+
+    /// <summary>
+    /// A table's delimiter row has as many cells as its header, each <c>:?-+:?</c>,
+    /// as GFM requires; otherwise the dash line is a setext underline or a
+    /// thematic break, as on GitHub (R2 B4: a header-only table).
+    /// </summary>
+    [Theory]
+    [InlineData("Note: a\nb | c\n---", "H2[L(Note: a) SB L(b | c)]")]
+    [InlineData("Note: a\nb | c\n- - -", "P[L(Note: a) SB L(b | c)] | MdThematicBreak")]
+    [InlineData("a | b\n---", "H2[L(a | b)]")]
+    [InlineData("a | b\n---|---\nc | d", "MdTable")]
+    [InlineData("Intro:\n| a | b |\n|:--|--:|", "P[L(Intro:)] | MdTable")]
+    public void ATableNeedsADelimiterRowAsWideAsItsHeader(string md, string expected) =>
+        Describe(_visitor.Parse(md)).ShouldBe(expected);
+
     // ── Tables ───────────────────────────────────────────────────────
 
     [Fact]
@@ -438,7 +499,8 @@ public sealed class MarkdownBlockSpikeTests
     {
         MdParagraph p => $"P[{Describe(p.Content)}]",
         MdHeading h => $"H{h.Level}[{Describe(h.Content)}]",
-        MdList l => $"List[{string.Join(" ; ", l.Items.Select(i => string.Join(" ", i.Body.Select(Describe))))}]",        _ => block.GetType().Name,
+        MdList l => $"List[{string.Join(" ; ", l.Items.Select(i => string.Join(" ", i.Body.Select(Describe))))}]",
+        _ => block.GetType().Name,
     };
 
     private static string Describe(System.Collections.Generic.IEnumerable<MdInline> spans) =>
