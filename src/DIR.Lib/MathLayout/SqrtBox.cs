@@ -780,8 +780,9 @@ public sealed class SqrtBox : Box
     /// <summary>Scratch renderers for <see cref="RadicandInkTop"/>, one per
     /// measurement in flight (a radicand holding a radical measures its own
     /// radicand while the outer one is being measured). Pooled so each keeps
-    /// its glyph and font caches: a renderer parses every font it draws with.
-    /// The caches are bounded, since the pool outlives every render: see
+    /// its own glyph table; its fonts are the shared rasterizer's
+    /// (<see cref="BoxStyle.SharedRasterizer"/>). The table is
+    /// bounded, since the pool outlives every render: see
     /// <see cref="InkScratchSizesKept"/>.</summary>
     private static readonly System.Collections.Concurrent.ConcurrentBag<InkScratchRenderer> InkScratch = new();
 
@@ -794,12 +795,12 @@ public sealed class SqrtBox : Box
     /// 1000 STIX Two Math sizes, <c>\sqrt{abcdefghijklm}</c> left 379 KiB in the
     /// pool against fe09d4a's 30 KiB. A scratch renderer that has measured at
     /// more sizes than this (font and rounded size, as its glyph cache keys
-    /// them) is disposed, which clears its caches, and dropped rather than
+    /// them) is disposed, which clears its glyph table, and dropped rather than
     /// pooled, so a pooled renderer keeps the glyphs of at most this many
     /// radical sizes, and the pool holds no more renderers than measurements
     /// were ever in flight at once. A text at a handful of sizes keeps its
-    /// renderer; one at ever new sizes re-parses its fonts each time a renderer
-    /// passes this many.
+    /// renderer; one at ever new sizes starts a new table each time a renderer
+    /// passes this many, its fonts still the shared rasterizer's.
     /// </summary>
     internal const int InkScratchSizesKept = 8;
 
@@ -807,7 +808,9 @@ public sealed class SqrtBox : Box
     /// radicands at.</summary>
     private sealed class InkScratchRenderer
     {
-        public readonly RgbaImageRenderer Renderer = new(1, 1);
+        // Lent the shared rasterizer, as RenderToRgba's renderer is, so a
+        // renderer dropped from the pool takes no parsed font with it.
+        public readonly RgbaImageRenderer Renderer = new(1, 1, BoxStyle.SharedRasterizer);
         public readonly HashSet<(string FontPath, float Size)> Sizes = [];
     }
 
