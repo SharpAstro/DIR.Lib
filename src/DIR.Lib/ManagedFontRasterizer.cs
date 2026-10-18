@@ -456,7 +456,7 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// <item>Else, where it overshoots (or reaches its copy cap short of the
     /// request), the candidate that needs the least scaling to fit is scaled
     /// vertically to the nearest whole row from the request to that bound
-    /// (see <see cref="RasterizeStretchyVerticalCore"/>).</item>
+    /// (see <see cref="ChooseAndComposeStretchyVertical"/>).</item>
     /// <item>A construction with no assembly gives its largest variant, as it
     /// is, where none covers.</item>
     /// </list>
@@ -529,7 +529,7 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// <summary>
     /// The most a stretchy glyph is drawn for a request of <paramref name="requestPx"/>: the larger of 1.25
     /// times the request and the request plus half an em. An assembly taller than this is not drawn as it
-    /// is (see <see cref="RasterizeStretchyVerticalCore"/>).
+    /// is (see <see cref="ChooseAndComposeStretchyVertical"/>).
     /// </summary>
     internal static float StretchyBound(float requestPx, float fontSize) =>
         MathF.Max(1.25f * requestPx, requestPx + 0.5f * fontSize);
