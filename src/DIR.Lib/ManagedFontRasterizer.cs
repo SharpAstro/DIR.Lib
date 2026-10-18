@@ -368,7 +368,7 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// (<paramref name="snapTop"/> false, or a colour glyph).</param>
     internal GlyphBitmap RasterizeStretchyVertical(string fontPath, float fontSize,
         Rune codepoint, float requiredHeightPx, bool snapTop, out uint variantGlyphId, out TopSnap snap)
-        => RasterizeStretchyVerticalCore(fontPath, fontSize, codepoint, requiredHeightPx, snapTop,
+        => RasterizeStretchyVerticalCore(fontPath, fontSize, codepoint, requiredHeightPx, requiredHeightPx, snapTop,
             out variantGlyphId, out snap, out _);
 
     /// <summary>
@@ -378,7 +378,7 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// </summary>
     internal GlyphBitmap RasterizeStretchyVerticalWithParts(string fontPath, float fontSize,
         Rune codepoint, float requiredHeightPx, out AssemblyPart[]? parts)
-        => RasterizeStretchyVerticalCore(fontPath, fontSize, codepoint, requiredHeightPx, snapTop: false,
+        => RasterizeStretchyVerticalCore(fontPath, fontSize, codepoint, requiredHeightPx, requiredHeightPx, snapTop: false,
             out _, out _, out parts);
 
     /// <summary>
@@ -391,20 +391,24 @@ public sealed class ManagedFontRasterizer : IDisposable
 
     /// <summary>
     /// <see cref="RasterizeStretchyVertical(string, float, Rune, float, out uint)"/> for a <c>\left..\right</c>
-    /// delimiter, which may fall short of its request by TeX's rule (<see cref="DelimiterCovers"/>).
+    /// delimiter, which may fall short of its request by TeX's rule (<see cref="DelimiterCovers"/>): the
+    /// unstretched glyph or a size variant covers it from that height. An assembly is still built to the
+    /// whole request, since it can reach it.
     /// </summary>
     internal GlyphBitmap RasterizeStretchyDelimiter(string fontPath, float fontSize,
         Rune codepoint, float requiredHeightPx, out uint variantGlyphId, out AssemblyPart[]? parts)
-        => RasterizeStretchyVerticalCore(fontPath, fontSize, codepoint, requiredHeightPx, snapTop: false,
-            out variantGlyphId, out _, out parts);
+        => RasterizeStretchyVerticalCore(fontPath, fontSize, codepoint, requiredHeightPx,
+            DelimiterCovers(requiredHeightPx, fontSize), snapTop: false, out variantGlyphId, out _, out parts);
 
     /// <summary>One part of a composed assembly as drawn: its glyph, and the rows of the composed bitmap its
     /// ink box spans, Y down, as fractions of a pixel.</summary>
     internal readonly record struct AssemblyPart(uint GlyphId, bool IsExtender, float Top, float Bottom);
 
+    /// <param name="coversFromPx">The least height at which the unstretched glyph or a size variant counts
+    /// as covering the request: the request itself, or less for a delimiter (<see cref="DelimiterCovers"/>).</param>
     private GlyphBitmap RasterizeStretchyVerticalCore(string fontPath, float fontSize,
-        Rune codepoint, float requiredHeightPx, bool snapTop, out uint variantGlyphId, out TopSnap snap,
-        out AssemblyPart[]? parts)
+        Rune codepoint, float requiredHeightPx, float coversFromPx, bool snapTop, out uint variantGlyphId,
+        out TopSnap snap, out AssemblyPart[]? parts)
     {
         variantGlyphId = 0;
         snap = TopSnap.None;
@@ -419,7 +423,7 @@ public sealed class ManagedFontRasterizer : IDisposable
         //    The decision is taken on the unsnapped bitmap, so snapping never
         //    changes which glyph a request gets.
         var baseGlyph = Render(font, baseGid, fontSize);
-        if (baseGlyph.Height >= requiredHeightPx)
+        if (baseGlyph.Height >= coversFromPx)
         {
             variantGlyphId = baseGid;
             return snapTop ? RenderTopSnapped(font, baseGid, fontSize, out snap) : baseGlyph;
@@ -439,7 +443,7 @@ public sealed class ManagedFontRasterizer : IDisposable
 
         // 1) Variants — pick smallest whose AdvanceMeasurement (FUnits) covers the request.
         var unitsPerEm = font.UnitsPerEm;
-        var requiredFUnits = (int)Math.Ceiling(requiredHeightPx * unitsPerEm / fontSize);
+        var requiredFUnits = (int)Math.Ceiling(coversFromPx * unitsPerEm / fontSize);
         foreach (var v in construction.Variants)
         {
             if (v.AdvanceMeasurement >= requiredFUnits)
