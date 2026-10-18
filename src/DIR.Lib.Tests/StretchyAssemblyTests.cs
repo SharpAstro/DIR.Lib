@@ -219,14 +219,17 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
 
     /// <summary>
     /// Content as far above the axis as below it asks for the same size as before the symmetric request:
-    /// <c>\left( \frac{1}{2} \right)</c> at 32 px. DejaVu Sans, with no size variants, renders byte for byte
-    /// as it did (hash taken at d03fa45). STIX Two Math takes the variant TeX's shortfall allows, 53.3 px
-    /// (glyph 1303) for the 58.93 px request where the full request took the 61 px one (1304); its hash is
-    /// taken at 65ed40d, which introduced the shortfall.
+    /// <c>\left( \frac{1}{2} \right)</c> at 32 px. DejaVu Sans, with no size variants, rendered byte for byte
+    /// as it did through the symmetric request (hash 9E30A697D91269FF at d03fa45); its hash is now taken
+    /// with the least-distortion fit, which draws its no-extender assembly squeezed to 74 rows where the
+    /// squash drew it at the 59-row request (see <see cref="WhereNothingFitsTheLeastDistortedCandidateIsScaled"/>).
+    /// STIX Two Math takes the variant TeX's shortfall allows, 53.3 px (glyph 1303) for the 58.93 px request
+    /// where the full request took the 61 px one (1304); its hash is taken at 65ed40d, which introduced the
+    /// shortfall.
     /// </summary>
     [Theory]
     [InlineData("STIX2Math", "9D7B4F1A22ACBA9E")]
-    [InlineData("DejaVuSans", "9E30A697D91269FF")]
+    [InlineData("DejaVuSans", "3799CC19463B9397")]
     public void SymmetricContentKeepsItsSizeWithinTheShortfall(string font, string hash)
     {
         var style = new BoxStyle(FontPaths[font], 32f, Ink);
@@ -469,6 +472,7 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
     /// from the least that covers to the bound, and the one scaled by the factor nearest 1 wins: a glyph
     /// twice as tall as it should be is as far off as one half as tall. One already within those is drawn
     /// as it is.</item>
+    /// <item>A construction with no assembly gives its largest variant as it is.</item>
     /// </list>
     /// </summary>
     private static Expected ExpectedChoice(string path, float size, Rune rune, float request, float coversFrom)
@@ -484,9 +488,11 @@ public sealed class StretchyAssemblyTests(ITestOutputHelper output)
         if (construction.Variants.FirstOrDefault(v => v.AdvanceMeasurement >= coversUnits) is { GlyphId: > 0 } covering)
             return new(covering.GlyphId, 0, covering.AdvanceMeasurement * pxPerUnit, false);
 
+        // With no assembly, the largest variant as it is.
+        if (construction.Assembly is not { } asm)
+            return new(construction.Variants[^1].GlyphId, 0, construction.Variants[^1].AdvanceMeasurement * pxPerUnit, false);
         var candidates = new List<Expected> { new(baseGid, 0, baseRows, true) };
         candidates.AddRange(construction.Variants.Select(v => new Expected(v.GlyphId, 0, v.AdvanceMeasurement * pxPerUnit, true)));
-        if (construction.Assembly is { } asm)
         {
             var copies = 0;
             while (copies < 100 && AssemblyRange(asm, minOverlap, copies).Most < request / pxPerUnit) copies++;
