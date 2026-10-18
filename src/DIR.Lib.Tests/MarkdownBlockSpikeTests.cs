@@ -282,6 +282,73 @@ public sealed class MarkdownBlockSpikeTests
         inner.Items.Count.ShouldBe(5);
     }
 
+    // ── Round 1 of PR #129 ───────────────────────────────────────────
+
+    /// <summary>A table header interrupts a paragraph, inside a list item as at
+    /// the top, as GitHub and VS Code read it (B1: the rows were the item's prose).</summary>
+    [Theory]
+    [InlineData("- a\n  | x | y |\n  |---|---|\n  | 1 | 2 |", "List[P[L(a)] MdTable]")]
+    [InlineData("1. Configure:\n   | key | value |\n   |-----|-------|\n   | a | b |", "List[P[L(Configure:)] MdTable]")]
+    [InlineData("Intro:\n| x | y |\n|---|---|\n| 1 | 2 |", "P[L(Intro:)] | MdTable")]
+    public void ATableHeader_InterruptsAParagraph(string md, string expected) =>
+        Describe(_visitor.Parse(md)).ShouldBe(expected);
+
+    /// <summary>
+    /// A fence too little indented to belong to a list item ends the list and
+    /// runs to its own closer, blank lines and all (B2: the list's blank-line
+    /// rule cut it at the blank, and code and prose swapped places from there
+    /// to the end of the document).
+    /// </summary>
+    [Fact]
+    public void AnUnderIndentedFenceAfterAnItem_StaysOneFence()
+    {
+        var blocks = _visitor.Parse("10. Run:\n   ```\n   a\n\nb\n   ```\n\nafter\n\n```\ncode\n```");
+        Describe(blocks).ShouldBe("List[P[L(Run:)]] | MdCodeFence | P[L(after)] | MdCodeFence");
+        blocks[1].ShouldBeOfType<MdCodeFence>().Lines.Select(l => l.Trim()).ShouldBe(new[] { "a", "", "b" });
+        blocks[3].ShouldBeOfType<MdCodeFence>().Lines.ShouldBe(new[] { "code" });
+    }
+
+    /// <summary>Every blank line inside a fence in a list item stays (it kept one).</summary>
+    [Fact]
+    public void BlankLinesInsideAFenceInAnItem_AllStay()
+    {
+        var item = _visitor.Parse("- ```\n  b\n\n\n  ```").Single().ShouldBeOfType<MdList>().Items.Single();
+        item.Body.Single().ShouldBeOfType<MdCodeFence>().Lines.ShouldBe(new[] { "b", "", "" });
+    }
+
+    /// <summary>
+    /// A long document of lists that keep breaking parses in a flat loop (B4:
+    /// each break recursed, and 2,500 alternating bullets overflowed a 1 MB
+    /// stack, which no catch survives).
+    /// </summary>
+    [Fact]
+    public void ManyListBreaks_DoNotRecurse()
+    {
+        var bullets = string.Join("\n", Enumerable.Range(0, 5000).Select(i => i % 2 == 0 ? "- a" : "* b"));
+        var notes = string.Join("\n", Enumerable.Range(1, 3000).Select(i => $"{i}. step\n\n  note"));
+        IReadOnlyList<MdBlock>? fromBullets = null, fromNotes = null;
+        var thread = new System.Threading.Thread(() =>
+        {
+            fromBullets = new MarkdownBlockVisitor().Parse(bullets);
+            fromNotes = new MarkdownBlockVisitor().Parse(notes);
+        }, maxStackSize: 1024 * 1024);
+        thread.Start();
+        thread.Join();
+        fromBullets.ShouldNotBeNull().Count.ShouldBe(5000);
+        fromNotes.ShouldNotBeNull().Count.ShouldBe(6000);
+    }
+
+    /// <summary>A list item can begin with at most one blank line (CommonMark
+    /// 5.2): an empty marker and a blank line make an empty item.</summary>
+    [Fact]
+    public void AnEmptyItemThenABlankLine_IsEmpty() =>
+        Describe(_visitor.Parse("-\n\n  foo")).ShouldBe("List[] | P[L(foo)]");
+
+    /// <summary>A tilde fence's info string may hold a backtick (CommonMark example 146).</summary>
+    [Fact]
+    public void ATildeFencesInfoString_MayHoldABacktick() =>
+        _visitor.Parse("~~~ aa ``` ~~~\nfoo\n~~~").Single().ShouldBeOfType<MdCodeFence>().Lines.ShouldBe(new[] { "foo" });
+
     // ── Tables ───────────────────────────────────────────────────────
 
     [Fact]
