@@ -12,7 +12,10 @@ namespace DIR.Lib;
 /// </summary>
 public class RgbaImageRenderer : Renderer<RgbaImage>
 {
-    private readonly ManagedFontRasterizer _rasterizer = new();
+    private readonly ManagedFontRasterizer _rasterizer;
+
+    // Whether Dispose disposes _rasterizer: true for the renderer's own, false for one it was lent.
+    private readonly bool _ownsRasterizer;
 
     // Glyph cache: (fontPath, fontSize, rune) → GlyphBitmap
     private readonly Dictionary<(string Font, float Size, Rune Rune), GlyphBitmap> _glyphCache = new();
@@ -22,7 +25,23 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
     private readonly List<ShapedGlyph> _shaped = new();
 
     public RgbaImageRenderer(uint width, uint height)
-        : base(new RgbaImage((int)width, (int)height)) { }
+        : this(width, height, new ManagedFontRasterizer(), ownsRasterizer: true) { }
+
+    /// <summary>
+    /// A renderer that draws its text with <paramref name="rasterizer"/>, which it does not own: disposing
+    /// the renderer leaves the rasterizer's fonts and caches alone. <see cref="MathLayout.BoxRasterizer"/>
+    /// lends every render <see cref="MathLayout.BoxStyle.SharedRasterizer"/>, so a render does not re-read
+    /// and re-parse its fonts.
+    /// </summary>
+    internal RgbaImageRenderer(uint width, uint height, ManagedFontRasterizer rasterizer)
+        : this(width, height, rasterizer, ownsRasterizer: false) { }
+
+    private RgbaImageRenderer(uint width, uint height, ManagedFontRasterizer rasterizer, bool ownsRasterizer)
+        : base(new RgbaImage((int)width, (int)height))
+    {
+        _rasterizer = rasterizer;
+        _ownsRasterizer = ownsRasterizer;
+    }
 
     public override uint Width => (uint)Surface.Width;
     public override uint Height => (uint)Surface.Height;
@@ -544,7 +563,7 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
 
     public override void Dispose()
     {
-        _rasterizer.Dispose();
+        if (_ownsRasterizer) _rasterizer.Dispose();
         _glyphCache.Clear();
     }
 }

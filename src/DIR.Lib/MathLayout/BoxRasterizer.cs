@@ -29,14 +29,19 @@ public static class BoxRasterizer
         // half-block / sextant, the SixelEncoder's RGBA path, or anything
         // that respects the alpha channel) will leave un-painted pixels
         // showing through the surrounding background.
-        using var renderer = new RgbaImageRenderer((uint)totalW, (uint)totalH);
+        //
+        // The renderer draws with the shared rasterizer the box tree was laid
+        // out with, which keeps its parsed fonts across renders. A renderer of
+        // its own re-read and re-parsed the font file on every call (808 KB for
+        // STIX Two Math, most of a render's time).
+        using var renderer = new RgbaImageRenderer((uint)totalW, (uint)totalH, BoxStyle.SharedRasterizer);
         float baselineY = margin + box.Height;
         box.Draw(renderer, margin, baselineY, style);
 
-        // Renderer.Dispose() only releases the font rasterizer + glyph cache;
-        // it does not touch Surface or Surface.Pixels (both are managed and
-        // GC-tracked). Returning the live Surface skips the prior defensive
-        // copy with no ownership risk.
+        // Renderer.Dispose() only clears its own per-render glyph table (the
+        // shared rasterizer is lent, not owned); it does not touch Surface or
+        // Surface.Pixels (both are managed and GC-tracked). Returning the live
+        // Surface skips the prior defensive copy with no ownership risk.
         return renderer.Surface;
     }
 }
