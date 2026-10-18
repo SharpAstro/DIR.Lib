@@ -186,6 +186,48 @@ public class LayoutScrollTests
         Row(widget, 1)!.Value.Bounds.Y.ShouldBe(0f, "one atom is one row");
     }
 
+    /// <summary>
+    /// The bar the ENGINE draws for a declared list takes the controller's colours. It passes none of its
+    /// own, so the controller is the only place a host can state them: a night palette holding blue at zero
+    /// had a blue-grey bar on every list.
+    /// </summary>
+    [Fact]
+    public void TheEnginePaintsTheBarInTheControllersColours()
+    {
+        var track = new RGBAColor32(0x30, 0x00, 0x00, 0xff);
+        var thumb = new RGBAColor32(0x80, 0x10, 0x00, 0xff);
+        var renderer = new DeclarationStubRenderer(200, 200);
+        var widget = new DeclarationWidget(renderer);
+        var scroll = new ListScrollController { TrackColor = track, ThumbColor = thumb };
+
+        widget.Render(Page(scroll), new RectF32(0, 0, 200, 200));
+
+        // The bar is the right 6 units of the 50-unit viewport. The thumb is 20 tall at offset 0 (the
+        // minimum: 50 of 200 would be 12.5) and inset a unit either side of the column.
+        PixelAt(renderer, 197, 10).ShouldBe(thumb);
+        PixelAt(renderer, 197, 40).ShouldBe(track);
+        PixelAt(renderer, 194, 10).ShouldBe(track);
+    }
+
+    [Fact]
+    public void TheEnginePaintsTheDefaultColoursWhenTheControllerStatesNone()
+    {
+        var renderer = new DeclarationStubRenderer(200, 200);
+        var widget = new DeclarationWidget(renderer);
+
+        widget.Render(Page(new ListScrollController()), new RectF32(0, 0, 200, 200));
+
+        PixelAt(renderer, 197, 10).ShouldBe(ListScrollController.DefaultThumbColor);
+        PixelAt(renderer, 197, 40).ShouldBe(ListScrollController.DefaultTrackColor);
+    }
+
+    private static RGBAColor32 PixelAt(DeclarationStubRenderer r, int x, int y)
+    {
+        var img = r.Surface;
+        var i = (y * img.Width + x) * 4;
+        return new RGBAColor32(img.Pixels[i], img.Pixels[i + 1], img.Pixels[i + 2], img.Pixels[i + 3]);
+    }
+
     [Fact]
     public void AListThatFitsArrangesExactlyAsAnUnscrolledOne()
     {

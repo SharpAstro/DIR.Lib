@@ -364,4 +364,38 @@ public class ListScrollControllerTests
         rows[0].Index.ShouldBe(0);
         rows[0].Rect.Y.ShouldBe(-5f, 0.001); // first atom shifted up by the half-atom sub-shift (0.5*10)
     }
+
+    [Fact]
+    public void DrawScrollBar_PaintsTheDefaultColours_WhenNoneAreSet()
+    {
+        var c = Make();
+        c.TrackColor.ShouldBe(ListScrollController.DefaultTrackColor);
+        c.ThumbColor.ShouldBe(ListScrollController.DefaultThumbColor);
+
+        var colours = new List<RGBAColor32>();
+        c.DrawScrollBar((_, _, _, _, col) => colours.Add(col));
+
+        colours.ShouldBe([ListScrollController.DefaultTrackColor, ListScrollController.DefaultThumbColor]);
+    }
+
+    [Fact]
+    public void DrawScrollBar_PaintsTheControllersColours_WhenSet()
+    {
+        // The layout engine passes no colour, so what the controller holds is what every declared list paints.
+        var track = new RGBAColor32(0x30, 0x00, 0x00, 0xff);
+        var thumb = new RGBAColor32(0x80, 0x10, 0x00, 0xff);
+        var c = Make();
+        c.TrackColor = track;
+        c.ThumbColor = thumb;
+
+        var colours = new List<RGBAColor32>();
+        c.DrawScrollBar((_, _, _, _, col) => colours.Add(col));
+        colours.ShouldBe([track, thumb]);
+
+        // A colour handed to the call still wins over the controller's.
+        var explicitTrack = new RGBAColor32(0x01, 0x02, 0x03, 0xff);
+        colours.Clear();
+        c.DrawScrollBar((_, _, _, _, col) => colours.Add(col), track: explicitTrack);
+        colours.ShouldBe([explicitTrack, thumb]);
+    }
 }
