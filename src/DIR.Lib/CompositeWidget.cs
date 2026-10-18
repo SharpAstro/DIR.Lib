@@ -77,15 +77,25 @@
             }
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Appends the children's regions in paint order, then this widget's own, which the contract above
+        /// paints over them.
+        /// </summary>
+        /// <remarks>
+        /// Own LAST because the reader walks the list from the end: <see cref="InputRouter"/> asks the last
+        /// region first, so this is what makes a routed press agree with <see cref="HitTest"/>. It used to
+        /// list its own first, so the router asked the children first, and a child's region swallowed the
+        /// press aimed at an overlay the composite had painted over it.
+        /// </remarks>
         public override void CollectPaintedRegions(List<ClickableRegion> into)
         {
-            base.CollectPaintedRegions(into);
             var children = Children;
             for (var i = 0; i < children.Count; i++)
             {
                 children[i].CollectPaintedRegions(into);
             }
+
+            base.CollectPaintedRegions(into);
         }
 
         /// <inheritdoc/>
@@ -100,7 +110,7 @@
         }
 
         /// <summary>
-        /// Every text field painted this frame, this widget's and its children's, in paint order — which
+        /// Every text field painted this frame, this widget's and then its children's in paint order — which
         /// is what makes Tab cycling follow the VISUAL order across a composed frame automatically.
         /// </summary>
         /// <remarks>
@@ -123,8 +133,9 @@
         }
 
         /// <summary>
-        /// Every clickable region painted this frame, this widget's and its children's, in paint order.
-        /// For a debug inspector or an accessibility surface enumerating what is on screen.
+        /// Every clickable region painted this frame, its children's and then this widget's own, which is
+        /// paint order under the contract above. For a debug inspector or an accessibility surface
+        /// enumerating what is on screen.
         /// </summary>
         /// <remarks>
         /// Separate from <see cref="PixelWidgetBase{TSurface}.GetRegisteredRegions"/> rather than an

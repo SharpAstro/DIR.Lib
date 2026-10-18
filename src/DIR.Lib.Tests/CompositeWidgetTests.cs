@@ -205,16 +205,19 @@ public class CompositeWidgetTests
 
         // And a press RUNS the front child's handler, not the back one's. Routed rather than dispatched
         // through the composite, so the aggregation under test is the one a host actually uses: the
-        // router walks CollectPaintedRegions, which is the composite's own paint order.
+        // router walks CollectPaintedRegions from the end.
         Routing.Press(chrome, 50f, 90f).ShouldBeTrue();
         front.Clicks.ShouldBe(1);
         back.Clicks.ShouldBe(0);
 
-        // Enumerations run in PAINT order instead -- they read the frame the way a person does.
+        // The region enumeration runs in PAINT order: the children back to front, then the chrome painted
+        // over them. The router walks it from the end, which is how the chrome is asked first.
         chrome.PaintedRegions()
             .Select(r => (r.Result as HitResult.ButtonHit)?.Action)
             .Where(action => action is not null)
-            .ShouldBe(["chrome", "back", "front"]);
+            .ShouldBe(["back", "front", "chrome"]);
+
+        // Tab cycling reads the frame the way a person does instead, the chrome's bar above its children.
         chrome.GetRegisteredTextInputs().ShouldBe([chrome.OwnField, back.Field, front.Field]);
     }
 
