@@ -132,7 +132,7 @@ namespace DIR.Lib
         /// <summary>
         /// The edge the panel is pinned to, or null while it floats free of all of them.
         ///
-        /// <para>State rather than a <see cref="FloatingPalette.Build"/> argument because a drag CHANGES
+        /// <para>State rather than a <c>FloatingPalette.Build</c> argument because a drag CHANGES
         /// it: a panel released near an edge takes that edge (see <see cref="SnapOnRelease"/>). A
         /// consumer that does not want docking simply never calls that and leaves this where it was
         /// set.</para>
@@ -333,6 +333,35 @@ namespace DIR.Lib
 
             _drag = (pointerX, pointerY, OffsetAlong, OffsetAcross);
             return false;
+        }
+
+        /// <summary>
+        /// Begins a grip drag from where the press landed, with none of <see cref="PressGrip(float, float)"/>'s
+        /// double-press timing: the declared grip (the <c>FloatingPalette.Build</c> overload taking a
+        /// <see cref="DesignScale"/>) reads the click count the platform counted and collapses through
+        /// <see cref="ToggleCollapsed"/> instead.
+        /// </summary>
+        public void BeginGripDrag(float pointerX, float pointerY)
+        {
+            _drag = (pointerX, pointerY, OffsetAlong, OffsetAcross);
+            _engagedAt = Stopwatch.GetTimestamp();
+        }
+
+        /// <summary>
+        /// Rolls the panel up, or back down, where <see cref="AllowCollapse"/> permits it, and ends any drag
+        /// the gesture's first press began. Returns whether <see cref="Collapsed"/> changed.
+        /// </summary>
+        public bool ToggleCollapsed()
+        {
+            _drag = null;
+            _engagedAt = Stopwatch.GetTimestamp();
+            if (!AllowCollapse)
+            {
+                return false;
+            }
+
+            Collapsed = !Collapsed;
+            return true;
         }
 
         /// <summary>
@@ -564,9 +593,122 @@ namespace DIR.Lib
             float panelWidth = 124f,
             Layout.DockSide? side = null)
         {
+            ArgumentNullException.ThrowIfNull(onGripPress);
+            return BuildCore(state, title, items, colors, fontSize, onItem, panelWidth, side,
+                grip => grip.Clickable(new HitResult.ButtonHit(gripAction), _ => onGripPress(), CursorKind.Move),
+                panelHit: null);
+        }
+
+        /// <summary>
+        /// Builds the palette as the overload taking <c>onGripPress</c> does, with its gestures DECLARED, so a
+        /// host routes nothing by hand.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The grip owns its drag.</b> It is <see cref="Layout.Node.Pressable"/>: the press begins the drag
+        /// where it landed and returns a <see cref="DragCapture"/>, so the moves and the release reach the
+        /// palette through the host's router and never through the host's own pointer handlers. The other
+        /// overload's grip is a click with no position, which is why each host had to remember the last move,
+        /// call <see cref="FloatingPaletteState.DragTo(float, float, DesignScale)"/> from its own move handler
+        /// and <see cref="FloatingPaletteState.ReleaseGrip"/> from its own release, and keep a palette drag
+        /// from also panning what is behind it.
+        /// </para>
+        /// <para>
+        /// <b>A double press collapses, by the platform's click count</b> (<see cref="Layout.Node.DoubleClickable"/>),
+        /// not by <see cref="FloatingPaletteState.PressGrip(float, float)"/>'s own timing: the press handler
+        /// declines a second press, which the router then gives to the double-click.
+        /// </para>
+        /// <para>
+        /// <b>The panel claims the pointer over all of itself</b>, its padding and the gaps between rows
+        /// included: a region with no handler, <c>gripAction + ":Panel"</c>, so a press there is swallowed rather
+        /// than reaching what is behind the panel, and a host's <c>HitTest</c> under the panel answers it.
+        /// </para>
+        /// </remarks>
+        /// <param name="state">Placement and fade state; the declared gestures write it.</param>
+        /// <param name="title">Title shown in the grip.</param>
+        /// <param name="items">The rows, in the order they are listed.</param>
+        /// <param name="colors">Pre-fade colours.</param>
+        /// <param name="fontSize">Row text size in DESIGN units.</param>
+        /// <param name="gripAction">The <see cref="HitResult.ButtonHit"/> action the grip binds.</param>
+        /// <param name="onItem">Invoked with the action of the row a press landed on.</param>
+        /// <param name="scale">The design-to-surface mapping the tree is arranged at, which a drag's pointer
+        /// delta is divided by.</param>
+        /// <param name="onChanged">Invoked whenever a gesture moved, collapsed or released the panel, so a host
+        /// can ask for a frame.</param>
+        /// <param name="onReleased">Invoked once a drag's button comes up, for a host that snaps the panel to
+        /// an edge (<see cref="FloatingPaletteState.SnapOnRelease"/>).</param>
+        /// <param name="panelWidth">Panel width, design units.</param>
+        /// <param name="side">Edge to pin to, or null to take the state's own <see cref="FloatingPaletteState.Side"/>.</param>
+        public static Layout.Node Build(
+            FloatingPaletteState state,
+            string title,
+            ReadOnlySpan<PaletteItem> items,
+            in PaletteColors colors,
+            float fontSize,
+            string gripAction,
+            Action<string> onItem,
+            DesignScale scale,
+            Action? onChanged = null,
+            Action? onReleased = null,
+            float panelWidth = 124f,
+            Layout.DockSide? side = null)
+        {
+            ArgumentNullException.ThrowIfNull(state);
+
+            DragCapture? PressGrip(PointerPress press)
+            {
+                // The second press of a pair is the double-click's, which collapses.
+                if (press.Clicks >= 2)
+                {
+                    return null;
+                }
+
+                state.BeginGripDrag(press.X, press.Y);
+                onChanged?.Invoke();
+                return new DragCapture(
+                    move =>
+                    {
+                        if (state.DragTo(move.X, move.Y, scale))
+                        {
+                            onChanged?.Invoke();
+                        }
+                    },
+                    _ =>
+                    {
+                        state.ReleaseGrip();
+                        onReleased?.Invoke();
+                        onChanged?.Invoke();
+                    });
+            }
+
+            void Collapse(InputModifier _)
+            {
+                if (state.ToggleCollapsed())
+                {
+                    onChanged?.Invoke();
+                }
+            }
+
+            return BuildCore(state, title, items, colors, fontSize, onItem, panelWidth, side,
+                grip => grip.Pressable(new HitResult.ButtonHit(gripAction), PressGrip, CursorKind.Move)
+                    .DoubleClickable(Collapse),
+                panelHit: new HitResult.ButtonHit(gripAction + ":Panel"));
+        }
+
+        private static Layout.Node BuildCore(
+            FloatingPaletteState state,
+            string title,
+            ReadOnlySpan<PaletteItem> items,
+            in PaletteColors colors,
+            float fontSize,
+            Action<string> onItem,
+            float panelWidth,
+            Layout.DockSide? side,
+            Func<Layout.Node, Layout.Node> bindGrip,
+            HitResult? panelHit)
+        {
             ArgumentNullException.ThrowIfNull(state);
             ArgumentNullException.ThrowIfNull(onItem);
-            ArgumentNullException.ThrowIfNull(onGripPress);
 
             var fade = state.Fade;
 
@@ -589,7 +731,7 @@ namespace DIR.Lib
             // Title and count are separate runs so the count can carry its own colour: collapsed, the
             // count is the panel's entire state readout and has to win the row. A rolled-up bar that
             // said only its name would have thrown away the one thing it knows.
-            children[0] = Layout.Builder.HStack(
+            children[0] = bindGrip(Layout.Builder.HStack(
                     Layout.Builder.Text(title, fontSize, Faded(colors.TitleInk),
                             TextAlign.Near, TextAlign.Center)
                         .WStar().HStar(),
@@ -598,8 +740,7 @@ namespace DIR.Lib
                         .WFixed(30f).HStar())
                 .WithGap(4f)
                 .RowH(RowHeight * 0.9f)
-                .Bg(Faded(colors.GripBg))
-                .Clickable(new HitResult.ButtonHit(gripAction), _ => onGripPress(), CursorKind.Move);
+                .Bg(Faded(colors.GripBg)));
 
             for (var i = 0; i < rowCount; i++)
             {
@@ -638,6 +779,10 @@ namespace DIR.Lib
                 .Bg(Faded(colors.PanelBg))
                 .Pad(5f)
                 .WithGap(2f);
+            if (panelHit is not null)
+            {
+                panel = panel.Clickable(panelHit);
+            }
 
             // A side named here wins, for a consumer that pins its panel and never lets it move; passing
             // nothing takes the state's own, which is what a dockable palette needs since a drag CHANGES
