@@ -35,6 +35,26 @@ public sealed class RgbaImage
         ResetClip();
     }
 
+    /// <summary>
+    /// Wraps an existing RGBA8 buffer (row-major, 4 bytes per pixel, top-down) without copying it:
+    /// the image takes ownership of <paramref name="pixels"/>, so the caller must not keep writing to
+    /// it. This is how a decoded image becomes an <see cref="RgbaImage"/> at no cost, e.g. the array
+    /// SharpAstro.Png's <c>PngImageDecoder.TryDecodeRgba8</c> returns.
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="pixels"/> is not exactly <c>width * height * 4</c> bytes.</exception>
+    public RgbaImage(int width, int height, byte[] pixels)
+    {
+        ArgumentNullException.ThrowIfNull(pixels);
+        ArgumentOutOfRangeException.ThrowIfNegative(width);
+        ArgumentOutOfRangeException.ThrowIfNegative(height);
+        if (pixels.Length != (long)width * height * 4)
+            throw new ArgumentException($"Expected {(long)width * height * 4} bytes for {width}x{height} RGBA8, got {pixels.Length}.", nameof(pixels));
+        Width = width;
+        Height = height;
+        Pixels = pixels;
+        ResetClip();
+    }
+
     public void Resize(int width, int height)
     {
         Width = width;
