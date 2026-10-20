@@ -9,6 +9,14 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.27
+
+**`RgbaImage(width, height, pixels)` wraps an existing RGBA8 buffer without copying it.** The image takes ownership
+of the array, which must be exactly `width * height * 4` bytes. It is the other half of SharpAstro.Png 3.17's
+`PngImageDecoder.TryDecodeRgba8`: a decoded PNG becomes an `RgbaImage` with no extra buffer, so consumers stop
+hand-rolling `TryReadInfo` + `new RgbaImage(w, h)` + `TryDecodeIntoRgba8` (SharpAstro/Codecs#32). DIR.Lib stays
+codec-agnostic: the constructor takes bytes, never a PNG. Additive; no caller changes.
+
 ## 11.26
 
 The rest of flight CL2's math work. It changes rendered math, so it is a minor of its own: Console.Lib 5.9 pins

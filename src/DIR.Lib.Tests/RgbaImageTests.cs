@@ -16,6 +16,27 @@ public class RgbaImageTests
     }
 
     [Fact]
+    public void Constructor_WithPixels_AdoptsTheBufferWithoutCopying()
+    {
+        var pixels = new byte[3 * 2 * 4];
+        pixels[0] = 42;
+
+        var img = new RgbaImage(3, 2, pixels);
+
+        img.Width.ShouldBe(3);
+        img.Height.ShouldBe(2);
+        img.Pixels.ShouldBeSameAs(pixels);
+        img.FillRect(0, 0, 3, 2, new RGBAColor32(1, 2, 3, 255));
+        pixels[0].ShouldBe((byte)1); // the clip covers the whole adopted image
+    }
+
+    [Fact]
+    public void Constructor_WithPixels_RejectsAWrongSizedBuffer()
+    {
+        Should.Throw<ArgumentException>(() => new RgbaImage(3, 2, new byte[3 * 2 * 4 - 1]));
+    }
+
+    [Fact]
     public void Clear_FillsEntireBuffer()
     {
         var img = new RgbaImage(2, 2);
