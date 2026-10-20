@@ -49,6 +49,8 @@ public class FloatingPaletteDeclaredGripTests
 
         public FloatingPaletteState State { get; } = new() { OffsetAlong = 20f };
 
+        public DesignScale Scale { get; set; } = DesignScale.One;
+
         public List<InputEvent> UnhandledEvents { get; } = [];
 
         public int Changed { get; private set; }
@@ -60,7 +62,7 @@ public class FloatingPaletteDeclaredGripTests
         public void Paint(bool declared = true)
             => _widget.Render(declared
                     ? FloatingPalette.Build(State, "LAYERS", FloatingPaletteDeclaredGripTests.Items, in Colors, 12f, "grip",
-                        Items.Add, DesignScale.One, () => Changed++, () => Released++)
+                        Items.Add, Scale, () => Changed++, () => Released++)
                     : FloatingPalette.Build(State, "LAYERS", FloatingPaletteDeclaredGripTests.Items, in Colors, 12f, "grip",
                         Items.Add, () => Items.Add("grip-press")),
                 new RectF32(0, 0, 400, 300));
@@ -73,6 +75,8 @@ public class FloatingPaletteDeclaredGripTests
         }
 
         public HitResult? HitTest(float x, float y) => _widget.HitTest(x, y);
+
+        public CursorKind? CursorAt(float x, float y) => _widget.HitTestCursor(x, y);
 
         public bool Press(float x, float y, int clicks = 1)
             => Router.Handle(new InputEvent.MouseDown(x, y, MouseButton.Left, InputModifier.None, clicks));
@@ -127,9 +131,27 @@ public class FloatingPaletteDeclaredGripTests
         h.Paint();
         var (x, y) = Centre(h.Region("grip"));
 
-        h.Press(x, y, clicks: 2);
+        h.Press(x, y, clicks: 2).ShouldBeTrue();
 
         h.State.Collapsed.ShouldBeFalse();
+        h.State.IsDragging.ShouldBeTrue("with no collapse to give it to, the second press drags like the first");
+    }
+
+    [Fact]
+    public void AFreePanelFollowsThePointerInBothAxesInDesignUnits()
+    {
+        var h = new Harness();
+        h.State.Side = null;
+        h.State.OffsetAcross = 30f;
+        h.Scale = new DesignScale(1.5f, 1.5f);
+        h.Paint();
+        var (x, y) = Centre(h.Region("grip"));
+
+        h.Press(x, y);
+        h.Move(x + 30f, y + 60f);
+
+        h.State.OffsetAlong.ShouldBe(40f, 0.01f, "free, along is X: 30 device px at 1.5 is 20 design units");
+        h.State.OffsetAcross.ShouldBe(70f, 0.01f, "and across is Y: 60 device px at 1.5 is 40");
     }
 
     [Fact]
@@ -142,6 +164,7 @@ public class FloatingPaletteDeclaredGripTests
         var (x, y) = (panel.X + 2f, panel.Y + panel.Height - 2f);
 
         h.HitTest(x, y).ShouldBe(new HitResult.ButtonHit("grip:Panel"));
+        h.CursorAt(x, y).ShouldBe(CursorKind.Default, "the padding shows the arrow, not what is behind it");
         h.Press(x, y).ShouldBeTrue();
         h.UnhandledEvents.ShouldBeEmpty("a press on the panel never reaches what is behind it");
         h.Items.ShouldBeEmpty("and it toggles no row");
