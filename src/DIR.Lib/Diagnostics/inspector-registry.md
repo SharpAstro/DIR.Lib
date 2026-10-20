@@ -58,9 +58,10 @@ One JSON object, UTF-8 without a byte order mark, on one line:
 | `pid` | number | The process id. The same as in the file name. |
 | `proto` | number | The command protocol version, `1`. |
 | `processStart` | string | When the process started, as the OS reports it, ISO 8601 round-trip in UTC (`DateTime.ToString("O")`). Registry only: a multicast reply does not carry it. Absent where the platform does not report a start time. |
+| `bootStartTicks` | number | **Linux only**: when the process started, as clock ticks since boot, i.e. field 22 (`starttime`) of `/proc/<pid>/stat`, an integer in units of `1/sysconf(_SC_CLK_TCK)` seconds. Unlike `processStart` it does not move when the wall clock is stepped. Registry only. Absent on every other OS, on Linux when `/proc` could not be read, and in descriptors written before this member existed. |
 | anything else | | The host's `DiscoveryExtras`. SdlVulkan.Renderer adds `title` (the window title) and `startedAt` (when the inspector attached). Console.Lib adds none. |
 
-These are the members of the UDP multicast reply, plus `processStart`, so a reader that parses a reply can parse a
+These are the members of the UDP multicast reply, plus `processStart` and `bootStartTicks`, so a reader that parses a reply can parse a
 descriptor with the same code. Members are only ever added, so a reader ignores what it does not know. A change a
 reader could misread would get a new folder, never a reinterpretation of this one.
 
@@ -88,25 +89,38 @@ reader could misread would get a new folder, never a reinterpretation of this on
    `Dispose` delete the file under you (`File.ReadAllText` shares only `Read`, which blocks it); no sharing mode lets
    a rewrite's rename through on Windows, so hold the file no longer than the read.
 3. Skip a file that does not parse, or lacks `pid` or `tcpPort`.
-4. Skip it unless the process is live: `Process.GetProcessById(pid)` succeeds and `HasExited` is false, and, when
-   `processStart` is present, the process's `StartTime.ToUniversalTime()` is within 2 seconds of it (otherwise the
-   pid was reused by a later process). If the start time cannot be read (access denied), the pid alone decides.
-   A file skipped for a start-time mismatch is reported, not dropped silently: say `descriptor skipped: start-time
-   mismatch`, with the file name (see the Linux limit below).
+4. Skip it unless the process is live: `Process.GetProcessById(pid)` succeeds and `HasExited` is false, and the
+   process is the one that wrote the descriptor rather than a later one given the same pid:
+   - **when `bootStartTicks` is present and the running process's ticks can be read** (Linux: field 22 of
+     `/proc/<pid>/stat`, parsed from the LAST `)` of the line because `comm`, field 2, may hold spaces and
+     parentheses), the two must be equal, and `processStart` is not consulted;
+   - **otherwise**, when `processStart` is present, the process's `StartTime.ToUniversalTime()` must be within
+     2 seconds of it.
+
+   If neither can be compared (access denied, or the descriptor records neither), the pid alone decides. A file
+   skipped for a start-time mismatch is reported, not dropped silently: say `descriptor skipped: start-time
+   mismatch`, with the file name (see the Linux note below).
 5. Filter on `kind`.
 6. Connect to `127.0.0.1:<tcpPort>`. A refused connection is an instance that exited after step 4.
 
 Readers never delete; the writers sweep.
 
-### Known limit: a wall-clock step on Linux
+### A wall-clock step on Linux, and `bootStartTicks`
 
 On Linux .NET's `Process.StartTime` is the boot time plus the process's start ticks, and the boot time is derived
 from the wall clock, so it moves when the clock is stepped: an NTP first sync on a board without a real-time clock,
 WSL2 resyncing after the host slept. After a step over 2 seconds a LIVE instance's recorded `processStart` no
-longer matches, and step 4 skips it until it restarts. That is why a reader reports the skip, and why the writer's
-sweep never deletes on a mismatch (below), which would make the instance unfindable for good rather than until a
-restart. The full fix, comparing a boot-relative start instead, is DIR.Lib issue #112. Windows reports the creation
-time itself and is unaffected.
+longer matches. `bootStartTicks` is the cure (DIR.Lib issue #112): the ticks since boot are fixed for the life of
+a process whatever the wall clock does, so step 4 compares them in preference. The residual limit is a descriptor
+without `bootStartTicks` (written by a build that predates this member): step 4 falls back to `processStart` for it, and a
+step still makes a reader skip that one until it restarts. That is why a reader reports the skip, and why the
+writer's sweep never deletes on a mismatch (below), which would make the instance unfindable for good rather than
+until a restart. Windows reports the creation time itself and is unaffected.
+
+Ticks since boot repeat across a reboot, so a descriptor that survived one (a crash, then a new boot) and whose pid
+was reused by a process of the same age would compare equal; the registry folder is not cleared at boot, but the
+writer's sweep and a reused pid's own exit bound how long such a file lives, and the TCP connection of step 6 is
+the final check.
 
 ## Stale files
 

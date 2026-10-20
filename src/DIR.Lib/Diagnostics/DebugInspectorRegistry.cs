@@ -62,6 +62,14 @@ internal sealed class DebugInspectorRegistration
     /// </summary>
     internal static readonly DateTime? ProcessStartUtc = ReadProcessStartUtc();
 
+    /// <summary>
+    /// When this process started on Linux, as clock ticks since boot (field 22 of <c>/proc/self/stat</c>):
+    /// what a reader compares in preference to <see cref="ProcessStartUtc"/>, because it does not move with a
+    /// wall-clock step (DIR.Lib issue #112). Null everywhere but Linux, and where <c>/proc</c> will not say; the
+    /// descriptor then omits <c>bootStartTicks</c> and a reader falls back to <c>processStart</c>.
+    /// </summary>
+    internal static readonly long? BootStartTicks = ReadBootStartTicksOf(Environment.ProcessId);
+
     private readonly Lock _gate = new();
     private readonly string _temp;
     private string? _written;
@@ -230,24 +238,49 @@ internal sealed class DebugInspectorRegistration
     /// same pid. When the start time cannot be read the pid alone decides. The writer never deletes on this
     /// rule (see <see cref="SweepStale"/>); it is kept here as the reference the tests pin.
     /// <para>
-    /// Known limit, on Linux: after a wall-clock step over <see cref="StartTimeTolerance"/> this answers false
-    /// for a live instance until it restarts, so a reader should report "descriptor skipped: start-time
-    /// mismatch" rather than drop it silently. The full fix, comparing a boot-relative start, is DIR.Lib
-    /// issue #112.
+    /// On Linux a descriptor also records <c>bootStartTicks</c>, which does not move with a wall-clock step, so
+    /// when both it and the running process's ticks are known they alone decide (<see cref="SameProcess"/>).
+    /// Without them (a descriptor from before the member existed, or a platform that has none) the wall-clock
+    /// <c>processStart</c> decides, and its known limit stands: after a step over
+    /// <see cref="StartTimeTolerance"/> it answers false for a live instance until it restarts, so a reader
+    /// should report "descriptor skipped: start-time mismatch" rather than drop it silently.
     /// </para>
     /// </summary>
-    internal static bool IsLive(int pid, DateTime? processStartUtc)
+    internal static bool IsLive(int pid, DateTime? processStartUtc, long? bootStartTicks = null)
     {
         try
         {
             using var process = Process.GetProcessById(pid);
             if (process.HasExited) return false;
-            if (processStartUtc is not { } recorded) return true;
-            return (process.StartTime.ToUniversalTime() - recorded).Duration() <= StartTimeTolerance;
+            if (processStartUtc is null && bootStartTicks is null) return true;
+
+            // Read only when the descriptor recorded them, so a descriptor without ticks costs no /proc read.
+            var observedTicks = bootStartTicks is null ? null : ReadBootStartTicksOf(pid);
+            DateTime? observedStart = processStartUtc is null ? null : process.StartTime.ToUniversalTime();
+            return SameProcess(processStartUtc, observedStart, bootStartTicks, observedTicks);
         }
         catch (ArgumentException) { return false; }          // no process with that pid
         catch (InvalidOperationException) { return false; }  // it exited while being asked
         catch (Exception) { return true; }                    // cannot tell (access denied): keep it
+    }
+
+    /// <summary>
+    /// Whether what a descriptor recorded and what the running process with that pid reports are one process.
+    /// The boot-relative ticks decide when BOTH sides have them, since they are immune to a wall-clock step;
+    /// otherwise the wall-clock start does, within <see cref="StartTimeTolerance"/>; with neither side
+    /// comparable the pid alone decided already, so the answer is yes.
+    /// </summary>
+    internal static bool SameProcess(DateTime? recordedStartUtc, DateTime? observedStartUtc,
+        long? recordedBootStartTicks, long? observedBootStartTicks)
+    {
+        if (recordedBootStartTicks is { } recordedTicks && observedBootStartTicks is { } observedTicks)
+        {
+            return recordedTicks == observedTicks;
+        }
+
+        return recordedStartUtc is not { } recorded
+            || observedStartUtc is not { } observed
+            || (observed - recorded).Duration() <= StartTimeTolerance;
     }
 
     /// <summary>Parses <c>&lt;pid&gt;-&lt;tcpPort&gt;.json</c> or <c>.tmp</c>.</summary>
@@ -282,6 +315,65 @@ internal sealed class DebugInspectorRegistration
                     : null;
         }
         catch (JsonException) { return null; }
+    }
+
+    /// <summary>
+    /// The <c>bootStartTicks</c> member of a descriptor, or null if it is missing or unreadable: the reader's
+    /// other input to <see cref="IsLive"/>.
+    /// </summary>
+    internal static long? ReadBootStartTicks(string descriptor)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(descriptor);
+            return doc.RootElement.TryGetProperty("bootStartTicks", out var s)
+                && s.ValueKind == JsonValueKind.Number
+                && s.TryGetInt64(out var value)
+                    ? value
+                    : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    /// <summary>
+    /// Field 22 (<c>starttime</c>, clock ticks since boot) of the text of a <c>/proc/&lt;pid&gt;/stat</c>, or
+    /// null if it does not parse. The second field, <c>comm</c>, is the executable name in parentheses and may
+    /// itself hold spaces and parentheses, so fields are counted from the LAST <c>)</c> in the line, not split
+    /// from the start: what follows it is field 3 (<c>state</c>) onwards, separated by single spaces.
+    /// </summary>
+    internal static long? ParseStatStartTicks(string stat)
+    {
+        const int FirstFieldAfterComm = 3;
+        const int StartTimeField = 22;
+
+        var close = stat.LastIndexOf(')');
+        if (close < 0) return null;
+
+        var rest = stat.AsSpan(close + 1).Trim();
+        for (var field = FirstFieldAfterComm; ; field++)
+        {
+            var space = rest.IndexOf(' ');
+            var token = space < 0 ? rest : rest[..space];
+            if (field == StartTimeField)
+            {
+                return long.TryParse(token, NumberStyles.None, CultureInfo.InvariantCulture, out var ticks) ? ticks : null;
+            }
+
+            if (space < 0) return null;
+            rest = rest[(space + 1)..];
+        }
+    }
+
+    /// <summary>
+    /// The boot-relative start ticks of <paramref name="pid"/> from <c>/proc</c>, or null off Linux and when the
+    /// file cannot be read or parsed (the process exited, or <c>hidepid</c> hides it).
+    /// </summary>
+    internal static long? ReadBootStartTicksOf(int pid)
+    {
+        if (!OperatingSystem.IsLinux()) return null;
+
+        try { return ParseStatStartTicks(File.ReadAllText($"/proc/{pid.ToString(CultureInfo.InvariantCulture)}/stat")); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
     }
 
     /// <summary>The <c>processStart</c> value as written (ISO 8601 round-trip, UTC, trailing Z), or null if unknown.</summary>

@@ -428,8 +428,8 @@ public sealed class DebugInspectorCore : IDisposable
 
     /// <summary>
     /// The JSON object that describes this instance. The multicast reply is byte-for-byte what it always
-    /// was; the registry descriptor adds <c>processStart</c>, so a reader can tell this process from a later
-    /// one that was handed the same pid.
+    /// was; the registry descriptor adds <c>processStart</c> (and, on Linux, <c>bootStartTicks</c>), so a reader
+    /// can tell this process from a later one that was handed the same pid.
     /// <para>
     /// Extras are read afresh each call, so a value that changes while the app runs (a window title) is
     /// current. A host's own accessor that throws must not silence discovery, so it costs only the extras.
@@ -445,9 +445,14 @@ public sealed class DebugInspectorCore : IDisposable
             ? $",\"processStart\":{Quote(started)}"
             : "";
 
+        // Linux only: BootStartTicks is null elsewhere, so the member is absent there.
+        var bootStart = forRegistry && DebugInspectorRegistration.BootStartTicks is { } ticks
+            ? $",\"bootStartTicks\":{ticks.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+            : "";
+
         return $"{{\"app\":{Quote(_host.AppName)},\"kind\":{Quote(_host.SurfaceKind)}," +
                $"\"tcpPort\":{Port},\"pid\":{Environment.ProcessId},\"proto\":{ProtocolVersion}" +
-               processStart + extras + "}";
+               processStart + bootStart + extras + "}";
     }
 
     /// <summary>How often <see cref="Pump"/> re-reads the extras for the registry descriptor.</summary>
