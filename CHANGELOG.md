@@ -9,6 +9,20 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.28
+
+**A floating palette can declare its own gestures** (`FloatingPalette.Build` taking a `DesignScale`), so a host routes nothing
+by hand. The grip is `Pressable`: the press begins the drag where it landed and returns a `DragCapture`, so the moves and
+the release reach the palette through the host's `InputRouter` and never through its own pointer handlers. The overload
+taking `onGripPress` gave the grip a click with no position, so each host remembered the last move, called `DragTo` from
+its move handler and `ReleaseGrip` from its release, and kept a palette drag from also panning what was behind it
+(TianWen's sky map did all three, in two hosts). A double press collapses by the platform's click count
+(`DoubleClickable`), not by `PressGrip`'s own timing, through the new `FloatingPaletteState.BeginGripDrag` and
+`ToggleCollapsed`. And the panel claims the pointer over its padding and the gaps between rows (a region with no
+handler, `gripAction + ":Panel"`), so a press there is swallowed and a host's `HitTest` under the panel answers it.
+`onChanged` asks a host for a frame; `onReleased` is where a docking host snaps (`SnapOnRelease`). Additive: the
+`onGripPress` overload and `PressGrip` are unchanged.
+
 ## 11.27
 
 **`RgbaImage(width, height, pixels)` wraps an existing RGBA8 buffer without copying it.** The image takes ownership
