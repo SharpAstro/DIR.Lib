@@ -616,12 +616,14 @@ namespace DIR.Lib
         /// <para>
         /// <b>A double press collapses, by the platform's click count</b> (<see cref="Layout.Node.DoubleClickable"/>),
         /// not by <see cref="FloatingPaletteState.PressGrip(float, float)"/>'s own timing: the press handler
-        /// declines a second press, which the router then gives to the double-click.
+        /// declines a second press, which the router then gives to the double-click. Where
+        /// <see cref="FloatingPaletteState.AllowCollapse"/> is false the second press drags like the first.
         /// </para>
         /// <para>
         /// <b>The panel claims the pointer over all of itself</b>, its padding and the gaps between rows
-        /// included: a region with no handler, <c>gripAction + ":Panel"</c>, so a press there is swallowed rather
-        /// than reaching what is behind the panel, and a host's <c>HitTest</c> under the panel answers it.
+        /// included: a region with no handler, <c>gripAction + ":Panel"</c>, and the arrow cursor, so a press there
+        /// is swallowed rather than reaching what is behind the panel, and a host's <c>HitTest</c> under the panel
+        /// answers it. A host that acts on every <see cref="HitResult.ButtonHit"/> it hit-tests ignores this one.
         /// </para>
         /// </remarks>
         /// <param name="state">Placement and fade state; the declared gestures write it.</param>
@@ -657,8 +659,9 @@ namespace DIR.Lib
 
             DragCapture? PressGrip(PointerPress press)
             {
-                // The second press of a pair is the double-click's, which collapses.
-                if (press.Clicks >= 2)
+                // The second press of a pair is the double-click's, which collapses; on a palette that may not
+                // collapse it is a press like any other, and drags.
+                if (press.Clicks >= 2 && state.AllowCollapse)
                 {
                     return null;
                 }
@@ -781,7 +784,9 @@ namespace DIR.Lib
                 .WithGap(2f);
             if (panelHit is not null)
             {
-                panel = panel.Clickable(panelHit);
+                // The arrow, stated: a region with no cursor is transparent to the cursor lookup, so the padding
+                // would show whatever is behind the panel (a map's grab hand) while it swallows the press.
+                panel = panel.Clickable(panelHit, cursor: CursorKind.Default);
             }
 
             // A side named here wins, for a consumer that pins its panel and never lets it move; passing

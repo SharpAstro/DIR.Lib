@@ -18,8 +18,10 @@ taking `onGripPress` gave the grip a click with no position, so each host rememb
 its move handler and `ReleaseGrip` from its release, and kept a palette drag from also panning what was behind it
 (TianWen's sky map did all three, in two hosts). A double press collapses by the platform's click count
 (`DoubleClickable`), not by `PressGrip`'s own timing, through the new `FloatingPaletteState.BeginGripDrag` and
-`ToggleCollapsed`. And the panel claims the pointer over its padding and the gaps between rows (a region with no
-handler, `gripAction + ":Panel"`), so a press there is swallowed and a host's `HitTest` under the panel answers it.
+`ToggleCollapsed`; where `AllowCollapse` is false the second press drags like the first. And the panel claims the
+pointer over its padding and the gaps between rows (a region with no handler and the arrow cursor,
+`gripAction + ":Panel"`), so a press there is swallowed and a host's `HitTest` under the panel answers it; a host that
+acts on every `ButtonHit` it hit-tests ignores that one.
 `onChanged` asks a host for a frame; `onReleased` is where a docking host snaps (`SnapOnRelease`). Additive: the
 `onGripPress` overload and `PressGrip` are unchanged.
 
