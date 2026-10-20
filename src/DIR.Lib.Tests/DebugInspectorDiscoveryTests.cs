@@ -56,10 +56,12 @@ public sealed class DebugInspectorDiscoveryTests : IDisposable
             Path.GetFileName(file).ShouldBe($"{Environment.ProcessId}-{core.Port}.json");
 
             var text = File.ReadAllText(file);
+            // bootStartTicks is Linux only: absent from the bytes everywhere else.
+            var bootStart = OperatingSystem.IsLinux() ? $"\"bootStartTicks\":{DebugInspectorRegistration.BootStartTicks}," : "";
             text.ShouldBe(
                 "{\"app\":\"Fake \\\"app\\\"\",\"kind\":\"test\"," +
                 $"\"tcpPort\":{core.Port},\"pid\":{Environment.ProcessId},\"proto\":1," +
-                $"\"processStart\":\"{DebugInspectorRegistration.FormatProcessStart()}\",\"title\":\"first\"}}");
+                $"\"processStart\":\"{DebugInspectorRegistration.FormatProcessStart()}\",{bootStart}\"title\":\"first\"}}");
 
             // processStart is what a reader compares against the OS, so it must BE the OS's answer.
             using var doc = JsonDocument.Parse(text);
@@ -281,6 +283,114 @@ public sealed class DebugInspectorDiscoveryTests : IDisposable
         // The same pid, started an hour earlier: a different process that has since been given this pid.
         DebugInspectorRegistration.IsLive(Environment.ProcessId, start - TimeSpan.FromHours(1)).ShouldBeFalse();
         DebugInspectorRegistration.IsLive(int.MaxValue, null).ShouldBeFalse();
+    }
+
+    // A real /proc/<pid>/stat line, field 22 (starttime) being 4521.
+    private const string StatLine =
+        "812 (bash) S 1 812 812 34816 812 4194560 1500 12000 0 0 3 2 4 1 20 0 1 0 4521 12345678 900 18446744073709551615 1 1 0 0 0 0 65536 3670020 1266777851 0 0 0 17 2 0 0 0 0 0";
+
+    [Fact]
+    public void Stat_field_22_is_the_start_time_in_ticks()
+    {
+        DebugInspectorRegistration.ParseStatStartTicks(StatLine).ShouldBe(4521);
+        // The trailing newline /proc writes is not part of the last field.
+        DebugInspectorRegistration.ParseStatStartTicks(StatLine + "\n").ShouldBe(4521);
+    }
+
+    [Theory]
+    [InlineData("a b")]                // a space in comm
+    [InlineData("a) S 1 (b")]          // parentheses and what looks like fields inside comm
+    [InlineData(") (")]                // comm that is just parentheses
+    [InlineData("")]                   // empty comm
+    public void Stat_comm_may_hold_spaces_and_parentheses(string comm)
+    {
+        var line = StatLine.Replace("(bash)", $"({comm})");
+        DebugInspectorRegistration.ParseStatStartTicks(line).ShouldBe(4521);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("812 bash S 1")]                                    // no parentheses at all
+    [InlineData("812 (bash) S 1 812")]                               // ends before field 22
+    [InlineData("812 (bash) S 1 812 812 34816 812 4194560 1500 12000 0 0 3 2 4 1 20 0 1 0 abc 1")]  // not a number
+    [InlineData("812 (bash) S 1 812 812 34816 812 4194560 1500 12000 0 0 3 2 4 1 20 0 1 0 -5 1")]   // not a tick count
+    public void Stat_that_does_not_reach_a_numeric_field_22_is_null(string stat)
+    {
+        DebugInspectorRegistration.ParseStatStartTicks(stat).ShouldBeNull();
+    }
+
+    [Fact]
+    public void Boot_ticks_are_what_the_os_says_for_this_process_on_linux_and_absent_elsewhere()
+    {
+        if (OperatingSystem.IsLinux())
+        {
+            DebugInspectorRegistration.BootStartTicks.ShouldNotBeNull();
+            DebugInspectorRegistration.BootStartTicks.ShouldBe(
+                DebugInspectorRegistration.ParseStatStartTicks(File.ReadAllText("/proc/self/stat")));
+        }
+        else
+        {
+            DebugInspectorRegistration.BootStartTicks.ShouldBeNull();
+            DebugInspectorRegistration.ReadBootStartTicksOf(Environment.ProcessId).ShouldBeNull();
+        }
+    }
+
+    [Fact]
+    public void A_descriptors_boot_ticks_are_read_back_and_a_missing_or_malformed_member_is_null()
+    {
+        DebugInspectorRegistration.ReadBootStartTicks("{\"pid\":1,\"bootStartTicks\":4521}").ShouldBe(4521);
+        DebugInspectorRegistration.ReadBootStartTicks("{\"pid\":1}").ShouldBeNull();
+        DebugInspectorRegistration.ReadBootStartTicks("{\"bootStartTicks\":\"4521\"}").ShouldBeNull();
+        DebugInspectorRegistration.ReadBootStartTicks("{\"bootStartTicks\":1.5}").ShouldBeNull();
+        DebugInspectorRegistration.ReadBootStartTicks("not json").ShouldBeNull();
+    }
+
+    [Fact]
+    public void Boot_ticks_decide_when_both_sides_have_them_and_the_wall_clock_otherwise()
+    {
+        var start = new DateTime(2026, 10, 15, 9, 0, 0, DateTimeKind.Utc);
+        var stepped = start + TimeSpan.FromHours(1);   // the wall clock moved under a LIVE process
+
+        // Both have ticks: equal ticks are one process whatever the wall clock says (the #112 case) ...
+        DebugInspectorRegistration.SameProcess(start, stepped, 4521, 4521).ShouldBeTrue();
+        // ... and different ticks are not, however well the wall clock agrees.
+        DebugInspectorRegistration.SameProcess(start, start, 4521, 9999).ShouldBeFalse();
+
+        // Either side without ticks: the wall clock, within the tolerance.
+        DebugInspectorRegistration.SameProcess(start, start + TimeSpan.FromSeconds(1), null, null).ShouldBeTrue();
+        DebugInspectorRegistration.SameProcess(start, stepped, null, null).ShouldBeFalse();
+        DebugInspectorRegistration.SameProcess(start, stepped, 4521, null).ShouldBeFalse();
+        DebugInspectorRegistration.SameProcess(start, stepped, null, 4521).ShouldBeFalse();
+
+        // Nothing comparable at all: the pid alone decided already.
+        DebugInspectorRegistration.SameProcess(null, stepped, null, null).ShouldBeTrue();
+        DebugInspectorRegistration.SameProcess(start, null, null, null).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void IsLive_compares_boot_ticks_when_the_platform_has_them()
+    {
+        var start = DebugInspectorRegistration.ProcessStartUtc;
+        var ticks = DebugInspectorRegistration.BootStartTicks;
+
+        // This very process, as its own descriptor records it, is live.
+        DebugInspectorRegistration.IsLive(Environment.ProcessId, start, ticks).ShouldBeTrue();
+
+        // Same pid, ticks of some other process: only a platform that reports ticks can tell.
+        var other = (ticks ?? 0) + 1000;
+        DebugInspectorRegistration.IsLive(Environment.ProcessId, start, other).ShouldBe(ticks is null);
+
+        if (ticks is not null)
+        {
+            // A wall-clock step moved the observed start, but the ticks still agree: live.
+            DebugInspectorRegistration.IsLive(Environment.ProcessId, start - TimeSpan.FromHours(1), ticks).ShouldBeTrue();
+            // Ticks alone, no wall-clock start recorded, are enough to refuse a reused pid.
+            DebugInspectorRegistration.IsLive(Environment.ProcessId, null, other).ShouldBeFalse();
+        }
+
+        // A recorded start that disagrees, no ticks recorded (an older descriptor): the wall clock decides.
+        DebugInspectorRegistration.IsLive(Environment.ProcessId, start - TimeSpan.FromHours(1), null).ShouldBeFalse();
+        DebugInspectorRegistration.IsLive(int.MaxValue, null, ticks).ShouldBeFalse();
     }
 
     /// <summary>Set to <c>1</c> to run <see cref="Lan_discovery_answers_a_multicast_query_as_before"/>.</summary>
