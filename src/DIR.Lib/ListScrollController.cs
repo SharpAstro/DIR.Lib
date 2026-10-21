@@ -405,6 +405,37 @@ public sealed class ListScrollController
     }
 
     /// <summary>
+    /// Whether a <see cref="ScrollAnchor.Bottom"/> list is following its tail: true from the start, false once the
+    /// user scrolls up into history, and true again back at the end (or after <see cref="ScrollToEnd"/>). What a log
+    /// needs to know to offer "jump to end" only while it would do something. Always false for a
+    /// <see cref="ScrollAnchor.Top"/> list.
+    /// </summary>
+    public bool IsFollowingEnd => Anchor == ScrollAnchor.Bottom && (_pinnedToEnd || !_positioned);
+
+    /// <summary>
+    /// Scroll to the end, and for a <see cref="ScrollAnchor.Bottom"/> list follow it again: a log's "jump to end".
+    /// Called before the list's extent is known, the pin alone is set, and the next <see cref="SetExtent"/> lands at
+    /// the tail.
+    /// </summary>
+    public void ScrollToEnd()
+    {
+        var before = _offset;
+        _offset = MaxOffset;
+        if (Anchor == ScrollAnchor.Bottom && !_pinnedToEnd)
+        {
+            _pinnedToEnd = true;
+            if (_offset == before)
+            {
+                // Already at the end with the pin released (a jump to a row that was the last): nothing moved, but
+                // following did change.
+                Changed?.Invoke();
+                return;
+            }
+        }
+        RaiseIfMoved(before);
+    }
+
+    /// <summary>
     /// Scroll <paramref name="atom"/> into view with an optional margin, minimally (a no-op when it is
     /// already visible, so mouse scrolling and keyboard selection coexist without snapping to a center).
     /// </summary>

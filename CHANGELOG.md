@@ -9,6 +9,15 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.29
+
+**A tail-following list says whether it is following, and can be sent back to its end.** `ListScrollController.IsFollowingEnd`
+is true for a `ScrollAnchor.Bottom` list while it is pinned to its tail, false once the reader scrolls up into history;
+`ScrollToEnd()` scrolls to the end and pins it again, so the next appended rows are followed. A log's "jump to end" is
+both together: shown while `IsFollowingEnd` is false, `ScrollToEnd()` when pressed. Before, the pin was private, so a
+host could only guess it from `Offset` against `MaxOffset`, and getting it back meant replacing the controller (a new
+one pins on its first extent). Additive.
+
 ## 11.28
 
 **A floating palette can declare its own gestures** (`FloatingPalette.Build` taking a `DesignScale`), so a host routes nothing
