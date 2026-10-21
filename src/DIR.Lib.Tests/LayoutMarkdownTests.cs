@@ -26,7 +26,8 @@ public class LayoutMarkdownTests
     private static List<(string Text, RGBAColor32 Color, Rect<float> At)> Texts(Node tree, float width)
         => [.. Engine.Arrange(tree, new Rect<float>(0, 0, width, 1000), new PixelCtx())
             .Where(a => a.Node is Node.Leaf { Content: Content.Text })
-            .Select(a => (((Content.Text)((Node.Leaf)a.Node).Content).Value, ((Content.Text)((Node.Leaf)a.Node).Content).Color, a.Bounds))];
+            // A word's text ends in its space; the tests name the word.
+            .Select(a => (((Content.Text)((Node.Leaf)a.Node).Content).Value.TrimEnd(), ((Content.Text)((Node.Leaf)a.Node).Content).Color, a.Bounds))];
 
     [Fact]
     public void AParagraphWrapsItsWordsAtTheWidthItIsGiven()
@@ -34,7 +35,7 @@ public class LayoutMarkdownTests
         var texts = Texts(Builder.Markdown("one two three four five six"), 100f);
 
         texts.Select(t => t.Text).ShouldBe(["one", "two", "three", "four", "five", "six"]);
-        // 100 units hold "one two three" (21 + 21 + 35 and two gaps), so "four" starts the next line.
+        // 100 units hold "one two three" (each word with its space: 28 + 28 + 42), so "four" starts the next line.
         texts.Single(t => t.Text == "four").At.Y.ShouldBeGreaterThan(texts.Single(t => t.Text == "one").At.Y);
         texts.Single(t => t.Text == "four").At.X.ShouldBe(0f);
     }
@@ -79,6 +80,20 @@ public class LayoutMarkdownTests
     }
 
     [Fact]
+    public void ADocumentBesideALabelWrapsAtTheWidthLeftToIt()
+    {
+        // As a transcript row has it: a fixed label, then the document in what is left.
+        var tree = Builder.VStack(Builder.HStack(Builder.Text("claude").WFixed(50f), Builder.Markdown("- one two three four five six").WStar()).WStar());
+
+        var texts = Texts(tree, 150f);
+
+        // 100 units are left to the document and its bullet: the list item's words still wrap, and none sit alone on a line.
+        var words = texts.Where(t => t.Text is "one" or "two" or "three" or "four" or "five" or "six").ToList();
+        words.Select(w => w.At.Y).Distinct().Count().ShouldBeInRange(2, 3, string.Join(" ", words.Select(w => $"{w.Text}@{w.At.X},{w.At.Y},{w.At.Width}")));
+        words.ShouldAllBe(w => w.At.X >= 50f);
+    }
+
+    [Fact]
     public void ALinkOpensItsTargetWhenTheStyleSaysHow()
     {
         var opened = new List<string>();
@@ -86,7 +101,7 @@ public class LayoutMarkdownTests
 
         var link = Engine.Arrange(tree, new Rect<float>(0, 0, 400, 100), new PixelCtx())
             .Select(a => a.Node).OfType<Node.Leaf>()
-            .Single(l => l.Content is Content.Text { Value: "docs" });
+            .Single(l => l.Content is Content.Text { Value: "docs " });
 
         link.Hit.ShouldBe(new HitResult.LinkHit("https://x.test/docs"));
         link.OnClick.ShouldNotBeNull().Invoke(InputModifier.None);

@@ -50,7 +50,7 @@ public static partial class Builder
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>A paragraph is its words</b>, each a text leaf in a <see cref="WrapH"/> whose gap is a space: a text leaf is one
+    /// <b>A paragraph is its words</b>, each a text leaf ending in its space, in a <see cref="WrapH"/>: a text leaf is one
     /// line, and wrapping the words is what lets a paragraph follow its width on every surface, cells included. A word
     /// whose parts are styled differently (<c>**this**,</c>) is one unit, its parts side by side with no gap, so the
     /// comma never wraps away from its word.
@@ -78,10 +78,14 @@ public static partial class Builder
         {
             nodes.Add(MarkdownBlock(block, style));
         }
-        return VStack([.. nodes]).WithGap(style.FontSize * 0.5f);
+        return VStack([.. nodes]).WithGap(style.FontSize * 0.5f).WStar();
     }
 
-    private static Node MarkdownBlock(MdBlock block, MarkdownStyle style) => block switch
+    // Every block takes its container's width: a paragraph wraps at the width it is given, and one left at its
+    // intrinsic width (a wrap's is nothing) would put a word on each line.
+    private static Node MarkdownBlock(MdBlock block, MarkdownStyle style) => MarkdownBlockAtItsWidth(block, style).WStar();
+
+    private static Node MarkdownBlockAtItsWidth(MdBlock block, MarkdownStyle style) => block switch
     {
         MdHeading h => Paragraph(h.Content, style, style.FontSize * (h.Level switch { 1 => 1.45f, 2 => 1.25f, 3 => 1.1f, _ => 1f }), style.Strong),
         MdParagraph p => Paragraph(p.Content, style, style.FontSize, style.Text),
@@ -115,7 +119,7 @@ public static partial class Builder
             items.Add(HStack(
                     Text(marker, style.FontSize, style.Muted, vAlign: TextAlign.Near).WFixed(style.FontSize * (list.Ordered ? 2f : 1.2f)),
                     VStack([.. body]).WithGap(style.FontSize * 0.3f).WStar())
-                .HAuto());
+                .HAuto().WStar());
         }
         return VStack([.. items]).WithGap(style.FontSize * 0.25f);
     }
@@ -137,7 +141,7 @@ public static partial class Builder
         {
             nodes.Add(Paragraph(cell, style, style.FontSize, color).WStar());
         }
-        return HStack([.. nodes]).WithGap(style.FontSize).HAuto();
+        return HStack([.. nodes]).WithGap(style.FontSize).HAuto().WStar();
     }
 
     // A run of inlines as words that wrap; a hard break starts a new line of them.
@@ -162,6 +166,9 @@ public static partial class Builder
         {
             if (parts.Count > 0)
             {
+                // The space after a word is its own, measured in its font, rather than the wrap's gap: a gap is in
+                // design units, and on a cell surface a fraction of a cell rounds to none, running the words together.
+                parts[^1] = parts[^1] with { Text = parts[^1].Text + " " };
                 words.Add(MarkdownWord(parts, size, style));
                 parts.Clear();
             }
@@ -171,7 +178,7 @@ public static partial class Builder
             EndWord();
             if (words.Count > 0)
             {
-                lines.Add(WrapH([.. words]).WithGap(size * 0.3f).WithLineGap(size * 0.2f).WStar());
+                lines.Add(WrapH([.. words]).WithLineGap(size * 0.2f).WStar());
                 words.Clear();
             }
         }
