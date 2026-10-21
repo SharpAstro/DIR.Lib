@@ -9,6 +9,16 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.30
+
+**A Markdown document as a layout tree** (`Layout.Builder.Markdown(source, MarkdownStyle)`, or already-parsed blocks).
+Headings, paragraphs, lists, fenced code, tables and thematic breaks, with `**strong**`, `*emphasis*`, `` `code` `` and
+links set apart by the style's colours; a link is clickable when the style says how to open one (`OnLink`). The parser
+is `DIR.Lib.Markdown`'s, the one Console.Lib's terminal renderer reads, but until now nothing turned its blocks into a
+tree, so a GUI or a cell surface showing Markdown drew it as raw text. A text leaf is one line, so a paragraph is its
+words in a `WrapH`, a space apart, and follows its width on every surface; a word whose parts are styled differently
+(`**this**,`) is one unit, so its punctuation never wraps away. Additive.
+
 ## 11.29
 
 **A tail-following list says whether it is following, and can be sent back to its end.** `ListScrollController.IsFollowingEnd`
