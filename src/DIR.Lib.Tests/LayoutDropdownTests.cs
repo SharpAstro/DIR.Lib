@@ -42,6 +42,41 @@ public class LayoutDropdownTests
         => widget.GetRegisteredRegions().Cast<ClickableRegion?>()
             .FirstOrDefault(r => r!.Value.Result is HitResult.ChromeHit);
 
+    // ---- a point anchor: a context menu as wide as its entries --------------------------
+
+    private static float MenuWidth(RectF32 bounds, RectF32 at, params string[] labels)
+    {
+        var (widget, _) = Fixture();
+        var state = new DropdownMenuState<string>();
+        state.Open(at.X, at.Y, 0f, [.. labels.Select(l => DropdownItem.Text(l))]);
+        widget.Render(Layout.Builder.Dropdown(at, state), bounds);
+        var rows = Rows(widget);
+        rows.ShouldAllBe(r => r.X >= bounds.X && r.X + r.Width <= bounds.X + bounds.Width, "a menu on screen, whatever its entries");
+        return rows.Max(r => r.Width);
+    }
+
+    [Fact]
+    public void AMenuAnchoredAtAPointIsAsWideAsItsWidestEntry()
+    {
+        var point = new RectF32(20f, 20f, 0f, 0f);
+        var bounds = new RectF32(0, 0, 200, 200);
+
+        var narrow = MenuWidth(bounds, point, "Copy", "Open");
+        var wide = MenuWidth(bounds, point, "Copy", "Open the session's folder");
+
+        narrow.ShouldBeGreaterThan(0f);
+        wide.ShouldBeGreaterThan(narrow);
+    }
+
+    [Fact]
+    public void AMenuAnchoredAtAPointStaysInsideASmallWindow()
+    {
+        // Pressed near the right edge, with an entry longer than the window is wide.
+        var width = MenuWidth(new RectF32(0, 0, 120, 200), new RectF32(110f, 20f, 0f, 0f), "A very long entry that cannot fit in this window at all");
+
+        width.ShouldBeLessThanOrEqualTo(120f);
+    }
+
     // ---- the state IS a popover ------------------------------------------------------
 
     [Fact]
