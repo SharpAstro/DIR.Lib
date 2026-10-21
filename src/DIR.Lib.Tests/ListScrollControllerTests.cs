@@ -191,6 +191,35 @@ public class ListScrollControllerTests
     }
 
     [Fact]
+    public void BottomAnchor_ScrollToEnd_FollowsTheTailAgain()
+    {
+        var c = Make(anchor: ScrollAnchor.Bottom);
+        c.IsFollowingEnd.ShouldBeTrue();
+        c.HandleInput(new InputEvent.Scroll(1f, 50f, 50f)); // scroll up into history → pin released
+        c.IsFollowingEnd.ShouldBeFalse();
+        var changed = 0;
+        c.Changed += () => changed++;
+
+        c.ScrollToEnd();
+        c.Offset.ShouldBe(20f);
+        c.IsFollowingEnd.ShouldBeTrue();
+        changed.ShouldBe(1);
+
+        c.SetExtent(new RectF32(0f, 0f, 100f, 100f), 10f, 40, DesignScale.One); // appends
+        c.Offset.ShouldBe(30f); // followed the new tail
+    }
+
+    [Fact]
+    public void TopAnchor_IsNeverFollowingTheEnd_ButScrollsToIt()
+    {
+        var c = Make();
+        c.IsFollowingEnd.ShouldBeFalse();
+        c.ScrollToEnd();
+        c.Offset.ShouldBe(20f);
+        c.IsFollowingEnd.ShouldBeFalse();
+    }
+
+    [Fact]
     public void BottomAnchor_FittingAgain_ReestablishesTailPin()
     {
         var c = Make(anchor: ScrollAnchor.Bottom);
