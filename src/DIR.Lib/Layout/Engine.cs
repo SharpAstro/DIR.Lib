@@ -170,6 +170,10 @@ public static class Engine
     {
         var size = Measure(anchored.Child, new Size<T>(inner.Width, inner.Height), ctx);
         var margin = ctx.ToSurface(anchored.Margin);
+        // Never larger than the space it floats in, less its margins: a menu of long entries on a small window is cut to
+        // the window, its text trimmed, rather than laid out past an edge the clamp below could not then bring it back from.
+        var two = T.CreateTruncating(2);
+        size = new Size<T>(Min(size.Width, Max(T.Zero, inner.Width - two * margin)), Min(size.Height, Max(T.Zero, inner.Height - two * margin)));
         var along = ctx.ToSurface(anchored.OffsetAlong);
         var across = ctx.ToSurface(anchored.OffsetAcross);
 

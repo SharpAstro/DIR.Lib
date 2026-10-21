@@ -318,7 +318,10 @@ public static partial class Builder
         // engine converts it to surface units when it feeds the controller. Stated on every build for
         // the same reason the rows are: the menu's font may have changed since the last one.
         state.Scroll.AtomDesignUnits = rowHeight;
-        var list = VStack(rows).W(Sizing.Fixed(anchor.Size.X)).WithScroll(state.Scroll);
+        // As wide as the anchor, for a menu under its button; an anchor with no width (a point: where a context menu was
+        // pressed) gives a menu as wide as its widest entry, which the engine measures within the space the popover has,
+        // so a long entry on a small window is trimmed rather than run off the edge.
+        var list = VStack(rows).W(anchor.Size.X > 0f ? Sizing.Fixed(anchor.Size.X) : Sizing.Auto).WithScroll(state.Scroll);
 
         if (maxHeight > 0f)
         {
