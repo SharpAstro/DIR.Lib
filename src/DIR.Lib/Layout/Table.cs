@@ -54,6 +54,44 @@ public sealed class TableColumnWidths
     /// <summary>Invoked whenever a drag changed a width, so a host can ask for a frame.</summary>
     public Action? Changed { get; set; }
 
+    /// <summary>
+    /// How wide column <c>i</c> must be to show its widest cell, design units, or null when the consumer cannot
+    /// say. The consumer knows its rows and the header does not, so a double-click on a divider asks here and
+    /// sizes the FIXED column on the divider's left to the answer (never below its minimum). Left null, a
+    /// double-click does nothing and a second press drags like the first.
+    /// </summary>
+    /// <remarks>
+    /// <b>It must be cheap</b>: it is called once per double-click, on the input thread, and a consumer
+    /// typically answers from a widest value it already cached while building its rows rather than measuring
+    /// every row again. A star column is never fitted (it would turn fixed and stop taking the slack), so a
+    /// double-click on the divider right of a star column does nothing; the fixed column on its right is not
+    /// fitted in its place, because that divider is the star's, not the neighbour's.
+    /// </remarks>
+    public Func<int, float?>? FitWidth { get; set; }
+
+    /// <summary>
+    /// Sizes the fixed column <paramref name="divider"/> to <see cref="FitWidth"/>'s answer, held at or above
+    /// its minimum. Only that column moves: its neighbour keeps its width and the star column takes the
+    /// difference. Returns whether a width changed; false without a callback, with an unknown answer, or when
+    /// the column is a star.
+    /// </summary>
+    public bool Fit(ReadOnlySpan<TableColumn> columns, int divider)
+    {
+        if (FitWidth is not { } fit || (uint)divider >= (uint)columns.Length || divider + 1 >= columns.Length
+            || !columns[divider].Width.IsFixed || fit(divider) is not { } wanted || float.IsNaN(wanted))
+        {
+            return false;
+        }
+
+        var changed = Set(divider, Math.Max(MinWidthOf(columns[divider]), wanted));
+        if (changed)
+        {
+            Changed?.Invoke();
+        }
+
+        return changed;
+    }
+
     /// <summary>The smallest <paramref name="spec"/> may be, design units.</summary>
     public float MinWidthOf(in TableColumn spec) => Math.Max(0f, spec.MinWidth ?? DefaultMinWidth);
 

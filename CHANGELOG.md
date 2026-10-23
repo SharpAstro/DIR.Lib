@@ -25,6 +25,17 @@ slack; neither fixed column goes below its minimum (`TableColumnWidths.DefaultMi
 as the plain record `TableColumnWidths.Saved`, tolerant of a column count that changed since it was saved. A style with no
 `Gap` has no room for a divider and gets none.
 
+**A double-click on a divider fits the column on its left.** `TableColumnWidths.FitWidth` (`Func<int, float?>`, settable, null by
+default) is the consumer's answer to "how wide must column `i` be to show its widest cell"; the consumer knows its rows and the
+header does not, so it must be cheap (typically a cached widest value). The divider declares the fit as its `DoubleClickable`, and
+its press handler declines a second press while a fit applies, so the router gives that press to the double-click and the first
+press still drags. Only the fixed column on the left is sized, to `max(minimum, FitWidth(i))`: its neighbour keeps its width and a
+star takes the difference. A star column is never fitted (it would turn fixed), so the divider on its right does nothing and drags
+as before; with no callback, or an answer of null, a double-click changes nothing. Pinned by
+`DoubleClickingADivider_FitsTheFixedColumnOnItsLeft_HeaderAndRowsTogether`, `ADoubleClickFit_NeverGoesBelowTheMinimum_AndIgnoresAnUnknownAnswer`,
+`WithoutAFitCallback_ADoubleClickChangesNothing_AndTheSecondPressStillDrags` and
+`ADoubleClickOnTheDividerRightOfAStarColumn_NeverTurnsTheStarFixed_AndTheDragStillWorks`.
+
 **Additive.** The old `TableHeader` and `TableRow` overloads keep their signatures and render exactly as before; a table
 built without a widths object is unchanged, and `TableColumn` gains an init-only property, not a constructor parameter.
 Pinned by `LayoutDataViewsTests`: `DraggingTheDividerBetweenTwoFixedColumns_WidensOneAndNarrowsItsNeighbour_HeaderAndRowsTogether`,
