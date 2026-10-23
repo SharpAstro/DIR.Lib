@@ -162,7 +162,9 @@ public sealed class ListScrollController
     /// How long a row is, in surface units along the scroll axis, on a list that counts in surface units
     /// rather than rows: what one step of <see cref="WheelStepAtoms"/> moves there. Zero, the default,
     /// is one atom. Stated by the layout engine for a stack declared <see cref="Layout.Node.WithScroll"/>
-    /// (the mean pitch of its rows), and harmless to state by hand.
+    /// (the mean pitch of its rows, capped so that one notch never moves more than a third of the
+    /// viewport: a stack with one tall child has a mean pitch of the whole content), and harmless to state
+    /// by hand.
     /// </summary>
     /// <remarks>
     /// Without it a wheel notch over such a list moved three PIXELS: <see cref="WheelStepAtoms"/> counts

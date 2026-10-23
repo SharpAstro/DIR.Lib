@@ -126,13 +126,82 @@ public class LayoutScrollTests
     public void AWheelOverTheListReachesItsController()
     {
         var (widget, scroll) = Fixture();
-        widget.Render(Page(scroll), new RectF32(0, 0, 200, 200));
+        // A viewport of nine rows: a notch is capped at a third of the viewport, and three rows are
+        // exactly that. (The 2.5-row ViewportH the other tests use is smaller than a notch of three rows.)
+        var rows = new Layout.Node[30];
+        for (var i = 0; i < rows.Length; i++)
+        {
+            rows[i] = Layout.Builder.Spacer().RowH(RowH);
+        }
+
+        var list = Layout.Builder.VStack(
+                Layout.Builder.VStack(rows).WStar().HClamp(0f, 9 * RowH).WithScroll(scroll),
+                Layout.Builder.Spacer().RowH(30f))
+            .Stretch();
+        widget.Render(list, new RectF32(0, 0, 200, 300));
 
         var router = Routing.Over(widget);
         router.Handle(new InputEvent.Scroll(-1f, 10f, 10f, InputModifier.None)).ShouldBeTrue();
 
         scroll.Offset.ShouldBe(scroll.WheelStepAtoms * RowH,
             "a notch scrolls WheelStepAtoms ROWS: on a list counted in surface units it was three pixels");
+    }
+
+    /// <summary>
+    /// A notch over a stack with one child three viewports tall moves a readable line, never more than a
+    /// third of the viewport: the mean pitch of ONE child is the whole content, so a notch jumped from the
+    /// top to the bottom (#146).
+    /// </summary>
+    [Fact]
+    public void ANotchOverOneTallChildNeverMovesMoreThanAThirdOfTheViewport()
+    {
+        var (widget, scroll) = Fixture();
+        var tall = Layout.Builder.VStack(Layout.Builder.Spacer().RowH(3 * ViewportH))
+            .WStar().HClamp(0f, ViewportH).WithScroll(scroll);
+        var page = Layout.Builder.VStack(tall, Layout.Builder.Spacer().RowH(30f)).Stretch();
+        widget.Render(page, new RectF32(0, 0, 200, 200));
+        scroll.MaxOffset.ShouldBe(2 * ViewportH);
+
+        var router = Routing.Over(widget);
+        var notches = 0;
+        while (scroll.Offset < scroll.MaxOffset && notches < 100)
+        {
+            var before = scroll.Offset;
+            router.Handle(new InputEvent.Scroll(-1f, 10f, 10f, InputModifier.None)).ShouldBeTrue();
+            notches++;
+
+            var step = scroll.Offset - before;
+            step.ShouldBeGreaterThan(0f);
+            step.ShouldBeLessThanOrEqualTo(ViewportH / 3f + 0.001f);
+        }
+
+        scroll.Offset.ShouldBe(scroll.MaxOffset);
+        notches.ShouldBeGreaterThan(3, "crossing three viewports takes several notches, not one");
+    }
+
+    /// <summary>The cap leaves ordinary rows alone: with a viewport well over three rows, a notch is still
+    /// WheelStepAtoms rows.</summary>
+    [Fact]
+    public void AListOfOrdinaryRowsInATallViewportStillMovesThreeRowsANotch()
+    {
+        const float row = 36f;
+        const float viewport = 360f;
+        var (widget, scroll) = Fixture();
+        var rows = new Layout.Node[30];
+        for (var i = 0; i < rows.Length; i++)
+        {
+            rows[i] = Layout.Builder.Spacer().RowH(row);
+        }
+
+        var list = Layout.Builder.VStack(
+                Layout.Builder.VStack(rows).WStar().HClamp(0f, viewport).WithScroll(scroll),
+                Layout.Builder.Spacer().RowH(30f))
+            .Stretch();
+        widget.Render(list, new RectF32(0, 0, 200, 500));
+
+        Routing.Over(widget).Handle(new InputEvent.Scroll(-1f, 10f, 10f, InputModifier.None)).ShouldBeTrue();
+
+        scroll.Offset.ShouldBe(scroll.WheelStepAtoms * row);
     }
 
     /// <summary>

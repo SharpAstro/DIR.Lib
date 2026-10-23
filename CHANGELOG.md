@@ -9,6 +9,18 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.35
+
+**A wheel notch over a scroll stack never moves more than a third of its viewport.** The layout engine states the
+controller's `LineExtentPx` (what one step of `WheelStepAtoms` moves) as the mean pitch of the stack's rows, which for a
+stack with one tall child (an `Overlay`, a `Wrap`) is the whole content: a notch moved `WheelStepAtoms` times the content
+and one click jumped from the top to the bottom (#146). The engine now caps that pitch at the viewport's main extent /
+(`WheelStepAtoms` * 3), so such a stack scrolls by readable lines, while a list of ordinary rows, whose pitch is well
+under the cap, is unchanged. A viewport shorter than three notch-sized rows now scrolls less than `WheelStepAtoms` rows a
+notch, since three rows would exceed a third of it. Pinned by
+`LayoutScrollTests.ANotchOverOneTallChildNeverMovesMoreThanAThirdOfTheViewport` and
+`AListOfOrdinaryRowsInATallViewportStillMovesThreeRowsANotch`.
+
 ## 11.34
 
 **A table's columns can be resized by dragging the divider between two titles (#144).** `TableHeader` / `TableRow` gave

@@ -472,9 +472,21 @@ public static class Engine
             // What the controller cannot work out from an atom of one surface unit: how far a wheel notch
             // should go (a ROW, as WheelStepAtoms means on a list that counts rows, not a pixel), and the
             // padding a row brought into view by the keyboard should clear.
-            scroll.LineExtentPx = includedCount > 0
+            var linePx = includedCount > 0
                 ? float.CreateChecked(rows + gap) / includedCount
                 : 0f;
+
+            // ...but never so far that one notch moves more than a third of the viewport. One tall child
+            // (an Overlay, a Wrap) made the mean pitch the whole content, so a notch moved
+            // WheelStepAtoms times the content and a single click went from the top to the bottom. A list
+            // of ordinary rows has a pitch well under the cap and is unchanged.
+            if (scroll.WheelStepAtoms > 0f)
+            {
+                var viewportMain = float.CreateChecked(axis == Axis.Vertical ? rect.Height : rect.Width);
+                linePx = MathF.Min(linePx, viewportMain / (scroll.WheelStepAtoms * 3f));
+            }
+
+            scroll.LineExtentPx = linePx;
             scroll.ContentInsetPx = float.CreateChecked(padStart);
 
             // Slid, not clipped: the children that land outside the viewport are still arranged, and it
