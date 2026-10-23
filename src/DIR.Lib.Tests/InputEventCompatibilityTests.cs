@@ -122,6 +122,9 @@ public class InputEventCompatibilityTests
         ((int)MouseButton.Middle).ShouldBe(1);
         ((int)MouseButton.Right).ShouldBe(2);
         ((int)MouseButton.None).ShouldBe(-1);
+        // The side buttons are new numbers, taking nothing from the four above.
+        ((int)MouseButton.Back).ShouldBe(3);
+        ((int)MouseButton.Forward).ShouldBe(4);
         default(MouseButton).ShouldBe(MouseButton.Left);
     }
 }

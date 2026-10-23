@@ -9,6 +9,18 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.33
+
+**The mouse's side buttons: `MouseButton.Back` and `MouseButton.Forward`, which never click a region.** The enum stopped
+at Right, so a host had no way to say "back" or "forward", and the router never looked at the button anyway (only
+Right + `OnContextMenu`), so whatever button arrived clicked whatever the pointer rested on. `Back = 3` and `Forward = 4`
+(SDL's X1/X2, the browser's buttons 3/4) are new values; Left, Middle, Right and None keep theirs. `InputRouter` now sends
+a side press and a side release straight to `Unhandled`, where the app navigates: no region dispatch (`OnClick`,
+`OnDoubleClick`, `OnPress`, `Opens`, a field press), no drag capture, no field blur, and a side release never ends a drag
+another button began. Additive -- enum values only, no constructor or signature change. SdlVulkan.Renderer maps X1/X2 onto
+these in its own issue. Pinned by `InputEventCompatibilityTests.MouseButtonNoneDidNotTakeZeroFromLeft` and the
+side-button tests in `InputRouterTests`.
+
 ## 11.32
 
 **Nothing under an open popover shows its cursor through it.** A region stating no cursor is transparent to the cursor
