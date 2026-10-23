@@ -9,6 +9,16 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.31
+
+**Under an open popover only its own content lights.** The pointer claim (11.14) was read as "no claim, or the pointer
+inside the claim", which is true for every node under that point, so whatever lay under the popover lit where the
+pointer was over it: a file row under a toolbar menu lit, and the viewer's revealed full name for it, painted last, covered
+the menu's item. A declared node now lights under a claim only when it is painted inside the claimant's content
+(`BgHover`), and `PointerHovers` / `HoverAllowedAt`, which hand-painted chrome asks and which is never a popover's
+content, answer false while a popover claims the pointer, wherever the point is. No signature changed; a consumer whose
+chrome lit under a popover simply stops. Pinned by `PopoverPointerClaimTests.WithThePointerOverThePopoverOnlyItsOwnContentLights`.
+
 ## 11.30
 
 **A Markdown document as a layout tree** (`Layout.Builder.Markdown(source, MarkdownStyle)`, or already-parsed blocks).

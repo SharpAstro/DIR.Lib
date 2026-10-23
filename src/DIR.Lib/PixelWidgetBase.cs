@@ -365,46 +365,57 @@ namespace DIR.Lib
         /// </remarks>
         public virtual (float X, float Y)? Pointer { get; set; }
 
-        /// <summary>Whether <see cref="Pointer"/> is inside an arranged rect. Top/left inclusive and
-        /// bottom/right exclusive, so two rows sharing an edge never both claim it.</summary>
-        private bool PointerWithin(Rect<float> r) =>
-            Pointer is { } p && PointerIsOwned(p)
+        /// <summary>Whether <see cref="Pointer"/> is inside an arranged rect, by the hover rule
+        /// (<see cref="HoverMayAnswer"/>). Top/left inclusive and bottom/right exclusive, so two rows sharing an
+        /// edge never both claim it.</summary>
+        /// <param name="r">The node's arranged rect.</param>
+        /// <param name="inClaimantContent">Whether the node is painted inside an open popover's content.</param>
+        private bool PointerWithin(Rect<float> r, bool inClaimantContent) =>
+            Pointer is { } p && HoverMayAnswer(p, inClaimantContent)
             && p.X >= r.X && p.X < r.X + r.Width && p.Y >= r.Y && p.Y < r.Y + r.Height;
 
         /// <summary>
-        /// Whether the pointer is somewhere hover is allowed to answer: always, unless an open popover has
-        /// claimed it (<see cref="WindowUiSettings.PointerClaim"/>), in which case only inside the popover's
-        /// own content. The claim, not <see cref="WindowUiSettings.PointerOwner"/>, so a node painted BEFORE the
+        /// Whether hover may answer at <paramref name="p"/> for a node: always, unless an open popover has claimed the
+        /// pointer (<see cref="WindowUiSettings.PointerClaim"/>), and then only for the popover's OWN content, with the
+        /// pointer inside it. The claim, not <see cref="WindowUiSettings.PointerOwner"/>, so a node painted BEFORE the
         /// popover in a frame is confined too.
         /// </summary>
         /// <remarks>
-        /// Written as "no owner, or inside the owner" rather than as a check on each rect, so a node cannot
-        /// opt out of it: the popover's own content passes because the pointer is inside the owner, and
-        /// everything the popover covers fails because it is not, with no node needing to know a popover
-        /// exists. Only HOVER is confined; the region tracker still hit-tests in paint order, so the
-        /// backdrop keeps taking the click that dismisses.
+        /// <para>Asked of the NODE, never of the point alone. Read as "no claim, or the pointer inside the claim", the rule
+        /// let everything painted UNDER the popover answer wherever the pointer was over the popover: a file list's row
+        /// under the viewer's stretch menu lit, and its revealed full name, painted last, covered the menu's item
+        /// (2026-10-23). Under a claim, a node outside the claimant's content is either under the backdrop or under the
+        /// popover itself; neither is pointed at.</para>
+        /// <para>Only HOVER is confined; the region tracker still hit-tests in paint order, so the backdrop keeps taking
+        /// the click that dismisses.</para>
         /// </remarks>
-        private bool PointerIsOwned((float X, float Y) p) =>
+        private bool HoverMayAnswer((float X, float Y) p, bool inClaimantContent) =>
             Ui.PointerClaim is not { } owner
-            || (p.X >= owner.X && p.X < owner.X + owner.Width && p.Y >= owner.Y && p.Y < owner.Y + owner.Height);
+            || (inClaimantContent
+                && p.X >= owner.X && p.X < owner.X + owner.Width && p.Y >= owner.Y && p.Y < owner.Y + owner.Height);
 
         /// <summary>
-        /// Whether hover may answer at (<paramref name="x"/>, <paramref name="y"/>): the point is not claimed away
-        /// by an open popover (<see cref="WindowUiSettings.PointerClaim"/>). The rule a declared node's hover fill is
-        /// painted by, for chrome that still decides its own highlight, so the two cannot disagree.
+        /// Whether hover may answer at (<paramref name="x"/>, <paramref name="y"/>) for chrome a widget paints by hand:
+        /// not while an open popover claims the pointer (<see cref="WindowUiSettings.PointerClaim"/>), wherever the point
+        /// is. The rule a declared node's hover fill is painted by, so the two cannot disagree.
         /// </summary>
         /// <remarks>
-        /// Before this a consumer kept its own prediction of "does an overlay own the pointer" beside such chrome,
-        /// a list of its popovers that every new one had to be added to.
+        /// <para>Hand-painted chrome is never a popover's content (that is declared), so under a claim it is under the
+        /// backdrop or under the popover. The point is kept in the signature for the callers that have one; since 11.31 it
+        /// no longer decides the answer, which used to be yes for any point inside the popover, over whatever lay under
+        /// it.</para>
+        /// <para>Before this a consumer kept its own prediction of "does an overlay own the pointer" beside such chrome,
+        /// a list of its popovers that every new one had to be added to.</para>
         /// </remarks>
-        protected bool HoverAllowedAt(float x, float y) => PointerIsOwned((x, y));
+        protected bool HoverAllowedAt(float x, float y) => HoverMayAnswer((x, y), inClaimantContent: false);
 
         /// <summary>
-        /// Whether <see cref="Pointer"/> hovers <paramref name="rect"/> by the rule a declared node lights by: inside
-        /// it (top/left inclusive, bottom/right exclusive) and not claimed away by an open popover.
+        /// Whether <see cref="Pointer"/> hovers <paramref name="rect"/> of hand-painted chrome by the rule a declared node
+        /// lights by: inside it (top/left inclusive, bottom/right exclusive) and no open popover claiming the pointer
+        /// (<see cref="HoverAllowedAt"/>).
         /// </summary>
         protected bool PointerHovers(RectF32 rect) =>
-            Pointer is { } p && PointerIsOwned(p)
+            Pointer is { } p && HoverMayAnswer(p, inClaimantContent: false)
             && p.X >= rect.X && p.X < rect.X + rect.Width && p.Y >= rect.Y && p.Y < rect.Y + rect.Height;
 
         /// <summary>
@@ -1265,7 +1276,7 @@ namespace DIR.Lib
                 // what the pointer is over are the same rectangle by construction -- the guarantee the
                 // click region below already has. A node with no HoverBackground, or a host that sets no
                 // Pointer, paints exactly as it did before.
-                var nodeFill = node.HoverBackground is { } hover && PointerWithin(bounds) ? hover
+                var nodeFill = node.HoverBackground is { } hover && PointerWithin(bounds, openPopoverDepth >= 0) ? hover
                     // And the keyboard's own position, resolved against the node's HIT rather than
                     // against a rect -- the row already says which list and index it is.
                     : node.FocusBackground is { } focus && ListCursor.IsOn(node.Hit) ? focus
