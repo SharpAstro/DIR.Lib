@@ -62,7 +62,7 @@ public static partial class Builder
     /// <summary>
     /// A table's header row: each column's title, the sorted one with a caret pointing the way it sorts,
     /// and a press on a sortable title handing <see cref="TableSort.Next"/> to <paramref name="onSort"/>.
-    /// Pair it with <see cref="TableRow"/> over the SAME <paramref name="columns"/> and style.
+    /// Pair it with <see cref="TableRow(ReadOnlySpan{TableColumn}, ReadOnlySpan{Node}, in TableStyle)"/> over the SAME <paramref name="columns"/> and style.
     /// </summary>
     /// <remarks>
     /// Every header cell declares a hit, an unsortable one included, so a press on the header never falls
@@ -72,6 +72,39 @@ public static partial class Builder
     /// <c>"{hitPrefix}{title}"</c>, so two tables in one window stay apart.</param>
     public static Node TableHeader(ReadOnlySpan<TableColumn> columns, TableSort? sort, Action<TableSort>? onSort,
         in TableStyle style, float fontSize = 14f, string hitPrefix = "table-header:")
+        => TableHeaderCore(columns, sort, onSort, style, null, default, fontSize, hitPrefix);
+
+    /// <summary>
+    /// A table header whose columns can be resized by dragging the divider between two titles. The widths
+    /// live in <paramref name="widths"/>, which the rows read too (<see cref="TableRow(ReadOnlySpan{TableColumn}, ReadOnlySpan{Node}, in TableStyle, TableColumnWidths)"/>),
+    /// so a drag moves a title and its values together.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The dividers are an overlay of the header, not part of it.</b> A second row, laid out with the header's
+    /// own gap, padding and column sizing, holds an empty cell per column and a divider in each gap, and sits
+    /// over the header, so a divider region is registered after the cells and wins the press over its own few
+    /// units. A divider is as wide as <see cref="TableStyle.Gap"/>; a style with no gap has nothing to grab and
+    /// gets no dividers.
+    /// </para>
+    /// <para>
+    /// The drag is relative to the press and converted to design units by <paramref name="scale"/> (the
+    /// design-to-surface mapping the tree is arranged at), and every move applies the rule to the widths AT THE
+    /// PRESS, so it does not accumulate. See <see cref="TableColumnWidths.Resolve"/> for what it does beside a star
+    /// column and at a minimum width. The dividers are named <c>"{hitPrefix}divider:{i}"</c>, <c>i</c> the column
+    /// to its left.
+    /// </para>
+    /// </remarks>
+    public static Node TableHeader(ReadOnlySpan<TableColumn> columns, TableSort? sort, Action<TableSort>? onSort,
+        in TableStyle style, TableColumnWidths widths, DesignScale scale, float fontSize = 14f,
+        string hitPrefix = "table-header:")
+    {
+        ArgumentNullException.ThrowIfNull(widths);
+        return TableHeaderCore(columns, sort, onSort, style, widths, scale, fontSize, hitPrefix);
+    }
+
+    private static Node TableHeaderCore(ReadOnlySpan<TableColumn> columns, TableSort? sort, Action<TableSort>? onSort,
+        in TableStyle style, TableColumnWidths? widths, DesignScale scale, float fontSize, string hitPrefix)
     {
         var cells = new Node[columns.Length];
         for (var i = 0; i < columns.Length; i++)
@@ -94,7 +127,7 @@ public static partial class Builder
             {
                 face = Text(column.Header, fontSize, style.HeaderText, column.Align, TextAlign.Center).WStar().HStar();
             }
-            face = face.CrossCenter() with { Width = column.Width, Height = Sizing.Star() };
+            face = face.CrossCenter() with { Width = widths?.SizingOf(i, column) ?? column.Width, Height = Sizing.Star() };
 
             if (onSort is not null)
             {
@@ -109,8 +142,45 @@ public static partial class Builder
             cells[i] = face;
         }
 
-        return HStack(cells).WithGap(style.Gap).PadX(style.PadX).Bg(style.HeaderFill);
+        var header = HStack(cells).WithGap(style.Gap).PadX(style.PadX).Bg(style.HeaderFill);
+        if (widths is null || columns.Length < 2 || style.Gap <= 0f)
+        {
+            return header;
+        }
+
+        // The same row again with nothing in it but the grips: columns sized as the header's are, and the gap
+        // between two of them a divider the gap's width. A zero-gap stack of [column, gap, column, ...] puts
+        // every edge where the header's gapped stack puts it, star columns included, because the fixed total
+        // is the same.
+        var scaleOrOne = scale.OrOne();
+        var copy = columns.ToArray();
+        var top = new List<Node>(columns.Length * 2 - 1);
+        for (var i = 0; i < columns.Length; i++)
+        {
+            top.Add(Spacer() with { Width = widths.SizingOf(i, columns[i]), Height = Sizing.Star() });
+            if (i + 1 < columns.Length)
+            {
+                top.Add(Spacer().WFixed(style.Gap).HStar().Pressable(
+                    new HitResult.ButtonHit($"{hitPrefix}divider:{i}"), DividerPress(copy, widths, i, scaleOrOne),
+                    CursorKind.ResizeEW));
+            }
+        }
+
+        return Overlay(header, HStack(top.ToArray()).PadX(style.PadX));
     }
+
+    private static Func<PointerPress, DragCapture?> DividerPress(TableColumn[] columns, TableColumnWidths widths,
+        int divider, DesignScale scale)
+        => press =>
+        {
+            if (press.Button != MouseButton.Left || widths.Begin(columns, divider) is not { } gesture)
+            {
+                return null;
+            }
+
+            void To(in PointerMove at) => gesture.Apply(scale.ToDesignX(at.X - press.X));
+            return new DragCapture(move => To(move), release => To(release));
+        };
 
     /// <summary>
     /// A table row: <paramref name="cells"/> sized by <paramref name="columns"/>, with the gap and padding of
@@ -118,12 +188,27 @@ public static partial class Builder
     /// Extra cells are dropped and missing ones left empty. Size the row's height at the call site.
     /// </summary>
     public static Node TableRow(ReadOnlySpan<TableColumn> columns, ReadOnlySpan<Node> cells, in TableStyle style)
+        => TableRowCore(columns, cells, style, null);
+
+    /// <summary>
+    /// A table row sized by <paramref name="widths"/>, the object the header's dividers write, so a column the
+    /// reader has dragged is as wide here as its title is.
+    /// </summary>
+    public static Node TableRow(ReadOnlySpan<TableColumn> columns, ReadOnlySpan<Node> cells, in TableStyle style,
+        TableColumnWidths widths)
+    {
+        ArgumentNullException.ThrowIfNull(widths);
+        return TableRowCore(columns, cells, style, widths);
+    }
+
+    private static Node TableRowCore(ReadOnlySpan<TableColumn> columns, ReadOnlySpan<Node> cells, in TableStyle style,
+        TableColumnWidths? widths)
     {
         var laid = new Node[columns.Length];
         for (var i = 0; i < columns.Length; i++)
         {
             var cell = i < cells.Length ? cells[i] : Spacer();
-            laid[i] = cell with { Width = columns[i].Width, Height = Sizing.Star() };
+            laid[i] = cell with { Width = widths?.SizingOf(i, columns[i]) ?? columns[i].Width, Height = Sizing.Star() };
         }
 
         return HStack(laid).WithGap(style.Gap).PadX(style.PadX);

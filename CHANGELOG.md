@@ -9,6 +9,30 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.34
+
+**A table's columns can be resized by dragging the divider between two titles (#144).** `TableHeader` / `TableRow` gave
+every consumer a header and rows that agree on their widths, and no way for the reader to change them. The widths now
+live in a new consumer-kept `TableColumnWidths`, handed to both through new overloads
+(`TableHeader(columns, sort, onSort, style, widths, scale, fontSize, hitPrefix)` and `TableRow(columns, cells, style,
+widths)`), so a title and its values read one number. The header lays a second row of empty cells and gap-wide dividers
+over itself, so each divider registers after the cells and wins its few units: a `Pressable` with a `DragCapture` and
+`CursorKind.ResizeEW`, named `"{hitPrefix}divider:{i}"`. The drag is relative to the press, converted to design units by the
+`DesignScale`, and applied to the widths AT the press on every move, so it does not accumulate. Between two fixed columns
+one grows by what the other loses; beside a star column only the fixed side moves and the star stays the one that takes the
+slack; neither fixed column goes below its minimum (`TableColumnWidths.DefaultMinWidth`, or an init-only
+`TableColumn.MinWidth`). The rule is the pure `TableColumnWidths.Resolve`. `Save()` / `Restore()` / `From()` carry the widths
+as the plain record `TableColumnWidths.Saved`, tolerant of a column count that changed since it was saved. A style with no
+`Gap` has no room for a divider and gets none.
+
+**Additive.** The old `TableHeader` and `TableRow` overloads keep their signatures and render exactly as before; a table
+built without a widths object is unchanged, and `TableColumn` gains an init-only property, not a constructor parameter.
+Pinned by `LayoutDataViewsTests`: `DraggingTheDividerBetweenTwoFixedColumns_WidensOneAndNarrowsItsNeighbour_HeaderAndRowsTogether`,
+`TheDragIsMeasuredFromThePress_NotAccumulatedAcrossMoves`, `TheDragIsConvertedToDesignUnits_ByTheScale`,
+`DraggingBesideAStarColumn_KeepsTheStarAStar_AndResizesOnlyTheFixedNeighbour`,
+`NoColumnGoesBelowItsMinimum_HoweverFarTheDragGoes`, `TheDividerShowsTheResizeCursor_AndTheDragKeepsIt`,
+`WidthsSavedToARecordAndRestoredIntoANewObject_LayOutTheSame` and `TheOldTableHeaderAndTableRowSignaturesStillExist`.
+
 ## 11.33
 
 **The mouse's side buttons: `MouseButton.Back` and `MouseButton.Forward`, which never click a region.** The enum stopped
