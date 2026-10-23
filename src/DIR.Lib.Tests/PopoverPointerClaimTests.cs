@@ -157,6 +157,50 @@ public class PopoverPointerClaimTests
         widget.Hovers(PaneUnderPopoverWidget.Pane).ShouldBeFalse("hand-painted chrome under the popover answers as the pane does");
     }
 
+    /// <summary>A pane that states a cursor painted first, the whole surface, and a popover over it whose content holds
+    /// one node stating a cursor of its own and one stating none.</summary>
+    private sealed class CursorUnderPopoverWidget(Renderer<RgbaImage> renderer) : PixelWidgetBase<RgbaImage>(renderer)
+    {
+        public void Paint(PopoverState popover)
+        {
+            BeginFrame();
+            RenderLayout(Layout.Builder.Spacer().Stretch().Clickable(new HitResult.ChromeHit(), cursor: CursorKind.ResizeEW),
+                PaneUnderPopoverWidget.Pane, fontPath: "stub.ttf", scale: DesignScale.One);
+            RenderLayout(Layout.Builder.Popover(new RectF32(60f, 40f, 20f, 10f),
+                    Layout.Builder.VStack(
+                        Layout.Builder.Box(30f, 15f).Clickable(new HitResult.ChromeHit(), cursor: CursorKind.Pointer),
+                        Layout.Builder.Box(30f, 15f)),
+                    popover),
+                PaneUnderPopoverWidget.Pane, fontPath: "stub.ttf", scale: DesignScale.One);
+        }
+    }
+
+    /// <summary>
+    /// What is under an open popover does not show its cursor through it, over the popover's content or over its backdrop:
+    /// a region with no cursor is transparent to the lookup, so a slider's cursor showed through the viewer's toolbar menu
+    /// (2026-10-23). The backdrop states the arrow; the content's own cursors, registered after it, still win.
+    /// </summary>
+    [Fact]
+    public void NothingUnderAnOpenPopoverShowsItsCursorThroughIt()
+    {
+        var widget = new CursorUnderPopoverWidget(new DeclarationStubRenderer(200, 200));
+        var popover = new PopoverState();
+        popover.Open();
+        widget.Paint(popover);
+        widget.Paint(popover);
+        var content = widget.Ui.PointerClaim ?? throw new InvalidOperationException("the open popover claimed nothing");
+        var midX = content.X + (content.Width / 2f);
+
+        widget.HitTestCursor(midX, content.Y + 4f).ShouldBe(CursorKind.Pointer, "the content's own cursor wins");
+        widget.HitTestCursor(midX, content.Y + content.Height - 4f).ShouldBe(CursorKind.Default,
+            "content stating no cursor shows the arrow, not the pane's cursor beneath");
+        widget.HitTestCursor(5f, 190f).ShouldBe(CursorKind.Default, "the backdrop shows the arrow, not the pane's cursor beneath");
+
+        popover.Close();
+        widget.Paint(popover);
+        widget.HitTestCursor(5f, 190f).ShouldBe(CursorKind.ResizeEW, "with the popover closed the pane's cursor is back");
+    }
+
     [Fact]
     public void WithNoPopoverTheButtonLightsAsEver()
     {

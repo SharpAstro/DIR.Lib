@@ -9,6 +9,14 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.32
+
+**Nothing under an open popover shows its cursor through it.** A region stating no cursor is transparent to the cursor
+lookup, and a popover's backdrop stated none, so whatever lay under the popover answered for it: a slider under the
+viewer's toolbar menu showed its own cursor over the menu. The backdrop of `Layout.Builder.Popover` (and so of every
+`Dropdown`) now states the ordinary arrow (`CursorKind.Default`); the popover's content registers after it, so its own
+cursors still win. Pinned by `PopoverPointerClaimTests.NothingUnderAnOpenPopoverShowsItsCursorThroughIt`.
+
 ## 11.31
 
 **Under an open popover only its own content lights.** The pointer claim (11.14) was read as "no claim, or the pointer

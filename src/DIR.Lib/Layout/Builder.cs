@@ -224,6 +224,11 @@ public static partial class Builder
     /// <paramref name="backdrop"/> leaves it unpainted, still present, and still dismissing.
     /// </para>
     /// <para>
+    /// The backdrop also states the ordinary arrow (<see cref="CursorKind.Default"/>), because a region with no cursor is
+    /// transparent to the cursor lookup: a slider under an open menu showed its own cursor through the menu (2026-10-23).
+    /// The content registers after the backdrop, so its own cursors still win.
+    /// </para>
+    /// <para>
     /// The one press the backdrop does NOT keep to itself is one that lands on a TRIGGER beneath it -- a
     /// node declared <see cref="Node.Opens"/> -- which the router lets through so a bar of cards switches
     /// in one press. The scrim says which popover it dismisses (<see cref="Node.DismissesPopover"/>) for
@@ -233,7 +238,7 @@ public static partial class Builder
     public static Node Popover(RectF32 anchor, Node content, PopoverState state,
         DockSide side = DockSide.Bottom, RGBAColor32? backdrop = null)
     {
-        var scrim = Spacer().Stretch().Clickable(new HitResult.ChromeHit(), _ => state.Close()).Dismisses(state);
+        var scrim = Spacer().Stretch().Clickable(new HitResult.ChromeHit(), _ => state.Close(), CursorKind.Default).Dismisses(state);
         if (backdrop is { } colour)
         {
             scrim = scrim.Bg(colour);
