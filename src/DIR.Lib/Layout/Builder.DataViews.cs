@@ -160,9 +160,10 @@ public static partial class Builder
             top.Add(Spacer() with { Width = widths.SizingOf(i, columns[i]), Height = Sizing.Star() });
             if (i + 1 < columns.Length)
             {
+                var divider = i;
                 top.Add(Spacer().WFixed(style.Gap).HStar().Pressable(
                     new HitResult.ButtonHit($"{hitPrefix}divider:{i}"), DividerPress(copy, widths, i, scaleOrOne),
-                    CursorKind.ResizeEW));
+                    CursorKind.ResizeEW).DoubleClickable(_ => widths.Fit(copy, divider)));
             }
         }
 
@@ -174,6 +175,13 @@ public static partial class Builder
         => press =>
         {
             if (press.Button != MouseButton.Left || widths.Begin(columns, divider) is not { } gesture)
+            {
+                return null;
+            }
+
+            // The second press of a pair is the double-click's, which fits the column; declining hands it to
+            // the router. Where there is nothing to fit it is a press like any other, and drags.
+            if (press.Clicks >= 2 && widths.FitWidth is not null && columns[divider].Width.IsFixed)
             {
                 return null;
             }

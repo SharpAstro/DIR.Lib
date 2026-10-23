@@ -239,6 +239,96 @@ public class LayoutDataViewsTests
         Named(widget, "cell2").Width.ShouldBe(pathBefore + 10f, 0.01f);
     }
 
+    /// <summary>The second press of a pair, as a router sees it: the press handler runs first and may decline it.</summary>
+    private static void DoubleClick(DeclarationWidget widget, string divider)
+    {
+        var region = Named(widget, divider);
+        var press = new PointerPress(region.X + region.Width / 2f, region.Y + 2f, MouseButton.Left, InputModifier.None, 2);
+        region.OnPress.ShouldNotBeNull()(press).ShouldBeNull("a double press is declined by the drag, so the router gives it to the double-click");
+        region.OnDoubleClick.ShouldNotBeNull()(InputModifier.None);
+    }
+
+    [Fact]
+    public void DoubleClickingADivider_FitsTheFixedColumnOnItsLeft_HeaderAndRowsTogether()
+    {
+        var widget = Widget();
+        var widths = new TableColumnWidths { FitWidth = i => i == 0 ? 120f : 200f };
+        var changed = 0;
+        widths.Changed = () => changed++;
+        PaintResizable(widget, widths);
+
+        DoubleClick(widget, Divider0);
+        PaintResizable(widget, widths);
+
+        Named(widget, "table-header:size").Width.ShouldBe(120f, 0.01f);
+        Named(widget, "cell0").Width.ShouldBe(120f, 0.01f);
+        Named(widget, "cell1").Width.ShouldBe(60f, 0.01f, "the neighbour is not fitted by its left divider");
+        changed.ShouldBe(1);
+        ShouldLineUp(widget, Columns);
+
+        // Beside the star: the fixed column on the left of divider 1 is fitted, the star keeps its sizing.
+        DoubleClick(widget, Divider1);
+        widths.SizingOf(1, Columns[1]).Value.ShouldBe(200f, 0.01f);
+        widths.SizingOf(2, Columns[2]).IsStar.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ADoubleClickFit_NeverGoesBelowTheMinimum_AndIgnoresAnUnknownAnswer()
+    {
+        var widget = Widget();
+        var widths = new TableColumnWidths { FitWidth = i => i == 0 ? 5f : null };
+        PaintResizable(widget, widths);
+
+        DoubleClick(widget, Divider0);
+        widths.SizingOf(0, Columns[0]).Value.ShouldBe(widths.DefaultMinWidth, 0.01f);
+
+        var before = widths.Save().Widths.ElementAtOrDefault(1);
+        DoubleClick(widget, Divider1);
+        widths.Save().Widths.ElementAtOrDefault(1).ShouldBe(before, "no answer leaves the column as it was");
+        widths.SizingOf(1, Columns[1]).Value.ShouldBe(60f, 0.01f);
+    }
+
+    [Fact]
+    public void WithoutAFitCallback_ADoubleClickChangesNothing_AndTheSecondPressStillDrags()
+    {
+        var widget = Widget();
+        var widths = new TableColumnWidths();
+        PaintResizable(widget, widths);
+        var region = Named(widget, Divider0);
+
+        region.OnDoubleClick.ShouldNotBeNull()(InputModifier.None);
+        widths.Save().Widths.ShouldBeEmpty("an untouched object has nothing to save");
+
+        var press = new PointerPress(region.X + region.Width / 2f, region.Y + 2f, MouseButton.Left, InputModifier.None, 2);
+        var capture = region.OnPress.ShouldNotBeNull()(press).ShouldNotBeNull();
+        DragTo(capture, press.X + 20f);
+        widths.SizingOf(0, Columns[0]).Value.ShouldBe(100f, 0.01f);
+    }
+
+    [Fact]
+    public void ADoubleClickOnTheDividerRightOfAStarColumn_NeverTurnsTheStarFixed_AndTheDragStillWorks()
+    {
+        var starFirst = new TableColumn[]
+        {
+            new("path", Sizing.Star()),
+            new("size", Sizing.Fixed(80f)),
+        };
+        var widget = Widget();
+        var widths = new TableColumnWidths { FitWidth = _ => 150f };
+        PaintResizable(widget, widths, starFirst);
+        var region = Named(widget, Divider0);
+
+        region.OnDoubleClick.ShouldNotBeNull()(InputModifier.None);
+        widths.SizingOf(0, starFirst[0]).IsStar.ShouldBeTrue();
+        widths.SizingOf(1, starFirst[1]).Value.ShouldBe(80f, 0.01f, "the right neighbour is not fitted in its place");
+
+        // With nothing to fit, the second press drags: dragging right shrinks the fixed right neighbour.
+        var press = new PointerPress(region.X + region.Width / 2f, region.Y + 2f, MouseButton.Left, InputModifier.None, 2);
+        var capture = region.OnPress.ShouldNotBeNull()(press).ShouldNotBeNull();
+        DragTo(capture, press.X + 10f);
+        widths.SizingOf(1, starFirst[1]).Value.ShouldBe(70f, 0.01f);
+    }
+
     [Fact]
     public void ResolveBesideAStarOnTheLeft_ResizesTheFixedRightColumnInverselyToTheDrag()
     {
