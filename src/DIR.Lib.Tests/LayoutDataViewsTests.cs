@@ -124,6 +124,279 @@ public class LayoutDataViewsTests
         Named(widget, "table-header:kind").OnClick.ShouldBeNull("an unsortable title swallows the press and does nothing");
     }
 
+    // ---- Table: columns resized by dragging a divider ------------------------------------------
+
+    private const string Divider0 = "table-header:divider:0";
+    private const string Divider1 = "table-header:divider:1";
+
+    private static void PaintResizable(DeclarationWidget widget, TableColumnWidths widths, TableColumn[]? columns = null,
+        DesignScale? scale = null)
+    {
+        columns ??= Columns;
+        var cells = columns.Select((c, i) => Layout.Builder.Spacer().Clickable(new HitResult.ButtonHit("cell" + i), _ => { })).ToArray();
+        widget.Render(Layout.Builder.VStack(
+            Layout.Builder.TableHeader(columns, null, _ => { }, Style, widths, scale ?? DesignScale.One).RowH(24f),
+            Layout.Builder.TableRow(columns, cells, Style, widths).RowH(20f)).Stretch(), new RectF32(0, 0, 400, 100));
+    }
+
+    /// <summary>Presses the divider's middle and returns the capture, as a router does for a real press.</summary>
+    private static DragCapture Grab(DeclarationWidget widget, string divider, out float pressX)
+    {
+        var region = Named(widget, divider);
+        pressX = region.X + region.Width / 2f;
+        return region.OnPress.ShouldNotBeNull()(new PointerPress(pressX, region.Y + 2f, MouseButton.Left, InputModifier.None, 1))
+            .ShouldNotBeNull();
+    }
+
+    private static void DragTo(DragCapture capture, float x) => capture.Move(new PointerMove(x, 5f, MouseButton.Left, InputModifier.None));
+
+    private static void ShouldLineUp(DeclarationWidget widget, TableColumn[] columns)
+    {
+        for (var i = 0; i < columns.Length; i++)
+        {
+            var head = Named(widget, "table-header:" + columns[i].Header);
+            var cell = Named(widget, "cell" + i);
+            head.X.ShouldBe(cell.X, 0.01f, columns[i].Header);
+            head.Width.ShouldBe(cell.Width, 0.01f, columns[i].Header);
+        }
+    }
+
+    [Fact]
+    public void DraggingTheDividerBetweenTwoFixedColumns_WidensOneAndNarrowsItsNeighbour_HeaderAndRowsTogether()
+    {
+        var widget = Widget();
+        var widths = new TableColumnWidths();
+        PaintResizable(widget, widths);
+        var pathBefore = Named(widget, "cell2").Width;
+        var capture = Grab(widget, Divider0, out var x);
+
+        DragTo(capture, x + 20f);
+        PaintResizable(widget, widths);
+
+        Named(widget, "table-header:size").Width.ShouldBe(100f, 0.01f);
+        Named(widget, "table-header:kind").Width.ShouldBe(40f, 0.01f);
+        Named(widget, "cell0").Width.ShouldBe(100f, 0.01f);
+        Named(widget, "cell1").Width.ShouldBe(40f, 0.01f);
+        Named(widget, "cell2").Width.ShouldBe(pathBefore, 0.01f, "the star column is untouched by a drag between two fixed ones");
+        ShouldLineUp(widget, Columns);
+    }
+
+    [Fact]
+    public void TheDragIsMeasuredFromThePress_NotAccumulatedAcrossMoves()
+    {
+        var widget = Widget();
+        var widths = new TableColumnWidths();
+        PaintResizable(widget, widths);
+        var capture = Grab(widget, Divider0, out var x);
+
+        DragTo(capture, x + 10f);
+        DragTo(capture, x + 20f);
+        DragTo(capture, x + 5f);
+        PaintResizable(widget, widths);
+
+        Named(widget, "table-header:size").Width.ShouldBe(85f, 0.01f);
+        Named(widget, "table-header:kind").Width.ShouldBe(55f, 0.01f);
+    }
+
+    [Fact]
+    public void TheDragIsConvertedToDesignUnits_ByTheScale()
+    {
+        var widget = Widget(800, 300);
+        var widths = new TableColumnWidths();
+        var scale = new DesignScale(2f);
+        PaintResizable(widget, widths, scale: scale);
+        var capture = Grab(widget, Divider0, out var x);
+
+        DragTo(capture, x + 40f);   // 40 surface units are 20 design units at 2x
+
+        widths.SizingOf(0, Columns[0]).Value.ShouldBe(100f, 0.01f);
+        widths.SizingOf(1, Columns[1]).Value.ShouldBe(40f, 0.01f);
+    }
+
+    [Fact]
+    public void DraggingBesideAStarColumn_KeepsTheStarAStar_AndResizesOnlyTheFixedNeighbour()
+    {
+        var widget = Widget();
+        var widths = new TableColumnWidths();
+        PaintResizable(widget, widths);
+        var sizeBefore = Named(widget, "cell0").Width;
+        var pathBefore = Named(widget, "cell2").Width;
+        var capture = Grab(widget, Divider1, out var x);
+
+        DragTo(capture, x + 15f);
+        PaintResizable(widget, widths);
+
+        widths.SizingOf(2, Columns[2]).IsStar.ShouldBeTrue("a star is never overridden");
+        Named(widget, "cell0").Width.ShouldBe(sizeBefore, 0.01f);
+        Named(widget, "cell1").Width.ShouldBe(75f, 0.01f, "the fixed side follows the pointer");
+        Named(widget, "cell2").Width.ShouldBe(pathBefore - 15f, 0.01f, "the star takes the difference");
+        ShouldLineUp(widget, Columns);
+
+        // And dragging the other way narrows the fixed column, the star taking the room.
+        DragTo(capture, x - 10f);
+        PaintResizable(widget, widths);
+        Named(widget, "cell1").Width.ShouldBe(50f, 0.01f);
+        Named(widget, "cell2").Width.ShouldBe(pathBefore + 10f, 0.01f);
+    }
+
+    [Fact]
+    public void ResolveBesideAStarOnTheLeft_ResizesTheFixedRightColumnInverselyToTheDrag()
+    {
+        TableColumnWidths.Resolve(null, 60f, 24f, 24f, 10f).ShouldBe((null, 50f), "dragging right shrinks a fixed right neighbour");
+        TableColumnWidths.Resolve(null, 60f, 24f, 24f, -10f).ShouldBe((null, 70f));
+        TableColumnWidths.Resolve(60f, null, 24f, 24f, 10f).ShouldBe((70f, null), "dragging right grows a fixed left column");
+        TableColumnWidths.Resolve(null, null, 24f, 24f, 10f).ShouldBe((null, null), "two stars have nothing to resize");
+        TableColumnWidths.Resolve(80f, 60f, 24f, 24f, 20f).ShouldBe((100f, 40f));
+    }
+
+    [Theory]
+    [InlineData(1000f)]
+    [InlineData(-1000f)]
+    [InlineData(float.MaxValue)]
+    [InlineData(float.MinValue)]
+    public void NoColumnGoesBelowItsMinimum_HoweverFarTheDragGoes(float delta)
+    {
+        var (left, right) = TableColumnWidths.Resolve(80f, 60f, 30f, 20f, delta);
+
+        left.ShouldNotBeNull().ShouldBeGreaterThanOrEqualTo(30f);
+        right.ShouldNotBeNull().ShouldBeGreaterThanOrEqualTo(20f);
+        (left!.Value + right!.Value).ShouldBe(140f, 0.01f, "what one gains the other loses");
+        TableColumnWidths.Resolve(80f, null, 30f, 20f, delta).Left.ShouldNotBeNull().ShouldBeGreaterThanOrEqualTo(30f);
+        TableColumnWidths.Resolve(null, 60f, 30f, 20f, delta).Right.ShouldNotBeNull().ShouldBeGreaterThanOrEqualTo(20f);
+    }
+
+    [Fact]
+    public void NoColumnGoesBelowItsMinimum_WhenDraggedThroughTheBuiltTable()
+    {
+        var columns = new TableColumn[]
+        {
+            new("size", Sizing.Fixed(80f), TextAlign.Far),
+            new("kind", Sizing.Fixed(60f)) { MinWidth = 40f },
+            new("path", Sizing.Star()),
+        };
+        var widget = Widget();
+        var widths = new TableColumnWidths();
+        PaintResizable(widget, widths, columns);
+        var capture = Grab(widget, Divider0, out var x);
+
+        DragTo(capture, x + 1000f);
+        PaintResizable(widget, widths, columns);
+        Named(widget, "cell1").Width.ShouldBe(40f, 0.01f, "the column's own MinWidth");
+        Named(widget, "cell0").Width.ShouldBe(100f, 0.01f);
+
+        DragTo(capture, x - 1000f);
+        PaintResizable(widget, widths, columns);
+        Named(widget, "cell0").Width.ShouldBe(widths.DefaultMinWidth, 0.01f, "the default minimum");
+        Named(widget, "cell1").Width.ShouldBe(116f, 0.01f);
+        ShouldLineUp(widget, columns);
+    }
+
+    [Fact]
+    public void TheDividerShowsTheResizeCursor_AndTheDragKeepsIt()
+    {
+        var widget = Widget();
+        var widths = new TableColumnWidths();
+        PaintResizable(widget, widths);
+        Named(widget, Divider0).Cursor.ShouldBe(CursorKind.ResizeEW);
+        Named(widget, Divider1).Cursor.ShouldBe(CursorKind.ResizeEW);
+
+        var capture = Grab(widget, Divider0, out var x);
+        DragTo(capture, x + 20f);
+        PaintResizable(widget, widths);
+
+        var moved = Named(widget, Divider0);
+        moved.Cursor.ShouldBe(CursorKind.ResizeEW, "the divider that followed the drag still asks for it");
+        moved.X.ShouldBeGreaterThan(x - 4f);
+    }
+
+    [Fact]
+    public void ADividerLiesInTheGapBetweenTwoTitles()
+    {
+        var widget = Widget();
+        PaintResizable(widget, new TableColumnWidths());
+
+        var divider = Named(widget, Divider0);
+        var left = Named(widget, "table-header:size");
+        var right = Named(widget, "table-header:kind");
+        divider.X.ShouldBe(left.X + left.Width, 0.01f);
+        (divider.X + divider.Width).ShouldBe(right.X, 0.01f);
+        Regions(widget).Count(r => r.Result is HitResult.ButtonHit b && b.Action.Contains("divider")).ShouldBe(Columns.Length - 1);
+    }
+
+    [Fact]
+    public void WidthsSavedToARecordAndRestoredIntoANewObject_LayOutTheSame()
+    {
+        var widget = Widget();
+        var widths = new TableColumnWidths();
+        PaintResizable(widget, widths);
+        DragTo(Grab(widget, Divider0, out var x), x + 17f);
+        DragTo(Grab(widget, Divider1, out var y), y + 9f);
+        PaintResizable(widget, widths);
+        var expected = Regions(widget).Select(r => (r.X, r.Width)).ToArray();
+
+        var saved = widths.Save();
+        var restored = TableColumnWidths.From(saved);
+        var other = Widget();
+        PaintResizable(other, restored);
+
+        Regions(other).Select(r => (r.X, r.Width)).ToArray().ShouldBe(expected);
+        restored.Save().Widths.ShouldBe(saved.Widths);
+    }
+
+    [Fact]
+    public void RestoringWidthsIntoATableWithDifferentColumns_NeitherThrowsNorMovesAColumnItDoesNotKnow()
+    {
+        var widths = new TableColumnWidths();
+        widths.Restore(new TableColumnWidths.Saved([100f, 40f, 500f, 70f, 70f]));
+        TableColumn[] fewer = [Columns[0], Columns[2]];
+        TableColumn[] more = [.. Columns, new("extra", Sizing.Fixed(33f))];
+
+        widths.SizingOf(0, fewer[0]).Value.ShouldBe(100f);
+        widths.SizingOf(1, fewer[1]).IsStar.ShouldBeTrue("column 1 is a star now, and a star is never overridden");
+        widths.SizingOf(3, more[3]).Value.ShouldBe(70f);
+
+        var shorter = TableColumnWidths.From(new TableColumnWidths.Saved([90f]));
+        shorter.SizingOf(0, more[0]).Value.ShouldBe(90f);
+        shorter.SizingOf(1, more[1]).Value.ShouldBe(60f, "no entry: the declared width");
+        shorter.SizingOf(3, more[3]).Value.ShouldBe(33f);
+
+        var widget = Widget();
+        PaintResizable(widget, widths, fewer);
+        PaintResizable(widget, widths, more);
+    }
+
+    [Fact]
+    public void AnUntouchedWidthsObject_LaysATableOutAsOneBuiltWithoutIt()
+    {
+        var plain = Widget();
+        var cells = Columns.Select((c, i) => Layout.Builder.Spacer().Clickable(new HitResult.ButtonHit("cell" + i), _ => { })).ToArray();
+        plain.Render(Layout.Builder.VStack(
+            Layout.Builder.TableHeader(Columns, null, _ => { }, Style).RowH(24f),
+            Layout.Builder.TableRow(Columns, cells, Style).RowH(20f)).Stretch(), new RectF32(0, 0, 400, 100));
+        var resizable = Widget();
+        PaintResizable(resizable, new TableColumnWidths());
+
+        foreach (var name in new[] { "table-header:size", "table-header:kind", "table-header:path", "cell0", "cell1", "cell2" })
+        {
+            var a = Named(plain, name);
+            var b = Named(resizable, name);
+            (b.X, b.Y, b.Width, b.Height).ShouldBe((a.X, a.Y, a.Width, a.Height), name);
+        }
+
+        Regions(plain).Any(r => r.Result is HitResult.ButtonHit { Action: var a } && a.Contains("divider")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TheOldTableHeaderAndTableRowSignaturesStillExist()
+    {
+        var methods = typeof(Layout.Builder).GetMethods();
+
+        methods.ShouldContain(m => m.Name == "TableHeader" && m.GetParameters().Length == 6
+            && m.GetParameters()[4].ParameterType == typeof(float) && m.GetParameters()[5].ParameterType == typeof(string));
+        methods.ShouldContain(m => m.Name == "TableRow" && m.GetParameters().Length == 3);
+        typeof(TableColumn).GetConstructors().Single().GetParameters().Length.ShouldBe(3, "no positional parameter was added to TableColumn");
+    }
+
     // ---- Tree --------------------------------------------------------------------------------
 
     private sealed class N(string name, params N[] children)
