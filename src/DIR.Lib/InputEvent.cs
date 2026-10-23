@@ -19,6 +19,20 @@ public enum MouseButton
     Left = 0,
     Middle = 1,
     Right = 2,
+
+    /// <summary>
+    /// The mouse's "back" side button (SDL's X1, the browser's button 3). Means navigate back, never a
+    /// click: <see cref="InputRouter"/> keeps it off every click region and hands it to
+    /// <see cref="InputRouter.Unhandled"/>.
+    /// </summary>
+    Back = 3,
+
+    /// <summary>
+    /// The mouse's "forward" side button (SDL's X2, the browser's button 4). Means navigate forward,
+    /// never a click: <see cref="InputRouter"/> keeps it off every click region and hands it to
+    /// <see cref="InputRouter.Unhandled"/>.
+    /// </summary>
+    Forward = 4,
 }
 
 /// <summary>

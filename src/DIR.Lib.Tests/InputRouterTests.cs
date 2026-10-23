@@ -299,6 +299,84 @@ public class InputRouterTests
         harness.UnhandledEvents.ShouldBeEmpty();
     }
 
+    // ---- side buttons -------------------------------------------------------------------------
+
+    /// <summary>
+    /// A side button means navigation. Before 11.33 DispatchPress never looked at the button, so any
+    /// button clicked a region: back would have pressed whatever the pointer happened to rest on.
+    /// </summary>
+    [Theory]
+    [InlineData(MouseButton.Back)]
+    [InlineData(MouseButton.Forward)]
+    public void ASideButtonOverAClickableNodeFiresNoClickAndReachesTheHost(MouseButton side)
+    {
+        var harness = new Harness();
+        var clicked = 0;
+        var pressed = 0;
+        harness.Paint(front: Layout.Builder.Box(50f, 20f)
+            .Clickable(new HitResult.ButtonHit("go"), _ => clicked++)
+            .Pressable(new HitResult.ButtonHit("go"), _ => { pressed++; return null; }));
+
+        harness.Router.Handle(new InputEvent.MouseDown(10f, 10f, side));
+        harness.Router.Handle(new InputEvent.MouseUp(10f, 10f, side));
+
+        clicked.ShouldBe(0);
+        pressed.ShouldBe(0);
+        harness.UnhandledEvents.Count.ShouldBe(2);
+        harness.UnhandledEvents[0].ShouldBeOfType<InputEvent.MouseDown>().Button.ShouldBe(side);
+        harness.UnhandledEvents[1].ShouldBeOfType<InputEvent.MouseUp>().Button.ShouldBe(side);
+    }
+
+    [Fact]
+    public void ALeftPressOnTheSameNodeStillClicks()
+    {
+        var harness = new Harness();
+        var clicked = 0;
+        harness.Paint(front: Layout.Builder.Box(50f, 20f)
+            .Clickable(new HitResult.ButtonHit("go"), _ => clicked++));
+
+        harness.Press(10f, 10f);
+
+        clicked.ShouldBe(1);
+        harness.UnhandledEvents.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void ASideButtonOverAFieldNeitherFocusesItNorBlursAnotherField()
+    {
+        var harness = new Harness();
+        var other = new TextInputState { Text = "kept" };
+        var over = new TextInputState { Text = "hello" };
+        harness.Paint(front: Field(over));
+        harness.Focus.Focus(other);
+
+        harness.Router.Handle(new InputEvent.MouseDown(2f, 10f, MouseButton.Back));
+
+        harness.Focus.Current.ShouldBeSameAs(other);
+        harness.UnhandledEvents.ShouldHaveSingleItem().ShouldBeOfType<InputEvent.MouseDown>();
+    }
+
+    [Fact]
+    public void ASideButtonDuringADragDoesNotEndIt()
+    {
+        var harness = new Harness();
+        var moves = 0;
+        PointerMove? released = null;
+        harness.Paint(front: Layout.Builder.Box(50f, 20f).Pressable(
+            new HitResult.ButtonHit("drag"), _ => new DragCapture(_ => moves++, m => released = m)));
+
+        harness.Press(10f, 10f);
+        harness.Router.Handle(new InputEvent.MouseDown(10f, 10f, MouseButton.Back));
+        harness.Router.Handle(new InputEvent.MouseUp(10f, 10f, MouseButton.Back));
+        harness.Move(30f, 12f, MouseButton.Left);
+
+        released.ShouldBeNull("the side release is not the drag's own button coming up");
+        moves.ShouldBe(1, "the capture still owns the pointer");
+
+        harness.Release(40f, 14f);
+        released.ShouldNotBeNull();
+    }
+
     // ---- MouseMove ----------------------------------------------------------------------------
 
     [Fact]

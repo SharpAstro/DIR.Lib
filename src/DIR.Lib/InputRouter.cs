@@ -119,11 +119,18 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     /// host consumed it.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// This is where an active tab's <c>HandleInput</c> lives, and a widget's own
     /// <see cref="PixelWidgetBase{TSurface}.HandleListKey"/> with it. It is LAST for every event, so a
     /// declaration always wins over a hand-written arm for the same key or the same rect. That ordering
     /// is what lets a host delete an arm the moment the tree declares the same thing, rather than having
     /// to prove the arm is unreachable first.
+    /// </para>
+    /// <para>
+    /// The mouse's side buttons (<see cref="MouseButton.Back"/>, <see cref="MouseButton.Forward"/>) are the
+    /// exception to "the declarations answer first": their press and release never reach a region, a field
+    /// or a drag, and arrive here as the app's cue to navigate.
+    /// </para>
     /// </remarks>
     public Func<InputEvent, bool>? Unhandled { get; set; }
 
@@ -274,9 +281,20 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
 
     // ---- pointer ----------------------------------------------------------------------------
 
+    private static bool IsSideButton(MouseButton button)
+        => button is MouseButton.Back or MouseButton.Forward;
+
     private bool HandleMouseDown(InputEvent.MouseDown down)
     {
         _pointer = (down.X, down.Y);
+
+        // A side button means navigation, never a click: it activates no region, arms no drag and takes
+        // the keyboard off no field. The app reads it through Unhandled and goes back or forward.
+        if (IsSideButton(down.Button))
+        {
+            return Unhandled?.Invoke(down) ?? false;
+        }
+
         var press = new PointerPress(down.X, down.Y, down.Button, down.Modifiers, down.ClickCount);
         var widgets = Widgets();
 
@@ -555,6 +573,13 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     private bool HandleMouseUp(InputEvent.MouseUp up)
     {
         _pointer = (up.X, up.Y);
+
+        // The release of a side button belongs to the app, like its press, and is not the end of a drag
+        // another button began: a gesture only ends when its own button comes up.
+        if (IsSideButton(up.Button))
+        {
+            return Unhandled?.Invoke(up) ?? false;
+        }
 
         if (_capture is { } capture)
         {
