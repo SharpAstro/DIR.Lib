@@ -1166,6 +1166,7 @@ namespace DIR.Lib
                     // The bar over the rows, inside the viewport it belongs to, then the clip released.
                     var (_, leaving, _) = scrolls.Pop();
                     leaving.DrawScrollBar(FillRect);
+                    RegisterScrollBar(leaving);
                     PopClip();
                 }
 
@@ -1522,7 +1523,23 @@ namespace DIR.Lib
             {
                 var (_, leaving, _) = scrolls.Pop();
                 leaving.DrawScrollBar(FillRect);
+                RegisterScrollBar(leaving);
                 PopClip();
+            }
+        }
+
+        /// <summary>
+        /// Registers the bar just drawn as a press region, on top of the rows registered before it, so a press
+        /// on the thumb or the track reaches the controller through the router alone
+        /// (<see cref="ListScrollController.BeginScrollBarPress"/>). A decorative or absent bar, or a list that
+        /// fits, registers nothing: the rows beneath keep the press.
+        /// </summary>
+        private void RegisterScrollBar(ListScrollController scroll)
+        {
+            if (scroll.InteractiveScrollBarRect is { } bar)
+            {
+                RegisterClickable(bar.X, bar.Y, bar.Width, bar.Height, new HitResult.ChromeHit(),
+                    cursor: CursorKind.Default, onPress: scroll.BeginScrollBarPress);
             }
         }
 
