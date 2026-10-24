@@ -549,6 +549,50 @@ public sealed class ListScrollController
         }
     }
 
+    /// <summary>
+    /// Where the scrollbar column sits, in surface units, for a painter that registers it as a press region;
+    /// null when <see cref="Mode"/> is not <see cref="ScrollBarMode.Interactive"/> or there is nothing to
+    /// scroll. The same column <see cref="DrawScrollBar"/> fills, so what is drawn is what takes the press.
+    /// </summary>
+    public RectF32? InteractiveScrollBarRect
+    {
+        get
+        {
+            if (Mode != ScrollBarMode.Interactive || !HasScrollBar)
+            {
+                return null;
+            }
+
+            var width = ScrollBarWidthPx;
+            return Axis == ScrollAxis.Vertical
+                ? new RectF32(_viewport.Right - width, _viewport.Y, width, _viewport.Height)
+                : new RectF32(_viewport.X, _viewport.Bottom - width, _viewport.Width, width);
+        }
+    }
+
+    /// <summary>
+    /// The press half of <see cref="HandleInput"/> for a host that gets presses as a
+    /// <see cref="DragCapture"/> rather than as raw events (<see cref="ClickableRegion.OnPress"/>): a left
+    /// press on the bar column arms the thumb drag or pages the track, and the returned capture feeds the
+    /// moves and the release back to <see cref="HandleInput"/>, so the drag goes on past the bar's edge.
+    /// Null when the press is not a left press on the interactive bar, leaving it to whatever is beneath.
+    /// </summary>
+    public DragCapture? BeginScrollBarPress(PointerPress press)
+    {
+        if (press.Button != MouseButton.Left
+            || Mode != ScrollBarMode.Interactive
+            || MaxOffset <= 0f
+            || !PointInScrollBarColumn(press.X, press.Y)
+            || !HandleInput(new InputEvent.MouseDown(press.X, press.Y, press.Button, press.Modifiers, press.Clicks)))
+        {
+            return null;
+        }
+
+        return new DragCapture(
+            move => HandleInput(new InputEvent.MouseMove(move.X, move.Y, move.Button, move.Modifiers)),
+            release => HandleInput(new InputEvent.MouseUp(release.X, release.Y, press.Button, release.Modifiers)));
+    }
+
     private void ApplyScrollDelta(float delta)
     {
         var before = _offset;

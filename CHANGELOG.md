@@ -9,6 +9,19 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.36
+
+**A `WithScroll` stack's interactive scrollbar takes thumb drags and track clicks (#150).** `ListScrollController.HandleInput`
+always did the thumb drag and the track paging, but for a layout-declared scroll `InputRouter` forwarded only the wheel
+(through `ScrollTargetAt`), so a press on the bar, the moves and the release never reached the controller: the bar was drawn
+and dead, unless a widget forwarded input by hand. The painter now registers the bar's column as a press region over the
+rows (after them, so it wins the hit test) for a controller whose `Mode` is `ScrollBarMode.Interactive` and which overflows,
+and a press there returns a `DragCapture` that feeds the press, each move and the release to `HandleInput`: the thumb drags
+proportionally, goes on dragging past the bar's edge, and a click on the track pages by a viewport. `Decorative` and `None`
+register nothing, so the row under the bar keeps the press. Additive: `ListScrollController.InteractiveScrollBarRect` (the
+column, or null) and `BeginScrollBarPress(PointerPress)` (the press entry, null when it missed). Pinned by
+`LayoutScrollBarDragTests`.
+
 ## 11.35
 
 **A wheel notch over a scroll stack never moves more than a third of its viewport.** The layout engine states the
