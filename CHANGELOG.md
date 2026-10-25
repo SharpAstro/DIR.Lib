@@ -12,6 +12,7 @@ changed and why.
 ## 11.37
 
 SharpAstro.Fonts moves from 1.13 to 1.15, which brings SharpAstro.Png 3.23.
+SharpAstro.Fonts.Shaping moves with it, to 1.15, since the two always ship the same number.
 
 - **A colour-emoji glyph stored as a sub-byte PNG now draws.** Noto Color Emoji's U+1F6D1 is a 4-bit indexed PNG.
   The old SharpAstro.Png could not decode it, so `ManagedFontRasterizer.Render` had no colour bitmap and fell back to
