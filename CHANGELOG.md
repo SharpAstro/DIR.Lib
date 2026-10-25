@@ -9,6 +9,17 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.37
+
+SharpAstro.Fonts moves from 1.13 to 1.15, which brings SharpAstro.Png 3.23.
+
+- **A colour-emoji glyph stored as a sub-byte PNG now draws.** Noto Color Emoji's U+1F6D1 is a 4-bit indexed PNG.
+  The old SharpAstro.Png could not decode it, so `ManagedFontRasterizer.Render` had no colour bitmap and fell back to
+  the outline.
+- **A glyph with no outline draws as nothing, not an exception.** The outline render of a bitmap-only font (CBDT and
+  nothing else) threw `NotSupportedException`, which took down the whole frame (pilot's GUI on Linux, 2026-10-25).
+  SharpAstro.Fonts 1.15 renders it empty.
+
 ## 11.36
 
 **A `WithScroll` stack's interactive scrollbar takes thumb drags and track clicks (#150).** `ListScrollController.HandleInput`
