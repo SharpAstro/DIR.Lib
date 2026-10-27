@@ -178,7 +178,7 @@ public class TextEditorStateTests
     }
 
     [Fact]
-    public void ACustomCommitChord_CommitsOnThatChord_AndEnterWithOtherModifiersIsANewline()
+    public async Task ACustomCommitChord_CommitsOnThatChord_AndEnterWithOtherModifiersIsANewline()
     {
         var editor = new TextEditorState { CommitChord = new KeyChord(InputKey.Enter) };
         var harness = new Harness();
@@ -194,7 +194,7 @@ public class TextEditorStateTests
         var committed = false;
         editor.OnCommit = _ => { committed = true; return Task.CompletedTask; };
         harness.Key(InputKey.Enter);
-        harness.Tracker.DrainAsync().GetAwaiter().GetResult();
+        await harness.Tracker.DrainAsync();
         committed.ShouldBeTrue();
     }
 
