@@ -377,7 +377,13 @@ public class TextEditorState : TextInputState
     /// One typed grapheme coalesces with the typing around it into a single undo step; anything longer, a
     /// replaced selection or a line break is a step of its own.
     /// </remarks>
-    public override void InsertText(string input)
+    public override void InsertText(string input) => Insert(input, mayCoalesce: true);
+
+    /// <inheritdoc/>
+    /// <remarks>A paste is a step of its own even when it is one grapheme long: it never joins the typing around it.</remarks>
+    internal override void InsertPastedText(string input) => Insert(input, mayCoalesce: false);
+
+    private void Insert(string input, bool mayCoalesce)
     {
         if (string.IsNullOrEmpty(input))
         {
@@ -387,7 +393,7 @@ public class TextEditorState : TextInputState
         input = NormaliseLineBreaks(input);
         ClampToText();
 
-        var typed = !HasSelection && input != "\n" && input.Length <= 2 && IsOneGrapheme(input);
+        var typed = mayCoalesce && !HasSelection && input != "\n" && input.Length <= 2 && IsOneGrapheme(input);
         BeginEdit(typed ? EditKind.Typing : EditKind.Other);
         ReplaceSelection(input);
         EndEdit(typed ? EditKind.Typing : EditKind.Other);

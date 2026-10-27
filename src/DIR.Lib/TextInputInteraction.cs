@@ -143,7 +143,7 @@ public static class TextInputInteraction
             var clipboardText = ctx.GetClipboardText?.Invoke();
             if (!string.IsNullOrEmpty(clipboardText))
             {
-                activeInput.InsertText(clipboardText);
+                activeInput.InsertPastedText(clipboardText);
                 activeInput.OnTextChanged?.Invoke(activeInput.Text);
             }
             ctx.RequestRedraw();

@@ -326,7 +326,7 @@ public sealed class TextEditorLayout
 
         // One long word: after its last separator that fits. A break that leaves only separators on the row
         // ("/" of "/abcdefghij") would waste the row, so the leading run of separators is not a break point.
-        var firstWord = start;
+        var firstWord = firstInk;
         while (firstWord < fit && Array.IndexOf(Separators, Text[firstWord]) >= 0)
         {
             firstWord++;

@@ -129,6 +129,13 @@ public class TextEditorLayoutTests
     }
 
     [Fact]
+    public void Wrap_DoesNotBreakAfterAnIndentedLeadingSeparator()
+    {
+        // The indent is not ink, so the "/" after it is still a leading separator: "    /" alone would be a row of nothing.
+        Rows(Wrap("    /abcdefghij", 6)).ShouldBe(["    /a", "bcdefg", "hij"]);
+    }
+
+    [Fact]
     public void Wrap_PrefersASpaceToASeparator()
     {
         // The path as a whole fits a row, so it moves down in one piece rather than splitting at its first '/'.
