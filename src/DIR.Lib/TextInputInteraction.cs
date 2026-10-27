@@ -110,7 +110,7 @@ public static class TextInputInteraction
             return true;
         }
 
-        var textKey = key.ToTextInputKey(modifiers);
+        var textKey = KeyFor(activeInput, key, modifiers);
 
         // Tab cycling through the fields the surface painted.
         if (key == InputKey.Tab)
@@ -184,9 +184,13 @@ public static class TextInputInteraction
         // following, not a different motion. See TextInputState.HandleKey for which keys honour it.
         var extend = (modifiers & InputModifier.Shift) != 0;
 
+        var textBefore = activeInput.Text;
         if (textKey.HasValue && activeInput.HandleKey(textKey.Value, extend))
         {
-            if (textKey.Value is TextInputKey.Backspace or TextInputKey.Delete or TextInputKey.WordBackspace)
+            // The three delete keys always reported, even at the edge of the text where nothing was removed;
+            // a multi-line field also changes its text on Enter, undo and redo, so any change reports.
+            if (textKey.Value is TextInputKey.Backspace or TextInputKey.Delete or TextInputKey.WordBackspace
+                || !ReferenceEquals(activeInput.Text, textBefore))
             {
                 activeInput.OnTextChanged?.Invoke(activeInput.Text);
             }
@@ -274,6 +278,30 @@ public static class TextInputInteraction
     /// <param name="Focus">Who has the keyboard; the one way to move it.</param>
     /// <param name="RequestRedraw">Marks the surface dirty after the caret or selection moved.</param>
     public readonly record struct PointerContext(TextInputFocus Focus, Action RequestRedraw);
+
+    /// <summary>
+    /// The key <paramref name="field"/> is offered for a chord. A multi-line field gets the full mapping, with
+    /// its own <see cref="TextEditorState.CommitChord"/> deciding what commits. A single-line field is offered
+    /// what it always was: the keys a multi-line editor adds are not offered to it, and Ctrl+Enter and
+    /// Ctrl+Home/End read as the Enter, Home and End they were before those keys existed.
+    /// </summary>
+    private static TextInputKey? KeyFor(TextInputState field, InputKey key, InputModifier modifiers)
+    {
+        if (field is TextEditorState editor)
+        {
+            return editor.KeyFor(key, modifiers);
+        }
+
+        return key.ToTextInputKey(modifiers) switch
+        {
+            TextInputKey.Commit => TextInputKey.Enter,
+            TextInputKey.DocumentStart => TextInputKey.Home,
+            TextInputKey.DocumentEnd => TextInputKey.End,
+            TextInputKey.Up or TextInputKey.Down or TextInputKey.PageUp or TextInputKey.PageDown
+                or TextInputKey.Undo or TextInputKey.Redo => null,
+            var other => other
+        };
+    }
 
     /// <summary>Reference position of <paramref name="input"/>, since <c>IReadOnlyList</c> has no IndexOf.</summary>
     private static int IndexOf(IReadOnlyList<TextInputState> inputs, TextInputState input)
