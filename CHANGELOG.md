@@ -9,6 +9,40 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.38
+
+**A multi-line text editor beside the single-line field (#164).** Additive: nothing that takes a `TextInputState`
+changes, and `HitResult.TextInputHit` keeps its one constructor. Its consumers are pilot's Ideas pane
+(SharpAstro/pilot#381) and tianwen's notes fields, which had a one-line box or a hand-rolled one to choose between.
+
+- **`TextEditorState`** is a `TextInputState` subclass (so focus, Tab order, the clipboard and the commit/cancel/changed
+  callbacks apply unchanged): text with line breaks, caret and selection over grapheme clusters, logical-line motions,
+  Enter inserts a line break and `CommitChord` (Ctrl+Enter) commits, paste keeps line breaks, undo/redo. Soft wrap
+  (`TextEditorLayout`) breaks at word boundaries, then after `/ \ . - _ :`, and only then mid-word, so a long path wraps
+  at a segment instead of running off the box; Up/Down/Home/End/PageUp/PageDown follow the visual lines.
+- **`TextEditorRenderer.Render`** draws it on any `Renderer<TSurface>` (GPU and `RgbaImageRenderer` alike) in the colours of
+  `TextInputColors`: box, wrapped lines clipped to it, the selection across lines, the caret, the wrapped placeholder while
+  empty and unfocused, the IME preedit at the caret, and a thin scroll thumb while the text overflows. The padding is
+  `TextInputRenderer`'s, so an editor lines up with the field above it.
+- **`Builder.TextEditor(state, fontSize, minLines, maxLines, colors, widthSample, focusOnOpen)`** declares it in a tree.
+  The engine sizes the box to the wrapped line count within `MinLines`/`MaxLines` (which live on the state): it grows as
+  the reader types, then scrolls with the caret kept in view. An empty box measures its placeholder, so focusing it does
+  not move its bottom edge.
+- **Pointer.** `HitResult.TextEditorHit` (state + `TextEditorGeometry`, with the y a field never needed) is registered by
+  the painter, and `InputRouter` resolves a press through the wrapped layout and the scroll: click, shift-click, drag,
+  double-click (word) and triple-click (the logical line, `TextEditorState.SelectLineAt`; a field's still selects all).
+  Editors count in Tab cycling, `BlurIfUnpainted` and `FocusOnOpen`. The wheel over an overflowing editor scrolls it, and
+  over a box that fits it passes through to the pane behind.
+- **`TextInputKey`** gains, appended so no value moves: `Up`, `Down`, `PageUp`, `PageDown`, `DocumentStart`,
+  `DocumentEnd`, `Undo`, `Redo` and `Commit`. A single-line field is never offered them: its Ctrl+Enter and Ctrl+Home/End
+  read as the Enter, Home and End they were.
+- `LayoutDamage` gets a `ContentShape.TextEditor` signature carrying text, caret, selection, focus and scroll.
+- Not yet on Console.Lib's cell painter: a `Builder.TextEditor` leaf measures there but paints nothing until that
+  surface learns it.
+
+Baselines for the paint (`text_editor_{empty,selection,scrolled}_{light,dark}_{200,600}.png`) pin it at a narrow and a wide
+width in both palettes.
+
 ## 11.37
 
 SharpAstro.Fonts moves from 1.13 to 1.15, which brings SharpAstro.Png 3.23.

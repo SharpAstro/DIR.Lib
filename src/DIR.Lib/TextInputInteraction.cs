@@ -259,6 +259,10 @@ public static class TextInputInteraction
 
         switch (clicks)
         {
+            case >= 3 when field is TextEditorState editor:
+                // A box of lines selects the line a third click is on; everything is Ctrl+A.
+                editor.SelectLineAt(caretIndex);
+                break;
             case >= 3:
                 field.SelectAll();
                 break;
