@@ -1082,4 +1082,146 @@ public class InputRouterTests
 
         harness.UnhandledEvents.Count.ShouldBe(2);
     }
+
+    // ---- TextEditor ---------------------------------------------------------------------------
+
+    private const string Prose = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho";
+
+    private static Layout.Node Editor(TextEditorState state, bool focusOnOpen = false)
+        => Layout.Builder.TextEditor(state, 14f, focusOnOpen: focusOnOpen).Stretch();
+
+    /// <summary>The point on visual line <paramref name="line"/>, <paramref name="chars"/> characters in, in the stub's 7px-per-character metrics.</summary>
+    private static (float X, float Y) OnLine(TextEditorState state, int line, int chars)
+    {
+        var layout = state.VisualLayout!;
+        var x = TextEditorRenderer.TextOriginX(0, 14f) + chars * 7f;
+        var y = TextEditorRenderer.TextOriginY(0, 14f) + (line + 0.5f) * layout.LineHeight;
+        return (x, y);
+    }
+
+    /// <summary>
+    /// A click on a WRAPPED line has to land on that line's characters: the y is what picks the row, and a router
+    /// that only knew the single-line hit put every caret on the first one.
+    /// </summary>
+    [Fact]
+    public void APressOnAWrappedLineOfAnEditorPlacesTheCaretOnThatLine()
+    {
+        var harness = new Harness();
+        var state = new TextEditorState { Text = Prose };
+        harness.Paint(front: Editor(state));
+        state.VisualLayout!.LineCount.ShouldBeGreaterThan(2, "the prose has to wrap for this to mean anything");
+
+        var (x, y) = OnLine(state, 1, 3);
+        harness.Press(x, y).ShouldBeTrue();
+
+        harness.Focus.Current.ShouldBeSameAs(state);
+        state.CursorPos.ShouldBe(state.VisualLayout!.Lines[1].Start + 3);
+        state.HasSelection.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AShiftPressOnALaterWrappedLineExtendsTheSelectionFromTheCaret()
+    {
+        var harness = new Harness();
+        var state = new TextEditorState { Text = Prose };
+        harness.Paint(front: Editor(state));
+
+        var (x1, y1) = OnLine(state, 0, 4);
+        harness.Press(x1, y1);
+        var anchor = state.CursorPos;
+        anchor.ShouldBe(4);
+
+        var (x2, y2) = OnLine(state, 2, 5);
+        harness.Press(x2, y2, mods: InputModifier.Shift);
+
+        state.SelectionAnchor.ShouldBe(anchor);
+        state.CursorPos.ShouldBe(state.VisualLayout!.Lines[2].Start + 5);
+        state.HasSelection.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ADragAcrossWrappedLinesSelectsEveryCharacterItCrossed()
+    {
+        var harness = new Harness();
+        var state = new TextEditorState { Text = Prose };
+        harness.Paint(front: Editor(state));
+
+        var (x1, y1) = OnLine(state, 0, 2);
+        var (x2, y2) = OnLine(state, 1, 6);
+        harness.Press(x1, y1);
+        harness.Move(x2, y2, MouseButton.Left);
+        harness.Release(x2, y2);
+
+        state.SelectionAnchor.ShouldBe(2);
+        state.CursorPos.ShouldBe(state.VisualLayout!.Lines[1].Start + 6);
+    }
+
+    [Fact]
+    public void ADoubleAndATripleClickSelectTheWordAndTheLineOfAnEditor()
+    {
+        var harness = new Harness();
+        var state = new TextEditorState { Text = "one two three\nsecond line" };
+        harness.Paint(front: Editor(state));
+
+        var (x, y) = OnLine(state, 0, 5);
+        harness.Press(x, y, clicks: 2);
+        state.Text.Substring(state.SelectionStart, state.SelectionEnd - state.SelectionStart).ShouldBe("two");
+
+        harness.Release(x, y);
+        harness.Press(x, y, clicks: 3);
+        state.Text.Substring(state.SelectionStart, state.SelectionEnd - state.SelectionStart).ShouldBe("one two three",
+            "the third click takes the line, not the whole text");
+    }
+
+    [Fact]
+    public void AnEditorIsAFieldForTabAndForBlurIfUnpainted()
+    {
+        var harness = new Harness();
+        var single = new TextInputState();
+        var editor = new TextEditorState();
+        harness.Paint(
+            front: Layout.Builder.VStack(
+                Layout.Builder.TextInput(single, 14f).RowH(24f),
+                Editor(editor)).Stretch());
+
+        harness.Front.GetRegisteredTextInputs().ShouldBe([single, editor]);
+
+        harness.Focus.Focus(editor);
+        harness.Router.AfterPaint();
+        harness.Focus.Current.ShouldBeSameAs(editor, "an editor that is painted keeps the keyboard");
+
+        harness.Paint(front: Layout.Builder.Spacer());
+        harness.Router.AfterPaint();
+        harness.Focus.Current.ShouldBeNull("one that stopped being painted loses it, as a field does");
+    }
+
+    [Fact]
+    public void AnEditorThatAskedForTheKeyboardOnOpenGetsItOnce()
+    {
+        var harness = new Harness();
+        var editor = new TextEditorState();
+        harness.Paint(front: Editor(editor, focusOnOpen: true));
+        harness.Router.AfterPaint();
+
+        harness.Focus.Current.ShouldBeSameAs(editor);
+    }
+
+    [Fact]
+    public void TheWheelOverAnOverflowingEditorScrollsItAndAFittingOneLeavesTheWheelBehind()
+    {
+        var harness = new Harness();
+        var long_ = new TextEditorState { Text = string.Join(' ', Enumerable.Repeat("lorem ipsum dolor", 80)) };
+        harness.Paint(front: Editor(long_));
+        long_.ScrollOffsetY.ShouldBe(0f);
+
+        harness.Router.Handle(new InputEvent.Scroll(-1f, 50f, 50f)).ShouldBeTrue();
+        long_.ScrollOffsetY.ShouldBeGreaterThan(0f);
+
+        var short_ = new TextEditorState { Text = "one line" };
+        harness.Paint(front: Editor(short_));
+        harness.UnhandledConsumes = false;
+        harness.Router.Handle(new InputEvent.Scroll(-1f, 50f, 50f));
+        harness.UnhandledEvents.OfType<InputEvent.Scroll>().ShouldHaveSingleItem("a box that fits has nothing to scroll");
+        short_.ScrollOffsetY.ShouldBe(0f);
+    }
 }

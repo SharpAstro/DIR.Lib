@@ -1025,8 +1025,12 @@ public static class Engine
         var state = editor.State;
         var fontSize = editor.FontSize;
         var sample = ctx.MeasureText((editor.WidthSample ?? state.Placeholder).AsSpan(), fontSize);
-        var insetX = ctx.ToSurfaceX(TextEditorRenderer.HorizontalPadding(fontSize) * 2f);
-        var insetY = ctx.ToSurfaceY(TextEditorRenderer.VerticalPadding(fontSize) * 2f);
+        // The paint insets by WHOLE pixels (the paddings are truncated there), so the measure truncates the same
+        // way: a fractional inset here wraps to a width the paint does not have, and the box comes out a line off.
+        var insetX = ctx.ToSurfaceX(TextEditorRenderer.HorizontalPadding(fontSize));
+        var insetY = ctx.ToSurfaceY(TextEditorRenderer.VerticalPadding(fontSize));
+        insetX = T.CreateChecked(MathF.Floor(float.CreateChecked(insetX))) * T.CreateChecked(2);
+        insetY = T.CreateChecked(MathF.Floor(float.CreateChecked(insetY))) * T.CreateChecked(2);
 
         // One line is what the context says a line is tall; every line of the box is that tall.
         var line = ctx.MeasureText("Ag".AsSpan(), fontSize).Height;
@@ -1043,7 +1047,10 @@ public static class Engine
                 .VisibleLines(state.MinLines, state.MaxLines);
         }
 
-        return new Size<T>(sample.Width + insetX, T.CreateChecked(lines) * line + insetY);
+        // Whole pixels tall, rounded up, so the paint's text area (the box less its integer paddings) holds every
+        // line the measure counted instead of coming up a fraction short and growing a scroll thumb.
+        var height = float.CreateChecked(T.CreateChecked(lines) * line + insetY);
+        return new Size<T>(sample.Width + insetX, T.CreateChecked(MathF.Ceiling(height)));
     }
 
     private static Size<T> MeasureStack<T>(Node.Stack stack, Size<T> available, IMeasureContext<T> ctx)

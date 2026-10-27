@@ -263,6 +263,22 @@ public class TextEditorState : TextInputState
     /// </summary>
     public void SetCaret(int line, int column, bool extend = false) => MoveCaretTo(IndexOf(line, column), extend);
 
+    /// <summary>
+    /// Selects the whole logical line <paramref name="index"/> is on, without its line break: what a triple
+    /// click means in a box of lines, where selecting everything would be a Ctrl+A with extra steps.
+    /// </summary>
+    public void SelectLineAt(int index)
+    {
+        ClampToText();
+        var start = LineStartIndex(LineOf(Math.Clamp(index, 0, Text.Length)));
+        SelectionAnchor = start;
+        CursorPos = LineEndIndex(start);
+        _preferredColumn = -1;
+        _preferredX = -1f;
+        EndRun();
+        KeepCaretInView();
+    }
+
     /// <summary>The text of the logical line <paramref name="line"/>, without its line break.</summary>
     public string GetLine(int line)
     {

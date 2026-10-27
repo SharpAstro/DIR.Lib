@@ -705,7 +705,7 @@ namespace DIR.Lib
             // so the content it is told about carries the two paddings: its furthest offset is then the text's.
             var vp = (int)TextEditorRenderer.VerticalPadding(fontSize);
             ListScrollController? wheel = null;
-            if (state.VisualLayout is { } layout && layout.ContentHeight > height - vp * 2)
+            if (state.VisualLayout is { } layout && layout.ContentHeight > height - vp * 2 + 1f)
             {
                 wheel = state.BindWheel(new RectF32(x, y, width, height), layout.ContentHeight + vp * 2, lineHeight, scale);
             }

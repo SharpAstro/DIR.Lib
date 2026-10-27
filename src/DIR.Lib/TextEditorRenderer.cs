@@ -253,7 +253,7 @@ public static class TextEditorRenderer
         // A box that holds more than it shows says so: a thumb on its right edge, where the padding is. Without
         // one a max-height box simply ends mid-sentence and nothing says the rest is there.
         var content = (int)MathF.Round(drawn.ContentHeight);
-        if (!placeholder && content > viewH && hp >= ThumbWidthPx + 2)
+        if (!placeholder && content > viewH + 1 && hp >= ThumbWidthPx + 2)
         {
             var thumbH = Math.Clamp(viewH * viewH / content, Math.Min(viewH, 12), viewH);
             var maxScroll = Math.Max(1, content - viewH);
