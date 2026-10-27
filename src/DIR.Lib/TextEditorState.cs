@@ -29,8 +29,11 @@ namespace DIR.Lib;
 /// holds <c>'\n'</c> only: <see cref="InsertText"/> turns CRLF and a lone CR into it.
 /// </para>
 /// <para>
-/// <b>Lines here are logical lines</b>, the runs between <c>'\n'</c>. Home, End, Up and Down follow them;
-/// the layout that wraps a line into visual lines is the renderer's, and moves the caret by those.
+/// <b>Lines are logical until a layout is set.</b> <see cref="LineCount"/>, <see cref="Line"/> and
+/// <see cref="Column"/> always count the runs between <c>'\n'</c>. Home, End, Up, Down, PageUp and PageDown
+/// follow them too, until the paint hands over a <see cref="TextEditorLayout"/> (<see cref="SetLayout"/>);
+/// from then on they follow its visual lines, with an x that Up and Down keep, and <see cref="ScrollOffsetY"/>
+/// is kept so the caret's line is in view.
 /// </para>
 /// </remarks>
 public class TextEditorState : TextInputState
@@ -53,6 +56,11 @@ public class TextEditorState : TextInputState
     // The column Up and Down keep while they cross shorter lines; -1 when no vertical run is in progress.
     private int _preferredColumn = -1;
 
+    // The same, as an x in the visual layout, which is what wrapped lines keep.
+    private float _preferredX = -1f;
+
+    private TextEditorLayout? _layout;
+
     /// <inheritdoc/>
     public override bool IsMultiLine => true;
 
@@ -65,10 +73,79 @@ public class TextEditorState : TextInputState
     public KeyChord CommitChord { get; set; } = new(InputKey.Enter, InputModifier.Ctrl);
 
     /// <summary>
-    /// How many lines PageUp and PageDown move. The editor has no viewport of its own; the layout that does
-    /// sets this to the visible line count.
+    /// How many lines PageUp and PageDown move while the box is not bounded (<see cref="MaxLines"/>) or has
+    /// no layout yet; once it has both, they move the box's <see cref="VisibleLines"/>.
     /// </summary>
     public int PageLines { get; set; } = 10;
+
+    /// <summary>The fewest lines the box shows, however little text there is. At least 1.</summary>
+    public int MinLines { get; set; } = 1;
+
+    /// <summary>
+    /// The most lines the box shows. The box grows with its content up to this and then scrolls
+    /// (<see cref="ScrollOffsetY"/>); unbounded by default, so the box never scrolls.
+    /// </summary>
+    public int MaxLines { get; set; } = int.MaxValue;
+
+    /// <summary>
+    /// How far the content is slid up in the box, in layout units, so the caret's line stays in view. Kept by
+    /// the state after every edit and motion; zero until a layout is set and while the text fits.
+    /// </summary>
+    public float ScrollOffsetY { get; internal set; }
+
+    /// <summary>
+    /// The wrapped layout the paint last built, or null before there is one; every vertical motion and the
+    /// scroll follow it, and fall back to logical lines without it. Always of the current text: one built for
+    /// older text is re-wrapped with the same width and measure on the way out.
+    /// </summary>
+    public TextEditorLayout? VisualLayout
+    {
+        get
+        {
+            if (_layout is not null && !string.Equals(_layout.Text, Text, StringComparison.Ordinal))
+            {
+                _layout = _layout.WithText(Text);
+            }
+
+            return _layout;
+        }
+    }
+
+    /// <summary>The lines the box shows now: its content's, within <see cref="MinLines"/> and <see cref="MaxLines"/>.</summary>
+    public int VisibleLines => VisualLayout?.VisibleLines(MinLines, MaxLines) ?? Math.Max(1, Math.Min(LineCount, MaxLines));
+
+    /// <summary>The box's height in layout units, or zero before a layout is set.</summary>
+    public float ViewportHeight => VisualLayout?.ViewportHeight(MinLines, MaxLines) ?? 0f;
+
+    /// <summary>
+    /// Hands the state the layout the paint just built. A new width or text brings the caret back into view;
+    /// the same layout again only holds the scroll inside its range, so a scroll the host moved is not undone
+    /// by the next frame.
+    /// </summary>
+    public void SetLayout(TextEditorLayout? layout)
+    {
+        var changed = layout is null || _layout is null || layout.Width != _layout.Width
+            || !string.Equals(layout.Text, _layout.Text, StringComparison.Ordinal);
+        _layout = layout;
+        if (layout is null)
+        {
+            ScrollOffsetY = 0f;
+        }
+        else if (changed)
+        {
+            KeepCaretInView();
+        }
+        else
+        {
+            ScrollOffsetY = Math.Clamp(ScrollOffsetY, 0f, layout.MaxScroll(ViewportHeight));
+        }
+    }
+
+    /// <summary>
+    /// The caret index under a point in the box (its top-left is the origin), the scroll added. Null before a
+    /// layout is set, when the host has only the single-line hit test to ask.
+    /// </summary>
+    public int? CaretIndexAt(float x, float y) => VisualLayout?.CaretIndexAt(x, y + ScrollOffsetY);
 
     /// <summary>Whether <see cref="Undo"/> has a step to take.</summary>
     public bool CanUndo => _undo.Count > 0;
@@ -142,7 +219,9 @@ public class TextEditorState : TextInputState
         base.MoveCaretTo(index, extend);
         CursorPos = SnapToBoundary(CursorPos, -1);
         _preferredColumn = -1;
+        _preferredX = -1f;
         EndRun();
+        KeepCaretInView();
     }
 
     /// <inheritdoc/>
@@ -167,6 +246,7 @@ public class TextEditorState : TextInputState
         EndEdit(typed ? EditKind.Typing : EditKind.Other);
         IsCommitted = false;
         IsCancelled = false;
+        KeepCaretInView();
     }
 
     /// <summary>
@@ -241,11 +321,11 @@ public class TextEditorState : TextInputState
                 break;
 
             case TextInputKey.Home:
-                Move(LineStartIndex(Line), extend);
+                Move(VisualLayout?.Home(CursorPos) ?? LineStartIndex(Line), extend);
                 break;
 
             case TextInputKey.End:
-                Move(LineEndIndex(LineStartIndex(Line)), extend);
+                Move(VisualLayout?.End(CursorPos) ?? LineEndIndex(LineStartIndex(Line)), extend);
                 break;
 
             case TextInputKey.DocumentStart:
@@ -268,12 +348,12 @@ public class TextEditorState : TextInputState
 
             case TextInputKey.PageUp:
                 vertical = true;
-                MoveLines(-Math.Max(1, PageLines), extend);
+                MoveLines(-PageStep, extend);
                 break;
 
             case TextInputKey.PageDown:
                 vertical = true;
-                MoveLines(Math.Max(1, PageLines), extend);
+                MoveLines(PageStep, extend);
                 break;
 
             case TextInputKey.Undo:
@@ -313,8 +393,10 @@ public class TextEditorState : TextInputState
         if (!vertical)
         {
             _preferredColumn = -1;
+            _preferredX = -1f;
         }
 
+        KeepCaretInView();
         return handled;
     }
 
@@ -331,6 +413,7 @@ public class TextEditorState : TextInputState
         _redo.Add(Capture());
         Restore(_undo[^1]);
         _undo.RemoveAt(_undo.Count - 1);
+        KeepCaretInView();
         return true;
     }
 
@@ -345,6 +428,7 @@ public class TextEditorState : TextInputState
         _undo.Add(Capture());
         Restore(_redo[^1]);
         _redo.RemoveAt(_redo.Count - 1);
+        KeepCaretInView();
         return true;
     }
 
@@ -356,6 +440,7 @@ public class TextEditorState : TextInputState
         _undo.Clear();
         _redo.Clear();
         EndRun();
+        ScrollOffsetY = 0f;
     }
 
     /// <summary>
@@ -547,8 +632,36 @@ public class TextEditorState : TextInputState
         EndRun();
     }
 
+    /// <summary>How far PageUp and PageDown move: the box's lines once it is bounded, else <see cref="PageLines"/>.</summary>
+    private int PageStep => Math.Max(1, MaxLines < int.MaxValue && VisualLayout is not null ? VisibleLines : PageLines);
+
+    /// <summary>Scrolls the least that shows the caret's visual line, and holds the offset inside the content.</summary>
+    private void KeepCaretInView()
+    {
+        if (VisualLayout is not { } layout)
+        {
+            return;
+        }
+
+        var caret = Math.Clamp(CursorPos, 0, Text.Length);
+        ScrollOffsetY = layout.RevealLine(layout.LineOf(caret), ScrollOffsetY, layout.ViewportHeight(MinLines, MaxLines));
+    }
+
     private void MoveLines(int delta, bool extend)
     {
+        if (VisualLayout is { } layout)
+        {
+            // Wrapped lines keep an x, not a column: the characters differ in width, so the same column on the
+            // next row is not the same place under the caret.
+            if (_preferredX < 0f)
+            {
+                _preferredX = layout.XOf(CursorPos);
+            }
+
+            Move(layout.MoveVertically(CursorPos, delta, _preferredX), extend);
+            return;
+        }
+
         var line = Line;
         if (_preferredColumn < 0)
         {
