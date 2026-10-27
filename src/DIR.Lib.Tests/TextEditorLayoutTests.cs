@@ -122,6 +122,13 @@ public class TextEditorLayoutTests
     }
 
     [Fact]
+    public void Wrap_DoesNotBreakAfterALeadingSeparator_WhichWouldWasteARow()
+    {
+        Rows(Wrap("/abcdefghij", 6)).ShouldBe(["/abcde", "fghij"]);
+        Rows(Wrap("//abcdefghij", 6)).ShouldBe(["//abcd", "efghij"]);
+    }
+
+    [Fact]
     public void Wrap_PrefersASpaceToASeparator()
     {
         // The path as a whole fits a row, so it moves down in one piece rather than splitting at its first '/'.
@@ -517,6 +524,30 @@ public class TextEditorLayoutTests
 
         editor.SetLayout(Wrap(TenRows, 19));            // the box was resized
         editor.ScrollOffsetY.ShouldBe(0f);
+    }
+
+    [Fact]
+    public void Scroll_AFontSizeChange_BringsTheCaretBackIntoView()
+    {
+        var editor = Editor(TenRows, 20, maxLines: 3);   // caret at the end, so scrolled to the last rows
+        editor.ScrollOffsetY = 0f;                       // a host scrolled away from the caret
+
+        editor.SetLayout(new TextEditorLayout(TenRows, 20, OneUnitEach, LineHeight * 2f));
+
+        editor.ScrollOffsetY.ShouldBeGreaterThan(0f);
+    }
+
+    [Fact]
+    public void InsertText_ResetsTheStickyX_OfAWrappedLayout()
+    {
+        // Down from column 6 into the short line remembers x = 6; typing there must forget it.
+        var editor = Editor("abcdefgh\nab\nabcdefgh", 20, caret: 6);
+
+        editor.HandleKey(TextInputKey.Down);
+        editor.InsertText("x");
+        editor.HandleKey(TextInputKey.Down);
+
+        editor.CursorPos.ShouldBe("abcdefgh\nabx\n".Length + 3);
     }
 
     [Fact]

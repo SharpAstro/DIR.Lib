@@ -324,8 +324,15 @@ public sealed class TextEditorLayout
             }
         }
 
-        // One long word: after its last separator that fits.
-        for (var j = fit; j > start; j--)
+        // One long word: after its last separator that fits. A break that leaves only separators on the row
+        // ("/" of "/abcdefghij") would waste the row, so the leading run of separators is not a break point.
+        var firstWord = start;
+        while (firstWord < fit && Array.IndexOf(Separators, Text[firstWord]) >= 0)
+        {
+            firstWord++;
+        }
+
+        for (var j = fit; j > firstWord; j--)
         {
             if (Array.IndexOf(Separators, Text[j - 1]) >= 0 && IsBoundary(j))
             {
