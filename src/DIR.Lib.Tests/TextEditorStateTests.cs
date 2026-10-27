@@ -408,24 +408,29 @@ public class TextEditorStateTests
     }
 
     [Theory]
-    [InlineData(TextInputKey.Left)]
-    [InlineData(TextInputKey.Right)]
-    [InlineData(TextInputKey.Home)]
-    [InlineData(TextInputKey.End)]
-    [InlineData(TextInputKey.WordLeft)]
-    [InlineData(TextInputKey.WordRight)]
-    [InlineData(TextInputKey.DocumentStart)]
-    [InlineData(TextInputKey.DocumentEnd)]
-    [InlineData(TextInputKey.PageUp)]
-    [InlineData(TextInputKey.PageDown)]
-    public void ShiftExtendsTheSelection_ForEveryMotion(TextInputKey key)
+    // Lines "one two" 0..7, "three four" 8..18, "five" 19..23; the caret starts at 10, two columns into "three".
+    [InlineData(TextInputKey.Left, 9)]
+    [InlineData(TextInputKey.Right, 11)]
+    [InlineData(TextInputKey.Home, 8)]
+    [InlineData(TextInputKey.End, 18)]
+    [InlineData(TextInputKey.WordLeft, 8)]
+    [InlineData(TextInputKey.WordRight, 14)]
+    [InlineData(TextInputKey.DocumentStart, 0)]
+    [InlineData(TextInputKey.DocumentEnd, 23)]
+    [InlineData(TextInputKey.PageUp, 2)]
+    [InlineData(TextInputKey.PageDown, 21)]
+    [InlineData(TextInputKey.Up, 2)]
+    [InlineData(TextInputKey.Down, 21)]
+    public void ShiftExtendsTheSelection_ForEveryMotion(TextInputKey key, int expectedCaret)
     {
         var editor = Editor("one two\nthree four\nfive", 10);
+        editor.PageLines = 1;
 
         editor.HandleKey(key, extend: true);
 
         editor.SelectionAnchor.ShouldBe(10);
-        editor.HasSelection.ShouldBe(editor.CursorPos != 10);
+        editor.CursorPos.ShouldBe(expectedCaret);
+        editor.HasSelection.ShouldBeTrue();
     }
 
     [Fact]
@@ -828,6 +833,69 @@ public class TextEditorStateTests
 
         harness.Key(InputKey.Z, InputModifier.Ctrl);
         editor.Text.ShouldBe("ab\ncd");
+    }
+
+    [Fact]
+    public void APaste_OfOneGrapheme_DoesNotJoinTheTypingBeforeIt()
+    {
+        var editor = new TextEditorState();
+        var harness = new Harness { Clipboard = "b" };
+        harness.Focus.Focus(editor);
+
+        TextInputInteraction.HandleText(editor, "a");
+        harness.Key(InputKey.V, InputModifier.Ctrl);
+        editor.Text.ShouldBe("ab");
+
+        editor.Undo().ShouldBeTrue();
+        editor.Text.ShouldBe("a");
+    }
+
+    [Fact]
+    public void TypingAfterAPaste_IsAStepOfItsOwn()
+    {
+        var editor = new TextEditorState();
+        var harness = new Harness { Clipboard = "b" };
+        harness.Focus.Focus(editor);
+
+        harness.Key(InputKey.V, InputModifier.Ctrl);
+        TextInputInteraction.HandleText(editor, "c");
+
+        editor.Undo();
+        editor.Text.ShouldBe("b");
+    }
+
+    // ---- Keys and clicks through the interaction ----
+
+    [Fact]
+    public void TripleClick_ThroughThePointerPath_SelectsTheLogicalLineWithoutItsBreak()
+    {
+        var editor = Editor("ab cd\nef gh\nij", 0);
+        var focus = new TextInputFocus();
+
+        TextInputInteraction.HandlePointer(editor, 8, 3, extend: false, new TextInputInteraction.PointerContext(focus, () => { }));
+
+        Selected(editor).ShouldBe("ef gh");
+        editor.SelectionStart.ShouldBe(6);
+        editor.SelectionEnd.ShouldBe(11);
+        focus.Current.ShouldBeSameAs(editor);
+    }
+
+    [Fact]
+    public void DownAndCtrlHome_ThroughTheInteraction_MoveTheCaretByLine()
+    {
+        var editor = Editor("ab\ncd\nef", 1);
+        var harness = new Harness();
+        harness.Focus.Focus(editor);
+
+        harness.Key(InputKey.Down).ShouldBeTrue();
+        editor.CursorPos.ShouldBe(4);
+
+        harness.Key(InputKey.Down).ShouldBeTrue();
+        editor.CursorPos.ShouldBe(7);
+
+        harness.Key(InputKey.Home, InputModifier.Ctrl).ShouldBeTrue();
+        editor.CursorPos.ShouldBe(0);
+        editor.HasSelection.ShouldBeFalse();
     }
 
     // ---- Undo and redo ----

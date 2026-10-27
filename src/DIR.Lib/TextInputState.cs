@@ -149,6 +149,12 @@ public class TextInputState
     }
 
     /// <summary>
+    /// Inserts text that came from the clipboard. The same as <see cref="InsertText"/> for a single-line field;
+    /// a field that coalesces typing into undo steps overrides it so a paste never joins the typing around it.
+    /// </summary>
+    internal virtual void InsertPastedText(string input) => InsertText(input);
+
+    /// <summary>
     /// Handles a key press. Returns true if the key was consumed.
     /// </summary>
     /// <param name="extend">
