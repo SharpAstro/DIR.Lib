@@ -23,9 +23,9 @@ public class TextInputState
 
     /// <summary>
     /// Whether Enter inserts a line break here instead of committing. False for this class, true for
-    /// <see cref="TextEditorState"/>; <see cref="TextInputInteraction.HandleKey"/> reads it to decide which
-    /// of the keys a multi-line editor adds (arrows up and down, Page keys, undo, the commit chord) reach
-    /// the field, so a single-line field sees exactly the keys it always did.
+    /// <see cref="TextEditorState"/>. A host that draws or sizes a field differently for a box of lines asks
+    /// this rather than testing for the subclass; <see cref="TextInputInteraction"/> itself dispatches on the
+    /// type, since it needs the editor's own key mapping and word selection, not just the answer.
     /// </summary>
     public virtual bool IsMultiLine => false;
 
@@ -390,7 +390,7 @@ public class TextInputState
     /// <summary>
     /// Selects the word at the given character position.
     /// </summary>
-    public void SelectWordAt(int position)
+    public virtual void SelectWordAt(int position)
     {
         if (Text.Length == 0)
         {

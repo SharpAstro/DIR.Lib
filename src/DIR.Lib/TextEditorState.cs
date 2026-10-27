@@ -52,6 +52,7 @@ public class TextEditorState : TextInputState
     // only while nothing else -- a motion, a click, a host assigning Text -- has happened in between.
     private EditKind _lastEdit = EditKind.None;
     private string _textAfterLastEdit = "";
+    private int _caretAfterLastEdit = -1;
 
     // The column Up and Down keep while they cross shorter lines; -1 when no vertical run is in progress.
     private int _preferredColumn = -1;
@@ -187,6 +188,7 @@ public class TextEditorState : TextInputState
     public void SetLayout(TextEditorLayout? layout)
     {
         var changed = layout is null || _layout is null || layout.Width != _layout.Width
+            || layout.LineHeight != _layout.LineHeight
             || !string.Equals(layout.Text, _layout.Text, StringComparison.Ordinal);
         _layout = layout;
         if (layout is null)
@@ -279,6 +281,73 @@ public class TextEditorState : TextInputState
         KeepCaretInView();
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// What a double click means in a box of lines. The word is found in whole grapheme clusters, so an emoji
+    /// is selected whole and a letter keeps its combining mark, and a line break is never part of it: a click
+    /// past the end of a line selects the last cluster on it, and a click on an empty line selects nothing and
+    /// only places the caret, so typing over the selection cannot join two lines.
+    /// </remarks>
+    public override void SelectWordAt(int position)
+    {
+        ClampToText();
+        if (Text.Length == 0)
+        {
+            return;
+        }
+
+        if (IsMasked)
+        {
+            SelectAll();
+            return;
+        }
+
+        position = Math.Clamp(position, 0, Text.Length);
+        var atLineEnd = position == Text.Length || IsBreak(Text[position]);
+        if (atLineEnd && (position == 0 || IsBreak(Text[position - 1])))
+        {
+            // An empty line: there is no word to take, and the break must not be selected.
+            MoveCaretTo(position);
+            return;
+        }
+
+        var start = atLineEnd ? PreviousBoundary(position) : SnapToBoundary(position, -1);
+        var end = NextBoundary(start);
+        if (IsWordAt(start))
+        {
+            while (start > 0 && !IsBreak(Text[start - 1]))
+            {
+                var before = PreviousBoundary(start);
+                if (!IsWordAt(before))
+                {
+                    break;
+                }
+
+                start = before;
+            }
+
+            while (end < Text.Length && IsWordAt(end))
+            {
+                end = NextBoundary(end);
+            }
+        }
+
+        SelectionAnchor = start;
+        CursorPos = end;
+        _preferredColumn = -1;
+        _preferredX = -1f;
+        EndRun();
+        KeepCaretInView();
+    }
+
+    private static bool IsBreak(char c) => c is '\n' or '\r';
+
+    /// <summary>Whether the cluster starting at <paramref name="index"/> is a word's: its first code point is a letter, digit, <c>_</c>, <c>-</c> or a mark.</summary>
+    private bool IsWordAt(int index)
+        => char.IsLetterOrDigit(Text, index) || Text[index] is '_' or '-'
+            || CharUnicodeInfo.GetUnicodeCategory(Text, index)
+                is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.EnclosingMark;
+
     /// <summary>The text of the logical line <paramref name="line"/>, without its line break.</summary>
     public string GetLine(int line)
     {
@@ -324,12 +393,17 @@ public class TextEditorState : TextInputState
         EndEdit(typed ? EditKind.Typing : EditKind.Other);
         IsCommitted = false;
         IsCancelled = false;
+        _preferredColumn = -1;
+        _preferredX = -1f;
         KeepCaretInView();
     }
 
     /// <summary>
     /// What a chord means to this editor: <see cref="TextInputKey.Commit"/> for <see cref="CommitChord"/>
-    /// exactly, otherwise the shared mapping, in which Ctrl+Enter that is not the chord is only an Enter.
+    /// exactly; the keys only a box of lines has (Up, Down, the Page keys, Ctrl+Home/End, undo and redo); and
+    /// otherwise the single-line mapping, in which Ctrl+Enter that is not the chord is only an Enter. Kept
+    /// here rather than in <see cref="InputKeyExtensions.ToTextInputKey"/> so a single-line field's mapping
+    /// does not change under hosts that call that directly.
     /// </summary>
     internal TextInputKey? KeyFor(InputKey key, InputModifier modifiers)
     {
@@ -338,7 +412,21 @@ public class TextEditorState : TextInputState
             return TextInputKey.Commit;
         }
 
-        return key.ToTextInputKey(modifiers) is TextInputKey.Commit ? TextInputKey.Enter : key.ToTextInputKey(modifiers);
+        var ctrl = (modifiers & InputModifier.Ctrl) != 0;
+        var shift = (modifiers & InputModifier.Shift) != 0;
+        return key switch
+        {
+            InputKey.Z when ctrl && shift => TextInputKey.Redo,
+            InputKey.Z when ctrl => TextInputKey.Undo,
+            InputKey.Y when ctrl => TextInputKey.Redo,
+            InputKey.Home when ctrl => TextInputKey.DocumentStart,
+            InputKey.End when ctrl => TextInputKey.DocumentEnd,
+            InputKey.Up => TextInputKey.Up,
+            InputKey.Down => TextInputKey.Down,
+            InputKey.PageUp => TextInputKey.PageUp,
+            InputKey.PageDown => TextInputKey.PageDown,
+            _ => key.ToTextInputKey(modifiers)
+        };
     }
 
     /// <inheritdoc/>
@@ -443,11 +531,13 @@ public class TextEditorState : TextInputState
                 break;
 
             case TextInputKey.Commit:
+                EndRun();
                 SelectionAnchor = -1;
                 IsCommitted = true;
                 break;
 
             case TextInputKey.Escape:
+                EndRun();
                 SelectionAnchor = -1;
                 IsCancelled = true;
                 break;
@@ -830,7 +920,7 @@ public class TextEditorState : TextInputState
     private void BeginEdit(EditKind kind)
     {
         var continues = kind != EditKind.Other && kind == _lastEdit
-            && ReferenceEquals(Text, _textAfterLastEdit) && !HasSelection;
+            && ReferenceEquals(Text, _textAfterLastEdit) && CursorPos == _caretAfterLastEdit && !HasSelection;
         if (continues)
         {
             return;
@@ -849,6 +939,7 @@ public class TextEditorState : TextInputState
         _redo.Clear();
         _lastEdit = kind;
         _textAfterLastEdit = Text;
+        _caretAfterLastEdit = CursorPos;
     }
 
     /// <summary>A motion, a click or an undo ends the run of typing, so the next edit is a step of its own.</summary>

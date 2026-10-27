@@ -229,7 +229,38 @@ public class TextEditorStateTests
     [InlineData(InputKey.PageUp, InputModifier.None, TextInputKey.PageUp)]
     [InlineData(InputKey.PageDown, InputModifier.None, TextInputKey.PageDown)]
     public void TheChordMapsToOneMeaning(InputKey key, InputModifier modifiers, TextInputKey expected)
+        => new TextEditorState().KeyFor(key, modifiers).ShouldBe(expected);
+
+    // Console.Lib's TextInputBar hands ToTextInputKey's result straight to TextInputState.HandleKey, so the
+    // single-line mapping must not have grown the editor's keys.
+    [Theory]
+    [InlineData(InputKey.Enter, InputModifier.Ctrl, TextInputKey.Enter)]
+    [InlineData(InputKey.Home, InputModifier.Ctrl, TextInputKey.Home)]
+    [InlineData(InputKey.End, InputModifier.Ctrl, TextInputKey.End)]
+    [InlineData(InputKey.Up, InputModifier.None, null)]
+    [InlineData(InputKey.Down, InputModifier.None, null)]
+    [InlineData(InputKey.PageUp, InputModifier.None, null)]
+    [InlineData(InputKey.PageDown, InputModifier.None, null)]
+    [InlineData(InputKey.Z, InputModifier.Ctrl, null)]
+    [InlineData(InputKey.Y, InputModifier.Ctrl, null)]
+    public void ToTextInputKey_KeepsTheSingleLineMapping(InputKey key, InputModifier modifiers, TextInputKey? expected)
         => key.ToTextInputKey(modifiers).ShouldBe(expected);
+
+    [Fact]
+    public async Task ASingleLineField_StillCommitsOnCtrlEnter_AndReadsCtrlHomeAsHome()
+    {
+        var committed = new List<string>();
+        var field = new TextInputState { Text = "abc", CursorPos = 3, OnCommit = t => { committed.Add(t); return Task.CompletedTask; } };
+        var harness = new Harness();
+        harness.Focus.Focus(field);
+
+        harness.Key(InputKey.Enter, InputModifier.Ctrl);
+        await harness.Tracker.DrainAsync();
+        harness.Key(InputKey.Home, InputModifier.Ctrl);
+        field.CursorPos.ShouldBe(0);               // Ctrl+Home is Home, not a no-op
+        field.Text.ShouldBe("abc");
+        committed.ShouldBe(["abc"]);
+    }
 
     [Fact]
     public void TheNewKeysAreAppended_SoThePublishedValuesDoNotMove()
@@ -521,12 +552,212 @@ public class TextEditorStateTests
     [Fact]
     public void WordMove_DoesNotStopInsideAComposedLetter()
     {
-        var editor = Editor("caf" + EAcute + " bar", 0);
+        // The mark is mid-word, so a stop on the bare "i" of "ï" would be a stop inside the word.
+        var editor = Editor("nai" + "̈" + "ve x", 0);
 
         editor.HandleKey(TextInputKey.WordRight);
 
-        editor.CursorPos.ShouldBe(6);
+        editor.CursorPos.ShouldBe(7);
     }
+
+    // ---- Double click selects a word, never a line break ----
+
+    private static string Selected(TextEditorState editor)
+        => editor.HasSelection ? editor.Text[editor.SelectionStart..editor.SelectionEnd] : "";
+
+    [Fact]
+    public void DoubleClick_OnAnEmptyLine_SelectsNothing_SoTypingDoesNotJoinTheLines()
+    {
+        var editor = Editor("a\n\nb", 2);
+
+        editor.SelectWordAt(2);
+
+        editor.HasSelection.ShouldBeFalse();
+        editor.CursorPos.ShouldBe(2);
+        editor.InsertText("x");
+        editor.Text.ShouldBe("a\nx\nb");
+    }
+
+    [Fact]
+    public void DoubleClick_PastALineEndingInPunctuation_SelectsThePunctuationNotTheBreak()
+    {
+        var editor = Editor("foo.\nbar", 0);
+
+        editor.SelectWordAt(4);      // at the '\n'
+
+        Selected(editor).ShouldBe(".");
+    }
+
+    [Fact]
+    public void DoubleClick_PastALineEnd_SelectsTheLastWordOnIt()
+    {
+        var editor = Editor("one two\nthree", 0);
+
+        editor.SelectWordAt(7);
+
+        Selected(editor).ShouldBe("two");
+    }
+
+    [Fact]
+    public void DoubleClick_AtTheEndOfTheText_SelectsTheLastWord()
+    {
+        var editor = Editor("one two", 0);
+
+        editor.SelectWordAt(7);
+
+        Selected(editor).ShouldBe("two");
+    }
+
+    [Fact]
+    public void DoubleClick_OnAnEmoji_SelectsItWhole()
+    {
+        var editor = Editor("a " + Family + " b", 0);
+
+        editor.SelectWordAt(3);      // in the middle of the cluster
+
+        Selected(editor).ShouldBe(Family);
+    }
+
+    [Fact]
+    public void DoubleClick_OnASurrogatePair_DoesNotSelectHalfOfIt()
+    {
+        var editor = Editor("x \U0001F600 y", 0);
+
+        editor.SelectWordAt(3);
+
+        Selected(editor).ShouldBe("\U0001F600");
+    }
+
+    [Fact]
+    public void DoubleClick_OnADecomposedAccent_KeepsTheMarkInTheWord()
+    {
+        var editor = Editor("caf" + EAcute + " bar", 0);
+
+        editor.SelectWordAt(0);
+
+        Selected(editor).ShouldBe("caf" + EAcute);
+    }
+
+    [Fact]
+    public void DoubleClick_StopsAtALineBreak_OnEitherSide()
+    {
+        var editor = Editor("ab\ncd", 0);
+
+        editor.SelectWordAt(3);
+        Selected(editor).ShouldBe("cd");
+
+        editor.SelectWordAt(1);
+        Selected(editor).ShouldBe("ab");
+    }
+
+    [Fact]
+    public void DoubleClick_ThroughThePointerPath_UsesTheEditorsWord()
+    {
+        var editor = Editor("a\n\nb", 0);
+        var focus = new TextInputFocus();
+
+        TextInputInteraction.HandlePointer(editor, 2, 2, extend: false, new TextInputInteraction.PointerContext(focus, () => { }));
+
+        editor.HasSelection.ShouldBeFalse();
+        focus.Current.ShouldBeSameAs(editor);
+    }
+
+    // ---- Vertical motion after an edit ----
+
+    [Fact]
+    public void InsertText_ResetsTheStickyColumn()
+    {
+        var editor = Editor("long line\nab\nanother long", 7);
+
+        editor.HandleKey(TextInputKey.Down);       // clamped to the end of "ab", remembering column 7
+        editor.InsertText("x");
+        editor.HandleKey(TextInputKey.Down);
+
+        editor.Line.ShouldBe(2);
+        editor.Column.ShouldBe(3);
+    }
+
+    [Fact]
+    public void APaste_ResetsTheStickyColumn()
+    {
+        var editor = Editor("long line\nab\nanother long", 7);
+
+        editor.HandleKey(TextInputKey.Down);
+        editor.InsertText("xy z");
+        editor.HandleKey(TextInputKey.Down);
+
+        editor.Column.ShouldBe(6);
+    }
+
+    // ---- Undo coalescing ----
+
+    [Fact]
+    public void ATypingRun_DoesNotContinueAfterAHostMovesTheCaret()
+    {
+        var editor = new TextEditorState();
+        editor.InsertText("a");
+        editor.InsertText("b");
+        editor.CursorPos = 0;
+        editor.InsertText("c");
+
+        editor.Undo();
+
+        editor.Text.ShouldBe("ab");
+    }
+
+    [Fact]
+    public void ATypingRun_EndsOnCommit()
+    {
+        var editor = new TextEditorState();
+        editor.InsertText("a");
+        editor.HandleKey(TextInputKey.Commit);
+        editor.InsertText("b");
+
+        editor.Undo();
+
+        editor.Text.ShouldBe("a");
+    }
+
+    [Fact]
+    public void ATypingRun_EndsOnEscape()
+    {
+        var editor = new TextEditorState();
+        editor.InsertText("a");
+        editor.HandleKey(TextInputKey.Escape);
+        editor.InsertText("b");
+
+        editor.Undo();
+
+        editor.Text.ShouldBe("a");
+    }
+
+    [Fact]
+    public void ATypingRun_StillCoalesces_WhenNothingIntervenes()
+    {
+        var editor = new TextEditorState();
+        editor.InsertText("a");
+        editor.InsertText("b");
+        editor.InsertText("c");
+
+        editor.Undo();
+
+        editor.Text.ShouldBe("");
+    }
+
+    [Fact]
+    public void ABackspaceRun_DoesNotContinueAfterAHostMovesTheCaret()
+    {
+        var editor = Editor("abcdef", 6);
+        editor.HandleKey(TextInputKey.Backspace);
+        editor.HandleKey(TextInputKey.Backspace);
+        editor.CursorPos = 2;
+        editor.HandleKey(TextInputKey.Backspace);
+
+        editor.Undo();
+
+        editor.Text.ShouldBe("abcd");
+    }
+
 
     [Fact]
     public void BackspaceAtALineStart_JoinsTheLines()

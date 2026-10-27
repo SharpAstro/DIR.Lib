@@ -284,28 +284,12 @@ public static class TextInputInteraction
     public readonly record struct PointerContext(TextInputFocus Focus, Action RequestRedraw);
 
     /// <summary>
-    /// The key <paramref name="field"/> is offered for a chord. A multi-line field gets the full mapping, with
-    /// its own <see cref="TextEditorState.CommitChord"/> deciding what commits. A single-line field is offered
-    /// what it always was: the keys a multi-line editor adds are not offered to it, and Ctrl+Enter and
-    /// Ctrl+Home/End read as the Enter, Home and End they were before those keys existed.
+    /// The key <paramref name="field"/> is offered for a chord. An editor maps its own (the keys a multi-line
+    /// box adds, and its <see cref="TextEditorState.CommitChord"/>); a single-line field is offered
+    /// <see cref="InputKeyExtensions.ToTextInputKey"/>'s mapping, as it always was.
     /// </summary>
     private static TextInputKey? KeyFor(TextInputState field, InputKey key, InputModifier modifiers)
-    {
-        if (field is TextEditorState editor)
-        {
-            return editor.KeyFor(key, modifiers);
-        }
-
-        return key.ToTextInputKey(modifiers) switch
-        {
-            TextInputKey.Commit => TextInputKey.Enter,
-            TextInputKey.DocumentStart => TextInputKey.Home,
-            TextInputKey.DocumentEnd => TextInputKey.End,
-            TextInputKey.Up or TextInputKey.Down or TextInputKey.PageUp or TextInputKey.PageDown
-                or TextInputKey.Undo or TextInputKey.Redo => null,
-            var other => other
-        };
-    }
+        => field is TextEditorState editor ? editor.KeyFor(key, modifiers) : key.ToTextInputKey(modifiers);
 
     /// <summary>Reference position of <paramref name="input"/>, since <c>IReadOnlyList</c> has no IndexOf.</summary>
     private static int IndexOf(IReadOnlyList<TextInputState> inputs, TextInputState input)
