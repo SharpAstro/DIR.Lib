@@ -121,6 +121,18 @@ public readonly record struct ClickableRegion(
 public readonly record struct TextInputGeometry(int X, string FontFamily, float FontSize, float LeadingRoom);
 
 /// <summary>
+/// What a multi-line editor's paint knows about its own text that a hit test cannot see: the top-left of the
+/// box it drew into and the size it drew at. The editor's counterpart of <see cref="TextInputGeometry"/>, with
+/// the y a single line never needed.
+/// </summary>
+/// <param name="X">The BOX's left edge, not the text origin -- the insets are <see cref="TextEditorRenderer"/>'s
+/// to apply (<see cref="TextEditorRenderer.TextOriginX"/>), for the reason <see cref="TextInputGeometry.X"/> states.</param>
+/// <param name="Y">The BOX's top edge; see <see cref="TextEditorRenderer.TextOriginY"/>.</param>
+/// <param name="FontFamily">The face the glyphs were measured and drawn with.</param>
+/// <param name="FontSize">The size they were drawn at, in surface pixels: the insets are a multiple of it.</param>
+public readonly record struct TextEditorGeometry(int X, int Y, string FontFamily, float FontSize);
+
+/// <summary>
 /// Describes what was hit during a click. Open hierarchy — extend with
 /// app-specific subclasses in downstream projects.
 /// </summary>
@@ -149,6 +161,28 @@ public record HitResult
     /// </para>
     /// </param>
     public sealed record TextInputHit(TextInputState Input, TextInputGeometry Painted) : HitResult;
+
+    /// <summary>
+    /// A multi-line editor was clicked -- activate it, place the caret, and start text input. A record of its own
+    /// rather than a changed <see cref="TextInputHit"/>, which is pinned to one constructor and one meaning: an
+    /// editor is a <see cref="TextInputState"/> for focus, Tab order and the clipboard (so everything that asks
+    /// for the fields on screen counts it), but a point in it needs a y and the wrapped layout to resolve to a
+    /// character, which a host that only knows the single-line hit cannot be handed.
+    /// </summary>
+    /// <param name="Input">The editor the click landed in.</param>
+    /// <param name="Painted">Where its text was laid down; resolve a point with <see cref="CaretIndexAt"/>.</param>
+    public sealed record TextEditorHit(TextEditorState Input, TextEditorGeometry Painted) : HitResult
+    {
+        /// <summary>
+        /// The caret index under a pointer at (<paramref name="pointerX"/>, <paramref name="pointerY"/>), in the
+        /// space the regions were registered in. The wrapped layout and scroll are the editor's own, so this needs
+        /// no renderer -- and cannot disagree with what the paint drew. Zero before the first paint.
+        /// </summary>
+        public int CaretIndexAt(float pointerX, float pointerY)
+            => Input.CaretIndexAt(
+                pointerX - TextEditorRenderer.TextOriginX(Painted.X, Painted.FontSize),
+                pointerY - TextEditorRenderer.TextOriginY(Painted.Y, Painted.FontSize)) ?? 0;
+    }
 
     /// <summary>A named action button was clicked.</summary>
     public sealed record ButtonHit(string Action) : HitResult;

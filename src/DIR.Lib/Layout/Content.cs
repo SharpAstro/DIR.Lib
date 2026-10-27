@@ -255,6 +255,39 @@ public abstract record Content
     }
 
     /// <summary>
+    /// An editable multi-line text box: the node IS the control, as <see cref="TextInput"/> is for one line.
+    /// A painter meeting it draws the box through <see cref="TextEditorRenderer"/> and registers a
+    /// <see cref="HitResult.TextEditorHit"/> over the arranged rect, so click-to-focus, shift-click, drag
+    /// selection, double- and triple-click, Tab order, the I-beam and the wheel over an overflowing box all follow
+    /// from declaring it.
+    /// <para>
+    /// <b>Height follows the content.</b> The engine wraps the text to the width it is offered and sizes the box
+    /// to that many lines, within the state's <see cref="TextEditorState.MinLines"/> and
+    /// <see cref="TextEditorState.MaxLines"/>: it grows as the reader types up to the maximum, then scrolls. The
+    /// bounds live on the state alone, so the box a parent arranged and the scroll that keeps the caret in view
+    /// read the same number. A parent that arranges the box at another height wins, and the box scrolls inside it.
+    /// </para>
+    /// <para>
+    /// The width is the field's rule, not the content's: a box that resizes while you type is a bug, so the
+    /// intrinsic width comes from <see cref="WidthSample"/> or the placeholder, and a real one takes its width from
+    /// its parent (<c>.Stretch()</c>).
+    /// </para>
+    /// </summary>
+    /// <param name="State">The caller-owned editor state: text, caret, selection, line bounds and the commit callbacks.</param>
+    /// <param name="FontSize">Text size in design units, as <see cref="Text.FontSize"/>.</param>
+    public sealed record TextEditor(TextEditorState State, float FontSize = 14f) : Content
+    {
+        /// <summary>Palette for THIS editor, or null for the shared <see cref="TextInputRenderer.Colors"/>; see <see cref="TextInput.Colors"/>.</summary>
+        public TextInputColors? Colors { get; init; }
+
+        /// <summary>Measure the intrinsic width as if the box held this text, never the live text; see <see cref="TextInput.WidthSample"/>.</summary>
+        public string? WidthSample { get; init; }
+
+        /// <summary>This editor wants the keyboard as it first appears, without taking it off a field being typed in; see <see cref="TextInput.FocusOnOpen"/>.</summary>
+        public bool FocusOnOpen { get; init; }
+    }
+
+    /// <summary>
     /// A draggable value in a range: the node IS the control, the same precedent <see cref="TextInput"/>
     /// sets for a field. A painter meeting this leaf draws it through the shared
     /// <c>PixelWidgetBase.DrawTrackSlider</c> track/fill/handle implementation (so a slider still has

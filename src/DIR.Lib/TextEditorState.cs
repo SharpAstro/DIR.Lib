@@ -111,11 +111,73 @@ public class TextEditorState : TextInputState
         }
     }
 
-    /// <summary>The lines the box shows now: its content's, within <see cref="MinLines"/> and <see cref="MaxLines"/>.</summary>
-    public int VisibleLines => VisualLayout?.VisibleLines(MinLines, MaxLines) ?? Math.Max(1, Math.Min(LineCount, MaxLines));
+    /// <summary>
+    /// The height of the text area the paint last drew into, or zero before one has. The paint is the authority
+    /// on how tall the box is -- a parent may arrange it shorter than its content asked for -- and the scroll that
+    /// keeps the caret in view has to be of the box that is on screen, not of the one the content would like.
+    /// </summary>
+    internal float PaintedViewportHeight { get; set; }
+
+    /// <summary>What the paint last laid the text out with (face, size, fallback chain), so a frame that changed none of it reuses the wrap.</summary>
+    internal (string Font, float Size, object? Fallback)? PaintKey { get; set; }
+
+    /// <summary>
+    /// The lines the box shows now: the painted box's once there is one, otherwise its content's, within
+    /// <see cref="MinLines"/> and <see cref="MaxLines"/>.
+    /// </summary>
+    public int VisibleLines => PaintedViewportHeight > 0f && VisualLayout is { } painted
+        ? Math.Max(1, (int)Math.Floor(PaintedViewportHeight / painted.LineHeight + 1e-3f))
+        : VisualLayout?.VisibleLines(MinLines, MaxLines) ?? Math.Max(1, Math.Min(LineCount, MaxLines));
 
     /// <summary>The box's height in layout units, or zero before a layout is set.</summary>
-    public float ViewportHeight => VisualLayout?.ViewportHeight(MinLines, MaxLines) ?? 0f;
+    public float ViewportHeight => PaintedViewportHeight > 0f
+        ? PaintedViewportHeight
+        : VisualLayout?.ViewportHeight(MinLines, MaxLines) ?? 0f;
+
+    private ListScrollController? _wheel;
+    private bool _syncingWheel;
+
+    /// <summary>
+    /// The controller the wheel is delivered to while the text overflows its box, bound by the paint and null
+    /// before one. Counts in pixels, so <see cref="ScrollOffsetY"/> and its offset are the same number; a wheel
+    /// notch moves three lines.
+    /// </summary>
+    internal ListScrollController? WheelScroll => _wheel;
+
+    /// <summary>States where the box is this frame and how tall its text is, and keeps the controller's offset and <see cref="ScrollOffsetY"/> one number.</summary>
+    internal ListScrollController BindWheel(RectF32 viewport, float contentHeight, float lineHeight, DesignScale scale)
+    {
+        if (_wheel is null)
+        {
+            _wheel = new ListScrollController { Mode = ScrollBarMode.None, WheelStepAtoms = 3f };
+            _wheel.Changed += () =>
+            {
+                // A wheel notch moved the controller; the state follows. The paint's own write to it is not a notch.
+                if (!_syncingWheel)
+                {
+                    ScrollOffsetY = _wheel.Offset;
+                }
+            };
+        }
+
+        _wheel.LineExtentPx = lineHeight;
+        _wheel.SetExtent(viewport, 1f, (int)Math.Ceiling(contentHeight), scale);
+        var want = (int)MathF.Round(ScrollOffsetY);
+        if (_wheel.AtomOffset != want)
+        {
+            _syncingWheel = true;
+            try
+            {
+                _wheel.AtomOffset = want;
+            }
+            finally
+            {
+                _syncingWheel = false;
+            }
+        }
+
+        return _wheel;
+    }
 
     /// <summary>
     /// Hands the state the layout the paint just built. A new width or text brings the caret back into view;
@@ -644,7 +706,7 @@ public class TextEditorState : TextInputState
         }
 
         var caret = Math.Clamp(CursorPos, 0, Text.Length);
-        ScrollOffsetY = layout.RevealLine(layout.LineOf(caret), ScrollOffsetY, layout.ViewportHeight(MinLines, MaxLines));
+        ScrollOffsetY = layout.RevealLine(layout.LineOf(caret), ScrollOffsetY, ViewportHeight);
     }
 
     private void MoveLines(int delta, bool extend)

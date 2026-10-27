@@ -146,7 +146,14 @@ namespace DIR.Lib
             var result = new List<TextInputState>();
             foreach (var r in _regions)
             {
-                if (r.Result is HitResult.TextInputHit { Input: { } input } && !result.Contains(input))
+                // An editor is a TextInputState, so Tab cycling, focus and blur-if-unpainted count it among the fields.
+                TextInputState? input = r.Result switch
+                {
+                    HitResult.TextInputHit { Input: { } field } => field,
+                    HitResult.TextEditorHit { Input: { } editor } => editor,
+                    _ => null,
+                };
+                if (input is not null && !result.Contains(input))
                 {
                     result.Add(input);
                 }

@@ -77,6 +77,9 @@ namespace DIR.Lib
             /// that knows whether an image pane or a histogram moved is whatever draws it.
             /// </summary>
             Fill,
+
+            /// <summary>A multi-line editor: a field's paint plus its scroll. Last, so no existing value moves.</summary>
+            TextEditor,
         }
 
         /// <summary>Whether a pointer is inside an arranged rect: top and left inclusive, bottom and
@@ -125,6 +128,14 @@ namespace DIR.Lib
                 Layout.Content.TextInput ti => new PaintSignature(bounds, background, cornerRadius,
                     ContentShape.TextInput, ti.State.Text, SecondaryText(ti.State), ti.FontSize, default,
                     ti.State.IsActive ? 1 : 0, ti.State.CursorPos, ti.State.SelectionAnchor),
+
+                // The editor paints everything the field does, and one more thing the field cannot have: how far its
+                // text is scrolled. That is a float on the state; folded into the discriminator beside the focus
+                // bit as whole pixels, because a sub-pixel move paints nothing.
+                Layout.Content.TextEditor te => new PaintSignature(bounds, background, cornerRadius,
+                    ContentShape.TextEditor, te.State.Text, SecondaryText(te.State), te.FontSize, default,
+                    ((int)MathF.Round(te.State.ScrollOffsetY) << 1) | (te.State.IsActive ? 1 : 0),
+                    te.State.CursorPos, te.State.SelectionAnchor),
 
                 Layout.Content.Fill f => new PaintSignature(bounds, background, cornerRadius,
                     ContentShape.Fill, f.Key, null, 0f, default, 0, 0, 0),

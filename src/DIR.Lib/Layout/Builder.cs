@@ -82,6 +82,36 @@ public static partial class Builder
             FocusOnOpen = focusOnOpen,
         });
 
+    /// <summary>
+    /// An editable multi-line text box -- <c>Builder.TextEditor(state, fontSize)</c> is the whole declaration. The
+    /// painter draws it through <see cref="TextEditorRenderer"/> and registers its click region, focus and I-beam,
+    /// as it does for <see cref="TextInput"/>. See <see cref="Content.TextEditor"/> for how the box grows and scrolls.
+    /// </summary>
+    /// <param name="minLines">The fewest lines the box shows; written to <see cref="TextEditorState.MinLines"/>, which is where it lives. Null leaves the state's.</param>
+    /// <param name="maxLines">The most lines it shows before it scrolls; written to <see cref="TextEditorState.MaxLines"/>. Null leaves the state's.</param>
+    /// <param name="focusOnOpen">Ask for the keyboard when this editor first appears; see <see cref="Content.TextInput.FocusOnOpen"/>.</param>
+    public static Node TextEditor(TextEditorState state, float fontSize = 14f,
+        int? minLines = null, int? maxLines = null,
+        TextInputColors? colors = null, string? widthSample = null, bool focusOnOpen = false)
+    {
+        if (minLines is { } min)
+        {
+            state.MinLines = Math.Max(1, min);
+        }
+
+        if (maxLines is { } max)
+        {
+            state.MaxLines = Math.Max(1, max);
+        }
+
+        return new Node.Leaf(new Content.TextEditor(state, fontSize)
+        {
+            Colors = colors,
+            WidthSample = widthSample,
+            FocusOnOpen = focusOnOpen,
+        });
+    }
+
     /// <summary>An app-drawn escape-hatch leaf (chart/sky map). Pair with <c>Star</c> sizing to fill; set <paramref name="key"/> to route multiple fills. A text field has its own <see cref="TextInput"/> factory.</summary>
     public static Node Fill(float minWidth = 0f, float minHeight = 0f, string? key = null)
         => new Node.Leaf(new Content.Fill(minWidth, minHeight, key));
@@ -631,6 +661,7 @@ public static partial class Builder
     {
         Node.Leaf { Content: Content.Text text } => text.FontSize,
         Node.Leaf { Content: Content.TextInput field } => field.FontSize,
+        Node.Leaf { Content: Content.TextEditor editor } => editor.FontSize,
         Node.Leaf => null,
         Node.Stack stack => FirstFontSize(stack.Children.AsSpan()),
         Node.Wrap wrap => FirstFontSize(wrap.Children.AsSpan()),
