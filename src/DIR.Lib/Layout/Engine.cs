@@ -72,6 +72,7 @@ public static class Engine
 
         var intrinsic = node switch
         {
+            Node.Leaf { Content: Content.TextEditor editor } => MeasureTextEditor(editor, node, available, ctx),
             Node.Leaf leaf => MeasureContent(leaf.Content, ctx),
             Node.Stack stack => MeasureStack(stack, available, ctx),
             Node.Grid grid => MeasureGrid(grid, available, ctx),
@@ -1004,6 +1005,45 @@ public static class Engine
             TextInputRenderer.HorizontalPadding(field.FontSize) * 2f
             + TextInputRenderer.LeadingRoom(field.FontSize, field.LeadingIcon is not null));
         return new Size<T>(text.Width + insets, text.Height);
+    }
+
+    /// <summary>
+    /// A multi-line editor's intrinsic size: the width a field has (room for its sample between the insets), and a
+    /// height of as many wrapped lines as the text takes at the width it is offered, within the state's min and
+    /// max, plus the vertical padding. Grow, then scroll.
+    /// <para>
+    /// The wrap width is the node's own when it is fixed, else the room <paramref name="available"/> offers -- the
+    /// best the measure pass knows before the parent has decided. A parent that then arranges the box narrower
+    /// than that wraps to more lines than were measured, and the box scrolls inside the height it was given
+    /// rather than overflowing it. An empty box measures its placeholder, so focusing it (which hides the
+    /// placeholder) does not change its height under the pointer.
+    /// </para>
+    /// </summary>
+    private static Size<T> MeasureTextEditor<T>(Content.TextEditor editor, Node node, Size<T> available, IMeasureContext<T> ctx)
+        where T : INumber<T>
+    {
+        var state = editor.State;
+        var fontSize = editor.FontSize;
+        var sample = ctx.MeasureText((editor.WidthSample ?? state.Placeholder).AsSpan(), fontSize);
+        var insetX = ctx.ToSurfaceX(TextEditorRenderer.HorizontalPadding(fontSize) * 2f);
+        var insetY = ctx.ToSurfaceY(TextEditorRenderer.VerticalPadding(fontSize) * 2f);
+
+        // One line is what the context says a line is tall; every line of the box is that tall.
+        var line = ctx.MeasureText("Ag".AsSpan(), fontSize).Height;
+        var lineHeight = float.CreateChecked(line);
+        var width = node.Width.IsFixed ? ctx.ToSurfaceX(node.Width.Value) : available.Width;
+        var wrapWidth = float.CreateChecked(width - insetX);
+
+        var text = state.Text.Length > 0 ? state.Text : state.Placeholder;
+        var lines = 1;
+        if (lineHeight > 0f)
+        {
+            lines = new TextEditorLayout(text, wrapWidth,
+                span => float.CreateChecked(ctx.MeasureText(span, fontSize).Width), lineHeight)
+                .VisibleLines(state.MinLines, state.MaxLines);
+        }
+
+        return new Size<T>(sample.Width + insetX, T.CreateChecked(lines) * line + insetY);
     }
 
     private static Size<T> MeasureStack<T>(Node.Stack stack, Size<T> available, IMeasureContext<T> ctx)

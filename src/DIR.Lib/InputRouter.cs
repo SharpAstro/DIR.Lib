@@ -353,7 +353,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                 // on a value -- in which case that was the press's whole meaning, and taking it straight
                 // back would leave a field painted as focused that swallows nothing. Told apart by whether
                 // the focus the dispatch left behind is the one it found.
-                if (region.Result is not HitResult.TextInputHit
+                if (region.Result is not (HitResult.TextInputHit or HitResult.TextEditorHit)
                     && ReferenceEquals(ui.Focus.Current, hadKeyboard))
                 {
                     acted |= BlurFocusedField();
@@ -462,6 +462,12 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             return true;
         }
 
+        if (region.Result is HitResult.TextEditorHit editor)
+        {
+            BeginEditorPress(editor, press);
+            return true;
+        }
+
         var acted = false;
 
         // A link is a DECLARATION on the node (see HitResult.LinkHit), so it composes with a handler
@@ -532,6 +538,28 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
 
         void Extend(PointerMove at)
             => TextInputInteraction.HandlePointer(hit.Input, widget.CaretIndexAt(hit, at.X), 1, true, ctx);
+
+        _capture = new DragCapture(Extend, Extend);
+        _captureButton = press.Button;
+        _captureModifiers = press.Modifiers;
+        _captureCursor = CursorKind.Text;
+    }
+
+    /// <summary>
+    /// A press over a multi-line editor: <see cref="BeginFieldPress"/> with a y. The point is resolved through the
+    /// editor's own wrapped layout and scroll (<see cref="HitResult.TextEditorHit.CaretIndexAt"/>), so a click on a
+    /// wrapped line lands on the character under it, and a drag that leaves the box above or below extends to its
+    /// first or last line, as the layout's point resolution does.
+    /// </summary>
+    private void BeginEditorPress(HitResult.TextEditorHit hit, in PointerPress press)
+    {
+        var ctx = new TextInputInteraction.PointerContext(ui.Focus, requestRedraw);
+        var extend = (press.Modifiers & InputModifier.Shift) != 0;
+
+        TextInputInteraction.HandlePointer(hit.Input, hit.CaretIndexAt(press.X, press.Y), press.Clicks, extend, ctx);
+
+        void Extend(PointerMove at)
+            => TextInputInteraction.HandlePointer(hit.Input, hit.CaretIndexAt(at.X, at.Y), 1, true, ctx);
 
         _capture = new DragCapture(Extend, Extend);
         _captureButton = press.Button;
@@ -798,14 +826,18 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             for (var i = 0; i < _regions.Count; i++)
             {
                 var region = _regions[i];
-                if (!region.FocusOnOpen
-                    || region.Result is not HitResult.TextInputHit hit
-                    || !_honouredFocusOnOpen.Add(hit.Input))
+                TextInputState? asking = region.Result switch
+                {
+                    HitResult.TextInputHit field => field.Input,
+                    HitResult.TextEditorHit editor => editor.Input,
+                    _ => null,
+                };
+                if (!region.FocusOnOpen || asking is null || !_honouredFocusOnOpen.Add(asking))
                 {
                     continue;
                 }
 
-                ui.Focus.Focus(hit.Input);
+                ui.Focus.Focus(asking);
                 requestRedraw();
                 return;
             }

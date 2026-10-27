@@ -683,6 +683,43 @@ namespace DIR.Lib
         }
 
         /// <summary>
+        /// Registers a multi-line editor -- renders it through <see cref="TextEditorRenderer"/> and registers its
+        /// <see cref="HitResult.TextEditorHit"/>, with the wheel controller while the text overflows the box.
+        /// </summary>
+        /// <param name="lineHeight">One visual line, in surface pixels: what the engine measured the box with.</param>
+        /// <param name="scale">The design scale the tree was arranged with, which the wheel controller counts in.</param>
+        /// <param name="focusOnOpen">The editor asked for the keyboard as it appeared; see
+        /// <see cref="Layout.Content.TextEditor.FocusOnOpen"/>.</param>
+        protected void RenderTextEditor(TextEditorState state, int x, int y, int width, int height, string fontPath,
+            float fontSize, float lineHeight, DesignScale scale, TextInputColors? colors = null, bool focusOnOpen = false)
+        {
+            var caret = TextEditorRenderer.Render(Renderer, state, x, y, width, height, fontPath, fontSize, lineHeight,
+                CaretBlink.IsVisible(CaretPhase), colors, FontFallback);
+            if (state.IsActive)
+            {
+                Ui.CaretRect = caret;
+            }
+
+            // The wheel belongs to the editor only while there is something to scroll: a box that fits leaves it to
+            // the pane behind it. Bound over the whole box, which is what the controller tests the pointer against,
+            // so the content it is told about carries the two paddings: its furthest offset is then the text's.
+            var vp = (int)TextEditorRenderer.VerticalPadding(fontSize);
+            ListScrollController? wheel = null;
+            if (state.VisualLayout is { } layout && layout.ContentHeight > height - vp * 2)
+            {
+                wheel = state.BindWheel(new RectF32(x, y, width, height), layout.ContentHeight + vp * 2, lineHeight, scale);
+            }
+
+            RegisterClickable(new ClickableRegion(x, y, width, height,
+                new HitResult.TextEditorHit(state, new TextEditorGeometry(x, y, fontPath, fontSize)),
+                null, CursorKind.Text)
+            {
+                FocusOnOpen = focusOnOpen,
+                Scroll = wheel,
+            });
+        }
+
+        /// <summary>
         /// Which character of <paramref name="hit"/>'s field a pointer at <paramref name="pointerX"/> is
         /// over, measured through this widget's own renderer and fallback chain -- the same pair that
         /// painted it, so the answer cannot disagree with where the caret was drawn.
@@ -1473,6 +1510,17 @@ namespace DIR.Lib
                                     (field.Colors ?? TextInputRenderer.Colors).Placeholder);
                             }
 
+                            break;
+                        case Layout.Content.TextEditor editor:
+                            // As the field above: drawing it and registering its hit are one call, so declaring the
+                            // editor is sufficient. The line is what the engine measured the box with, taken from
+                            // the same context, so the rows painted are the rows the height was sized for.
+                            var editorPx = editor.FontSize * ctx.FontScale;
+                            var editorLine = ctx.MeasureText("Ag".AsSpan(), editor.FontSize).Height;
+                            RenderTextEditor(editor.State,
+                                (int)MathF.Round(bounds.X), (int)MathF.Round(bounds.Y),
+                                (int)MathF.Round(bounds.Width), (int)MathF.Round(bounds.Height),
+                                fp, editorPx, editorLine, ctx.Scale, editor.Colors, editor.FocusOnOpen);
                             break;
                         case Layout.Content.Slider slider:
                         {
