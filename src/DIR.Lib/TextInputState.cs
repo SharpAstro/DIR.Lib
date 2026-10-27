@@ -21,6 +21,14 @@ public class TextInputState
     /// </remarks>
     public bool IsActive { get; internal set; }
 
+    /// <summary>
+    /// Whether Enter inserts a line break here instead of committing. False for this class, true for
+    /// <see cref="TextEditorState"/>; <see cref="TextInputInteraction.HandleKey"/> reads it to decide which
+    /// of the keys a multi-line editor adds (arrows up and down, Page keys, undo, the commit chord) reach
+    /// the field, so a single-line field sees exactly the keys it always did.
+    /// </summary>
+    public virtual bool IsMultiLine => false;
+
     /// <summary>The current text content.</summary>
     public string Text { get; set; } = "";
 
@@ -126,7 +134,7 @@ public class TextInputState
     /// Handles a text input event (from SDL3 TextInput or Console.Lib TryReadInput).
     /// Replaces selection (if any) with the input, then inserts at cursor.
     /// </summary>
-    public void InsertText(string input)
+    public virtual void InsertText(string input)
     {
         if (string.IsNullOrEmpty(input))
         {
@@ -150,7 +158,7 @@ public class TextInputState
     /// teaching them to extend would change what Shift+Left does for every existing consumer at once.
     /// That is a behaviour change and belongs in its own wave, not smuggled in on a new parameter.
     /// </param>
-    public bool HandleKey(TextInputKey key, bool extend = false)
+    public virtual bool HandleKey(TextInputKey key, bool extend = false)
     {
         switch (key)
         {
@@ -292,7 +300,7 @@ public class TextInputState
     /// the first. The anchor is taken from where the caret already was when there is no selection yet,
     /// which is what makes shift-click select from the old caret rather than from nothing.
     /// </param>
-    public void MoveCaretTo(int index, bool extend = false)
+    public virtual void MoveCaretTo(int index, bool extend = false)
     {
         if (extend)
         {
@@ -470,7 +478,7 @@ public class TextInputState
     /// <summary>
     /// Resets the field to empty, uncommitted state.
     /// </summary>
-    public void Clear()
+    public virtual void Clear()
     {
         Text = "";
         CursorPos = 0;
@@ -603,5 +611,39 @@ public enum TextInputKey
     /// clipboard half is the host's, so <see cref="TextInputState.HandleKey"/> only swallows it and
     /// <see cref="TextInputInteraction.HandleKey"/> performs it.
     /// </summary>
-    Cut
+    Cut,
+
+    // Appended for the multi-line editor (TextEditorState). TextInputState.HandleKey returns false for every
+    // one of them and TextInputInteraction does not offer them to a single-line field, so a field that never
+    // heard of them behaves as before.
+
+    /// <summary>Up -- the caret one logical line up, keeping its column.</summary>
+    Up,
+
+    /// <summary>Down -- the caret one logical line down, keeping its column.</summary>
+    Down,
+
+    /// <summary>PageUp -- the caret a page of lines up.</summary>
+    PageUp,
+
+    /// <summary>PageDown -- the caret a page of lines down.</summary>
+    PageDown,
+
+    /// <summary>Ctrl+Home -- the caret to the start of the whole text.</summary>
+    DocumentStart,
+
+    /// <summary>Ctrl+End -- the caret to the end of the whole text.</summary>
+    DocumentEnd,
+
+    /// <summary>Ctrl+Z -- undo the last edit.</summary>
+    Undo,
+
+    /// <summary>Ctrl+Y or Ctrl+Shift+Z -- redo what was undone.</summary>
+    Redo,
+
+    /// <summary>
+    /// Ctrl+Enter -- commit a multi-line editor, whose plain Enter inserts a line break. Which chord this is
+    /// is the editor's to say (<see cref="TextEditorState.CommitChord"/>).
+    /// </summary>
+    Commit
 }
