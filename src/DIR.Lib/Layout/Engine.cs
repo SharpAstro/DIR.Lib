@@ -413,9 +413,10 @@ public static class Engine
         Array.Fill(included, true);
         var includedCount = n;
         var mains = new T[n];
+        var measured = new Size<T>?[n];
         while (true)
         {
-            ResolveStackMains(children, included, includedCount, axis, layoutMain, gap, availSize, ctx, mains);
+            ResolveStackMains(children, included, includedCount, axis, layoutMain, gap, availSize, ctx, mains, measured);
 
             var anyCollapsed = false;
             for (var i = 0; i < n; i++)
@@ -517,8 +518,12 @@ public static class Engine
             {
                 SizeKind.Fixed => ToSurfaceOn(ctx, crossSizing.Value, CrossAxis(axis)),
                 SizeKind.Star when !crossSizing.UpToContent => crossAvail,     // stretch to fill cross axis
-                // Auto, and a content-capped Star: its content, never more than the axis holds.
-                _ => Min(crossAvail, CrossOf(axis, Measure(children[i], availSize, ctx))),
+                // Auto, and a content-capped Star: its content at the main extent it was given, never more than the
+                // axis holds. Measured at the stack's whole main, a wrapping text asked for fewer lines than it takes.
+                // The resolve already measured it at the whole main; when that is the main it was given, that is the answer.
+                _ => Min(crossAvail, CrossOf(axis, measured[i] is { } known && MainOf(axis, known) == mains[i]
+                    ? known
+                    : Measure(children[i], Compose(axis, mains[i], crossAvail), ctx))),
             };
             cross = Clamp(cross, crossSizing, ctx, CrossAxis(axis));
 
@@ -553,9 +558,13 @@ public static class Engine
     /// clamps honoured (<see cref="DistributeStars"/>). Content-capped Stars
     /// (<see cref="Sizing.UpToContent"/>) are served first, out of what the plain Stars' floors leave
     /// (<see cref="DistributeContentCappedStars"/>), and the plain Stars share whatever they do not take.
+    /// When <paramref name="measured"/> is given, the measure taken at <paramref name="availSize"/> of each Auto and
+    /// content-capped child is left in it, so a caller that needs that measure again reads it instead of repeating it:
+    /// a repeat recurses into the child's whole subtree, and nested stacks made that exponential.
     /// </summary>
     private static void ResolveStackMains<T>(ImmutableArray<Node> children, bool[] included, int includedCount,
-        Axis axis, T mainAvail, T gap, Size<T> availSize, IMeasureContext<T> ctx, T[] mains) where T : INumber<T>
+        Axis axis, T mainAvail, T gap, Size<T> availSize, IMeasureContext<T> ctx, T[] mains,
+        Size<T>?[]? measured = null) where T : INumber<T>
     {
         var n = children.Length;
         var starIndices = new List<int>();
@@ -578,7 +587,13 @@ public static class Engine
                 // Its cap is what an Auto child here would get: the measure, Min/Max clamps included.
                 (cappedIndices ??= []).Add(i);
                 (cappedWeights ??= []).Add(sizing.Value);
-                (cappedContent ??= []).Add(Clamp(MainOf(axis, Measure(children[i], availSize, ctx)), sizing, ctx, axis));
+                var contentSize = Measure(children[i], availSize, ctx);
+                if (measured is not null)
+                {
+                    measured[i] = contentSize;
+                }
+
+                (cappedContent ??= []).Add(Clamp(MainOf(axis, contentSize), sizing, ctx, axis));
                 continue;
             }
 
@@ -589,9 +604,22 @@ public static class Engine
                 continue;
             }
 
-            var size = sizing.IsFixed
-                ? ToSurfaceOn(ctx, sizing.Value, axis)
-                : Clamp(MainOf(axis, Measure(children[i], availSize, ctx)), sizing, ctx, axis);
+            T size;
+            if (sizing.IsFixed)
+            {
+                size = ToSurfaceOn(ctx, sizing.Value, axis);
+            }
+            else
+            {
+                var autoSize = Measure(children[i], availSize, ctx);
+                if (measured is not null)
+                {
+                    measured[i] = autoSize;
+                }
+
+                size = Clamp(MainOf(axis, autoSize), sizing, ctx, axis);
+            }
+
             mains[i] = size;
             usedMain += size;
         }
@@ -1060,16 +1088,37 @@ public static class Engine
         var n = stack.Children.Length;
         var main = T.Zero;
         var cross = T.Zero;
+
+        // The main extent each child will be GIVEN at arrange, resolved as the arrange does, so a child's cross
+        // extent is measured at that and not at the stack's whole main. Measured at the whole, a wrapping text
+        // beside a fixed label in a row asked for the height of the lines it would take at the row's full width,
+        // fewer than it took in its column, and its last line was drawn over the row below (pilot's chat, SE1,
+        // 2026-10-28). Collapse thresholds are left out: a collapsed sibling only widens the others.
+        // Each child is measured once where it can be: the resolve measures Auto and content-capped children at the whole
+        // main (to learn their main), and that measure is kept; a child given exactly that main needs no second one.
+        var mains = new T[n];
+        var measured = new Size<T>?[n];
+        if (n > 0)
+        {
+            var included = new bool[n];
+            Array.Fill(included, true);
+            ResolveStackMains(stack.Children, included, n, axis, MainOf(axis, available),
+                ToSurfaceOn(ctx, stack.Gap, axis), available, ctx, mains, measured);
+        }
+
         for (var i = 0; i < n; i++)
         {
             var child = stack.Children[i];
-            var size = Measure(child, available, ctx);
+            var size = measured[i] is { } known && MainOf(axis, known) == mains[i]
+                ? known
+                : Measure(child, Compose(axis, mains[i], CrossOf(axis, available)), ctx);
+
             // Star main contributes nothing to the natural size — it only claims leftover at arrange time.
             // A content-capped Star does: its content is the size it asks for while there is room.
             var mainSizing = MainSizing(axis, child);
             if (!mainSizing.IsStar || mainSizing.UpToContent)
             {
-                main += MainOf(axis, size);
+                main += MainOf(axis, measured[i] ?? size);
             }
 
             cross = Max(cross, CrossOf(axis, size));
