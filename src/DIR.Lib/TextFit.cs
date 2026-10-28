@@ -156,18 +156,38 @@ public static class TextFit
             return resolver.FitEllipsis(renderer, text, fontSize, maxWidth);
         }
 
-        // Shortest-first would be O(n) measurements from the wrong end; walking down from the full run stops
-        // at the first candidate that fits, which is the longest one — the answer, and usually within a few
-        // steps of where it started.
-        for (var len = text.Length - 1; len > 0; len--)
-        {
-            var candidate = trim == TextTrim.Start
-                ? string.Concat("…", text.AsSpan(text.Length - len))
-                : string.Concat(text.AsSpan(0, len), "…");
-            if (Measure(renderer, candidate, fontPath, fallback, fontSize) <= maxWidth) return candidate;
-        }
+        // A binary search over the kept length, as TrimMiddleToWidth does: the walk down from the full run
+        // was one measurement per character cut, each over the whole candidate, so a long card detail in a
+        // narrow panel cost hundreds of measurements per line per frame and held pilot-gui's render thread
+        // busy all the time (DE1, 2026-10-28). Halving is O(log n) however far the run overflows.
+        string Cut(int len) => trim == TextTrim.Start
+            ? string.Concat("…", text.AsSpan(text.Length - len))
+            : string.Concat(text.AsSpan(0, len), "…");
+        var kept = LongestFit(text.Length - 1, len => Measure(renderer, Cut(len), fontPath, fallback, fontSize) <= maxWidth);
+        return kept == 0 ? "…" : Cut(kept);
+    }
 
-        return "…";
+    /// <summary>
+    /// The largest length in 1..<paramref name="max"/> that <paramref name="fits"/>, or 0 when none does, by
+    /// binary search: a longer cut of the same run is never narrower, so the lengths that fit are a prefix.
+    /// </summary>
+    internal static int LongestFit(int max, Func<int, bool> fits)
+    {
+        var lo = 0;
+        var hi = max;
+        while (lo < hi)
+        {
+            var mid = (lo + hi + 1) / 2;
+            if (fits(mid))
+            {
+                lo = mid;
+            }
+            else
+            {
+                hi = mid - 1;
+            }
+        }
+        return lo;
     }
 
     /// <summary>
