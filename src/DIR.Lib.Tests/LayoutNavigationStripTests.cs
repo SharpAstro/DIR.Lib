@@ -133,6 +133,40 @@ public class LayoutNavigationStripTests
         IconColour(cells[1]).ShouldBe(Colors.DisabledInk);
     }
 
+    [Theory]
+    [InlineData(52, 34)]
+    [InlineData(200, 40)]
+    public void EachArrowIsDrawnInTheMiddleOfItsCell(int width, int height)
+    {
+        // Read off the painted pixels, not the tree: the row holding the mark was an Auto-width child of the cell's
+        // column, which a stack places at its cross-axis START, so both arrows sat on their cell's left edge.
+        var renderer = new RgbaImageRenderer((uint)width, (uint)height);
+        new DeclarationWidget(renderer).Render(
+            Layout.Builder.NavigationStrip(true, true, null, null, Colors), new RectF32(0, 0, width, height));
+        var pixels = renderer.Surface.Pixels;
+        var cell = width / 2f;
+
+        for (var c = 0; c < 2; c++)
+        {
+            int minX = int.MaxValue, maxX = int.MinValue, minY = int.MaxValue, maxY = int.MinValue;
+            for (var y = 0; y < height; y++)
+            {
+                for (var x = (int)(c * cell); x < (int)((c + 1) * cell); x++)
+                {
+                    var i = (y * width + x) * 4;
+                    if (pixels[i] == Colors.Ink.Red && pixels[i + 1] == Colors.Ink.Green && pixels[i + 2] == Colors.Ink.Blue)
+                    {
+                        (minX, maxX, minY, maxY) = (Math.Min(minX, x), Math.Max(maxX, x), Math.Min(minY, y), Math.Max(maxY, y));
+                    }
+                }
+            }
+
+            maxX.ShouldBeGreaterThanOrEqualTo(minX, $"cell {c} has no ink");
+            ((minX + maxX + 1) / 2f).ShouldBe(c * cell + cell / 2f, 1f, $"cell {c} across");
+            ((minY + maxY + 1) / 2f).ShouldBe(height / 2f, 1f, $"cell {c} down");
+        }
+    }
+
     private static RGBAColor32 IconColour(Layout.Node cell)
     {
         // Cell: a column of spacer, row (spacer, icon, spacer), spacer; the icon is the middle of the middle.
