@@ -59,10 +59,12 @@ public static partial class Builder
         in NavigationStripColors colors, float iconSize)
     {
         // Centred in the cell both ways: the icon draws in a square of its own, so the cell's two Star axes place it.
+        // The middle row must be WStar: an Auto-width row in a column is placed at the column's cross-axis START, which
+        // left both arrows on their cell's left edge.
         var face = Icon(mark, iconSize, enabled ? colors.Ink : colors.DisabledInk).WAuto().HAuto();
         var cell = VStack(
                 Spacer().HStar(),
-                HStack(Spacer().WStar(), face, Spacer().WStar()).HAuto(),
+                HStack(Spacer().WStar(), face, Spacer().WStar()).WStar().HAuto(),
                 Spacer().HStar())
             .WStar().HStar();
         if (enabled)
