@@ -58,6 +58,19 @@ jobs:
       run: dotnet build -c $BUILD_CONF --no-restore -p:Version=${VERSION_PREFIX}${VERSION_REV}${VERSION_HASH} -p:FileVersion=${VERSION_PREFIX}.${VERSION_REV} -p:ContinuousIntegrationBuild=true
     - name: Test
       run: dotnet test -c $BUILD_CONF --no-build
+    # DIR.Lib.Debug: the same library packed from a Debug build, at the same stamped version. A
+    # published DIR.Lib is Release, so its #if DEBUG types (DIR.Lib.Diagnostics, the debug inspector)
+    # are absent, and a plane never finds the sibling sources, so a Debug build there restored the
+    # Release package and failed with CS0234. The twin is Debug by definition, whatever BUILD_CONF is.
+    # GeneratePackageOnBuild is off so bin/Debug holds no second copy of the nupkg: the upload's
+    # '**/*.nupkg' glob (and the push after it) must see DIR.Lib.Debug exactly once, from artifacts/debug-twin.
+    - name: Pack DIR.Lib.Debug twin
+      run: dotnet pack src/DIR.Lib/DIR.Lib.csproj -c Debug -p:DebugTwin=true -p:GeneratePackageOnBuild=false -p:Version=${VERSION_PREFIX}${VERSION_REV}${VERSION_HASH} -p:FileVersion=${VERSION_PREFIX}.${VERSION_REV} -p:ContinuousIntegrationBuild=true -o artifacts/debug-twin
+    # Proves a Debug consumer compiles against the twin (it references DebugInspectorCore). The version
+    # is the stamped one without the +sha build metadata (NuGet ignores it when matching, checked by hand,
+    # so a plain reference is enough).
+    - name: Check DIR.Lib.Debug twin
+      run: dotnet build tools/debug-twin-check/DebugTwinCheck.csproj -c Debug -p:DirLibDebugVersion=${VERSION_PREFIX}${VERSION_REV}
     - name: Upload NuGet package
       uses: actions/upload-artifact@v7
       with:

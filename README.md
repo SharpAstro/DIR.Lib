@@ -158,6 +158,21 @@ var unicode = MarkdownMacros.RenderMathUnicode("E = mc^2");      // "E = mc²"
 var image   = BoxRasterizer.RenderToRgba(boxBuilder(style), style);
 ```
 
+## Debug builds (`DIR.Lib.Debug`)
+
+The published `DIR.Lib` is built Release, so the `#if DEBUG` types (`DIR.Lib.Diagnostics`, the debug
+inspector) are absent from it. `DIR.Lib.Debug` is the same library at the same version, built Debug.
+Reference one or the other by configuration (Visual Studio needs a restore after switching):
+
+```xml
+<ItemGroup Condition="'$(Configuration)' == 'Debug'">
+  <PackageReference Include="DIR.Lib.Debug" Version="11.40.*" />
+</ItemGroup>
+<ItemGroup Condition="'$(Configuration)' != 'Debug'">
+  <PackageReference Include="DIR.Lib" Version="11.40.*" />
+</ItemGroup>
+```
+
 ## Upgrading
 
 - **[CHANGELOG.md](CHANGELOG.md)** — what changed in each `Major.Minor`, and why. Newest first.

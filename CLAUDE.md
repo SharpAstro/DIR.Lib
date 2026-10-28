@@ -91,6 +91,12 @@ This repo's OWN version has **one place to bump**: `VersionMajorMinor` in `src/D
 
 It covers both DIR.Lib and DIR.Lib.Shaping, because CI stamps a single `-p:Version` across them. No csproj declares its own `VersionPrefix` — a per-project one silently overrides the props file, which is how DIR.Lib.Shaping once sat at 6.8.0 while DIR.Lib shipped 7.5.0.
 
+The same version also stamps the **DIR.Lib.Debug** twin: CI packs `src/DIR.Lib` a second time with
+`-c Debug -p:DebugTwin=true` (and `-p:GeneratePackageOnBuild=false`, so bin/Debug holds no second nupkg),
+because the Release DIR.Lib has no `#if DEBUG` types. `tools/debug-twin-check` is a consumer with no
+ProjectReference that compiles against that package only (`dotnet build tools/debug-twin-check/DebugTwinCheck.csproj -c Debug`,
+after a twin pack into `artifacts/debug-twin`; CI passes `-p:DirLibDebugVersion=<stamped version>`).
+
 Add the matching entry to [CHANGELOG.md](CHANGELOG.md) at the repo root, in the same commit as the
 bump. Newest first, one `## Major.Minor` section each. (The notes used to live in a comment block in
 `.github/workflows/dotnet.yml`; nothing ever read them there, and they had grown to 612 of that
