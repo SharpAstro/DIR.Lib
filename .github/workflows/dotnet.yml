@@ -75,7 +75,11 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: nuget-packages
-        path: '**/*.nupkg'
+        # Not obj/: the consumer check restores into its own obj/packages, a package cache that holds a
+        # .nupkg for every restored package (third-party ones too) and DIR.Lib.Debug a second time.
+        path: |
+          **/*.nupkg
+          !**/obj/**
         retention-days: 5
 
   publish-nuget:
