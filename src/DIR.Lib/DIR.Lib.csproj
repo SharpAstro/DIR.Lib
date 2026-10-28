@@ -19,6 +19,21 @@
     <DebugType>embedded</DebugType>
   </PropertyGroup>
 
+  <!--
+    Opt-in Debug twin (-p:DebugTwin=true): the same library packed from a Debug build as DIR.Lib.Debug,
+    at the same version as DIR.Lib. A published DIR.Lib is built Release, so every #if DEBUG type in it
+    (DIR.Lib.Diagnostics, the debug inspector) is absent and a Debug consumer cannot compile against it.
+    A consumer switches with a Configuration-conditioned PackageReference: DIR.Lib when not Debug,
+    DIR.Lib.Debug when Debug. Visual Studio needs a restore after switching configuration.
+  -->
+  <PropertyGroup Condition="'$(DebugTwin)' == 'true'">
+    <PackageID>DIR.Lib.Debug</PackageID>
+    <Description>The Debug build of DIR.Lib, for Debug consumers that need the debug inspector and the #if DEBUG types (DIR.Lib.Diagnostics), which the Release DIR.Lib package does not contain. Same version as DIR.Lib. Reference DIR.Lib when the configuration is not Debug and DIR.Lib.Debug when it is, with a Configuration-conditioned PackageReference; Visual Studio needs a restore after switching configuration.</Description>
+  </PropertyGroup>
+  <Target Name="RequireDebugForTwin" BeforeTargets="Pack;GenerateNuspec;CoreCompile" Condition="'$(DebugTwin)' == 'true' AND '$(Configuration)' != 'Debug'">
+    <Error Text="DebugTwin=true packs DIR.Lib.Debug and must be built with -c Debug (Configuration is '$(Configuration)')." />
+  </Target>
+
   <ItemGroup>
     <InternalsVisibleTo Include="DIR.Lib.Tests" />
   </ItemGroup>

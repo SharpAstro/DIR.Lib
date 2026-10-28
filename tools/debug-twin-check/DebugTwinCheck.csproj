@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Proves a Debug build sees the #if DEBUG types of DIR.Lib: it compiles only against the DIR.Lib.Debug
+    twin package (packed from a Debug build into artifacts/debug-twin), never against the Release DIR.Lib,
+    where DIR.Lib.Diagnostics does not exist (CS0234). Sits outside src/ so Central Package Management does
+    not apply, and has no ProjectReference on purpose: the package is the thing under test.
+    CI overrides the version with -p:DirLibDebugVersion=<run-stamped version>.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Its own package folder, so a re-pack of the same version is never served from the global cache. -->
+    <RestorePackagesPath>$(MSBuildProjectDirectory)/obj/packages</RestorePackagesPath>
+    <DirLibDebugVersion Condition="'$(DirLibDebugVersion)' == ''">$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/../../src/Directory.Build.props')), '&lt;VersionMajorMinor&gt;([^&lt;]+)&lt;').Groups[1].Value).0</DirLibDebugVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DIR.Lib.Debug" Version="$(DirLibDebugVersion)" />
+  </ItemGroup>
+
+</Project>
