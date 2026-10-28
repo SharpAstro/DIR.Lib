@@ -58,6 +58,63 @@ public class LayoutStackMeasureTests
         arranged.Single(a => a.Node is Layout.Node.Wrap).Bounds.Height.ShouldBe(30f, 0.01f);
     }
 
+    // The nesting the reviewer counted: HStack(Text, inner.WStar(), Text) and VStack(Text, inner), alternating.
+    private static Layout.Node Nested(int depth)
+    {
+        Layout.Node node = Layout.Builder.Text("x", 10f);
+        for (var i = 0; i < depth; i++)
+        {
+            node = i % 2 == 0
+                ? Layout.Builder.HStack(Layout.Builder.Text("a", 10f), node.WStar(), Layout.Builder.Text("b", 10f))
+                : Layout.Builder.VStack(Layout.Builder.Text("c", 10f), node);
+        }
+
+        return node;
+    }
+
+    [Fact]
+    public void MeasureCostGrowsLinearlyWithStackNesting()
+    {
+        var calls = Enumerable.Range(1, 8).Select(depth =>
+        {
+            var ctx = new CountingContext();
+            Layout.Engine.Measure(Nested(depth), new Layout.Size<float>(1000f, 1000f), ctx);
+            return ctx.TextCalls;
+        }).ToArray();
+
+        // Every text in the tree is measured once: 3, 4, 6, 7, 9, 10, 12, 13 at depths 1 to 8, as before the fix. Measuring
+        // each child a second and third time was 8, 27, 60, ... 6735, doubling and more with every level.
+        calls.ShouldBe([3, 4, 6, 7, 9, 10, 12, 13], string.Join(",", calls));
+    }
+
+    [Fact]
+    public void ArrangeCostGrowsLinearlyWithStackNesting()
+    {
+        var calls = Enumerable.Range(1, 8).Select(depth =>
+        {
+            var ctx = new CountingContext();
+            Layout.Engine.Arrange(Nested(depth), new Rect<float>(0, 0, 1000f, 1000f), ctx);
+            return ctx.TextCalls;
+        }).ToArray();
+
+        // An arrange measures the subtree under each Auto child once per level, so it is polynomial in the depth, not
+        // exponential: 76 at depth 8 before the fix to stack measures, 4038 with the first version of it.
+        calls[7].ShouldBeLessThanOrEqualTo(76, string.Join(",", calls));
+    }
+
+    private sealed class CountingContext : Layout.IMeasureContext<float>
+    {
+        public int TextCalls;
+
+        public Layout.Size<float> MeasureText(ReadOnlySpan<char> text, float fontSize)
+        {
+            TextCalls++;
+            return new(text.Length * fontSize, fontSize);
+        }
+
+        public float ToSurface(float designUnits) => designUnits;
+    }
+
     private sealed class UnitContext : Layout.IMeasureContext<float>
     {
         public Layout.Size<float> MeasureText(ReadOnlySpan<char> text, float fontSize) => new(text.Length * fontSize, fontSize);
