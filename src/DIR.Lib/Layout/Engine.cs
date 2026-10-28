@@ -517,8 +517,9 @@ public static class Engine
             {
                 SizeKind.Fixed => ToSurfaceOn(ctx, crossSizing.Value, CrossAxis(axis)),
                 SizeKind.Star when !crossSizing.UpToContent => crossAvail,     // stretch to fill cross axis
-                // Auto, and a content-capped Star: its content, never more than the axis holds.
-                _ => Min(crossAvail, CrossOf(axis, Measure(children[i], availSize, ctx))),
+                // Auto, and a content-capped Star: its content at the main extent it was given, never more than the
+                // axis holds. Measured at the stack's whole main, a wrapping text asked for fewer lines than it takes.
+                _ => Min(crossAvail, CrossOf(axis, Measure(children[i], Compose(axis, mains[i], crossAvail), ctx))),
             };
             cross = Clamp(cross, crossSizing, ctx, CrossAxis(axis));
 
@@ -1060,6 +1061,21 @@ public static class Engine
         var n = stack.Children.Length;
         var main = T.Zero;
         var cross = T.Zero;
+
+        // The main extent each child will be GIVEN at arrange, resolved as the arrange does, so a child's cross
+        // extent is measured at that and not at the stack's whole main. Measured at the whole, a wrapping text
+        // beside a fixed label in a row asked for the height of the lines it would take at the row's full width,
+        // fewer than it took in its column, and its last line was drawn over the row below (pilot's chat, SE1,
+        // 2026-10-28). Collapse thresholds are left out: a collapsed sibling only widens the others.
+        var mains = new T[n];
+        if (n > 0)
+        {
+            var included = new bool[n];
+            Array.Fill(included, true);
+            ResolveStackMains(stack.Children, included, n, axis, MainOf(axis, available),
+                ToSurfaceOn(ctx, stack.Gap, axis), available, ctx, mains);
+        }
+
         for (var i = 0; i < n; i++)
         {
             var child = stack.Children[i];
@@ -1072,7 +1088,13 @@ public static class Engine
                 main += MainOf(axis, size);
             }
 
-            cross = Max(cross, CrossOf(axis, size));
+            var crossSize = CrossOf(axis, size);
+            if (mains[i] < MainOf(axis, available))
+            {
+                crossSize = CrossOf(axis, Measure(child, Compose(axis, mains[i], CrossOf(axis, available)), ctx));
+            }
+
+            cross = Max(cross, crossSize);
         }
 
         main += ToSurfaceOn(ctx, stack.Gap, axis) * T.CreateChecked(Math.Max(0, n - 1));
