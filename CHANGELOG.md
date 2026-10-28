@@ -11,6 +11,11 @@ changed and why.
 
 ## 11.38
 
+**Fix, in an 11.38 patch: a stack measures each child's cross extent at the main extent it will be given.** A row of a
+fixed label, a wrapping text and a fixed time measured the text's height at the row's whole width, fewer lines than it
+took in its column, so a list of such rows drew each long text's last line over the row below (pilot's chat). The
+arrange's own measure of an Auto cross child had the same fault. `LayoutStackMeasureTests` holds both.
+
 **A multi-line text editor beside the single-line field (#164).** Additive: nothing that takes a `TextInputState`
 changes, and `HitResult.TextInputHit` keeps its one constructor. Its consumers are pilot's Ideas pane
 (SharpAstro/pilot#381) and tianwen's notes fields, which had a one-line box or a hand-rolled one to choose between.
