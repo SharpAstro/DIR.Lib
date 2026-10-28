@@ -9,6 +9,28 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.40
+
+Additive: a second package, **DIR.Lib.Debug**, the same library built Debug, at the same version as
+DIR.Lib and pushed with it.
+
+A published DIR.Lib is built Release, so every `#if DEBUG` type in it (`DIR.Lib.Diagnostics`, the debug
+inspector) is absent. A Debug consumer that restored it failed with `CS0234`, and on a plane, where no
+sibling sources are found, that was the only package it could get. DIR.Lib.Debug carries those types. A
+consumer switches with a Configuration-conditioned reference:
+
+```xml
+<ItemGroup Condition="'$(Configuration)' == 'Debug'">
+  <PackageReference Include="DIR.Lib.Debug" Version="11.40.*" />
+</ItemGroup>
+<ItemGroup Condition="'$(Configuration)' != 'Debug'">
+  <PackageReference Include="DIR.Lib" Version="11.40.*" />
+</ItemGroup>
+```
+
+Visual Studio needs a restore after switching configuration. CI packs the twin
+(`-p:DebugTwin=true`) and builds `tools/debug-twin-check` against it.
+
 ## 11.39
 
 Back and Forward, the part every window shares: the history, the one rule that turns input into them, and the strip.
