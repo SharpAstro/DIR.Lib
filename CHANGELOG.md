@@ -26,12 +26,12 @@ Back and Forward, the part every window shares: the history, the one rule that t
   `NavigationStripColors` the host fills from its palette. The marks are `IconKind.CaretLeft` / `CaretRight`, the family's step
   back and forward, not an arrow rune in a text run: there is no arrow icon with a tail.
 
-## 11.38
-
-**Fix, in an 11.38 patch: a stack measures each child's cross extent at the main extent it will be given.** A row of a
+**Fix, in an 11.39 patch: a stack measures each child's cross extent at the main extent it will be given.** A row of a
 fixed label, a wrapping text and a fixed time measured the text's height at the row's whole width, fewer lines than it
 took in its column, so a list of such rows drew each long text's last line over the row below (pilot's chat). The
 arrange's own measure of an Auto cross child had the same fault. `LayoutStackMeasureTests` holds both.
+
+## 11.38
 
 **A multi-line text editor beside the single-line field (#164).** Additive: nothing that takes a `TextInputState`
 changes, and `HitResult.TextInputHit` keeps its one constructor. Its consumers are pilot's Ideas pane
