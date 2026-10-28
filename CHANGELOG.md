@@ -9,6 +9,23 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.39
+
+Back and Forward, the part every window shares: the history, the one rule that turns input into them, and the strip.
+
+- **`NavigationHistory<TPlace>`**: bounded back and forward stacks over any place the host defines. `Push(from)` records the
+  place a move leaves and drops the places forward of it; `Back(current, out place)` and `Forward(current, out place)` trade
+  the current place for the one they return to (`[MaybeNullWhen(false)]`, so a value place whose default is real is not
+  mistaken for nowhere). The oldest place falls off at `Capacity` (default 100).
+- **`NavigationInput.Classify(InputEvent)`** returns a `NavigationCommand`: Alt+Left and the mouse's back button going down are
+  `Back`, Alt+Right and the forward button are `Forward`, the release of either button is `Swallow` (the press already acted),
+  and anything else is `None`. Alt means Alt alone, so Ctrl+Alt+Left and Shift+Alt+Left are the host's.
+- **`Layout.Builder.NavigationStrip(canGoBack, canGoForward, onBack, onForward, colors)`**: two cells sharing the width, each a
+  pointer-cursor `ButtonHit` (`nav:back`, `nav:forward`) with the tooltip `Back (Alt+Left)` / `Forward (Alt+Right)`. A cell with
+  nowhere to go is `.Disabled` (dimmed, press swallowed, tooltip kept); an enabled one has a hover fill. The colours come from a
+  `NavigationStripColors` the host fills from its palette. The marks are `IconKind.CaretLeft` / `CaretRight`, the family's step
+  back and forward, not an arrow rune in a text run: there is no arrow icon with a tail.
+
 ## 11.38
 
 **Fix, in an 11.38 patch: a stack measures each child's cross extent at the main extent it will be given.** A row of a
