@@ -353,11 +353,8 @@ public sealed class FontFallbackResolver
         // One character is never swapped for an ellipsis, which is one character as wide or wider: see
         // TextFit.IsSingleGrapheme.
         if (TextFit.IsSingleGrapheme(text)) return text;
-        for (var len = text.Length - 1; len > 0; len--)
-        {
-            var cand = string.Concat(text.AsSpan(0, len), "…");
-            if (Measure(renderer, cand, fontSize).Width <= maxW) return cand;
-        }
-        return "…";
+        // Binary search, not a walk down one character at a time: see TextFit.TrimToWidth.
+        var kept = TextFit.LongestFit(text.Length - 1, len => Measure(renderer, string.Concat(text.AsSpan(0, len), "…"), fontSize).Width <= maxW);
+        return kept == 0 ? "…" : string.Concat(text.AsSpan(0, kept), "…");
     }
 }
