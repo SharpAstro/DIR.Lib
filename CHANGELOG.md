@@ -9,6 +9,14 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.41
+
+SharpAstro.Fonts and SharpAstro.Fonts.Shaping 1.16: an OpenType font that carries a CFF but no `head` or
+`maxp` table now loads, with both derived from the CFF, as a bare CFF program already did. PDF producers
+embed such wrappers (only `CFF ` and `cmap`) as a simple font's `/FontFile3 /OpenType` program, and
+`ManagedFontRasterizer.RegisterFontFromMemory` refused every one, so its text drew in a substitute face as
+unrelated characters. A TrueType font without those tables is still refused.
+
 ## 11.40
 
 Additive: a second package, **DIR.Lib.Debug**, the same library built Debug, at the same version as
