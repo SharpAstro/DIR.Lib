@@ -9,6 +9,18 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.42
+
+Inspector: a timed-out multi-pump operation no longer holds its slot (#178). Before, a screenshot (or any
+stepped verb) that never finished timed out only on the client side; the core kept it in its slot, so every
+later operation of that kind was refused "already in progress" until the app restarted.
+`DebugInspectorCore.Pump` now owns the deadline: an exclusive or background operation still running past its
+`Timeout`, counted from when it started, is cancelled, its slot cleared and its command failed with
+"'<method>' did not finish within Ns". An operation implementing `IDisposable` is disposed when cancelled
+(`IDebugInspectorOperation` gains no member, so compiled operations keep working). The socket client waits a
+short grace past the deadline so the pump's error is the one it sees, and a command whose client has given up
+is reaped by the pump as well. New `TimeProvider` property (default `TimeProvider.System`) lets tests step time.
+
 ## 11.41
 
 SharpAstro.Fonts and SharpAstro.Fonts.Shaping 1.16: an OpenType font that carries a CFF but no `head` or
