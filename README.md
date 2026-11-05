@@ -33,7 +33,7 @@
 Platform bridges (in downstream packages):
 - `SdlVulkan.Renderer` provides `SdlInputMapping` (SDL3 Scancode → InputKey)
 - `Console.Lib` provides `ConsoleInputMapping` (ConsoleKey → InputKey)
-- `WebGl.Renderer` provides `WebGlCanvas`, a Blazor component that maps DOM pointer / wheel / pinch events to backing-space coordinates (`CanvasPointerEventArgs`, `CanvasWheelEventArgs`, `CanvasPinchEventArgs`) and forwards `keydown` raw; the browser `KeyboardEvent.Key` → InputKey map lives in the consuming app (see `MapKey` in TianWen.UI.Web's Planner)
+- `WebGl.Renderer` provides `WebGlCanvas`, a Blazor component that maps DOM pointer / wheel / pinch events to backing-space coordinates (`CanvasPointerEventArgs`, `CanvasWheelEventArgs`, `CanvasPinchEventArgs`) and delivers keys through `OnInputKey` as a `CanvasKeyEventArgs` (InputKey, InputModifier and the raw event), with the raw `OnKeyDown` still there beside it; it also provides `WebInputMapping` (browser `KeyboardEvent.Key` → InputKey, modifiers → InputModifier), the analogue of `SdlInputMapping`
 
 ## Widget System
 
