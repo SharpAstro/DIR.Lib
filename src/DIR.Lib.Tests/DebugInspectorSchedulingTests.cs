@@ -422,6 +422,78 @@ public class DebugInspectorSchedulingTests
         second.IsCompletedSuccessfully.ShouldBeTrue("an abandoned operation must not refuse the next as in progress");
     }
 
+    private sealed class CountingHost : FakeHost, IDebugInspectorSteppedHost
+    {
+        public int BeginCalls;
+        public IReadOnlyCollection<string> SteppedMethods { get; } = ["shot"];
+
+        public IDebugInspectorOperation Begin(string method, JsonElement parameters)
+        {
+            BeginCalls++;
+            return new CountdownOperation(exclusive: false, 1, "\"done\"");
+        }
+    }
+
+    [Fact]
+    public async Task AnAbandonedCommandIsFailedBeforeBegin_SoNothingIsPressedWithNoOneToRelease()
+    {
+        var host = new CountingHost();
+        using var core = DebugInspectorCore.Detached(host);
+        core.CommandTimeout = TimeSpan.FromMilliseconds(50);
+
+        // Nobody pumps, so the client gives up and marks the command abandoned while it is still queued.
+        var (_, response) = await core.HandleAsync("{\"id\":1,\"method\":\"shot\"}");
+        response.ShouldStartWith("!timed out");
+
+        core.Pump();   // the pump now claims the abandoned command
+
+        host.BeginCalls.ShouldBe(0, "Begin acts on the app; an abandoned command must never reach it");
+
+        var next = core.Submit("shot", NoParams);
+        core.Pump();
+        next.IsCompletedSuccessfully.ShouldBeTrue("no slot was taken by the abandoned command");
+        host.BeginCalls.ShouldBe(1);
+    }
+
+    private sealed class ThrowingDisposeOperation : IDebugInspectorOperation, IDisposable
+    {
+        public bool Exclusive => false;
+        public TimeSpan Timeout => TimeSpan.FromSeconds(5);
+        public string? Advance() => null;
+        public void Dispose() => throw new InvalidOperationException("release failed");
+    }
+
+    private sealed class ThrowingDisposeHost : FakeHost, IDebugInspectorSteppedHost
+    {
+        public int Hangs = 1;
+        public IReadOnlyCollection<string> SteppedMethods { get; } = ["shot"];
+
+        public IDebugInspectorOperation Begin(string method, JsonElement parameters)
+            => Hangs-- > 0 ? new ThrowingDisposeOperation() : new CountdownOperation(false, 1, "\"done\"");
+    }
+
+    [Fact]
+    public async Task ADisposeThatThrowsDuringCancelStillFailsTheCommandAndFreesTheSlot()
+    {
+        var host = new ThrowingDisposeHost();
+        var clock = new FakeClock();
+        using var core = DebugInspectorCore.Detached(host);
+        core.TimeProvider = clock;
+
+        var first = core.Submit("shot", NoParams);
+        core.Pump();
+        clock.Advance(TimeSpan.FromSeconds(6));
+        core.Pump();   // cancels; Dispose throws and must be swallowed
+
+        first.IsFaulted.ShouldBeTrue();
+        first.Exception!.InnerException!.Message.ShouldBe("'shot' did not finish within 5s");
+
+        var second = core.Submit("shot", NoParams);
+        core.Pump();
+        second.IsCompletedSuccessfully.ShouldBeTrue("the pump survived the throwing Dispose");
+        (await second).ShouldBe("\"done\"");
+    }
+
     /// <summary>
     /// The core pokes between advances, so an event-driven host that only renders on demand keeps turning
     /// without every operation having to remember to ask.

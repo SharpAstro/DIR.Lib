@@ -124,9 +124,11 @@ public interface IDebugInspectorOperation
     /// operation, frees its slot and fails the request with "did not finish within Ns", so the next operation
     /// of the same kind starts normally. It is also how long a waiting client is given. Distinct from
     /// <see cref="DebugInspectorCore.CommandTimeout"/>, which cannot be right for both an instantaneous read
-    /// and a five-minute hold. An operation that holds resources should implement <see cref="IDisposable"/>:
-    /// the core disposes it when it cancels the operation (checked at run time, so this interface gains no
-    /// member).
+    /// and a five-minute hold. An operation that holds resources (a press-and-hold holds a button) MUST
+    /// implement <see cref="IDisposable"/> to release them: the core disposes it when it cancels the
+    /// operation (checked at run time, so this interface gains no member). Dispose runs ONLY on cancel
+    /// (deadline or abandoned client), never after a normal result or a throw from <see cref="Advance"/>,
+    /// so release on those paths belongs in <see cref="Advance"/> itself.
     /// </summary>
     TimeSpan Timeout { get; }
 
@@ -204,15 +206,15 @@ public sealed class DebugInspectorCore : IDisposable
         // that is waiting. Zero means "not a multi-pump operation".
         private long _runningTimeoutTicks;
 
-        /// <summary>
-        /// Set by the pump once this turns out to be a multi-pump operation, so the socket side can extend
-        /// its patience past <see cref="CommandTimeout"/> — a press-and-hold may legitimately run for minutes.
-        /// </summary>
         private volatile bool _abandoned;
 
         /// <summary>Set by the socket side when its client has given up, so the pump can free the slot.</summary>
         public bool Abandoned { get => _abandoned; set => _abandoned = value; }
 
+        /// <summary>
+        /// Set by the pump once this turns out to be a multi-pump operation, so the socket side can extend
+        /// its patience past <see cref="CommandTimeout"/> — a press-and-hold may legitimately run for minutes.
+        /// </summary>
         public TimeSpan? RunningTimeout
         {
             get
@@ -601,6 +603,15 @@ public sealed class DebugInspectorCore : IDisposable
         else if (_host is IDebugInspectorSteppedHost stepped
                  && stepped.SteppedMethods.Contains(command.Method))
         {
+            // A client that already gave up must not have its verb begun: Begin ACTS on the app (presses the
+            // button), and nothing would be left to release it.
+            if (command.Abandoned)
+            {
+                command.Completion.TrySetException(new InvalidOperationException(
+                    $"'{command.Method}' was abandoned by its client before it started"));
+                return true;
+            }
+
             operation = stepped.Begin(command.Method, command.Parameters);
         }
         else
