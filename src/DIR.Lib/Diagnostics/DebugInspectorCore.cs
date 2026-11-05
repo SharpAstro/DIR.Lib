@@ -120,9 +120,15 @@ public interface IDebugInspectorOperation
     bool Exclusive { get; }
 
     /// <summary>
-    /// How long a waiting client is given before the core reports a timeout. Distinct from
+    /// The pump's deadline for this operation, counted from when it started: past it the core cancels the
+    /// operation, frees its slot and fails the request with "did not finish within Ns", so the next operation
+    /// of the same kind starts normally. It is also how long a waiting client is given. Distinct from
     /// <see cref="DebugInspectorCore.CommandTimeout"/>, which cannot be right for both an instantaneous read
-    /// and a five-minute hold.
+    /// and a five-minute hold. An operation that holds resources (a press-and-hold holds a button) MUST
+    /// implement <see cref="IDisposable"/> to release them: the core disposes it when it cancels the
+    /// operation (checked at run time, so this interface gains no member). Dispose runs ONLY on cancel
+    /// (deadline or abandoned client), never after a normal result or a throw from <see cref="Advance"/>,
+    /// so release on those paths belongs in <see cref="Advance"/> itself.
     /// </summary>
     TimeSpan Timeout { get; }
 
@@ -200,6 +206,11 @@ public sealed class DebugInspectorCore : IDisposable
         // that is waiting. Zero means "not a multi-pump operation".
         private long _runningTimeoutTicks;
 
+        private volatile bool _abandoned;
+
+        /// <summary>Set by the socket side when its client has given up, so the pump can free the slot.</summary>
+        public bool Abandoned { get => _abandoned; set => _abandoned = value; }
+
         /// <summary>
         /// Set by the pump once this turns out to be a multi-pump operation, so the socket side can extend
         /// its patience past <see cref="CommandTimeout"/> — a press-and-hold may legitimately run for minutes.
@@ -216,7 +227,19 @@ public sealed class DebugInspectorCore : IDisposable
     }
 
     /// <summary>An operation in flight, paired with the request that is waiting on it.</summary>
-    private sealed record Running(Command Command, IDebugInspectorOperation Operation);
+    private sealed record Running(Command Command, IDebugInspectorOperation Operation, long StartedTimestamp);
+
+    /// <summary>
+    /// The clock the pump's operation deadlines are counted on. Replaceable so a test steps time instead of
+    /// sleeping; production leaves it at <see cref="TimeProvider.System"/>.
+    /// </summary>
+    public TimeProvider TimeProvider { get; set; } = TimeProvider.System;
+
+    /// <summary>
+    /// How long past an operation's deadline a socket client keeps waiting, so the pump's own
+    /// "did not finish" error is what the client sees rather than a racing client-side one.
+    /// </summary>
+    internal TimeSpan ClientGrace { get; set; } = TimeSpan.FromSeconds(2);
 
     private readonly IDebugInspectorHost _host;
     private readonly ConcurrentQueue<Command> _queue = new();
@@ -530,6 +553,21 @@ public sealed class DebugInspectorCore : IDisposable
     private void Advance(ref Running? slot)
     {
         var running = slot!;
+
+        // The deadline is the pump's to enforce, from when the operation started: a never-finishing one
+        // must not hold its slot (and refuse every later one as "already in progress") forever.
+        var timeout = running.Operation.Timeout;
+        var elapsed = TimeProvider.GetElapsedTime(running.StartedTimestamp);
+        if (running.Command.Abandoned || elapsed > timeout)
+        {
+            slot = null;
+            try { (running.Operation as IDisposable)?.Dispose(); }
+            catch { /* a throwing cancel must not wedge the pump */ }
+            running.Command.Completion.TrySetException(new InvalidOperationException(
+                $"'{running.Command.Method}' did not finish within {timeout.TotalSeconds:0}s"));
+            return;
+        }
+
         try
         {
             if (running.Operation.Advance() is { } result)
@@ -565,6 +603,15 @@ public sealed class DebugInspectorCore : IDisposable
         else if (_host is IDebugInspectorSteppedHost stepped
                  && stepped.SteppedMethods.Contains(command.Method))
         {
+            // A client that already gave up must not have its verb begun: Begin ACTS on the app (presses the
+            // button), and nothing would be left to release it.
+            if (command.Abandoned)
+            {
+                command.Completion.TrySetException(new InvalidOperationException(
+                    $"'{command.Method}' was abandoned by its client before it started"));
+                return true;
+            }
+
             operation = stepped.Begin(command.Method, command.Parameters);
         }
         else
@@ -584,7 +631,7 @@ public sealed class DebugInspectorCore : IDisposable
             return true;
         }
 
-        var running = new Running(command, operation);
+        var running = new Running(command, operation, TimeProvider.GetTimestamp());
         command.RunningTimeout = operation.Timeout;
 
         if (operation.Exclusive)
@@ -868,7 +915,7 @@ public sealed class DebugInspectorCore : IDisposable
         }
     }
 
-    private async Task<(int Id, string Response)> HandleAsync(string line)
+    internal async Task<(int Id, string Response)> HandleAsync(string line)
     {
         int id = 0;
         try
@@ -899,16 +946,20 @@ public sealed class DebugInspectorCore : IDisposable
             {
                 if (command.RunningTimeout is not { } extended)
                 {
+                    command.Abandoned = true;
                     return (id, "!timed out waiting for the host loop — is Pump being called?");
                 }
 
-                var remaining = extended - CommandTimeout;
+                // The pump enforces the deadline itself and fails the command; wait a little past it so
+                // that error is the one reported.
+                var remaining = extended - CommandTimeout + ClientGrace;
                 if (remaining > TimeSpan.Zero)
                 {
                     completed = await Task.WhenAny(command.Completion.Task, Task.Delay(remaining, _stopping.Token));
                 }
                 if (completed != command.Completion.Task)
                 {
+                    command.Abandoned = true;
                     return (id, $"!'{method}' did not finish within {extended.TotalSeconds:0}s");
                 }
             }
