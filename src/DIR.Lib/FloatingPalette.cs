@@ -108,7 +108,16 @@ namespace DIR.Lib
         RGBAColor32 KeyChipBg,
         RGBAColor32 OnInk,
         RGBAColor32 OffInk,
-        RGBAColor32 DisabledInk);
+        RGBAColor32 DisabledInk)
+    {
+        /// <summary>
+        /// An opaque backing drawn under the whole panel (grip and rows), at its own alpha and NOT faded,
+        /// so content panning beneath the palette never shows through it. The idle fade still dims the
+        /// panel's own colours on top of it. Null (the default) keeps the translucent panel.
+        /// </summary>
+        /// <remarks>Init-only rather than a constructor parameter, which would be a binary break.</remarks>
+        public RGBAColor32? Backing { get; init; }
+    }
 
     /// <summary>
     /// Placement and interaction state for one floating palette, owned by the consumer and mutated by
@@ -275,6 +284,10 @@ namespace DIR.Lib
 
         /// <summary>Holds the panel fully present, as any deliberate use of it should.</summary>
         public void NoteEngaged() => _engagedAt = Stopwatch.GetTimestamp();
+
+        /// <summary>Pretends the last engagement was <paramref name="seconds"/> ago, so a test can rest the fade.</summary>
+        internal void AgeEngagement(float seconds)
+            => _engagedAt -= (long)(seconds * Stopwatch.Frequency);
 
         /// <summary>Whether hover or a live drag is currently holding the fade open.</summary>
         public bool IsEngaged => _pointerOver || IsDragging;
@@ -782,6 +795,13 @@ namespace DIR.Lib
                 .Bg(Faded(colors.PanelBg))
                 .Pad(5f)
                 .WithGap(2f);
+            if (colors.Backing is { } backing)
+            {
+                // The wrapper takes the panel's measured size, and its fill is painted before the panel's own
+                // faded one, so the fade dims the panel over a backing that stays put.
+                panel = Layout.Builder.VStack(panel).Bg(backing);
+            }
+
             if (panelHit is not null)
             {
                 // The arrow, stated: a region with no cursor is transparent to the cursor lookup, so the padding
