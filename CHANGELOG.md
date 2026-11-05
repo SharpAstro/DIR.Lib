@@ -9,6 +9,15 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.43
+
+- `PaletteColors.Backing` (DIR.Lib #182): an opt-in opaque backing drawn under the whole `FloatingPalette`
+  panel (grip and rows) at its own alpha, not faded, so content panning beneath it (a map's labels under a
+  LAYERS menu) is not drawn through it. The idle fade still dims the panel's own colours on top. It is an
+  init-only property, so the primary constructor is unchanged; null keeps today's translucent panel. The
+  panel's arranged rect and click regions are the same with or without it. Pilot sets it and drops its
+  'flights canvas' allow-list entry in `src/Pilot.Gui.Tests/TextOverlapAllowList.cs`.
+
 ## 11.42
 
 Inspector: a timed-out multi-pump operation no longer holds its slot (#178). Before, a screenshot (or any
