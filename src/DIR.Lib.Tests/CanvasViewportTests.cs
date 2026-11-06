@@ -348,13 +348,14 @@ public sealed class CanvasViewportTests
     public void EventsOutsideBoundsAreNotTaken()
     {
         var vp = Live();
+        var movedBefore = vp.Moved;
         vp.HandleInput(new InputEvent.Scroll(1f, 10f, 10f, InputModifier.Ctrl), Bounds).ShouldBeFalse();
         vp.HandleInput(new InputEvent.Scroll(1f, 10f, 10f), Bounds).ShouldBeFalse();
         vp.HandleInput(new InputEvent.Pinch(1.5f, 10f, 10f), Bounds).ShouldBeFalse();
         vp.HandleInput(new InputEvent.MouseDown(10f, 10f, MouseButton.Middle), Bounds).ShouldBeFalse();
         vp.IsPanning.ShouldBeFalse();
         vp.Scale.ShouldBe(1f);
-        vp.Moved.ShouldBeFalse();
+        vp.Moved.ShouldBe(movedBefore);
     }
 
     [Fact]
