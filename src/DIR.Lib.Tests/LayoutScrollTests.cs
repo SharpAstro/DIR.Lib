@@ -395,6 +395,41 @@ public class LayoutScrollTests
     }
 
     [Fact]
+    public void ScrollingToTheEndOfRowsThatWrapBesideTheBarReachesTheEnd()
+    {
+        // 11.46 regression (#192): pass 1 of the arrange clamped the offset to its shorter MaxOffset (rows
+        // at the full width, one line each) and pass 2 raised MaxOffset without putting the offset back,
+        // so a list scrolled to its end was pulled short of it on the next frame.
+        var widget = new DeclarationWidget(new DeclarationStubRenderer(200, 200));
+        var scroll = new ListScrollController { Mode = ScrollBarMode.Interactive };
+        widget.Render(WordRows(scroll, 8), new RectF32(0, 0, ViewportW, 200));
+        scroll.MaxOffset.ShouldBeGreaterThan(0f);
+
+        scroll.AtomOffset = (int)scroll.MaxOffset;
+        scroll.AtomOffset.ShouldBe((int)scroll.MaxOffset);
+        widget.Render(WordRows(scroll, 8), new RectF32(0, 0, ViewportW, 200));
+
+        scroll.Offset.ShouldBe(scroll.MaxOffset);
+    }
+
+    [Fact]
+    public void ABottomAnchoredStackOfWrappingRowsStartsAndStaysAtItsFinalEnd()
+    {
+        // A regression guard, not a proof of the 11.46 fix (#192): a Bottom list re-pins to its end in
+        // pass 2 whether or not the entry offset is restored, so this also passes without the restore.
+        // ScrollingToTheEndOfRowsThatWrapBesideTheBarReachesTheEnd is the test that fails without it.
+        var widget = new DeclarationWidget(new DeclarationStubRenderer(200, 200));
+        var scroll = new ListScrollController { Mode = ScrollBarMode.Interactive, Anchor = ScrollAnchor.Bottom };
+        widget.Render(WordRows(scroll, 8), new RectF32(0, 0, ViewportW, 200));
+
+        scroll.MaxOffset.ShouldBeGreaterThan(0f);
+        scroll.Offset.ShouldBe(scroll.MaxOffset);
+
+        widget.Render(WordRows(scroll, 8), new RectF32(0, 0, ViewportW, 200));
+        scroll.Offset.ShouldBe(scroll.MaxOffset);
+    }
+
+    [Fact]
     public void AControllerOnTheOtherAxisReservesNothingFromTheStack()
     {
         // A Horizontal controller on a VStack would take its cross extent from the wrong axis; the
