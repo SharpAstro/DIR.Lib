@@ -260,6 +260,37 @@ public class SlugGlyphEncoderTests
     }
 
     [Fact]
+    public void ATruncatedOrInconsistentBlobIsRefused()
+    {
+        var pts = Enumerable.Range(0, 40).Select(i => (X: 500 + 400 * MathF.Cos(i * MathF.Tau / 40), Y: 500 + 400 * MathF.Sin(i * MathF.Tau / 40))).ToArray();
+        var w = Encode(s => Polygon(s, pts));
+        SlugGlyphBlob.IsReadable(w).ShouldBeTrue();
+
+        // Every shorter prefix is refused: the header, a band header, a curve list or a curve is cut off.
+        for (int len = 0; len < w.Length; len++)
+            SlugGlyphBlob.IsReadable(w.AsSpan(0, len)).ShouldBeFalse($"a blob cut to {len} of {w.Length} words");
+        SlugGlyphBlob.TryFromWords(w[..^1], out var cut).ShouldBeFalse();
+        cut.Words.ShouldBeNull();
+
+        // Words past the end are not a blob either.
+        SlugGlyphBlob.IsReadable(w.Concat(new[] { 0 }).ToArray()).ShouldBeFalse();
+
+        // A band list that points outside the lists, or a count that cannot be, is refused.
+        var badList = (int[])w.Clone();
+        badList[w[5] + 1] = w.Length;
+        SlugGlyphBlob.IsReadable(badList).ShouldBeFalse();
+        var badBands = (int[])w.Clone();
+        badBands[3] = 17;
+        SlugGlyphBlob.IsReadable(badBands).ShouldBeFalse();
+
+        // An empty glyph is the header alone, and it is readable.
+        var empty = Encode(s => { });
+        empty.Length.ShouldBe(SlugGlyphBlob.HeaderWords);
+        SlugGlyphBlob.IsReadable(empty).ShouldBeTrue();
+        SlugGlyphBlob.IsReadable(empty.AsSpan(0, empty.Length - 1)).ShouldBeFalse();
+    }
+
+    [Fact]
     public void TheBlobHasItsEmSpaceBounds()
     {
         var w = Encode(s => Polygon(s, (100, 200), (600, 200), (600, 800), (100, 800)), upem: 1000);

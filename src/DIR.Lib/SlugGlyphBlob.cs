@@ -3,8 +3,10 @@ namespace DIR.Lib;
 /// <summary>
 /// One glyph encoded for Slug text drawing: a single versioned run of 32-bit integers (<see cref="Words"/>)
 /// plus the glyph's bounds in em units. A GPU backend uploads <see cref="Words"/> as it is (an integer
-/// buffer or texture; every value is below 2^24, so a float-texel upload is exact too) and a fragment
-/// shader reads it as laid out below. A glyph with no outline (a space) is <see cref="IsEmpty"/>: its blob
+/// buffer or texture; a float-texel upload is exact too: every coordinate is at most
+/// <see cref="SlugGlyphEncoder.MaxCoordinate"/> (2^22) in magnitude, and the other words, counts and word offsets,
+/// stay below 2^24 as long as the blob has fewer than 2^24 words, which a glyph does by orders of magnitude)
+/// and a fragment shader reads it as laid out below. A glyph with no outline (a space) is <see cref="IsEmpty"/>: its blob
 /// is only the header, and nothing is drawn.
 /// </summary>
 /// <remarks>
@@ -97,26 +99,57 @@ public readonly struct SlugGlyphBlob
     /// <summary>Quadratic curves in the blob.</summary>
     public int CurveCount => Header(2);
 
+    /// <summary>Horizontal bands (strips of rows), 1 to <see cref="MaxBandsPerAxis"/>; 0 for an empty glyph.</summary>
     public int HBandCount => Header(3);
 
+    /// <summary>Vertical bands (strips of columns), 1 to <see cref="MaxBandsPerAxis"/>; 0 for an empty glyph.</summary>
     public int VBandCount => Header(4);
 
     /// <summary>True for a glyph with no outline: draw nothing.</summary>
     public bool IsEmpty => CurveCount == 0;
 
-    /// <summary>Bounds of the glyph's points in em units (y up), from the quantised points.</summary>
+    /// <summary>Left edge of the glyph's points in em units (y up), from the quantised points.</summary>
     public float MinXEm => ToEm(Header(8));
+
+    /// <summary>Bottom edge of the glyph's points in em units (y up), from the quantised points.</summary>
     public float MinYEm => ToEm(Header(9));
+
+    /// <summary>Right edge of the glyph's points in em units (y up), from the quantised points.</summary>
     public float MaxXEm => ToEm(Header(10));
+
+    /// <summary>Top edge of the glyph's points in em units (y up), from the quantised points.</summary>
     public float MaxYEm => ToEm(Header(11));
 
     /// <summary>
-    /// Whether <paramref name="words"/> is a blob this version of the layout can draw: long enough for its
-    /// header and carrying <see cref="FormatVersion"/>. A cache that finds another version drops the entry
-    /// and re-encodes.
+    /// Whether <paramref name="words"/> is a blob this version of the layout can draw: it carries
+    /// <see cref="FormatVersion"/>, and its header, band headers, curve lists and curves all lie inside it, so a
+    /// truncated blob is refused. A cache that finds another version, or a short entry, drops it and re-encodes.
+    /// The check is structural (offsets and counts); it does not re-verify the curve data itself.
     /// </summary>
-    public static bool IsReadable(ReadOnlySpan<int> words) =>
-        words.Length >= HeaderWords && words[0] == FormatVersion && words[7] <= words.Length;
+    public static bool IsReadable(ReadOnlySpan<int> words)
+    {
+        if (words.Length < HeaderWords || words[0] != FormatVersion) return false;
+        int curves = words[2], bandOffset = words[5], indexOffset = words[6], curveOffset = words[7];
+        if (curves < 0 || curveOffset < HeaderWords || curveOffset > words.Length) return false;
+        // The curves are the tail of the blob, so a short blob is one whose curves do not fit.
+        if ((long)curveOffset + (long)curves * CurveWords != words.Length) return false;
+        if (curves == 0) return words[3] == 0 && words[4] == 0;
+
+        int hBands = words[3], vBands = words[4];
+        if (hBands is < 1 or > MaxBandsPerAxis || vBands is < 1 or > MaxBandsPerAxis) return false;
+        int bands = hBands + vBands;
+        if (bandOffset != HeaderWords || indexOffset != bandOffset + bands * BandHeaderWords || indexOffset > curveOffset) return false;
+        // Each band's two lists lie between the first curve reference and the first curve.
+        for (int b = 0; b < bands; b++)
+        {
+            int h = bandOffset + b * BandHeaderWords;
+            int count = words[h];
+            long desc = words[h + 1], asc = words[h + 2];
+            if (count < 0 || count > curves) return false;
+            if (desc < indexOffset || desc + count > curveOffset || asc < indexOffset || asc + count > curveOffset) return false;
+        }
+        return true;
+    }
 
     /// <summary>Wraps a blob read back from a cache, or false if <see cref="IsReadable"/> refuses it.</summary>
     public static bool TryFromWords(int[] words, out SlugGlyphBlob blob)
