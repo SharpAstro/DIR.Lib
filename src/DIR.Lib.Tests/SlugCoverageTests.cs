@@ -105,9 +105,10 @@ public sealed class SlugCoverageTests(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData(137)]
-    [InlineData(354)]
-    [InlineData(1069)]
+    [InlineData(5953)]
+    [InlineData(6178)]
+    [InlineData(2501)]
+    [InlineData(1430)]
     public void ARealTrueTypeGlyphWithOverlappingContoursIsFilledWhereTheyOverlap(int gid)
     {
         // DejaVuSans draws these glyphs as overlapping same-direction contours (a base and its accent, say), so a point
