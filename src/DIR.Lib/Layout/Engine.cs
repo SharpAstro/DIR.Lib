@@ -480,6 +480,26 @@ public static class Engine
                 totalAtoms: (int)MathF.Ceiling(float.CreateChecked(total) / atom),
                 new DesignScale(float.CreateChecked(ctx.ToSurfaceX(1f)), float.CreateChecked(ctx.ToSurfaceY(1f))));
 
+            // The bar is drawn in the viewport's trailing cross column, over whatever the rows put there, so
+            // the children get the controller's content area (as the virtual list does): the viewport less
+            // the bar column, and less the trailing padding the stack already has (the bar sits on the
+            // rect's edge, so padding at least as wide as the bar needs no further reserve). No bar, no
+            // change. Rows were resolved at the full cross extent above; they are arranged at the narrower
+            // one without a re-measure (a wrapping row may be a little taller than it needs to be).
+            var crossFull = float.CreateChecked(axis == Axis.Vertical ? rect.Width : rect.Height);
+            var barColumn = crossFull - scroll.ContentCrossExtentPx;
+            if (barColumn > 0f && (scroll.Axis == ScrollAxis.Vertical) == (axis == Axis.Vertical))
+            {
+                var padEnd = axis == Axis.Vertical
+                    ? (rect.X + rect.Width) - (inner.X + inner.Width)
+                    : (rect.Y + rect.Height) - (inner.Y + inner.Height);
+                var reserve = T.CreateChecked(barColumn) - padEnd;
+                if (reserve > T.Zero)
+                {
+                    crossAvail = Max(T.Zero, crossAvail - reserve);
+                }
+            }
+
             // What the controller cannot work out from an atom of one surface unit: how far a wheel notch
             // should go (a ROW, as WheelStepAtoms means on a list that counts rows, not a pixel), and the
             // padding a row brought into view by the keyboard should clear.
