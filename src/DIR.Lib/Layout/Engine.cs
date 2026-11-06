@@ -42,6 +42,19 @@ public interface IMeasureContext<T> where T : INumber<T>
 
     /// <summary>Map a design-unit scalar along the VERTICAL axis. See <see cref="ToSurfaceX"/>.</summary>
     T ToSurfaceY(float designUnits) => ToSurface(designUnits);
+
+    /// <summary>
+    /// A value that names everything this context's measures depend on: the metrics behind
+    /// <see cref="MeasureText"/> and the <see cref="ToSurface"/> family (scale, font, fallback). Two contexts whose keys
+    /// are <see cref="object.Equals(object?)"/> must measure every node identically. The engine keeps a pure subtree's
+    /// measure across calls (keyed by node reference and available size) only while the key is equal.
+    /// <para>
+    /// <c>null</c>, the default, keeps NOTHING across calls: the context cannot say what its measures depend on, so
+    /// none of them is trusted a second time. Within one <see cref="Engine.Measure{T}"/> or
+    /// <see cref="Engine.Arrange{T}"/> call a child is still measured once per available size either way.
+    /// </para>
+    /// </summary>
+    object? MeasureKey => null;
 }
 
 /// <summary>
@@ -57,6 +70,30 @@ public static class Engine
     /// tests and Auto-sizing callers; <see cref="Arrange{T}"/> uses it internally for <c>Auto</c> children.
     /// </summary>
     public static Size<T> Measure<T>(Node node, Size<T> available, IMeasureContext<T> ctx)
+        where T : INumber<T>
+    {
+        MeasureMemo<T>.Enter();
+        try
+        {
+            // A leaf other than a text editor measures from its content alone, so the room it is offered is not part of
+            // its identity: the same text in nested stacks is offered a different room at each level.
+            var at = node is Node.Leaf { Content: not Content.TextEditor } ? default : available;
+            if (MeasureMemo<T>.TryGet(node, at, ctx, out var known, out var key))
+            {
+                return known;
+            }
+
+            var size = MeasureUncached(node, available, ctx);
+            MeasureMemo<T>.Store(node, at, ctx, key, size);
+            return size;
+        }
+        finally
+        {
+            MeasureMemo<T>.Exit();
+        }
+    }
+
+    private static Size<T> MeasureUncached<T>(Node node, Size<T> available, IMeasureContext<T> ctx)
         where T : INumber<T>
     {
         // Inner padding is measured as arrange lays it out: the children get the room inside it. They were measured
@@ -129,7 +166,16 @@ public static class Engine
         where T : INumber<T>
     {
         var builder = ImmutableArray.CreateBuilder<ArrangedNode<T>>();
-        ArrangeNode(root, bounds, ctx, builder, 0);
+        MeasureMemo<T>.Enter();
+        try
+        {
+            ArrangeNode(root, bounds, ctx, builder, 0);
+        }
+        finally
+        {
+            MeasureMemo<T>.Exit();
+        }
+
         return builder.ToImmutable();
     }
 
@@ -435,6 +481,14 @@ public static class Engine
         // resolves at the full extent and, when the bar shows, a second pass resolves at the reserved one.
         // The second pass can only make the rows taller (less width never takes a line away), so the bar
         // still shows after it: two passes at most, and no flicker between frames.
+        // SetExtent is idempotent for a FIXED extent, but the two passes state different ones: pass 1's
+        // clamp cuts the offset to its shorter MaxOffset, and pass 2 would then only raise the bound, never
+        // the offset, so scrolling to the end stopped short of it (11.46, #192). The offset the controller
+        // held on entry is therefore put back before pass 2's SetExtent, which clamps it to the final one.
+        // It is read in pass 1 only, just before its SetExtent: whether a pass 2 follows is not known until
+        // pass 1 has resolved the rows, so a scrolled single-pass stack reads it for nothing (one float),
+        // but an unscrolled stack never does.
+        var offsetOnEntry = 0f;
         var reserve = T.Zero;
         var included = new bool[n];
         var mains = new T[n];
@@ -505,7 +559,7 @@ public static class Engine
             // to. One surface unit per atom, so the offset is a plain distance along the axis and a
             // drag moves the rows by exactly what it says. SetExtent is documented as idempotent and
             // raises nothing, which is what makes it safe to call from a layout pass (twice, when the
-            // bar's reserve re-resolves the rows).
+            // bar's reserve re-resolves the rows, with the entry offset restored between the two).
             rows = gap * T.CreateChecked(Math.Max(0, includedCount - 1));
             for (var i = 0; i < n; i++)
             {
@@ -528,6 +582,15 @@ public static class Engine
             atom = scroll.AtomDesignUnits > 0f
                 ? MathF.Max(1f, float.CreateChecked(ToSurfaceOn(ctx, scroll.AtomDesignUnits, axis)))
                 : 1f;
+            if (reserve > T.Zero)
+            {
+                scroll.RestoreOffsetForNextExtent(offsetOnEntry);
+            }
+            else
+            {
+                offsetOnEntry = scroll.Offset;
+            }
+
             scroll.SetExtent(
                 new RectF32(float.CreateChecked(rect.X), float.CreateChecked(rect.Y),
                     float.CreateChecked(rect.Width), float.CreateChecked(rect.Height)),
@@ -564,6 +627,11 @@ public static class Engine
         // Final pass: resolve cross-axis size + position each surviving child along the main axis.
         var cursor = axis == Axis.Vertical ? inner.Y : inner.X;
 
+        // The stretch of the main axis a SCROLLED stack arranges its children in: the viewport, and a viewport's extent
+        // of margin on each side. Only read when the stack scrolls; a stack that does not arranges every child.
+        var arrangeFrom = T.Zero;
+        var arrangeTo = T.Zero;
+
         if (scroll is not null)
         {
             // What the controller cannot work out from an atom of one surface unit: how far a wheel notch
@@ -586,16 +654,39 @@ public static class Engine
             scroll.LineExtentPx = linePx;
             scroll.ContentInsetPx = float.CreateChecked(padStart);
 
-            // Slid, not clipped: the children that land outside the viewport are still arranged, and it
-            // is the PAINTER that clips them and declines to register what cannot be seen. Arrange has
-            // no surface to clip on, and a cell painter and a pixel painter clip differently.
+            // Slid, not clipped: Arrange has no surface to clip on, and a cell painter and a pixel painter clip
+            // differently, so it is the PAINTER that clips what lands outside the viewport and declines to register
+            // what cannot be seen. Arrange still leaves out the children that are nowhere near it. A long list
+            // (pilot's chat is 300 rows and more) was laid out in full every frame for the sake of the few rows
+            // shown, so a child is arranged only when it touches the viewport widened by a viewport's extent on
+            // each side; the rest are stepped over by the main extent already resolved above, which the scroll
+            // extent counted, so the rows after them land where they always did.
+            //
+            // The margin is what the keyboard needs, and it is a viewport and not a row because it is a distance in
+            // surface units that holds for rows of any height. A row the paint clips out is still a row of its list
+            // that the arrows can step onto (MoveListCursor, ListCursor.Step), and the step lands on the nearest
+            // ARRANGED row: stepping off the last row in view needs the next one to have been arranged, and the
+            // reveal that follows scrolls it into view, so the margin refills as the list is walked.
             cursor -= T.CreateTruncating(scroll.Offset * atom);
+
+            var viewStart = axis == Axis.Vertical ? rect.Y : rect.X;
+            var viewExtent = axis == Axis.Vertical ? rect.Height : rect.Width;
+            arrangeFrom = viewStart - viewExtent;
+            arrangeTo = viewStart + viewExtent + viewExtent;
         }
 
         for (var i = 0; i < n; i++)
         {
             if (!included[i])
             {
+                continue;
+            }
+
+            // Out of reach of the viewport and its margin: only the cursor moves. No cross extent is worked out for it,
+            // since nothing about it is placed, and none of its subtree is arranged.
+            if (scroll is not null && (cursor + mains[i] < arrangeFrom || cursor > arrangeTo))
+            {
+                cursor += mains[i] + gap;
                 continue;
             }
 

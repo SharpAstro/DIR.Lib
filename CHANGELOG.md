@@ -9,7 +9,7 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
-## 11.50
+## 11.51
 
 - **`CanvasViewport` (#176)**: a public, reusable zoom, pan and fit viewport for canvases of design units, pilot's
   `MapViewport` generalised. It sits BESIDE `PanZoomController` (composing one privately for the drag and cursor-anchored
@@ -22,6 +22,52 @@ changed and why.
 - **`ZoomByWheel`** on `PanZoomController` and `CanvasViewport`: the factor is `ZoomStep^delta`, so a touchpad's small
   deltas zoom a fraction of a notch and a delta of 1 matches the old step. `ZoomAtCursor` is unchanged.
 - Additive. pilot's `MapViewport` can now be replaced by `CanvasViewport` (a pilot flight, not this one).
+
+## 11.50
+
+Layout: a scrolled list lays out only what can be seen, and a subtree's measure is kept across frames (#170).
+Measured on pilot's chat page (300 entries) a frame made about 50,000 `MeasureText` calls and arranged every
+row, the ones scrolled out of view included. Two changes, which work together.
+
+A subtree's measure is kept across frames. `IMeasureContext.MeasureKey` is a new default interface member: a
+value naming everything the context's measures depend on (metrics, scale, font, fallback). The engine keeps a
+pure subtree's measure, keyed by node reference, available size and that key, in a `ConditionalWeakTable`, so
+an entry dies with its node and a host that reuses a heavy subtree between frames (pilot keeps each reply's
+Markdown document) measures it once. A subtree holding a `TextEditor` or `TextInput` is never kept, because it
+measures mutable state. `PixelMeasureContext` supplies a key (renderer, font path, both scales, line height
+factor, fallback and emoji font). A context that supplies none, which is the default (`null`), keeps nothing
+across calls, as before; one that does must change its key whenever the measure of any text would, or a stale
+size is served. Whatever the key, within one `Measure` or `Arrange` call no child is measured twice at the same
+available size, which also ends the repeated measure of nested stacks.
+
+A scrolled stack arranges only the children in or near its viewport. A child of a `WithScroll` stack is
+arranged only when it touches the viewport widened by one viewport's extent on each side; the others are
+stepped over by their resolved main extent. So the controller's extent (`TotalAtoms`), `LineExtentPx` and
+`ContentInsetPx` still count every row and come out as before, and every row that is arranged sits where it
+did. **`Arrange` no longer returns the children of a scrolled stack that are far outside its viewport, nor
+anything beneath them**, so a consumer that looked one up in the arranged list must not: take the position
+from the controller or from the row heights it already has. The painter never drew or registered such a row.
+
+The margin is what keeps the keyboard working. A row the painter clips is still a row of its list that the
+arrows can step onto, and `MoveListCursor` steps to the nearest arranged row, so the step off the last row in
+view lands on the next one and the reveal scrolls it in. When the cursor's row has been scrolled away by more
+than a viewport, the next arrow lands on the nearest arranged row in that direction, not on the row beside
+the old one.
+
+On a 300-row list of padded rows with wrapping text (`LayoutScrollCullTests`) a frame arranges 13 to 19 rows
+and about 500 of 11,000 nodes, at the top, the middle and the end, and a second frame with a keyed context
+makes no `MeasureText` call. Additive: no constructor or `Deconstruct` changed arity.
+
+## 11.49
+
+A scrolled stack can scroll to its end again (#192, a regression of 11.46). The second arrange pass added in
+11.46 resolves the rows at the extent less the bar column, which makes them taller and so raises the
+controller's `MaxOffset`; but the first pass's `SetExtent` had already clamped the offset to its shorter
+`MaxOffset`, and nothing put it back. A list scrolled to its end was pulled short of it on the next frame,
+so the last lines of the content could not be reached. The engine now remembers the offset the controller
+held on entry and restores it, through an internal member that raises no `Changed`, before the second pass's
+`SetExtent`, which clamps it to the final `MaxOffset`. A `ScrollAnchor.Bottom` stack still starts at, and
+follows, its final end. No public API changes.
 
 ## 11.48
 

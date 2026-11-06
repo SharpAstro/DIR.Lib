@@ -167,4 +167,15 @@ public sealed class PixelMeasureContext<TSurface>(Renderer<TSurface> renderer, s
     /// free to disagree the moment a display changes.</para>
     /// </summary>
     public DesignScale Scale => new(scaleX, scaleY);
+
+    private object? _measureKey;
+
+    /// <summary>
+    /// Everything <see cref="MeasureText"/> and the <c>ToSurface</c> family read, as one value-equal key: the renderer
+    /// instance, the font, both scales, the line-height factor, the fallback chain and the emoji face. A context made
+    /// afresh each frame over the same inputs has an equal key, so a pure subtree's measure survives the frame.
+    /// The fallback resolver and renderer count by reference, so a resolver whose coverage changes in place must be
+    /// replaced, not mutated.
+    /// </summary>
+    public object? MeasureKey => _measureKey ??= (renderer, fontPath, scaleX, scaleY, LineHeightFactor, Fallback, EmojiFontPath);
 }
