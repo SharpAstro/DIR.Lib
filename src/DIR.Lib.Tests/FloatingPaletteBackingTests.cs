@@ -52,8 +52,8 @@ public class FloatingPaletteBackingTests
     private static readonly PaletteItem[] Items =
         [.. Enumerable.Range(0, 3).Select(i => new PaletteItem($"Row {i}", $"row:{i}", IsOn: i == 0, KeyHint: null, IsAvailable: true))];
 
-    /// <summary>Paints an idle palette over <see cref="Surface"/>; returns the image and the panel's rect.</summary>
-    private static (RgbaImage Image, RectInt Panel) Render(RGBAColor32? backing)
+    /// <summary>Paints an idle palette over <see cref="Surface"/>; returns the image.</summary>
+    private static RgbaImage Render(RGBAColor32? backing)
     {
         var state = new FloatingPaletteState { OffsetAlong = 20f };
         state.AgeEngagement(60f);
@@ -68,9 +68,7 @@ public class FloatingPaletteBackingTests
         var pane = new Pane(renderer) { FontPath = "stub.ttf" };
         pane.Paint(tree, new RectF32(0, 0, 300, 200));
 
-        // The panel is the bounding box of everything that no longer matches the surface, in the
-        // backed render; the unbacked render is read over the same box.
-        return (renderer.Surface, default);
+        return renderer.Surface;
     }
 
     private static bool IsSurface(RgbaImage img, int x, int y)
@@ -99,7 +97,7 @@ public class FloatingPaletteBackingTests
     [Fact]
     public void Backing_hides_the_surface_under_an_idle_panel()
     {
-        var (backed, _) = Render(BackingColor);
+        var backed = Render(BackingColor);
         var (x0, y0, x1, y1) = Bounds(backed);
         (x1 - x0).ShouldBeGreaterThan(100);
 
@@ -117,9 +115,9 @@ public class FloatingPaletteBackingTests
     [Fact]
     public void Without_backing_the_surface_shows_through()
     {
-        var (backed, _) = Render(BackingColor);
+        var backed = Render(BackingColor);
         var (x0, y0, x1, y1) = Bounds(backed);
-        var (plain, _) = Render(null);
+        var plain = Render(null);
 
         // The panel padding, where only the faded PanelBg lies over the surface.
         var o = ((y0 + 1) * plain.Width + x0 + 1) * 4;
