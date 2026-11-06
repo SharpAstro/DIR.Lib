@@ -297,6 +297,81 @@ public class LayoutScrollTests
         return new RGBAColor32(img.Pixels[i], img.Pixels[i + 1], img.Pixels[i + 2], img.Pixels[i + 3]);
     }
 
+    private const float LeafW = 30f;
+    private const float ViewportW = 200f;
+
+    /// <summary>Rows of fixed-width leaves pushed to the row's end, in a scrolled stack that overflows.</summary>
+    private static Layout.Node EndAligned(ListScrollController scroll, int rows)
+    {
+        var leaves = new Layout.Node[rows];
+        for (var i = 0; i < rows; i++)
+        {
+            leaves[i] = Layout.Builder.Spacer().WFixed(LeafW).HFixed(RowH)
+                .Clickable(new HitResult.ListItemHit("rows", i), _ => { });
+        }
+
+        return Layout.Builder.VStack(leaves).Align(Layout.CrossAlign.End).WStar().HClamp(0f, ViewportH).WithScroll(scroll);
+    }
+
+    /// <summary>A scrolled stack as a child, so its HClamp is the viewport (a root takes the whole rect).</summary>
+    private static Layout.Node Wrap(Layout.Node list)
+        => Layout.Builder.VStack(list, Layout.Builder.Spacer().RowH(30f)).Stretch();
+
+    [Fact]
+    public void AnEndAlignedLeafEndsLeftOfTheScrollbarColumn()
+    {
+        var widget = new DeclarationWidget(new DeclarationStubRenderer(200, 200));
+        var scroll = new ListScrollController { Mode = ScrollBarMode.Interactive };
+        widget.Render(Wrap(EndAligned(scroll, Rows)), new RectF32(0, 0, ViewportW, 200));
+
+        scroll.MaxOffset.ShouldBeGreaterThan(0f);
+        var row = Row(widget, 0)!.Value.Bounds;
+        (row.X + row.Width).ShouldBeLessThanOrEqualTo(ViewportW - ListScrollController.ScrollBarBaseWidthPx);
+    }
+
+    [Fact]
+    public void AStarRowStopsAtTheScrollbarColumn()
+    {
+        var widget = new DeclarationWidget(new DeclarationStubRenderer(200, 200));
+        var scroll = new ListScrollController { Mode = ScrollBarMode.Interactive };
+        widget.Render(Page(scroll), new RectF32(0, 0, ViewportW, 200));
+
+        var row = Row(widget, 0)!.Value.Bounds;
+        (row.X + row.Width).ShouldBe(ViewportW - ListScrollController.ScrollBarBaseWidthPx);
+    }
+
+    [Fact]
+    public void AControllerOnTheOtherAxisReservesNothingFromTheStack()
+    {
+        // A Horizontal controller on a VStack would take its cross extent from the wrong axis; the
+        // reserve is skipped, so the rows keep the full width.
+        var widget = new DeclarationWidget(new DeclarationStubRenderer(200, 200));
+        var scroll = new ListScrollController { Mode = ScrollBarMode.Interactive, Axis = ScrollAxis.Horizontal };
+        widget.Render(Wrap(EndAligned(scroll, Rows)), new RectF32(0, 0, ViewportW, 200));
+
+        var row = Row(widget, 0)!.Value.Bounds;
+        (row.X + row.Width).ShouldBe(ViewportW);
+    }
+
+    [Fact]
+    public void AStackWithoutABarKeepsTheFullWidth()
+    {
+        // Fits: no bar shows.
+        var widget = new DeclarationWidget(new DeclarationStubRenderer(200, 200));
+        var scroll = new ListScrollController { Mode = ScrollBarMode.Interactive };
+        widget.Render(Wrap(EndAligned(scroll, 2)), new RectF32(0, 0, ViewportW, 200));
+        scroll.MaxOffset.ShouldBe(0f);
+        var fit = Row(widget, 0)!.Value.Bounds;
+        (fit.X + fit.Width).ShouldBe(ViewportW);
+
+        // Overflows but ScrollBarMode.None: no bar either.
+        var (w2, none) = Fixture();
+        w2.Render(Wrap(EndAligned(none, Rows)), new RectF32(0, 0, ViewportW, 200));
+        none.MaxOffset.ShouldBeGreaterThan(0f);
+        var over = Row(w2, 0)!.Value.Bounds;
+        (over.X + over.Width).ShouldBe(ViewportW);
+    }
+
     [Fact]
     public void AListThatFitsArrangesExactlyAsAnUnscrolledOne()
     {

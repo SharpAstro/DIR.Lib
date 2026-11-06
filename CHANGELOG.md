@@ -9,6 +9,15 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.44
+
+A scrolled stack reserves its scrollbar column (#161). A VStack or HStack declared `WithScroll` now
+arranges its children within the controller's content area (the viewport less the bar column, when the
+bar shows), as the virtual list does, so a Star-width row or a right-aligned leaf no longer ends under
+the bar. A stack that fits, or whose controller is `ScrollBarMode.None`, arranges as before, and trailing
+padding at least as wide as the bar needs no further reserve. Rows are still measured at the full cross
+extent and arranged at the narrower one. pilot can drop `TranscriptEntryView.ScrollGutter`.
+
 ## 11.43
 
 - `PaletteColors.Backing` (DIR.Lib #182): an opt-in opaque backing drawn under the whole `FloatingPalette`
