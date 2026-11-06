@@ -627,6 +627,11 @@ public static class Engine
         // Final pass: resolve cross-axis size + position each surviving child along the main axis.
         var cursor = axis == Axis.Vertical ? inner.Y : inner.X;
 
+        // The stretch of the main axis a SCROLLED stack arranges its children in: the viewport, and a viewport's extent
+        // of margin on each side. Only read when the stack scrolls; a stack that does not arranges every child.
+        var arrangeFrom = T.Zero;
+        var arrangeTo = T.Zero;
+
         if (scroll is not null)
         {
             // What the controller cannot work out from an atom of one surface unit: how far a wheel notch
@@ -649,16 +654,39 @@ public static class Engine
             scroll.LineExtentPx = linePx;
             scroll.ContentInsetPx = float.CreateChecked(padStart);
 
-            // Slid, not clipped: the children that land outside the viewport are still arranged, and it
-            // is the PAINTER that clips them and declines to register what cannot be seen. Arrange has
-            // no surface to clip on, and a cell painter and a pixel painter clip differently.
+            // Slid, not clipped: Arrange has no surface to clip on, and a cell painter and a pixel painter clip
+            // differently, so it is the PAINTER that clips what lands outside the viewport and declines to register
+            // what cannot be seen. Arrange still leaves out the children that are nowhere near it. A long list
+            // (pilot's chat is 300 rows and more) was laid out in full every frame for the sake of the few rows
+            // shown, so a child is arranged only when it touches the viewport widened by a viewport's extent on
+            // each side; the rest are stepped over by the main extent already resolved above, which the scroll
+            // extent counted, so the rows after them land where they always did.
+            //
+            // The margin is what the keyboard needs, and it is a viewport and not a row because it is a distance in
+            // surface units that holds for rows of any height. A row the paint clips out is still a row of its list
+            // that the arrows can step onto (MoveListCursor, ListCursor.Step), and the step lands on the nearest
+            // ARRANGED row: stepping off the last row in view needs the next one to have been arranged, and the
+            // reveal that follows scrolls it into view, so the margin refills as the list is walked.
             cursor -= T.CreateTruncating(scroll.Offset * atom);
+
+            var viewStart = axis == Axis.Vertical ? rect.Y : rect.X;
+            var viewExtent = axis == Axis.Vertical ? rect.Height : rect.Width;
+            arrangeFrom = viewStart - viewExtent;
+            arrangeTo = viewStart + viewExtent + viewExtent;
         }
 
         for (var i = 0; i < n; i++)
         {
             if (!included[i])
             {
+                continue;
+            }
+
+            // Out of reach of the viewport and its margin: only the cursor moves. No cross extent is worked out for it,
+            // since nothing about it is placed, and none of its subtree is arranged.
+            if (scroll is not null && (cursor + mains[i] < arrangeFrom || cursor > arrangeTo))
+            {
+                cursor += mains[i] + gap;
                 continue;
             }
 
