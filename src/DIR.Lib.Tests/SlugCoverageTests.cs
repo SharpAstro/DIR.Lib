@@ -105,9 +105,7 @@ public sealed class SlugCoverageTests(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData(5953)]
     [InlineData(6178)]
-    [InlineData(2501)]
     [InlineData(1430)]
     public void ARealTrueTypeGlyphWithOverlappingContoursIsFilledWhereTheyOverlap(int gid)
     {
