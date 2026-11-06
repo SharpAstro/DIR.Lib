@@ -9,7 +9,7 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
-## 11.47
+## 11.48
 
 Slug glyph encoder (#188), the CPU half of Slug text drawing. `SlugGlyphEncoder` is an `IGlyphSink` that turns
 an outline into a `SlugGlyphBlob`: one versioned run of 32-bit integers a GPU backend uploads as it is, plus
@@ -31,6 +31,23 @@ forced, and no bands at all give the same coverage. Edge pixels differ from true
 smooth outlines and 0.20 at sharp corners, which is Slug's own approximation (two rays through the pixel
 centre), not the encoder's. Encoding costs about 35 us a glyph for DejaVu Sans (1 to 2 us a curve) with a
 mean blob of 1.9 kB.
+
+## 11.47
+
+A tooltip wraps its text and a wrapping child is measured at the width it gets (#157). Before, `Engine.Measure`
+measured a node's intrinsic at the whole available width and only afterwards applied a Fixed width or a Max
+cap, so a fixed-width `VStack` of `WrapH` paragraphs, or any wrapping child of an `Anchored`, counted the
+lines it would take at window width and its box was too short: the last lines hung out under it. A node is now
+measured at the width it will be arranged in, and `Node.Anchored.MaxWidth` (init-only, design units, 0 means
+no cap) caps the width an anchored child is measured and arranged at. `TooltipStyle.MaxWidth` (init-only,
+default 420, 0 means no cap) is the text width a tooltip wraps at: `Builder.Tooltip(TooltipRequest, TooltipStyle)`
+breaks a long text at words and a long word (a path) after its separators, keeping explicit newlines as lines,
+and `Builder.Tooltip(anchor, content, style, side)` caps its box at that width plus the padding and border.
+Additive. A consumer's own TooltipLayer workaround for the short box, and its LayoutDrivenTests allowance
+for it, can come out. A tooltip's text collapses runs of spaces and tabs and drops leading whitespace (prose, not
+preformatted), and a single run longer than `MaxWidth` with none of the separator characters (a hash) still
+overflows the capped box. Against an anchor to the left or right, the room on that side is the width a child
+is measured at, not a cap: with no usable room the child keeps its width and is clamped on screen as before.
 
 ## 11.46
 
