@@ -109,8 +109,17 @@ public sealed class SlugCoverageTests(ITestOutputHelper output)
     [InlineData(1430)]
     public void ARealTrueTypeGlyphWithOverlappingContoursIsFilledWhereTheyOverlap(int gid)
     {
-        // DejaVuSans draws these glyphs as overlapping same-direction contours (a base and its accent, say), so a point
-        // inside both has winding 2 (or -2): nonzero winding must give coverage 1 there, not 0 (even-odd).
+        // Both glyphs are a letter body plus a ring mark, and the ring (an outer contour and a counter wound the other
+        // way, 17 points each) is laid over the body without being merged into it:
+        //   gid 6178 (U+1822 MONGOLIAN LETTER I, 2048 upem): contour 0 is the body, contours 1 and 2 the ring centred at
+        //     (719, 1120). The ring's upper rim, x 508..824, y 1176..1336 in font units, lies inside the body.
+        //   gid 1430 (U+067C ARABIC LETTER TEH WITH RING, also mapped from U+0596): contour 0 is the body, contours 3 and
+        //     4 the ring centred at (900, -150), under the baseline. The ring's top rim, x 728..1056, y -16..68, lies
+        //     inside the body's lower edge. (Contours 1 and 2 are the two dots; they do not touch the body.)
+        // The body and the ring's outer contour wind the same way, so a point in the rim and the body has winding 2 (or
+        // -2): nonzero winding must give coverage 1 there, not 0 (even-odd). The ring's counter cancels its own outer
+        // contour, so the hole is empty ink, not overlap. Regions measured by testing each contour's winding on a
+        // 4-unit grid, not read off the font's glyph names.
         using var r = new ManagedFontRasterizer();
         var id = new GlyphIdentity((uint)gid, null);
         var enc = new SlugGlyphEncoder();
