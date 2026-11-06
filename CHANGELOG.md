@@ -9,6 +9,17 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.49
+
+A scrolled stack can scroll to its end again (#192, a regression of 11.46). The second arrange pass added in
+11.46 resolves the rows at the extent less the bar column, which makes them taller and so raises the
+controller's `MaxOffset`; but the first pass's `SetExtent` had already clamped the offset to its shorter
+`MaxOffset`, and nothing put it back. A list scrolled to its end was pulled short of it on the next frame,
+so the last lines of the content could not be reached. The engine now remembers the offset the controller
+held on entry and restores it, through an internal member that raises no `Changed`, before the second pass's
+`SetExtent`, which clamps it to the final `MaxOffset`. A `ScrollAnchor.Bottom` stack still starts at, and
+follows, its final end. No public API changes.
+
 ## 11.48
 
 Slug glyph encoder (#188), the CPU half of Slug text drawing. `SlugGlyphEncoder` is an `IGlyphSink` that turns

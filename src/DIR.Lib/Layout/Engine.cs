@@ -435,6 +435,11 @@ public static class Engine
         // resolves at the full extent and, when the bar shows, a second pass resolves at the reserved one.
         // The second pass can only make the rows taller (less width never takes a line away), so the bar
         // still shows after it: two passes at most, and no flicker between frames.
+        // SetExtent is idempotent for a FIXED extent, but the two passes state different ones: pass 1's
+        // clamp cuts the offset to its shorter MaxOffset, and pass 2 would then only raise the bound, never
+        // the offset, so scrolling to the end stopped short of it (11.46, #192). The offset the controller
+        // held on entry is therefore put back before pass 2's SetExtent, which clamps it to the final one.
+        var offsetOnEntry = scroll?.Offset ?? 0f;
         var reserve = T.Zero;
         var included = new bool[n];
         var mains = new T[n];
@@ -505,7 +510,7 @@ public static class Engine
             // to. One surface unit per atom, so the offset is a plain distance along the axis and a
             // drag moves the rows by exactly what it says. SetExtent is documented as idempotent and
             // raises nothing, which is what makes it safe to call from a layout pass (twice, when the
-            // bar's reserve re-resolves the rows).
+            // bar's reserve re-resolves the rows, with the entry offset restored between the two).
             rows = gap * T.CreateChecked(Math.Max(0, includedCount - 1));
             for (var i = 0; i < n; i++)
             {
@@ -528,6 +533,11 @@ public static class Engine
             atom = scroll.AtomDesignUnits > 0f
                 ? MathF.Max(1f, float.CreateChecked(ToSurfaceOn(ctx, scroll.AtomDesignUnits, axis)))
                 : 1f;
+            if (reserve > T.Zero)
+            {
+                scroll.RestoreOffsetForNextExtent(offsetOnEntry);
+            }
+
             scroll.SetExtent(
                 new RectF32(float.CreateChecked(rect.X), float.CreateChecked(rect.Y),
                     float.CreateChecked(rect.Width), float.CreateChecked(rect.Height)),
