@@ -391,67 +391,89 @@ public static class Engine
 
         var axis = stack.Axis;
         var gap = ToSurfaceOn(ctx, stack.Gap, axis);
-        var availSize = new Size<T>(inner.Width, inner.Height);
-        var mainAvail = MainOf(axis, availSize);
-        var crossAvail = CrossOf(axis, availSize);
-
-        // A SCROLLED stack lays its children out at their full extent along the axis and slides them by
-        // the controller's offset: the rect it was given is its viewport, not the room its children get.
-        // The room is the larger of the two, so a list shorter than its viewport still hands its Star
-        // children the slack, and a longer one is laid out as if the viewport were as tall as it is.
         var scroll = stack.Scroll;
-        var layoutMain = scroll is null
-            ? mainAvail
-            : Max(mainAvail, MainOf(axis, MeasureStack(stack, availSize, ctx)));
 
-        // Collapse loop: resolve every child's main extent, then drop any child whose CollapseThreshold
-        // undercuts its resolved extent and re-resolve so the freed space (extent + gap) redistributes.
-        // Survivor extents only ever grow when a sibling collapses (Fixed/Auto are space-independent,
-        // Star shares grow with the leftover), so no survivor can newly violate; each extra pass removes
-        // at least one child, terminating in <= n passes (one, in practice).
+        // A scrolled stack whose bar shows gives its children the controller's content area: the viewport
+        // less the bar column (as the virtual list does), so a Star row or an end-aligned leaf ends left of
+        // the bar rather than under it. The rows must be RESOLVED at that narrower cross extent, not only
+        // arranged at it: a wrapping row measured at the full width counts fewer lines than it lays out in
+        // beside the bar, and its last lines were drawn over the next row while the scroll extent came out
+        // short by as much (11.44). Whether the bar shows depends on the rows' total, so the first pass
+        // resolves at the full extent and, when the bar shows, a second pass resolves at the reserved one.
+        // The second pass can only make the rows taller (less width never takes a line away), so the bar
+        // still shows after it: two passes at most, and no flicker between frames.
+        var reserve = T.Zero;
         var included = new bool[n];
-        Array.Fill(included, true);
-        var includedCount = n;
         var mains = new T[n];
         var measured = new Size<T>?[n];
+        int includedCount;
+        T crossAvail;
+        T rows = T.Zero;
+        T padStart = T.Zero;
+        var atom = 1f;
         while (true)
         {
-            ResolveStackMains(children, included, includedCount, axis, layoutMain, gap, availSize, ctx, mains, measured);
+            var availSize = axis == Axis.Vertical
+                ? new Size<T>(Max(T.Zero, inner.Width - reserve), inner.Height)
+                : new Size<T>(inner.Width, Max(T.Zero, inner.Height - reserve));
+            var mainAvail = MainOf(axis, availSize);
+            crossAvail = CrossOf(axis, availSize);
 
-            var anyCollapsed = false;
-            for (var i = 0; i < n; i++)
+            // A SCROLLED stack lays its children out at their full extent along the axis and slides them by
+            // the controller's offset: the rect it was given is its viewport, not the room its children get.
+            // The room is the larger of the two, so a list shorter than its viewport still hands its Star
+            // children the slack, and a longer one is laid out as if the viewport were as tall as it is.
+            var layoutMain = scroll is null
+                ? mainAvail
+                : Max(mainAvail, MainOf(axis, MeasureStack(stack, availSize, ctx)));
+
+            // Collapse loop: resolve every child's main extent, then drop any child whose CollapseThreshold
+            // undercuts its resolved extent and re-resolve so the freed space (extent + gap) redistributes.
+            // Survivor extents only ever grow when a sibling collapses (Fixed/Auto are space-independent,
+            // Star shares grow with the leftover), so no survivor can newly violate; each extra pass removes
+            // at least one child, terminating in <= n passes (one, in practice).
+            Array.Fill(included, true);
+            Array.Clear(measured);
+            includedCount = n;
+            while (true)
             {
-                if (included[i] && children[i].CollapseThreshold > 0f
-                    && mains[i] < ToSurfaceOn(ctx, children[i].CollapseThreshold, axis))
+                ResolveStackMains(children, included, includedCount, axis, layoutMain, gap, availSize, ctx, mains, measured);
+
+                var anyCollapsed = false;
+                for (var i = 0; i < n; i++)
                 {
-                    included[i] = false;
-                    includedCount--;
-                    anyCollapsed = true;
+                    if (included[i] && children[i].CollapseThreshold > 0f
+                        && mains[i] < ToSurfaceOn(ctx, children[i].CollapseThreshold, axis))
+                    {
+                        included[i] = false;
+                        includedCount--;
+                        anyCollapsed = true;
+                    }
+                }
+
+                if (!anyCollapsed)
+                {
+                    break;
+                }
+
+                if (includedCount == 0)
+                {
+                    return; // every child collapsed -- nothing to arrange
                 }
             }
 
-            if (!anyCollapsed)
+            if (scroll is null)
             {
                 break;
             }
 
-            if (includedCount == 0)
-            {
-                return; // every child collapsed -- nothing to arrange
-            }
-        }
-
-        // Final pass: resolve cross-axis size + position each surviving child along the main axis.
-        var cursor = axis == Axis.Vertical ? inner.Y : inner.X;
-
-        if (scroll is not null)
-        {
             // The controller is told what it scrolls OVER here, because only the arrange knows it: the
             // viewport is the rect this stack was given and the content is what its children resolved
             // to. One surface unit per atom, so the offset is a plain distance along the axis and a
             // drag moves the rows by exactly what it says. SetExtent is documented as idempotent and
-            // raises nothing, which is what makes it safe to call from a layout pass.
-            var rows = gap * T.CreateChecked(Math.Max(0, includedCount - 1));
+            // raises nothing, which is what makes it safe to call from a layout pass (twice, when the
+            // bar's reserve re-resolves the rows).
+            rows = gap * T.CreateChecked(Math.Max(0, includedCount - 1));
             for (var i = 0; i < n; i++)
             {
                 if (included[i])
@@ -466,11 +488,11 @@ public static class Engine
             // disagreed by the padding: the paint's clamp held the offset a whole padding short of the
             // end, the arrange slid the rows a padding further down than the clip, and the last half-row
             // of a padded list could never be scrolled into view.
-            var padStart = axis == Axis.Vertical ? inner.Y - rect.Y : inner.X - rect.X;
+            padStart = axis == Axis.Vertical ? inner.Y - rect.Y : inner.X - rect.X;
             var total = rows + padStart + padStart;
 
             // An atom is a row where the list says so (AtomDesignUnits) and one surface unit otherwise.
-            var atom = scroll.AtomDesignUnits > 0f
+            atom = scroll.AtomDesignUnits > 0f
                 ? MathF.Max(1f, float.CreateChecked(ToSurfaceOn(ctx, scroll.AtomDesignUnits, axis)))
                 : 1f;
             scroll.SetExtent(
@@ -480,26 +502,37 @@ public static class Engine
                 totalAtoms: (int)MathF.Ceiling(float.CreateChecked(total) / atom),
                 new DesignScale(float.CreateChecked(ctx.ToSurfaceX(1f)), float.CreateChecked(ctx.ToSurfaceY(1f))));
 
-            // The bar is drawn in the viewport's trailing cross column, over whatever the rows put there, so
-            // the children get the controller's content area (as the virtual list does): the viewport less
-            // the bar column, and less the trailing padding the stack already has (the bar sits on the
-            // rect's edge, so padding at least as wide as the bar needs no further reserve). No bar, no
-            // change. Rows were resolved at the full cross extent above; they are arranged at the narrower
-            // one without a re-measure (a wrapping row may be a little taller than it needs to be).
-            var crossFull = float.CreateChecked(axis == Axis.Vertical ? rect.Width : rect.Height);
-            var barColumn = crossFull - scroll.ContentCrossExtentPx;
-            if (barColumn > 0f && (scroll.Axis == ScrollAxis.Vertical) == (axis == Axis.Vertical))
+            if (reserve > T.Zero)
             {
-                var padEnd = axis == Axis.Vertical
-                    ? (rect.X + rect.Width) - (inner.X + inner.Width)
-                    : (rect.Y + rect.Height) - (inner.Y + inner.Height);
-                var reserve = T.CreateChecked(barColumn) - padEnd;
-                if (reserve > T.Zero)
-                {
-                    crossAvail = Max(T.Zero, crossAvail - reserve);
-                }
+                break; // the second pass: resolved at the reserved extent, and the bar still shows
             }
 
+            // The bar is drawn in the viewport's trailing cross column, so the reserve is that column less
+            // the trailing padding the stack already has (the bar sits on the rect's edge, so padding at
+            // least as wide as the bar needs no further reserve). No bar, or a controller on the other
+            // axis, and the first pass stands.
+            var crossFull = float.CreateChecked(axis == Axis.Vertical ? rect.Width : rect.Height);
+            var barColumn = crossFull - scroll.ContentCrossExtentPx;
+            if (barColumn <= 0f || (scroll.Axis == ScrollAxis.Vertical) != (axis == Axis.Vertical))
+            {
+                break;
+            }
+
+            var padEnd = axis == Axis.Vertical
+                ? (rect.X + rect.Width) - (inner.X + inner.Width)
+                : (rect.Y + rect.Height) - (inner.Y + inner.Height);
+            reserve = T.CreateChecked(barColumn) - padEnd;
+            if (reserve <= T.Zero)
+            {
+                break;
+            }
+        }
+
+        // Final pass: resolve cross-axis size + position each surviving child along the main axis.
+        var cursor = axis == Axis.Vertical ? inner.Y : inner.X;
+
+        if (scroll is not null)
+        {
             // What the controller cannot work out from an atom of one surface unit: how far a wheel notch
             // should go (a ROW, as WheelStepAtoms means on a list that counts rows, not a pixel), and the
             // padding a row brought into view by the keyboard should clear.

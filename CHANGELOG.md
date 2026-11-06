@@ -9,6 +9,17 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.46
+
+A wrapping row in a scrolled stack no longer overlaps the next row when the scrollbar shows (regression
+in 11.44). 11.44 reserved the bar column when arranging a `WithScroll` stack's rows but still measured
+them at the full width, so a `WrapH` or Markdown row that fit on N lines at the full width took more
+beside the bar: its extra lines were drawn over the next row, and the scroll extent came out short by as
+much, cutting off the last row. When the bar shows, the rows are now resolved again at the reserved
+width, and the controller scrolls over that total. The second pass can only make rows taller, so the bar
+still shows after it and nothing flips between frames. A stack that fits, or whose controller is
+`ScrollBarMode.None`, takes one pass as before.
+
 ## 11.45
 
 Layout: a wrap capped by `WithMaxLines` can end its last kept line with an ellipsis when the cap drops
