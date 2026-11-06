@@ -415,6 +415,9 @@ public class LayoutScrollTests
     [Fact]
     public void ABottomAnchoredStackOfWrappingRowsStartsAndStaysAtItsFinalEnd()
     {
+        // A regression guard, not a proof of the 11.46 fix (#192): a Bottom list re-pins to its end in
+        // pass 2 whether or not the entry offset is restored, so this also passes without the restore.
+        // ScrollingToTheEndOfRowsThatWrapBesideTheBarReachesTheEnd is the test that fails without it.
         var widget = new DeclarationWidget(new DeclarationStubRenderer(200, 200));
         var scroll = new ListScrollController { Mode = ScrollBarMode.Interactive, Anchor = ScrollAnchor.Bottom };
         widget.Render(WordRows(scroll, 8), new RectF32(0, 0, ViewportW, 200));

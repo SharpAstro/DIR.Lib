@@ -439,7 +439,10 @@ public static class Engine
         // clamp cuts the offset to its shorter MaxOffset, and pass 2 would then only raise the bound, never
         // the offset, so scrolling to the end stopped short of it (11.46, #192). The offset the controller
         // held on entry is therefore put back before pass 2's SetExtent, which clamps it to the final one.
-        var offsetOnEntry = scroll?.Offset ?? 0f;
+        // It is read in pass 1 only, just before its SetExtent: whether a pass 2 follows is not known until
+        // pass 1 has resolved the rows, so a scrolled single-pass stack reads it for nothing (one float),
+        // but an unscrolled stack never does.
+        var offsetOnEntry = 0f;
         var reserve = T.Zero;
         var included = new bool[n];
         var mains = new T[n];
@@ -536,6 +539,10 @@ public static class Engine
             if (reserve > T.Zero)
             {
                 scroll.RestoreOffsetForNextExtent(offsetOnEntry);
+            }
+            else
+            {
+                offsetOnEntry = scroll.Offset;
             }
 
             scroll.SetExtent(
