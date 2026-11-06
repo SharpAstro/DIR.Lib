@@ -278,4 +278,167 @@ public sealed class CanvasViewportTests
 
         n.ShouldBe(6);
     }
+
+    // A 800x600 view shown at (100, 50) on the surface, a 400x300 canvas at scale 1.
+    private static readonly RectF32 Bounds = new(100f, 50f, 800f, 600f);
+
+    private static CanvasViewport Live()
+    {
+        var vp = Fitted(800f, 600f, 400f, 300f);
+        vp.SetScale(1f);
+        return vp;
+    }
+
+    [Fact]
+    public void ZoomByWheelUsesZoomStepToTheDelta()
+    {
+        var vp = Live();
+        vp.ZoomByWheel(1f, 400f, 300f).ShouldBeTrue();
+        vp.Scale.ShouldBe(1.15f, 1e-4f);
+
+        vp = Live();
+        vp.ZoomByWheel(0.1f, 400f, 300f);
+        vp.Scale.ShouldBe(MathF.Pow(1.15f, 0.1f), 1e-4f);
+
+        vp = Live();
+        vp.ZoomByWheel(-1f, 400f, 300f);
+        vp.Scale.ShouldBe(1f / 1.15f, 1e-4f);
+
+        vp = Live();
+        vp.ZoomStep = 2f;
+        vp.ZoomByWheel(2f, 400f, 300f);
+        vp.Scale.ShouldBe(4f, 1e-4f);
+    }
+
+    [Fact]
+    public void TouchpadSeriesOfSmallCtrlWheelDeltasZoomsNoMoreThanOneNotchPerUnitOfDelta()
+    {
+        var vp = Live();
+        for (var i = 0; i < 10; i++)
+        {
+            vp.HandleInput(new InputEvent.Scroll(0.1f, 500f, 350f, InputModifier.Ctrl), Bounds).ShouldBeTrue();
+        }
+        vp.Scale.ShouldBeLessThanOrEqualTo(1.15f + 1e-3f);
+        vp.Scale.ShouldBe(1.15f, 1e-3f);
+    }
+
+    [Fact]
+    public void CtrlScrollZoomsAboutThePointerAcrossBoundsOffsetAndDesignScale()
+    {
+        var vp = Live();
+        var (sx, sy) = (300f, 200f);
+        var (beforeX, beforeY) = (vp.DesignX((sx - Bounds.X) / 2f), vp.DesignY((sy - Bounds.Y) / 2f));
+        vp.HandleInput(new InputEvent.Scroll(1f, sx, sy, InputModifier.Ctrl), Bounds, null, 2f, 2f).ShouldBeTrue();
+        vp.Scale.ShouldBe(1.15f, 1e-4f);
+        vp.DesignX((sx - Bounds.X) / 2f).ShouldBe(beforeX, 0.01f);
+        vp.DesignY((sy - Bounds.Y) / 2f).ShouldBe(beforeY, 0.01f);
+    }
+
+    [Fact]
+    public void PlainScrollPansVerticallyAndShiftScrollSideways()
+    {
+        var vp = Live();
+        vp.HandleInput(new InputEvent.Scroll(1f, 500f, 350f), Bounds).ShouldBeTrue();
+        (vp.PanX, vp.PanY).ShouldBe((0f, 60f));
+        vp.HandleInput(new InputEvent.Scroll(-1f, 500f, 350f, InputModifier.Shift), Bounds).ShouldBeTrue();
+        (vp.PanX, vp.PanY).ShouldBe((-60f, 60f));
+    }
+
+    [Fact]
+    public void EventsOutsideBoundsAreNotTaken()
+    {
+        var vp = Live();
+        vp.HandleInput(new InputEvent.Scroll(1f, 10f, 10f, InputModifier.Ctrl), Bounds).ShouldBeFalse();
+        vp.HandleInput(new InputEvent.Scroll(1f, 10f, 10f), Bounds).ShouldBeFalse();
+        vp.HandleInput(new InputEvent.Pinch(1.5f, 10f, 10f), Bounds).ShouldBeFalse();
+        vp.HandleInput(new InputEvent.MouseDown(10f, 10f, MouseButton.Middle), Bounds).ShouldBeFalse();
+        vp.IsPanning.ShouldBeFalse();
+        vp.Scale.ShouldBe(1f);
+        vp.Moved.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void PinchZoomsAboutItsPointByItsScale()
+    {
+        var vp = Live();
+        vp.HandleInput(new InputEvent.Pinch(1.5f, 500f, 350f), Bounds).ShouldBeTrue();
+        vp.Scale.ShouldBe(1.5f, 1e-4f);
+    }
+
+    [Fact]
+    public void MiddleDragPansAndOnlyMiddleUpEndsIt()
+    {
+        var vp = Live();
+        vp.HandleInput(new InputEvent.MouseDown(500f, 350f, MouseButton.Middle), Bounds).ShouldBeTrue();
+        vp.IsPanning.ShouldBeTrue();
+        vp.HandleInput(new InputEvent.MouseMove(530f, 360f), Bounds).ShouldBeTrue();
+        (vp.PanX, vp.PanY).ShouldBe((30f, 10f));
+
+        vp.HandleInput(new InputEvent.MouseUp(530f, 360f, MouseButton.Left), Bounds).ShouldBeFalse();
+        vp.IsPanning.ShouldBeTrue();
+
+        // A move that has left the bounds still pans, and the release ends it.
+        vp.HandleInput(new InputEvent.MouseMove(20f, 360f), Bounds).ShouldBeTrue();
+        vp.HandleInput(new InputEvent.MouseUp(20f, 360f, MouseButton.Middle), Bounds).ShouldBeTrue();
+        vp.IsPanning.ShouldBeFalse();
+        vp.HandleInput(new InputEvent.MouseMove(30f, 360f), Bounds).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void LeftDragPansOnlyWithSpaceHeldOrWhenTheHostSaysSo()
+    {
+        var vp = Live();
+        vp.HandleInput(new InputEvent.MouseDown(500f, 350f), Bounds).ShouldBeFalse();
+        vp.IsPanning.ShouldBeFalse();
+
+        vp.HandleInput(new InputEvent.MouseDown(500f, 350f), Bounds, (x, y) => x > 600f).ShouldBeFalse();
+        vp.HandleInput(new InputEvent.MouseDown(700f, 350f), Bounds, (x, y) => x > 600f).ShouldBeTrue();
+        vp.IsPanning.ShouldBeTrue();
+        vp.HandleInput(new InputEvent.MouseUp(700f, 350f), Bounds).ShouldBeTrue();
+        vp.IsPanning.ShouldBeFalse();
+
+        vp.HandleInput(new InputEvent.KeyDown(InputKey.Space), Bounds).ShouldBeTrue();
+        vp.SpaceHeld.ShouldBeTrue();
+        vp.HandleInput(new InputEvent.MouseDown(500f, 350f), Bounds).ShouldBeTrue();
+        vp.IsPanning.ShouldBeTrue();
+        vp.HandleInput(new InputEvent.MouseUp(500f, 350f), Bounds);
+        vp.HandleInput(new InputEvent.KeyUp(InputKey.Space), Bounds).ShouldBeFalse();
+        vp.SpaceHeld.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ZoomFitAndPanKeys()
+    {
+        var vp = Live();
+        vp.HandleInput(new InputEvent.KeyDown(InputKey.Plus, InputModifier.Ctrl), Bounds).ShouldBeTrue();
+        vp.Scale.ShouldBe(1.15f, 1e-4f);
+        vp.HandleInput(new InputEvent.KeyDown(InputKey.Minus, InputModifier.Ctrl), Bounds).ShouldBeTrue();
+        vp.Scale.ShouldBe(1f, 1e-4f);
+
+        vp.HandleInput(new InputEvent.KeyDown(InputKey.Left), Bounds).ShouldBeTrue();
+        vp.PanX.ShouldBe(40f);
+        vp.HandleInput(new InputEvent.KeyDown(InputKey.Right, InputModifier.Shift), Bounds).ShouldBeTrue();
+        vp.PanX.ShouldBe(-120f);
+
+        vp.HandleInput(new InputEvent.KeyDown(InputKey.D0, InputModifier.Ctrl), Bounds).ShouldBeTrue();
+        vp.Moved.ShouldBeFalse();
+        vp.Scale.ShouldBe(1.5f, 1e-4f);
+        vp.HandleInput(new InputEvent.KeyDown(InputKey.D1, InputModifier.Ctrl), Bounds).ShouldBeTrue();
+        vp.Scale.ShouldBe(1f, 1e-4f);
+    }
+
+    [Fact]
+    public void UpAndDownPanOnlyWhenTheHostOptsIn()
+    {
+        var vp = Live();
+        vp.HandleInput(new InputEvent.KeyDown(InputKey.Up), Bounds).ShouldBeFalse();
+        vp.HandleInput(new InputEvent.KeyDown(InputKey.Down), Bounds).ShouldBeFalse();
+        vp.PanY.ShouldBe(0f);
+
+        vp.PanWithVerticalKeys = true;
+        vp.HandleInput(new InputEvent.KeyDown(InputKey.Up), Bounds).ShouldBeTrue();
+        vp.PanY.ShouldBe(40f);
+        vp.HandleInput(new InputEvent.KeyDown(InputKey.Down, InputModifier.Shift), Bounds).ShouldBeTrue();
+        vp.PanY.ShouldBe(-120f);
+    }
 }

@@ -31,6 +31,7 @@ public sealed class CanvasViewport
     private float _contentHeight;
     private object? _key;
     private bool _keyed;
+    private MouseButton _panButton;
 
     /// <summary>The smallest scale a fit reaches: below it small text is unreadable. Default 0.5.</summary>
     public float MinFitScale { get; set; } = 0.5f;
@@ -57,6 +58,24 @@ public sealed class CanvasViewport
 
     /// <summary>How much of the canvas must stay in view when it is panned away, so it can always be dragged back. Default 80.</summary>
     public float KeepInView { get; set; } = 80f;
+
+    /// <summary>The factor of one wheel notch, key press or zoom step. A wheel delta d zooms by <c>ZoomStep^d</c>. Default 1.15.</summary>
+    public float ZoomStep { get; set; } = 1.15f;
+
+    /// <summary>The distance an arrow key pans, view units. Default 40.</summary>
+    public float KeyPanStep { get; set; } = 40f;
+
+    /// <summary>The distance Shift+arrow pans, view units. Default 160.</summary>
+    public float KeyPanStepBig { get; set; } = 160f;
+
+    /// <summary>
+    /// Whether Up and Down pan too. Off by default because a host usually uses them to move a selection; Left and Right
+    /// always pan.
+    /// </summary>
+    public bool PanWithVerticalKeys { get; set; }
+
+    /// <summary>Whether Space is held, so a left drag pans. Set by <see cref="HandleInput"/> from Space's press and release; a host can show the move cursor.</summary>
+    public bool SpaceHeld { get; private set; }
 
     /// <summary>Whether the person has panned or zoomed since the last fit.</summary>
     public bool Moved { get; private set; }
@@ -206,6 +225,9 @@ public sealed class CanvasViewport
         return true;
     }
 
+    /// <summary>Zooms about a view point by <see cref="ZoomStep"/> raised to the wheel <paramref name="delta"/> (positive zooms in). Returns whether the scale changed.</summary>
+    public bool ZoomByWheel(float delta, float viewX, float viewY) => ZoomAt(MathF.Pow(ZoomStep, delta), viewX, viewY);
+
     /// <summary>Zooms by <paramref name="factor"/> about the view's centre. Returns whether the scale changed.</summary>
     public bool ZoomCentre(float factor) => ZoomAt(factor, _viewWidth / 2f, _viewHeight / 2f);
 
@@ -239,6 +261,124 @@ public sealed class CanvasViewport
     {
         var d = delta * step;
         PanBy(sideways ? d : 0f, sideways ? 0f : d);
+    }
+
+    /// <summary>
+    /// The canvas gestures as one handler. <paramref name="bounds"/> is the viewport's rect on the surface the event is
+    /// measured in; points become view points by subtracting its corner and dividing by <paramref name="scaleX"/>,
+    /// <paramref name="scaleY"/> (the design scale, when the host draws scaled). Returns whether the event was taken.
+    /// <list type="bullet">
+    /// <item>Ctrl+Scroll zooms about the pointer by <see cref="ZoomByWheel"/>; Scroll pans vertically, Shift+Scroll sideways.</item>
+    /// <item>Pinch zooms about its point by its Scale.</item>
+    /// <item>A press of Middle, of Left while Space is held, or of Left where <paramref name="leftDragPans"/> (given surface
+    /// coordinates) says yes, begins a pan that only the same button's release ends; moves update it.</item>
+    /// <item>Space sets <see cref="SpaceHeld"/> and its release clears it (the release is never taken).</item>
+    /// <item>Ctrl+Plus and Ctrl+Minus zoom about the centre, Ctrl+0 fits, Ctrl+1 is 100%. Left and Right pan by
+    /// <see cref="KeyPanStep"/> (<see cref="KeyPanStepBig"/> with Shift), and Up and Down too when <see cref="PanWithVerticalKeys"/>.</item>
+    /// </list>
+    /// Pointer events outside <paramref name="bounds"/> are not taken, except the moves and release of a pan in flight. Keys
+    /// are not tied to the bounds: the host decides when the canvas has the keyboard.
+    /// </summary>
+    public bool HandleInput(InputEvent evt, RectF32 bounds, Func<float, float, bool>? leftDragPans = null, float scaleX = 1f, float scaleY = 1f)
+    {
+        (float X, float Y) ToView(float x, float y) => ((x - bounds.X) / scaleX, (y - bounds.Y) / scaleY);
+
+        switch (evt)
+        {
+            case InputEvent.Scroll scroll when bounds.Contains(scroll.X, scroll.Y):
+                if ((scroll.Modifiers & InputModifier.Ctrl) != 0)
+                {
+                    var (vx, vy) = ToView(scroll.X, scroll.Y);
+                    ZoomByWheel(scroll.Delta, vx, vy);
+                }
+                else
+                {
+                    Wheel(scroll.Delta, (scroll.Modifiers & InputModifier.Shift) != 0);
+                }
+                return true;
+            case InputEvent.Pinch pinch when bounds.Contains(pinch.X, pinch.Y):
+                var (px, py) = ToView(pinch.X, pinch.Y);
+                ZoomAt(pinch.Scale, px, py);
+                return true;
+            case InputEvent.MouseDown down when bounds.Contains(down.X, down.Y)
+                && (down.Button == MouseButton.Middle
+                    || (down.Button == MouseButton.Left && (SpaceHeld || (leftDragPans?.Invoke(down.X, down.Y) ?? false)))):
+                _panButton = down.Button;
+                var (dx, dy) = ToView(down.X, down.Y);
+                BeginPan(dx, dy);
+                return true;
+            case InputEvent.MouseMove move when IsPanning:
+                var (mx, my) = ToView(move.X, move.Y);
+                UpdatePan(mx, my);
+                return true;
+            case InputEvent.MouseUp up when IsPanning && up.Button == _panButton:
+                EndPan();
+                return true;
+            case InputEvent.KeyUp { Key: InputKey.Space }:
+                if (SpaceHeld)
+                {
+                    SpaceHeld = false;
+                    Changed?.Invoke();
+                }
+                return false;
+            case InputEvent.KeyDown key:
+                return HandleKey(key);
+            default:
+                return false;
+        }
+    }
+
+    private bool HandleKey(InputEvent.KeyDown key)
+    {
+        if ((key.Modifiers & InputModifier.Alt) != 0)
+        {
+            return false;
+        }
+        if ((key.Modifiers & InputModifier.Ctrl) != 0)
+        {
+            switch (key.Key)
+            {
+                case InputKey.Plus:
+                    ZoomCentre(ZoomStep);
+                    return true;
+                case InputKey.Minus:
+                    ZoomCentre(1f / ZoomStep);
+                    return true;
+                case InputKey.D0:
+                    Fit();
+                    return true;
+                case InputKey.D1:
+                    SetScale(1f);
+                    return true;
+                default:
+                    return false;
+            }
+        }
+        var step = (key.Modifiers & InputModifier.Shift) != 0 ? KeyPanStepBig : KeyPanStep;
+        switch (key.Key)
+        {
+            case InputKey.Left:
+                PanBy(step, 0f);
+                return true;
+            case InputKey.Right:
+                PanBy(-step, 0f);
+                return true;
+            case InputKey.Up when PanWithVerticalKeys:
+                PanBy(0f, step);
+                return true;
+            case InputKey.Down when PanWithVerticalKeys:
+                PanBy(0f, -step);
+                return true;
+            case InputKey.Space:
+                if (!SpaceHeld)
+                {
+                    SpaceHeld = true;
+                    Changed?.Invoke();
+                }
+                return true;
+            default:
+                return false;
+        }
     }
 
     // Keeps at least KeepInView of the canvas on screen, whichever way it was pushed.
