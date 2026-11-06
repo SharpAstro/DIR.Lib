@@ -934,6 +934,8 @@ public static class Engine
             return;
         }
 
+        // ArrangeNode added the wrap's own entry just before calling here.
+        var wrapIndex = output.Count - 1;
         var axis = wrap.Axis;
         var gap = ToSurfaceOn(ctx, wrap.Gap, axis);
         var lineGap = ToSurfaceOn(ctx, wrap.LineGap, CrossAxis(axis));
@@ -981,16 +983,34 @@ public static class Engine
                 lineEnd++;
             }
 
-            var mainCursor = axis == Axis.Horizontal ? inner.X : inner.Y;
+            var mainOrigin = axis == Axis.Horizontal ? inner.X : inner.Y;
+            var mainCursor = mainOrigin;
+            // The cap cuts after this line with children left over: that is where the wrap is truncated.
+            var cutHere = wrap.MaxLines > 0 && lineIndex + 1 >= wrap.MaxLines && lineEnd < n;
+            if (cutHere)
+            {
+                output[wrapIndex] = output[wrapIndex] with { Truncated = true };
+            }
+
             for (var i = lineStart; i < lineEnd; i++)
             {
                 // A Star cross stretches to the line's extent; everything else keeps its natural cross.
                 var crossSizing = CrossSizing(axis, children[i]);
                 var cross = crossSizing.IsStar ? Clamp(lineCross, crossSizing, ctx, CrossAxis(axis)) : childCrosses[i];
+                var child = children[i];
+                var childMain = childMains[i];
+                if (cutHere && wrap.Ellipsis && i == lineEnd - 1 && child is Node.Leaf { Content: Content.Text text } leaf)
+                {
+                    var room = mainOrigin + lineAvail - mainCursor;
+                    var (cutText, cutMain) = EllipsizeWrapText(text, childMain, room, axis, ctx);
+                    child = leaf with { Content = text with { Value = cutText, WidthSample = null } };
+                    childMain = cutMain;
+                }
+
                 var childRect = axis == Axis.Horizontal
-                    ? new Rect<T>(mainCursor, crossCursor, childMains[i], cross)
-                    : new Rect<T>(crossCursor, mainCursor, cross, childMains[i]);
-                ArrangeNode(children[i], childRect, ctx, output, depth);
+                    ? new Rect<T>(mainCursor, crossCursor, childMain, cross)
+                    : new Rect<T>(crossCursor, mainCursor, cross, childMain);
+                ArrangeNode(child, childRect, ctx, output, depth);
                 mainCursor += childMains[i] + gap;
                 if (i + 1 < lineEnd)
                 {
@@ -1010,6 +1030,25 @@ public static class Engine
                 break;
             }
         }
+    }
+
+    /// <summary>
+    /// The text of a capped wrap's last kept leaf with its tail replaced by an ellipsis, and the main extent
+    /// the leaf then takes. Cuts characters from the end until the run (plus whatever the leaf adds around its
+    /// text, such as padding) fits <paramref name="room"/>; when even the bare ellipsis does not, it is the
+    /// bare ellipsis.
+    /// </summary>
+    private static (string Text, T Main) EllipsizeWrapText<T>(Content.Text text, T oldMain, T room, Axis axis,
+        IMeasureContext<T> ctx) where T : INumber<T>
+    {
+        var value = text.Value.TrimEnd();
+        var oldText = ctx.MeasureText((text.WidthSample ?? text.Value).AsSpan(), text.FontSize);
+        var overhead = oldMain - MainOf(axis, oldText);
+        string Cut(int len) => string.Concat(value.AsSpan(0, len), "…");
+        T MainFor(int len) => MainOf(axis, ctx.MeasureText(Cut(len).AsSpan(), text.FontSize)) + overhead;
+
+        var kept = TextFit.LongestFit(value.Length, len => MainFor(len) <= room);
+        return (Cut(kept), MainFor(kept));
     }
 
     // --- Measure helpers ---

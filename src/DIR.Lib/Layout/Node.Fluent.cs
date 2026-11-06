@@ -254,6 +254,15 @@ public abstract partial record Node
     public Node WithMaxLines(int maxLines)
         => this is Wrap wml ? wml with { MaxLines = maxLines } : this;
 
+    /// <summary>
+    /// <see cref="WithMaxLines(int)"/>, and when <paramref name="ellipsis"/> is set and the cap drops
+    /// children, the last kept text leaf ends in an ellipsis within its line (<see cref="Wrap.Ellipsis"/>).
+    /// Either way the arranged wrap reports <see cref="ArrangedNode{T}.Truncated"/>. A separate overload,
+    /// not an optional parameter, so the existing one keeps its binary signature.
+    /// </summary>
+    public Node WithMaxLines(int maxLines, bool ellipsis)
+        => this is Wrap wml ? wml with { MaxLines = maxLines, Ellipsis = ellipsis } : this;
+
     /// <summary>Set the row/column gaps on a <see cref="Grid"/>; no-op on any other node.</summary>
     public Node WithGaps(float rowGap, float columnGap) => this is Grid g ? g with { RowGap = rowGap, ColumnGap = columnGap } : this;
 

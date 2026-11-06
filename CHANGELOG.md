@@ -9,6 +9,20 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.45
+
+Layout: a wrap capped by `WithMaxLines` can end its last kept line with an ellipsis when the cap drops
+children (#155). `Wrap.Ellipsis` (init-only) turns it on and `WithMaxLines(int, bool)` is the new overload
+that sets it, so `WithMaxLines(n, ellipsis: true)` is the whole opt-in. The ellipsis fits within the wrap's
+width and behaves the same on pixel and cell measure contexts. `ArrangedNode.Truncated` (init-only) reports
+that an arranged wrap was cut, so a host adds hover text only when there is something hidden. The case is
+pilot's For-you cards, whose text is capped to a few lines and needs both.
+
+The default is unchanged: it is opt-in because a capped toolbar of text buttons must not get an ellipsis
+appended to its last visible button. Nothing is a binary break: the new members are init-only properties
+and a new overload, and no constructor or `Deconstruct` changed arity (`InputEventCompatibilityTests` still
+passes).
+
 ## 11.44
 
 A scrolled stack reserves its scrollbar column (#161). A VStack or HStack declared `WithScroll` now
