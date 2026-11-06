@@ -27,4 +27,9 @@ public readonly record struct TooltipStyle(
     /// <summary>The gap between the box and the region it explains, and the least distance it keeps from the
     /// window's edges, design units.</summary>
     public float Margin { get; init; } = 4f;
+
+    /// <summary>The widest the text may run before it wraps, design units, measured inside the padding and
+    /// border; 0 means no cap. A long request wraps at words (a path, after its separators) and a content
+    /// tooltip's box is capped at this plus the padding and border.</summary>
+    public float MaxWidth { get; init; } = 420f;
 }

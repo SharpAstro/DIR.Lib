@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Immutable;
+using System.Text;
 
 namespace DIR.Lib.Layout;
 
@@ -206,7 +207,54 @@ public static partial class Builder
     /// </para>
     /// </remarks>
     public static Node Tooltip(TooltipRequest request, TooltipStyle style)
-        => Tooltip(request.Anchor, Text(request.Text, style.FontSize, style.Text), style, request.Side);
+        => Tooltip(request.Anchor, TooltipText(request.Text, style), style, request.Side);
+
+    // Words as text leaves, each ending in its space, in a WrapH; a word is cut into pieces after its separators
+    // (no gap between them) so a path can break there. A text with no newline and no wrap needed stays one leaf's
+    // worth of line. Explicit newlines are separate lines.
+    private static Node TooltipText(string text, TooltipStyle style)
+    {
+        var lines = new List<Node>();
+        foreach (var line in text.Split((char)10))
+        {
+            var pieces = new List<Node>();
+            var word = new StringBuilder();
+            void EndWord(bool space)
+            {
+                if (word.Length == 0)
+                {
+                    return;
+                }
+                var w = word.ToString();
+                word.Clear();
+                var start = 0;
+                for (var i = 0; i < w.Length; i++)
+                {
+                    var last = i == w.Length - 1;
+                    if (last || w[i] is '/' or (char)92 or '.' or '-' or '_' or ':' or ',' or ';')
+                    {
+                        var piece = w[start..(i + 1)] + (last && space ? " " : "");
+                        pieces.Add(Text(piece, style.FontSize, style.Text).WAuto());
+                        start = i + 1;
+                    }
+                }
+            }
+            foreach (var c in line.TrimEnd((char)13))
+            {
+                if (char.IsWhiteSpace(c))
+                {
+                    EndWord(true);
+                }
+                else
+                {
+                    word.Append(c);
+                }
+            }
+            EndWord(false);
+            lines.Add(pieces.Count == 0 ? Text("", style.FontSize, style.Text) : WrapH([.. pieces]).WStar());
+        }
+        return lines.Count == 1 ? lines[0] : VStack([.. lines]);
+    }
 
     /// <summary>
     /// A tooltip box holding <paramref name="content"/> rather than one line of text, for a readout that is more
@@ -231,6 +279,7 @@ public static partial class Builder
         {
             CenterAlong = true,
             FlipWhenCramped = true,
+            MaxWidth = style.MaxWidth > 0f ? style.MaxWidth + 2f * style.PadX + 2f * style.BorderWidth : 0f,
         };
     }
 

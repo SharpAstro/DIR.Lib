@@ -62,6 +62,10 @@ public static class Engine
         // Inner padding is measured as arrange lays it out: the children get the room inside it. They were measured
         // in the whole of it, so wrapped text inside a padded box measured with twice the padding more width than it
         // was arranged in, came out a line short, and ran out of its box (pilot's flight page cut its last report).
+        // Children are measured at the extent this node will have: a Fixed extent, or the room up to a Max. Measured at the
+        // whole available extent and only then overridden, a wrapping child counted the lines it would take at window width.
+        available = new Size<T>(NarrowTo(available.Width, node.Width, ctx, Axis.Horizontal), NarrowTo(available.Height, node.Height, ctx, Axis.Vertical));
+
         var padded = node is not Node.Dock and not Node.Split && (node.Padding != 0f || node.PadDown != 0f);
         var padX = padded ? ctx.ToSurfaceX(node.Padding) : T.Zero;
         var padY = padded ? ctx.ToSurfaceY(node.PadDown) : T.Zero;
@@ -86,7 +90,7 @@ public static class Engine
             // An Anchored measures to its CHILD, not to the space it floats in: nesting one inside a stack
             // should reserve the panel, not the canvas. It still arranges its child at an offset inside
             // whatever rect it is given, so at the top of an Overlay it floats over the full area.
-            Node.Anchored anchored => Measure(anchored.Child, available, ctx),
+            Node.Anchored anchored => MeasureAnchored(anchored, available, ctx),
             _ => Size<T>.Zero,
         };
 
@@ -178,12 +182,41 @@ public static class Engine
     private static void ArrangeAnchored<T>(Node.Anchored anchored, Rect<T> inner, IMeasureContext<T> ctx,
         ImmutableArray<ArrangedNode<T>>.Builder output, int depth) where T : INumber<T>
     {
-        var size = Measure(anchored.Child, new Size<T>(inner.Width, inner.Height), ctx);
         var margin = ctx.ToSurface(anchored.Margin);
+        var two = T.CreateTruncating(2);
+
+        // The child is measured at the width it will be given, not at the whole of inner: wrapping content counts its
+        // lines at that width, so a box measured wider than it is then capped to hangs its last lines out underneath.
+        // That width is inner less two margins, and at most MaxWidth. Against an anchor placed to its left or right the
+        // child is MEASURED at the room on that side (the roomier side when it may flip) so its text wraps to it, but the
+        // room is not a cap: with no usable room the child keeps the width it had before and the clamp below brings it
+        // back on screen, as it always did.
+        var maxWidth = Max(T.Zero, inner.Width - two * margin);
+        if (anchored.MaxWidth > 0f)
+        {
+            maxWidth = Min(maxWidth, ctx.ToSurfaceX(anchored.MaxWidth));
+        }
+
+        var measureWidth = maxWidth;
+        if (anchored.Anchor is { } room && anchored.Side is DockSide.Left or DockSide.Right)
+        {
+            var left = inner.X + margin;
+            var right = inner.X + inner.Width - margin;
+            var roomLeft = Max(T.Zero, T.CreateTruncating(room.X) - margin - left);
+            var roomRight = Max(T.Zero, right - (T.CreateTruncating(room.X) + T.CreateTruncating(room.Width) + margin));
+            var named = anchored.Side == DockSide.Left ? roomLeft : roomRight;
+            var other = anchored.Side == DockSide.Left ? roomRight : roomLeft;
+            var sideRoom = anchored.FlipWhenCramped ? Max(named, other) : named;
+            if (sideRoom > two * margin)
+            {
+                measureWidth = Min(maxWidth, sideRoom);
+            }
+        }
+
+        var size = Measure(anchored.Child, new Size<T>(measureWidth, inner.Height), ctx);
         // Never larger than the space it floats in, less its margins: a menu of long entries on a small window is cut to
         // the window, its text trimmed, rather than laid out past an edge the clamp below could not then bring it back from.
-        var two = T.CreateTruncating(2);
-        size = new Size<T>(Min(size.Width, Max(T.Zero, inner.Width - two * margin)), Min(size.Height, Max(T.Zero, inner.Height - two * margin)));
+        size = new Size<T>(Min(size.Width, maxWidth), Min(size.Height, Max(T.Zero, inner.Height - two * margin)));
         var along = ctx.ToSurface(anchored.OffsetAlong);
         var across = ctx.ToSurface(anchored.OffsetAcross);
 
@@ -1593,6 +1626,31 @@ public static class Engine
     /// </summary>
     private static T ToSurfaceOn<T>(IMeasureContext<T> ctx, float designUnits, Axis axis) where T : INumber<T>
         => axis == Axis.Horizontal ? ctx.ToSurfaceX(designUnits) : ctx.ToSurfaceY(designUnits);
+
+    /// <summary>The extent a node's children are measured within: its Fixed extent, else <paramref name="available"/>
+    /// held to the Max when it has one.</summary>
+    private static T NarrowTo<T>(T available, Sizing sizing, IMeasureContext<T> ctx, Axis axis) where T : INumber<T>
+    {
+        if (sizing.IsFixed)
+        {
+            return ToSurfaceOn(ctx, sizing.Value, axis);
+        }
+
+        return sizing.Max > 0f ? Min(available, ToSurfaceOn(ctx, sizing.Max, axis)) : available;
+    }
+
+    private static Size<T> MeasureAnchored<T>(Node.Anchored anchored, Size<T> available, IMeasureContext<T> ctx)
+        where T : INumber<T>
+    {
+        if (anchored.MaxWidth <= 0f)
+        {
+            return Measure(anchored.Child, available, ctx);
+        }
+
+        var cap = ctx.ToSurfaceX(anchored.MaxWidth);
+        var size = Measure(anchored.Child, new Size<T>(Min(available.Width, cap), available.Height), ctx);
+        return new Size<T>(Min(size.Width, cap), size.Height);
+    }
 
     /// <summary>Applies a <see cref="Sizing"/>'s design-unit Min/Max clamps to a resolved extent.
     /// No-op for Fixed (explicit wins) and for unset bounds (0 = unclamped sentinel).</summary>
