@@ -22,8 +22,14 @@ namespace DIR.Lib.Tests;
 /// </summary>
 public sealed class SlugCoverageTests(ITestOutputHelper output)
 {
-    // Stated tolerances, in coverage (0..1). Measured with a margin: see the numbers each test writes.
-    private const float MaxError = 0.10f;
+    // Stated tolerances, in coverage (0..1); the numbers each test writes show the margin. Slug reads two rays through the
+    // pixel's CENTRE, so a pixel an edge only clips (a sliver of a diagonal edge) or a corner it cuts is not its area: a
+    // diagonal edge clipping 0.54 of a corner reads 0.04 against an area of 0.15, and a right-angle corner covering a x b of
+    // the pixel reads about (a + b) / 2 against a * b (at most 0.25 off). That is the shader's approximation, not the
+    // port's, so smooth outlines are held to 0.15 and outlines with sharp corners to 0.25. The mean over the frame is far
+    // tighter: only edge pixels differ at all.
+    private const float MaxError = 0.15f;
+    private const float MaxErrorWithCorners = 0.25f;
     private const float MeanError = 0.012f;
     // The band lists, and the ascending list's mirrored ray, only reorder float sums.
     private const float ModeAgreement = 1e-4f;
@@ -121,7 +127,7 @@ public sealed class SlugCoverageTests(ITestOutputHelper output)
         Polygon(edges, pts);
         var reference = Supersample(edges, upem, ppe, ox, oy, w, h);
 
-        Check("pentagram", blob, image, reference, w, h, ppe, ox, oy);
+        Check("pentagram", blob, image, reference, w, h, ppe, ox, oy, MaxErrorWithCorners);
 
         // The middle of the star is wound twice.
         SlugCoverageOracle.Coverage(blob, cx / upem, cy / upem, ppe).ShouldBe(1f);
@@ -151,7 +157,7 @@ public sealed class SlugCoverageTests(ITestOutputHelper output)
         var edges = new Flattener();
         Polygon(edges, (100, 100), (600, 100), (600, 600), (100, 600));
         Polygon(edges, (400, 400), (900, 400), (900, 900), (400, 900));
-        Check("two squares", blob, image, Supersample(edges, upem, ppe, ox, oy, w, h), w, h, ppe, ox, oy);
+        Check("two squares", blob, image, Supersample(edges, upem, ppe, ox, oy, w, h), w, h, ppe, ox, oy, MaxErrorWithCorners);
         SlugCoverageOracle.Coverage(blob, 0.5f, 0.5f, ppe).ShouldBe(1f);
         edges.Winding(500, 500).ShouldBe(2);
     }
@@ -184,8 +190,8 @@ public sealed class SlugCoverageTests(ITestOutputHelper output)
             else
             {
                 r.TryGetOpenTypeFont(path, out var font).ShouldBeTrue();
-                int n = Math.Min(font!.NumGlyphs, 4096);
-                for (int g = 0; g < n; g++) ids.Add(new GlyphIdentity(g, null));
+                int n = Math.Min((int)font!.NumGlyphs, 4096);
+                for (int g = 0; g < n; g++) ids.Add(new GlyphIdentity((uint)g, null));
             }
 
             // One pass to warm up the JIT and the font's tables, then the timed one.
@@ -237,7 +243,8 @@ public sealed class SlugCoverageTests(ITestOutputHelper output)
     }
 
     // The three holds of the class summary. The frame is the glyph's bounds with a margin of two pixels all round.
-    private void Check(string name, SlugGlyphBlob blob, float[] image, float[] reference, int w, int h, float ppe, float ox, float oy)
+    private void Check(string name, SlugGlyphBlob blob, float[] image, float[] reference, int w, int h, float ppe, float ox, float oy,
+        float maxError = MaxError)
     {
         double sum = 0, worst = 0;
         int worstAt = 0;
@@ -251,7 +258,7 @@ public sealed class SlugCoverageTests(ITestOutputHelper output)
         double mean = sum / image.Length;
         output.WriteLine($"{name}: {w}x{h} px at {ppe} px/em, {blob.CurveCount} curves, {blob.Words.Length} words, {blob.HBandCount}x{blob.VBandCount} bands; " +
             $"error vs reference: max {worst:F4} (pixel {worstAt % w},{worstAt / w}), mean {mean:F5}");
-        worst.ShouldBeLessThanOrEqualTo(MaxError, $"{name}: worst pixel ({worstAt % w}, {worstAt / w}) oracle {image[worstAt]} reference {reference[worstAt]}");
+        worst.ShouldBeLessThanOrEqualTo(maxError, $"{name}: worst pixel ({worstAt % w}, {worstAt / w}) oracle {image[worstAt]} reference {reference[worstAt]}");
         mean.ShouldBeLessThanOrEqualTo(MeanError, $"{name}: mean error");
 
         // Whole 3 x 3 neighbourhood inside or outside in the reference: no edge is within half a pixel of the pixel's centre
