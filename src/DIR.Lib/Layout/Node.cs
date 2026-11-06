@@ -462,7 +462,9 @@ public abstract partial record Node
 
         /// <summary>
         /// Most lines the flow may use. Children that do not fit within them are DROPPED -- not
-        /// arranged, not painted, not registered. Zero (the default) means unlimited.
+        /// arranged, not painted, not registered. Zero (the default) means unlimited. The arranged wrap
+        /// reports a cut through <see cref="ArrangedNode{T}.Truncated"/>, and <see cref="Ellipsis"/> opts
+        /// into an ellipsis on the last kept line.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -478,6 +480,19 @@ public abstract partial record Node
         /// </para>
         /// </remarks>
         public int MaxLines { get; init; }
+
+        /// <summary>
+        /// When <see cref="MaxLines"/> drops children, end the last kept line with an ellipsis: if the last
+        /// kept child is a text leaf, its text is cut from the end and U+2026 appended until it fits the
+        /// line. A child that is not a text leaf is left alone. Default false.
+        /// </summary>
+        /// <remarks>
+        /// Opt-in, because a capped toolbar of text buttons must not get a glyph glued to a button label,
+        /// and because output of 11.x consumers stays the same. An init-only property rather than a
+        /// primary-constructor parameter (a binary break). Whether the wrap was cut is reported by
+        /// <see cref="ArrangedNode{T}.Truncated"/> either way.
+        /// </remarks>
+        public bool Ellipsis { get; init; }
     }
 
     /// <summary><paramref name="Base"/> drawn first, <paramref name="Top"/> on top (modal / dropdown / popup). Both fill the same rect.</summary>
@@ -668,4 +683,9 @@ public readonly record struct ArrangedNode<T>(Node Node, Rect<T> Bounds) where T
     /// describe_layout to print the structure. Painters ignore it; it does not affect arrangement,
     /// and the 2-arg ctor / Deconstruct are unchanged (it is an extra init-only property).</summary>
     public int Depth { get; init; }
+
+    /// <summary>True on a <see cref="Node.Wrap"/>'s own entry when its <see cref="Node.Wrap.MaxLines"/> dropped
+    /// at least one child (ellipsis or not), so a host can add hover text only when something is hidden.
+    /// An init-only property, so the constructor and Deconstruct are unchanged.</summary>
+    public bool Truncated { get; init; }
 }
