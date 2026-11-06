@@ -104,11 +104,52 @@ public sealed class SlugCoverageTests(ITestOutputHelper output)
         CheckOWithACounter("cmr10 o", blob, edges, upem);
     }
 
+    [Theory]
+    [InlineData(137)]
+    [InlineData(354)]
+    [InlineData(1069)]
+    public void ARealTrueTypeGlyphWithOverlappingContoursIsFilledWhereTheyOverlap(int gid)
+    {
+        // DejaVuSans draws these glyphs as overlapping same-direction contours (a base and its accent, say), so a point
+        // inside both has winding 2 (or -2): nonzero winding must give coverage 1 there, not 0 (even-odd).
+        using var r = new ManagedFontRasterizer();
+        var id = new GlyphIdentity((uint)gid, null);
+        var enc = new SlugGlyphEncoder();
+        enc.TryEncode(r, DejaVu, id, out var blob).ShouldBeTrue();
+        var edges = new Flattener();
+        r.TryDrawGlyphOutline(DejaVu, id, edges, out int upem).ShouldBeTrue();
+
+        const float ppe = 64f;
+        var (ox, oy, w, h) = Frame(blob, ppe, 0.29f, 0.53f);
+        var image = SlugCoverageOracle.Render(blob, ppe, ox, oy, w, h);
+        var reference = Supersample(edges, upem, ppe, ox, oy, w, h);
+        Check($"DejaVuSans gid {gid}", blob, image, reference, w, h, ppe, ox, oy, MaxErrorWithCorners);
+
+        // Find pixels whose centre is wound twice in the original outline and whose whole 3 x 3 neighbourhood is ink in the
+        // reference, so the shader's rays saturate; each must be exactly 1.
+        int doubled = 0;
+        for (int j = 1; j < h - 1; j++)
+            for (int i = 1; i < w - 1; i++)
+            {
+                double fx = (ox + (i + 0.5) / ppe) * upem, fy = (oy - (j + 0.5) / ppe) * upem;
+                if (Math.Abs(edges.Winding(fx, fy)) < 2) continue;
+                bool ink = true;
+                for (int dj = -1; dj <= 1 && ink; dj++)
+                    for (int di = -1; di <= 1; di++)
+                        if (reference[(j + dj) * w + i + di] < 0.99999f) { ink = false; break; }
+                if (!ink) continue;
+                doubled++;
+                image[j * w + i].ShouldBe(1f, $"gid {gid}: wound-twice pixel ({i}, {j})");
+            }
+        output.WriteLine($"DejaVuSans gid {gid}: {doubled} wound-twice interior pixels checked");
+        doubled.ShouldBeGreaterThan(0, $"gid {gid}: the glyph must overlap itself for this to test anything");
+    }
+
     [Fact]
     public void ASelfOverlappingContourHasWindingTwoAndCoverageOne()
     {
-        // No fixture font has a contour that overlaps itself (a variable or hand-drawn TrueType glyph would), so this
-        // one is fed through the sink: a pentagram {5/2} as ONE contour. Its middle pentagon is wound twice (the points
+        // The glyph test above uses real TrueType overlaps; this synthetic shape has exactly known geometry. A pentagram
+        // {5/2} fed through the sink as ONE contour. Its middle pentagon is wound twice (the points
         // once); nonzero winding fills it, so 2 must come out as 1, not 0 (even-odd) and not 2.
         const int upem = 1000;
         const float cx = 500, cy = 500, rad = 450;
