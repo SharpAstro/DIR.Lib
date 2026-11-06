@@ -9,6 +9,26 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.51
+
+Additive. A raster host gets drag-select, highlight and copy of `.Selectable()` text runs with no per-app code.
+
+- **Opt in with one call.** A `PixelWidgetBase` wraps its page in `WithSelection(page)`. That lays a Fill leaf (key
+  `PixelWidgetBase.SelectionKey`) over the page, which `PaintLayout` paints itself: a bar under the selected stretch and its
+  glyphs redrawn on it through the widget's own `DrawText` and the fallback resolver the run was measured with. A menu or
+  popover laid over the page still covers the highlight. `Selection` exposes the `TextSelection<TSurface>`; override
+  `SelectionViewport` for a scrolled part, `SelectionBackground` / `SelectionForeground` or set `SelectionPalette` for colours.
+- **`InputRouter` routes it.** Through the new non-generic `ITextSelectionHost` (implemented by `PixelWidgetBase`, checked with
+  `is`; no `IPixelWidget` member changed). A left press selects only where the topmost painted region is plain chrome or none and
+  no popover owns the pointer; a press on a button, link, field or scrollbar is theirs and starts nothing, and a press elsewhere
+  clears the selection. Ctrl+C with selected text and no focused field calls `SetClipboardText` and is consumed.
+- **`InputRouter.OpenSelectionMenu`** (`Action<PointerPress, string>?`, null by default): a right press over the selection
+  where no region offers a menu calls it with the press and the text, so the host opens its own Copy menu. Null leaves the press
+  routed as before.
+- **`UiPalette.SelectionText`**: init-only glyph colour on the `Selection` fill, defaulting to `BodyText`.
+
+A widget that never calls `WithSelection` sees no change.
+
 ## 11.50
 
 Layout: a scrolled list lays out only what can be seen, and a subtree's measure is kept across frames (#170).

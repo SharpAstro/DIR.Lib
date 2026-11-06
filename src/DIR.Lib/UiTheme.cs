@@ -30,6 +30,7 @@ public sealed record UiPalette
     private readonly RGBAColor32? _headerText;
     private readonly RGBAColor32? _accentAlt;
     private readonly RGBAColor32? _focus;
+    private readonly RGBAColor32? _selectionText;
     private readonly RGBAColor32? _success;
 
     // ---- surfaces, back to front -------------------------------------------------------------
@@ -106,6 +107,16 @@ public sealed record UiPalette
 
     /// <summary>Fill behind the selected row or item.</summary>
     public required RGBAColor32 Selection { get; init; }
+
+    /// <summary>
+    /// Glyph colour drawn on the <see cref="Selection"/> fill by the text selection (<see cref="TextSelection{TSurface}"/>).
+    /// Defaults to <see cref="BodyText"/>. Init-only with a default, so a palette written before it existed still compiles.
+    /// </summary>
+    public RGBAColor32 SelectionText
+    {
+        get => _selectionText ?? BodyText;
+        init => _selectionText = value;
+    }
 
     /// <summary>
     /// Keyboard focus ring. Distinct from <see cref="Selection"/> because focus and selection can
