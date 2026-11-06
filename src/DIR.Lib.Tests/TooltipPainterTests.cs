@@ -92,6 +92,81 @@ public class TooltipPainterTests
         box.Y.ShouldBe(34f);
     }
 
+    private static List<Rect<float>> Arranged(Layout.Node tooltip, out Rect<float> box, float window = 1000f)
+    {
+        var widget = new DeclarationWidget(new DeclarationStubRenderer((uint)window, (uint)window));
+        var all = Layout.Engine.Arrange(tooltip, new Rect<float>(0, 0, window, window), widget.Context());
+        box = all.First(a => a.Depth == 1).Bounds;
+        return [.. all.Where(a => a.Node is Layout.Node.Leaf { Content: Layout.Content.Text }).Select(a => a.Bounds)];
+    }
+
+    private static void EveryLeafInside(List<Rect<float>> leaves, Rect<float> box)
+    {
+        leaves.ShouldNotBeEmpty();
+        foreach (var r in leaves)
+        {
+            r.X.ShouldBeGreaterThanOrEqualTo(box.X - 0.01f);
+            (r.X + r.Width).ShouldBeLessThanOrEqualTo(box.X + box.Width + 0.01f);
+            (r.Y + r.Height).ShouldBeLessThanOrEqualTo(box.Y + box.Height + 0.01f);
+        }
+    }
+
+    [Fact]
+    public void AShortRequestIsStillOneLine()
+    {
+        var leaves = Arranged(Layout.Builder.Tooltip(new TooltipRequest("Cool", new RectF32(50f, 20f, 30f, 10f)), Style), out var box);
+
+        box.Width.ShouldBe(34f);
+        box.Height.ShouldBe(21f);
+        leaves.Select(l => l.Y).Distinct().Count().ShouldBe(1);
+    }
+
+    [Fact]
+    public void ALongRequestWrapsAtWordsInsideTheMaxWidth()
+    {
+        var text = string.Join(' ', Enumerable.Repeat("pointing model refresh", 20));
+        var style = Style with { MaxWidth = 200f };
+        var leaves = Arranged(Layout.Builder.Tooltip(new TooltipRequest(text, new RectF32(300f, 20f, 30f, 10f)), style), out var box);
+
+        box.Width.ShouldBeLessThanOrEqualTo(200f + 12f + 2f + 0.01f);
+        leaves.Select(l => l.Y).Distinct().Count().ShouldBeGreaterThan(1);
+        EveryLeafInside(leaves, box);
+    }
+
+    [Fact]
+    public void AWordLongerThanALineBreaksAfterItsSeparators()
+    {
+        var path = "C:/Users/x/source/repos/sharpastro/DIR.Lib/src/DIR.Lib/Layout/Builder.cs";
+        var style = Style with { MaxWidth = 100f };
+        var leaves = Arranged(Layout.Builder.Tooltip(new TooltipRequest(path, new RectF32(300f, 20f, 30f, 10f)), style), out var box);
+
+        box.Width.ShouldBeLessThanOrEqualTo(100f + 12f + 2f + 0.01f);
+        leaves.Select(l => l.Y).Distinct().Count().ShouldBeGreaterThan(1);
+        EveryLeafInside(leaves, box);
+    }
+
+    [Fact]
+    public void ExplicitNewlinesStaySeparateLines()
+    {
+        var leaves = Arranged(Layout.Builder.Tooltip(new TooltipRequest("one" + (char)10 + "two", new RectF32(300f, 20f, 30f, 10f)), Style), out _);
+
+        leaves.Select(l => l.Y).Distinct().Count().ShouldBe(2);
+    }
+
+    [Fact]
+    public void AContentTooltipOfWrappingParagraphsHoldsEveryLine()
+    {
+        var para = string.Join(' ', Enumerable.Repeat("alpha beta gamma", 25));
+        var words = para.Split(' ').Select(w => Layout.Builder.Text(w + " ", 10f)).ToArray();
+        var content = Layout.Builder.VStack(Layout.Builder.WrapH(words).WStar());
+        var style = Style with { MaxWidth = 200f };
+        var leaves = Arranged(Layout.Builder.Tooltip(new RectF32(300f, 20f, 30f, 10f), content, style), out var box);
+
+        box.Width.ShouldBeLessThanOrEqualTo(200f + 12f + 2f + 0.01f);
+        leaves.Select(l => l.Y).Distinct().Count().ShouldBeGreaterThan(1);
+        EveryLeafInside(leaves, box);
+    }
+
     /// <summary>
     /// A tooltip that answered presses, lit on hover or registered a region would take the pointer from the
     /// region that asked for it, and the router would then resolve no tooltip at all.

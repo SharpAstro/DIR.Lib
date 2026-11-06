@@ -651,6 +651,13 @@ public abstract partial record Node
         public bool CenterAlong { get; init; }
 
         /// <summary>
+        /// The widest the child is measured and arranged at, in design units; 0 means no cap beyond the room it floats in.
+        /// Wrapping content counts its lines at this width, so a tooltip capped at 280 wraps there and its box holds
+        /// every line. An init-only property, not a positional parameter, so no compiled caller's constructor changes.
+        /// </summary>
+        public float MaxWidth { get; init; }
+
+        /// <summary>
         /// Against an <see cref="Anchor"/>, open on the OPPOSITE side when the child would run past this node's
         /// rect on <see cref="Side"/> and fits on the other: a tooltip under a control at the bottom of the
         /// window opens above it. Where it fits on neither, it stays on <see cref="Side"/> and

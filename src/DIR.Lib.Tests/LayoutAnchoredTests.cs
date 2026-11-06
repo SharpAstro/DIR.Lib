@@ -162,6 +162,97 @@ public class LayoutAnchoredTests
 
         public float ToSurface(float designUnits) => designUnits;
     }
+    // Eighteen 10-wide words: one line of 180 in a wide window, two lines of ten at 100.
+    private static Layout.Node Words() =>
+        Layout.Builder.WrapH([.. Enumerable.Range(0, 18).Select(_ => Layout.Builder.Spacer().WFixed(10f).HFixed(10f))]).WStar();
+
+    private static void BoxHoldsEveryWord(Layout.Node root, Rect<float> bounds, float minLines = 0f)
+    {
+        var arranged = Layout.Engine.Arrange(root, bounds, new UnitContext());
+        var box = arranged.First(a => a.Depth > 0).Bounds;
+        var words = arranged.Where(a => a.Node is Layout.Node.Leaf).Select(a => a.Bounds).ToArray();
+
+        words.Length.ShouldBe(18);
+        box.Height.ShouldBeGreaterThanOrEqualTo(minLines * 10f - 0.01f);
+        words.Max(w => w.Y + w.Height).ShouldBeLessThanOrEqualTo(box.Y + box.Height + 0.01f);
+        words.Max(w => w.X + w.Width).ShouldBeLessThanOrEqualTo(box.X + box.Width + 0.01f);
+    }
+
+    [Fact]
+    public void AnAnchoredFixedWidthParagraphGetsABoxThatHoldsEveryWord()
+    {
+        var root = Layout.Builder.Anchored(Layout.Builder.VStack(Words()).WFixed(100f), Layout.DockSide.Left);
+
+        BoxHoldsEveryWord(root, new Rect<float>(0, 0, 1000f, 1000f), minLines: 2f);
+    }
+
+    [Fact]
+    public void AnAnchoredToFixedWidthParagraphGetsABoxThatHoldsEveryWord()
+    {
+        var root = Layout.Builder.AnchoredTo(new RectF32(100, 100, 20, 20), Layout.Builder.VStack(Words()).WFixed(100f));
+
+        BoxHoldsEveryWord(root, new Rect<float>(0, 0, 1000f, 1000f), minLines: 2f);
+    }
+
+    [Fact]
+    public void TheChildIsMeasuredAtTheWidthInsideTheMargins()
+    {
+        // 100 wide less two margins of 10 is 80: 8 words a line, 3 lines. Measured at the whole 100 it would count 10 a
+        // line, 2 lines, and the arranged 80 would then hang the third line out underneath.
+        var root = Layout.Builder.Anchored(Layout.Builder.VStack(Words()), Layout.DockSide.Left, margin: 10f);
+
+        BoxHoldsEveryWord(root, new Rect<float>(0, 0, 100f, 1000f), minLines: 3f);
+    }
+
+    [Fact]
+    public void AnchoredToASideMeasuresTheChildAtTheRoomOnThatSide()
+    {
+        // 60 of room right of the anchor (940 to the 1000 edge): measured at the whole
+        // window the words would count one line, so the room must wrap them to several lines the box then holds.
+        var root = Layout.Builder.AnchoredTo(new RectF32(920, 100, 20, 20), Layout.Builder.VStack(Words()), Layout.DockSide.Right);
+
+        var arranged = Layout.Engine.Arrange(root, new Rect<float>(0, 0, 1000f, 1000f), new UnitContext());
+        var box = arranged.First(a => a.Depth > 0).Bounds;
+
+        box.Width.ShouldBeLessThanOrEqualTo(60f + 0.01f);
+        box.Height.ShouldBeGreaterThanOrEqualTo(30f - 0.01f);
+        arranged.Where(a => a.Node is Layout.Node.Leaf).Max(a => a.Bounds.Y + a.Bounds.Height)
+            .ShouldBeLessThanOrEqualTo(box.Y + box.Height + 0.01f);
+    }
+
+    [Fact]
+    public void MaxWidthCapsTheWidthTheChildIsMeasuredAndArrangedAt()
+    {
+        var root = new Layout.Node.Anchored(Layout.Builder.VStack(Words()), Layout.DockSide.Left) { MaxWidth = 100f };
+
+        var arranged = Layout.Engine.Arrange(root, new Rect<float>(0, 0, 1000f, 1000f), new UnitContext());
+        var box = arranged.First(a => a.Depth > 0).Bounds;
+
+        box.Width.ShouldBeLessThanOrEqualTo(100f + 0.01f);
+        BoxHoldsEveryWord(root, new Rect<float>(0, 0, 1000f, 1000f), minLines: 2f);
+        Layout.Engine.Measure(root, new Layout.Size<float>(1000f, 1000f), new UnitContext()).Width
+            .ShouldBeLessThanOrEqualTo(100f + 0.01f);
+    }
+
+    [Theory]
+    [InlineData(Layout.DockSide.Right, false)]
+    [InlineData(Layout.DockSide.Left, false)]
+    [InlineData(Layout.DockSide.Right, true)]
+    [InlineData(Layout.DockSide.Left, true)]
+    public void AHorizontalSideWithNoRoomStaysVisibleAndOnScreen(Layout.DockSide side, bool flip)
+    {
+        // The anchor fills the width (or touches the edge), so there is no room beside it: the box keeps a width and the
+        // clamp keeps it inside, rather than collapsing to nothing.
+        var anchor = flip ? new RectF32(0, 100, 1000, 20) : side == Layout.DockSide.Right ? new RectF32(990, 100, 10, 20) : new RectF32(0, 100, 10, 20);
+        var root = new Layout.Node.Anchored(Layout.Builder.Spacer().WFixed(40f).HFixed(30f), side, 0f, 0f, 4f, true, anchor) { FlipWhenCramped = flip };
+
+        var box = Layout.Engine.Arrange(root, new Rect<float>(0, 0, 1000f, 1000f), new UnitContext()).First(a => a.Depth > 0).Bounds;
+
+        box.Width.ShouldBeGreaterThan(0f);
+        box.X.ShouldBeGreaterThanOrEqualTo(0f);
+        (box.X + box.Width).ShouldBeLessThanOrEqualTo(1000f + 0.01f);
+    }
+
     /// <summary>A 40x30 panel against a 20x20 anchor at (<paramref name="ax"/>, <paramref name="ay"/>) in the 200x200 area.</summary>
     private static Rect<float> AgainstAnchor(Layout.DockSide side, float ax, float ay, bool center = false, bool flip = false)
     {
