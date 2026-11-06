@@ -9,6 +9,29 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.48
+
+Slug glyph encoder (#188), the CPU half of Slug text drawing. `SlugGlyphEncoder` is an `IGlyphSink` that turns
+an outline into a `SlugGlyphBlob`: one versioned run of 32-bit integers a GPU backend uploads as it is, plus
+the glyph's em-space bounds. Lines become degenerate quadratics, cubics (CFF, Type 1) are split in halves
+until one quadratic stands in for each within a tolerance in em units (default 1/2048), points are snapped to
+a quarter font unit, and at most 16 horizontal and 16 vertical bands are computed from the SNAPPED points,
+so a curve that rounding moves across a band edge is not missed (HarfBuzz #6132). Each band keeps two curve
+lists, ascending by min and descending by max along the ray, plus a split, for the shader's early-out.
+`SlugGlyphEncoder.TryEncode` draws a glyph straight from `ManagedFontRasterizer.TryDrawGlyphOutline` (an SFNT
+by glyph id, a Type 1 by name); `SlugGlyphBlob.IsReadable` lets a disk cache reject an old format version.
+The layout is documented word by word on `SlugGlyphBlob`. Nothing existing changes.
+
+The test project carries a CPU port of the Slug shader's coverage function (`SlugCoverageOracle`) that reads
+only the blob, so it exercises the layout the shader will read. It is held to the analytic area of a disc and
+to a supersampled nonzero-winding rasterisation of the original outline for glyphs with a counter (DejaVu
+Sans and Computer Modern `o`, the latter all cubics) and a self-overlapping contour: pixels clear of an edge
+are exactly 1 or 0, a counter is 0 and a doubly wound overlap is 1, and the split's list, either list
+forced, and no bands at all give the same coverage. Edge pixels differ from true area by up to 0.12 on
+smooth outlines and 0.20 at sharp corners, which is Slug's own approximation (two rays through the pixel
+centre), not the encoder's. Encoding costs about 35 us a glyph for DejaVu Sans (1 to 2 us a curve) with a
+mean blob of 1.9 kB.
+
 ## 11.47
 
 A tooltip wraps its text and a wrapping child is measured at the width it gets (#157). Before, `Engine.Measure`
