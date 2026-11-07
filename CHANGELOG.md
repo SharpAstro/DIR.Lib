@@ -9,6 +9,20 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.52
+
+- **`CanvasViewport` (#176)**: a public, reusable zoom, pan and fit viewport for canvases of design units, pilot's
+  `MapViewport` generalised. It sits BESIDE `PanZoomController` (composing one privately for the drag and cursor-anchored
+  zoom primitives) rather than extending it: the controller leaves the fit to the renderer, whereas the viewport owns the
+  content size and so computes the fit, the keep-in-view clamp and the design/view mapping.
+- **`HandleInput`**: the canvas gestures as one handler taking an `InputEvent` and the viewport's rect on the surface (and
+  an optional design scale). Ctrl+wheel zooms about the pointer, plain and Shift wheel pan, pinch zooms, Middle (or Space+Left,
+  or a host-chosen Left) drags to pan and only the same button's release ends it, and Ctrl+Plus/Minus/0/1 and the arrow keys
+  zoom, fit and pan. `IsPanning` and `SpaceHeld` let a host show the move cursor.
+- **`ZoomByWheel`** on `PanZoomController` and `CanvasViewport`: the factor is `ZoomStep^delta`, so a touchpad's small
+  deltas zoom a fraction of a notch and a delta of 1 matches the old step. `ZoomAtCursor` is unchanged.
+- Additive. pilot's `MapViewport` can now be replaced by `CanvasViewport` (a pilot flight, not this one).
+
 ## 11.51
 
 Additive. A raster host gets drag-select, highlight and copy of `.Selectable()` text runs with no per-app code.

@@ -85,6 +85,15 @@ public sealed class PanZoomController
         => ZoomByFactor(scrollDelta > 0f ? ZoomStep : 1f / ZoomStep, cursorX, cursorY, viewport);
 
     /// <summary>
+    /// Cursor-anchored zoom scaled by the wheel delta: the factor is <see cref="ZoomStep"/> raised to
+    /// <paramref name="delta"/>, so a delta of 1 is one notch (the step <see cref="ZoomAtCursor"/> takes), a
+    /// touchpad's 0.1 is a tenth of a notch and a negative delta zooms out. <see cref="ZoomAtCursor"/> keeps its
+    /// fixed step. Returns <c>true</c> when the zoom actually changed.
+    /// </summary>
+    public bool ZoomByWheel(float delta, float cursorX, float cursorY, RectF32 viewport)
+        => ZoomByFactor(MathF.Pow(ZoomStep, delta), cursorX, cursorY, viewport);
+
+    /// <summary>
     /// Cursor-anchored zoom by an explicit multiplicative <paramref name="factor"/> (for keyboard /
     /// pinch). Clamps to <see cref="MinZoom"/>/<see cref="MaxZoom"/>, keeps the scene point under the
     /// cursor fixed, and clears <see cref="ZoomToFit"/>. Returns <c>true</c> when the zoom changed.
