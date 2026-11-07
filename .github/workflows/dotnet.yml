@@ -5,6 +5,11 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+    # Listing types replaces the default set, so the three defaults are spelled out. 'labeled' is the
+    # addition: labelling an already open PR 'preview' must start a run, or the label would only take
+    # effect on the PR's next push. A run for any other label just rebuilds the PR with no suffix and
+    # publishes nothing; see the VERSION_SUFFIX step and the publish-preview job.
+    types: [opened, synchronize, reopened, labeled]
   # A push event can arrive LATE, and the difference from a lost one is not observable while you wait:
   # the 9.4 merge's run was created 12 minutes after the commit, with the API reporting zero runs for
   # that sha throughout -- indistinguishable from a drop until it appeared. Without this trigger the
@@ -45,6 +50,17 @@ jobs:
       # the SDK first-run banner out — this is the job's first dotnet call — and the shape check makes
       # anything else unexpected, or a renamed property, fail the run rather than quietly stamping
       # every package ".<run>".
+      # VERSION_SUFFIX is the preview path. A pull_request run whose PR carries the 'preview' label and
+      # whose head branch lives in THIS repository gets "-pr<N>", which makes the stamped version a
+      # prerelease (11.50.4121-pr196) that the publish-preview job pushes. Every other run (a push or a
+      # dispatch on main, an unlabelled PR, a fork PR) gets an empty suffix and stamps exactly what it
+      # always did. The event values come in through env:, never interpolated into the script, so text
+      # from a PR cannot become shell. The label list is the one in THIS run's event payload, which for a
+      # 'labeled' event already holds the label just added. The suffix goes into Version only, never
+      # FileVersion: a prerelease tag is illegal in a file version.
+      env:
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        IS_PREVIEW: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview') && github.event.pull_request.head.repo.full_name == github.repository }}
       run: |
         MM="$(dotnet msbuild src/Directory.Build.props -getProperty:VersionMajorMinor -nologo)"
         case "$MM" in
@@ -52,10 +68,18 @@ jobs:
           *) echo "::error::VersionMajorMinor did not resolve from src/Directory.Build.props (got '$MM')"; exit 1 ;;
         esac
         echo "VERSION_PREFIX=${MM}.${{ github.run_number }}" >> "$GITHUB_ENV"
+        SUFFIX=""
+        if [ "$IS_PREVIEW" = "true" ]; then
+          case "$PR_NUMBER" in
+            ''|*[!0-9]*) echo "::error::preview build without a numeric pull request number (got '$PR_NUMBER')"; exit 1 ;;
+          esac
+          SUFFIX="-pr${PR_NUMBER}"
+        fi
+        echo "VERSION_SUFFIX=${SUFFIX}" >> "$GITHUB_ENV"
     - name: Restore dependencies
       run: dotnet restore
     - name: Build
-      run: dotnet build -c $BUILD_CONF --no-restore -p:Version=${VERSION_PREFIX}${VERSION_REV}${VERSION_HASH} -p:FileVersion=${VERSION_PREFIX}.${VERSION_REV} -p:ContinuousIntegrationBuild=true
+      run: dotnet build -c $BUILD_CONF --no-restore -p:Version=${VERSION_PREFIX}${VERSION_REV}${VERSION_SUFFIX}${VERSION_HASH} -p:FileVersion=${VERSION_PREFIX}.${VERSION_REV} -p:ContinuousIntegrationBuild=true
     - name: Test
       run: dotnet test -c $BUILD_CONF --no-build
     # DIR.Lib.Debug: the same library packed from a Debug build, at the same stamped version. A
@@ -65,12 +89,13 @@ jobs:
     # GeneratePackageOnBuild is off so bin/Debug holds no second copy of the nupkg: the upload's
     # '**/*.nupkg' glob (and the push after it) must see DIR.Lib.Debug exactly once, from artifacts/debug-twin.
     - name: Pack DIR.Lib.Debug twin
-      run: dotnet pack src/DIR.Lib/DIR.Lib.csproj -c Debug -p:DebugTwin=true -p:GeneratePackageOnBuild=false -p:Version=${VERSION_PREFIX}${VERSION_REV}${VERSION_HASH} -p:FileVersion=${VERSION_PREFIX}.${VERSION_REV} -p:ContinuousIntegrationBuild=true -o artifacts/debug-twin
+      run: dotnet pack src/DIR.Lib/DIR.Lib.csproj -c Debug -p:DebugTwin=true -p:GeneratePackageOnBuild=false -p:Version=${VERSION_PREFIX}${VERSION_REV}${VERSION_SUFFIX}${VERSION_HASH} -p:FileVersion=${VERSION_PREFIX}.${VERSION_REV} -p:ContinuousIntegrationBuild=true -o artifacts/debug-twin
     # Proves a Debug consumer compiles against the twin (it references DebugInspectorCore). The version
     # is the stamped one without the +sha build metadata (NuGet ignores it when matching, checked by hand,
-    # so a plain reference is enough).
+    # so a plain reference is enough). A preview build keeps its -pr<N> suffix here, since the suffix is
+    # part of the package's identity and the check restores exactly that version.
     - name: Check DIR.Lib.Debug twin
-      run: dotnet build tools/debug-twin-check/DebugTwinCheck.csproj -c Debug -p:DirLibDebugVersion=${VERSION_PREFIX}${VERSION_REV}
+      run: dotnet build tools/debug-twin-check/DebugTwinCheck.csproj -c Debug -p:DirLibDebugVersion=${VERSION_PREFIX}${VERSION_REV}${VERSION_SUFFIX}
     - name: Upload NuGet package
       uses: actions/upload-artifact@v7
       with:
@@ -93,3 +118,31 @@ jobs:
         name: nuget-packages
     - name: Push NuGet package
       run: dotnet nuget push **/*.nupkg -s nuget.org -k ${{ secrets.NUGET_API_KEY }}
+
+  # Preview packages. A consumer flight that needs a change this repo has not released yet pins the
+  # prerelease this job publishes (<VersionMajorMinor>.<run><attempt>-pr<N>) while the PR is open, and
+  # moves its pin to the real version once that publishes, before the consumer lands itself. A
+  # prerelease sorts below the release of the same number, so that move never goes backwards.
+  # Opt-in by the 'preview' label, because nuget.org prereleases are permanent: a version can be
+  # unlisted but never deleted, and every push to a labelled PR leaves one behind. Label a PR when a
+  # consumer needs it, not by habit.
+  # Only for a PR whose head branch is in this repository: a fork PR gets no secrets, and must not try.
+  # The condition is the one the version step uses to stamp the suffix, so a package is pushed here
+  # exactly when it was stamped as a preview. The skip-duplicate flag makes a re-run of the same run and
+  # attempt harmless. This job cannot fire on a push or a dispatch (the event must be pull_request),
+  # and publish-nuget cannot fire on a pull request (its condition names main and the push and
+  # dispatch events), so a package is never pushed by both.
+  publish-preview:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview') && github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+    - name: Download NuGet packages
+      uses: actions/download-artifact@v8
+      with:
+        name: nuget-packages
+    - name: Push preview packages
+      # The key goes in through env:, so it is never part of the script text.
+      env:
+        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+      run: dotnet nuget push **/*.nupkg -s nuget.org -k "$NUGET_API_KEY" --skip-duplicate
