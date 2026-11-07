@@ -36,7 +36,13 @@ public sealed class CanvasViewport
     /// <summary>The smallest scale a fit reaches: below it small text is unreadable. Default 0.5.</summary>
     public float MinFitScale { get; set; } = 0.5f;
 
-    /// <summary>The largest scale a fit reaches: past it a small canvas is blown up. Default 1.5.</summary>
+    /// <summary>
+    /// The largest scale a fit reaches: past it a small canvas is blown up. Default 1.5. This limit and <see cref="MaxZoom"/>
+    /// are separate properties and nothing ties them together: a fit is not clamped to <see cref="MaxZoom"/>, so setting
+    /// this above it fits a small canvas at a scale a zoom could never reach (the next zoom clamps it back into
+    /// [<see cref="MinZoom"/>, <see cref="MaxZoom"/>], so even a zoom in snaps it down).
+    /// A host that wants a fit never to exceed the zoom ceiling keeps this at or below it.
+    /// </summary>
     public float MaxFitScale { get; set; } = 1.5f;
 
     /// <summary>The smallest scale a zoom reaches (a fit never goes below <see cref="MinFitScale"/>), so a wide canvas can be seen whole. Default 0.25.</summary>
@@ -46,7 +52,11 @@ public sealed class CanvasViewport
         set => _pan.MinZoom = value;
     }
 
-    /// <summary>The largest scale a zoom reaches. Default 4.</summary>
+    /// <summary>
+    /// The largest scale a zoom reaches. Default 4. It does not cap a fit: <see cref="Fit"/> is bounded by
+    /// <see cref="MinFitScale"/> and <see cref="MaxFitScale"/> only, so with <see cref="MaxFitScale"/> above this the fitted
+    /// scale can exceed it (as in pilot's MapViewport, whose behaviour this keeps).
+    /// </summary>
     public float MaxZoom
     {
         get => _pan.MaxZoom;
@@ -80,7 +90,11 @@ public sealed class CanvasViewport
     /// <summary>Whether the person has panned or zoomed since the last fit.</summary>
     public bool Moved { get; private set; }
 
-    /// <summary>Raised on every change of the view: a fit, a pan, a zoom, or a new view or content size.</summary>
+    /// <summary>
+    /// Raised on every change of the view: a fit, a pan, a zoom, or a new view or content size; and when a drag begins or
+    /// ends (<see cref="IsPanning"/> flips) or Space is pressed or released (<see cref="SpaceHeld"/> flips), so a host that
+    /// repaints on this shows the right cursor on the event that changes it.
+    /// </summary>
     public event Action? Changed;
 
     /// <summary>View units per design unit of canvas.</summary>
@@ -237,8 +251,20 @@ public sealed class CanvasViewport
     /// <summary>Whether a drag that moves the canvas is in flight.</summary>
     public bool IsPanning => _pan.IsPanning;
 
-    /// <summary>Starts a drag that moves the canvas, from a view point.</summary>
-    public void BeginPan(float viewX, float viewY) => _pan.BeginPan(viewX, viewY);
+    /// <summary>
+    /// Starts a drag that moves the canvas, from a view point. <see cref="Changed"/> is raised when this flips
+    /// <see cref="IsPanning"/> (so a host showing the move cursor repaints at once); beginning again during a drag only
+    /// re-anchors it and raises nothing.
+    /// </summary>
+    public void BeginPan(float viewX, float viewY)
+    {
+        var was = IsPanning;
+        _pan.BeginPan(viewX, viewY);
+        if (!was)
+        {
+            Changed?.Invoke();
+        }
+    }
 
     /// <summary>Moves the canvas by the pointer's motion since the last call. False when no drag is in flight.</summary>
     public bool UpdatePan(float viewX, float viewY)
@@ -253,8 +279,16 @@ public sealed class CanvasViewport
         return true;
     }
 
-    /// <summary>Ends a drag.</summary>
-    public void EndPan() => _pan.EndPan();
+    /// <summary>Ends a drag. <see cref="Changed"/> is raised when this flips <see cref="IsPanning"/>; ending when no drag is in flight raises nothing.</summary>
+    public void EndPan()
+    {
+        if (!IsPanning)
+        {
+            return;
+        }
+        _pan.EndPan();
+        Changed?.Invoke();
+    }
 
     /// <summary>One wheel step: up and down, or left and right with <paramref name="sideways"/>. A positive delta (wheel up, or left) shows more of the top (or left).</summary>
     public void Wheel(float delta, bool sideways, float step = 60f)
@@ -271,7 +305,9 @@ public sealed class CanvasViewport
     /// <item>Ctrl+Scroll zooms about the pointer by <see cref="ZoomByWheel"/>; Scroll pans vertically, Shift+Scroll sideways.</item>
     /// <item>Pinch zooms about its point by its Scale.</item>
     /// <item>A press of Middle, of Left while Space is held, or of Left where <paramref name="leftDragPans"/> (given surface
-    /// coordinates) says yes, begins a pan that only the same button's release ends; moves update it.</item>
+    /// coordinates) says yes, begins a pan that only the same button's release ends; moves update it. A second pan button
+    /// pressed during a pan takes the drag over (as in pilot's MapViewport): the drag re-anchors at that press, and from then
+    /// on only the second button's release ends it, so releasing the first button first leaves the pan running.</item>
     /// <item>Space sets <see cref="SpaceHeld"/> and its release clears it (the release is never taken).</item>
     /// <item>Ctrl+Plus and Ctrl+Minus zoom about the centre, Ctrl+0 fits, Ctrl+1 is 100%. Left and Right pan by
     /// <see cref="KeyPanStep"/> (<see cref="KeyPanStepBig"/> with Shift), and Up and Down too when <see cref="PanWithVerticalKeys"/>.</item>

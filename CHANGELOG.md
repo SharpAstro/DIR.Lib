@@ -18,7 +18,13 @@ changed and why.
 - **`HandleInput`**: the canvas gestures as one handler taking an `InputEvent` and the viewport's rect on the surface (and
   an optional design scale). Ctrl+wheel zooms about the pointer, plain and Shift wheel pan, pinch zooms, Middle (or Space+Left,
   or a host-chosen Left) drags to pan and only the same button's release ends it, and Ctrl+Plus/Minus/0/1 and the arrow keys
-  zoom, fit and pan. `IsPanning` and `SpaceHeld` let a host show the move cursor.
+  zoom, fit and pan. `IsPanning` and `SpaceHeld` let a host show the move cursor, and `Changed` is raised when either
+  flips (`BeginPan` and `EndPan` raise it only when they change `IsPanning`), so a host that repaints on `Changed` shows
+  the cursor on the event that changes it. A second pan button pressed during a pan takes the drag over (as in pilot's
+  `MapViewport`), so releasing the first button no longer ends it. `MaxFitScale` is not clamped to `MaxZoom`: a fit can
+  exceed the zoom ceiling when the two are set that way, and the next zoom snaps it back.
+- **`InputEvent.Pinch.Scale`** is documented as the factor since the previous pinch event (what the SdlVulkan emitter
+  sends and what `HandleInput` applies), not an absolute scale from the pinch's start. A doc correction; no behaviour change.
 - **`ZoomByWheel`** on `PanZoomController` and `CanvasViewport`: the factor is `ZoomStep^delta`, so a touchpad's small
   deltas zoom a fraction of a notch and a delta of 1 matches the old step. `ZoomAtCursor` is unchanged.
 - Additive. pilot's `MapViewport` can now be replaced by `CanvasViewport` (a pilot flight, not this one).
