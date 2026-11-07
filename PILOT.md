@@ -20,6 +20,15 @@ needs to plan, build, check and land.
 - Never wait with a job that sleeps or polls: use `pilot leg wait --for-file <path>` and end the turn. Long builds
   and test runs go through `pilot run -- <command>`. The machine is shared, so a job may wait its turn first.
 
+## Packages first
+
+- A plane builds against packages, as it already must. A feature that needs an unreleased change here is a DIR.Lib
+  flight first; its consumers pin that PR's preview package or wait for the release, and move the pin to the release
+  before they land.
+- Label a DIR.Lib PR `preview` and CI publishes its packages to nuget.org as `<Major.Minor>.<run><attempt>-pr<N>` (a
+  same-repo PR only; nuget.org keeps every prerelease, so label only when a consumer needs one).
+- An exception that must build sibling source is named in the consumer's flight.
+
 ## Build and check
 
 Always `-c Release`, as CI does. Run from the repo root.
