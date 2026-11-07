@@ -42,6 +42,19 @@ public interface IMeasureContext<T> where T : INumber<T>
 
     /// <summary>Map a design-unit scalar along the VERTICAL axis. See <see cref="ToSurfaceX"/>.</summary>
     T ToSurfaceY(float designUnits) => ToSurface(designUnits);
+
+    /// <summary>
+    /// A value that names everything this context's measures depend on: the metrics behind
+    /// <see cref="MeasureText"/> and the <see cref="ToSurface"/> family (scale, font, fallback). Two contexts whose keys
+    /// are <see cref="object.Equals(object?)"/> must measure every node identically. The engine keeps a pure subtree's
+    /// measure across calls (keyed by node reference and available size) only while the key is equal.
+    /// <para>
+    /// <c>null</c>, the default, keeps NOTHING across calls: the context cannot say what its measures depend on, so
+    /// none of them is trusted a second time. Within one <see cref="Engine.Measure{T}"/> or
+    /// <see cref="Engine.Arrange{T}"/> call a child is still measured once per available size either way.
+    /// </para>
+    /// </summary>
+    object? MeasureKey => null;
 }
 
 /// <summary>
@@ -59,9 +72,37 @@ public static class Engine
     public static Size<T> Measure<T>(Node node, Size<T> available, IMeasureContext<T> ctx)
         where T : INumber<T>
     {
+        MeasureMemo<T>.Enter();
+        try
+        {
+            // A leaf other than a text editor measures from its content alone, so the room it is offered is not part of
+            // its identity: the same text in nested stacks is offered a different room at each level.
+            var at = node is Node.Leaf { Content: not Content.TextEditor } ? default : available;
+            if (MeasureMemo<T>.TryGet(node, at, ctx, out var known, out var key))
+            {
+                return known;
+            }
+
+            var size = MeasureUncached(node, available, ctx);
+            MeasureMemo<T>.Store(node, at, ctx, key, size);
+            return size;
+        }
+        finally
+        {
+            MeasureMemo<T>.Exit();
+        }
+    }
+
+    private static Size<T> MeasureUncached<T>(Node node, Size<T> available, IMeasureContext<T> ctx)
+        where T : INumber<T>
+    {
         // Inner padding is measured as arrange lays it out: the children get the room inside it. They were measured
         // in the whole of it, so wrapped text inside a padded box measured with twice the padding more width than it
         // was arranged in, came out a line short, and ran out of its box (pilot's flight page cut its last report).
+        // Children are measured at the extent this node will have: a Fixed extent, or the room up to a Max. Measured at the
+        // whole available extent and only then overridden, a wrapping child counted the lines it would take at window width.
+        available = new Size<T>(NarrowTo(available.Width, node.Width, ctx, Axis.Horizontal), NarrowTo(available.Height, node.Height, ctx, Axis.Vertical));
+
         var padded = node is not Node.Dock and not Node.Split && (node.Padding != 0f || node.PadDown != 0f);
         var padX = padded ? ctx.ToSurfaceX(node.Padding) : T.Zero;
         var padY = padded ? ctx.ToSurfaceY(node.PadDown) : T.Zero;
@@ -86,7 +127,7 @@ public static class Engine
             // An Anchored measures to its CHILD, not to the space it floats in: nesting one inside a stack
             // should reserve the panel, not the canvas. It still arranges its child at an offset inside
             // whatever rect it is given, so at the top of an Overlay it floats over the full area.
-            Node.Anchored anchored => Measure(anchored.Child, available, ctx),
+            Node.Anchored anchored => MeasureAnchored(anchored, available, ctx),
             _ => Size<T>.Zero,
         };
 
@@ -125,7 +166,16 @@ public static class Engine
         where T : INumber<T>
     {
         var builder = ImmutableArray.CreateBuilder<ArrangedNode<T>>();
-        ArrangeNode(root, bounds, ctx, builder, 0);
+        MeasureMemo<T>.Enter();
+        try
+        {
+            ArrangeNode(root, bounds, ctx, builder, 0);
+        }
+        finally
+        {
+            MeasureMemo<T>.Exit();
+        }
+
         return builder.ToImmutable();
     }
 
@@ -178,12 +228,41 @@ public static class Engine
     private static void ArrangeAnchored<T>(Node.Anchored anchored, Rect<T> inner, IMeasureContext<T> ctx,
         ImmutableArray<ArrangedNode<T>>.Builder output, int depth) where T : INumber<T>
     {
-        var size = Measure(anchored.Child, new Size<T>(inner.Width, inner.Height), ctx);
         var margin = ctx.ToSurface(anchored.Margin);
+        var two = T.CreateTruncating(2);
+
+        // The child is measured at the width it will be given, not at the whole of inner: wrapping content counts its
+        // lines at that width, so a box measured wider than it is then capped to hangs its last lines out underneath.
+        // That width is inner less two margins, and at most MaxWidth. Against an anchor placed to its left or right the
+        // child is MEASURED at the room on that side (the roomier side when it may flip) so its text wraps to it, but the
+        // room is not a cap: with no usable room the child keeps the width it had before and the clamp below brings it
+        // back on screen, as it always did.
+        var maxWidth = Max(T.Zero, inner.Width - two * margin);
+        if (anchored.MaxWidth > 0f)
+        {
+            maxWidth = Min(maxWidth, ctx.ToSurfaceX(anchored.MaxWidth));
+        }
+
+        var measureWidth = maxWidth;
+        if (anchored.Anchor is { } room && anchored.Side is DockSide.Left or DockSide.Right)
+        {
+            var left = inner.X + margin;
+            var right = inner.X + inner.Width - margin;
+            var roomLeft = Max(T.Zero, T.CreateTruncating(room.X) - margin - left);
+            var roomRight = Max(T.Zero, right - (T.CreateTruncating(room.X) + T.CreateTruncating(room.Width) + margin));
+            var named = anchored.Side == DockSide.Left ? roomLeft : roomRight;
+            var other = anchored.Side == DockSide.Left ? roomRight : roomLeft;
+            var sideRoom = anchored.FlipWhenCramped ? Max(named, other) : named;
+            if (sideRoom > two * margin)
+            {
+                measureWidth = Min(maxWidth, sideRoom);
+            }
+        }
+
+        var size = Measure(anchored.Child, new Size<T>(measureWidth, inner.Height), ctx);
         // Never larger than the space it floats in, less its margins: a menu of long entries on a small window is cut to
         // the window, its text trimmed, rather than laid out past an edge the clamp below could not then bring it back from.
-        var two = T.CreateTruncating(2);
-        size = new Size<T>(Min(size.Width, Max(T.Zero, inner.Width - two * margin)), Min(size.Height, Max(T.Zero, inner.Height - two * margin)));
+        size = new Size<T>(Min(size.Width, maxWidth), Min(size.Height, Max(T.Zero, inner.Height - two * margin)));
         var along = ctx.ToSurface(anchored.OffsetAlong);
         var across = ctx.ToSurface(anchored.OffsetAcross);
 
@@ -391,67 +470,97 @@ public static class Engine
 
         var axis = stack.Axis;
         var gap = ToSurfaceOn(ctx, stack.Gap, axis);
-        var availSize = new Size<T>(inner.Width, inner.Height);
-        var mainAvail = MainOf(axis, availSize);
-        var crossAvail = CrossOf(axis, availSize);
-
-        // A SCROLLED stack lays its children out at their full extent along the axis and slides them by
-        // the controller's offset: the rect it was given is its viewport, not the room its children get.
-        // The room is the larger of the two, so a list shorter than its viewport still hands its Star
-        // children the slack, and a longer one is laid out as if the viewport were as tall as it is.
         var scroll = stack.Scroll;
-        var layoutMain = scroll is null
-            ? mainAvail
-            : Max(mainAvail, MainOf(axis, MeasureStack(stack, availSize, ctx)));
 
-        // Collapse loop: resolve every child's main extent, then drop any child whose CollapseThreshold
-        // undercuts its resolved extent and re-resolve so the freed space (extent + gap) redistributes.
-        // Survivor extents only ever grow when a sibling collapses (Fixed/Auto are space-independent,
-        // Star shares grow with the leftover), so no survivor can newly violate; each extra pass removes
-        // at least one child, terminating in <= n passes (one, in practice).
+        // A scrolled stack whose bar shows gives its children the controller's content area: the viewport
+        // less the bar column (as the virtual list does), so a Star row or an end-aligned leaf ends left of
+        // the bar rather than under it. The rows must be RESOLVED at that narrower cross extent, not only
+        // arranged at it: a wrapping row measured at the full width counts fewer lines than it lays out in
+        // beside the bar, and its last lines were drawn over the next row while the scroll extent came out
+        // short by as much (11.44). Whether the bar shows depends on the rows' total, so the first pass
+        // resolves at the full extent and, when the bar shows, a second pass resolves at the reserved one.
+        // The second pass can only make the rows taller (less width never takes a line away), so the bar
+        // still shows after it: two passes at most, and no flicker between frames.
+        // SetExtent is idempotent for a FIXED extent, but the two passes state different ones: pass 1's
+        // clamp cuts the offset to its shorter MaxOffset, and pass 2 would then only raise the bound, never
+        // the offset, so scrolling to the end stopped short of it (11.46, #192). The offset the controller
+        // held on entry is therefore put back before pass 2's SetExtent, which clamps it to the final one.
+        // It is read in pass 1 only, just before its SetExtent: whether a pass 2 follows is not known until
+        // pass 1 has resolved the rows, so a scrolled single-pass stack reads it for nothing (one float),
+        // but an unscrolled stack never does.
+        var offsetOnEntry = 0f;
+        var reserve = T.Zero;
         var included = new bool[n];
-        Array.Fill(included, true);
-        var includedCount = n;
         var mains = new T[n];
         var measured = new Size<T>?[n];
+        int includedCount;
+        T crossAvail;
+        T rows = T.Zero;
+        T padStart = T.Zero;
+        var atom = 1f;
         while (true)
         {
-            ResolveStackMains(children, included, includedCount, axis, layoutMain, gap, availSize, ctx, mains, measured);
+            var availSize = axis == Axis.Vertical
+                ? new Size<T>(Max(T.Zero, inner.Width - reserve), inner.Height)
+                : new Size<T>(inner.Width, Max(T.Zero, inner.Height - reserve));
+            var mainAvail = MainOf(axis, availSize);
+            crossAvail = CrossOf(axis, availSize);
 
-            var anyCollapsed = false;
-            for (var i = 0; i < n; i++)
+            // A SCROLLED stack lays its children out at their full extent along the axis and slides them by
+            // the controller's offset: the rect it was given is its viewport, not the room its children get.
+            // The room is the larger of the two, so a list shorter than its viewport still hands its Star
+            // children the slack, and a longer one is laid out as if the viewport were as tall as it is.
+            var layoutMain = scroll is null
+                ? mainAvail
+                : Max(mainAvail, MainOf(axis, MeasureStack(stack, availSize, ctx)));
+
+            // Collapse loop: resolve every child's main extent, then drop any child whose CollapseThreshold
+            // undercuts its resolved extent and re-resolve so the freed space (extent + gap) redistributes.
+            // Survivor extents only ever grow when a sibling collapses (Fixed/Auto are space-independent,
+            // Star shares grow with the leftover), so no survivor can newly violate; each extra pass removes
+            // at least one child, terminating in <= n passes (one, in practice).
+            Array.Fill(included, true);
+            Array.Clear(measured);
+            includedCount = n;
+            while (true)
             {
-                if (included[i] && children[i].CollapseThreshold > 0f
-                    && mains[i] < ToSurfaceOn(ctx, children[i].CollapseThreshold, axis))
+                ResolveStackMains(children, included, includedCount, axis, layoutMain, gap, availSize, ctx, mains, measured);
+
+                var anyCollapsed = false;
+                for (var i = 0; i < n; i++)
                 {
-                    included[i] = false;
-                    includedCount--;
-                    anyCollapsed = true;
+                    if (included[i] && children[i].CollapseThreshold > 0f
+                        && mains[i] < ToSurfaceOn(ctx, children[i].CollapseThreshold, axis))
+                    {
+                        included[i] = false;
+                        includedCount--;
+                        anyCollapsed = true;
+                    }
+                }
+
+                if (!anyCollapsed)
+                {
+                    break;
+                }
+
+                if (includedCount == 0)
+                {
+                    return; // every child collapsed -- nothing to arrange
                 }
             }
 
-            if (!anyCollapsed)
+            if (scroll is null)
             {
                 break;
             }
 
-            if (includedCount == 0)
-            {
-                return; // every child collapsed -- nothing to arrange
-            }
-        }
-
-        // Final pass: resolve cross-axis size + position each surviving child along the main axis.
-        var cursor = axis == Axis.Vertical ? inner.Y : inner.X;
-
-        if (scroll is not null)
-        {
             // The controller is told what it scrolls OVER here, because only the arrange knows it: the
             // viewport is the rect this stack was given and the content is what its children resolved
             // to. One surface unit per atom, so the offset is a plain distance along the axis and a
             // drag moves the rows by exactly what it says. SetExtent is documented as idempotent and
-            // raises nothing, which is what makes it safe to call from a layout pass.
-            var rows = gap * T.CreateChecked(Math.Max(0, includedCount - 1));
+            // raises nothing, which is what makes it safe to call from a layout pass (twice, when the
+            // bar's reserve re-resolves the rows, with the entry offset restored between the two).
+            rows = gap * T.CreateChecked(Math.Max(0, includedCount - 1));
             for (var i = 0; i < n; i++)
             {
                 if (included[i])
@@ -466,13 +575,22 @@ public static class Engine
             // disagreed by the padding: the paint's clamp held the offset a whole padding short of the
             // end, the arrange slid the rows a padding further down than the clip, and the last half-row
             // of a padded list could never be scrolled into view.
-            var padStart = axis == Axis.Vertical ? inner.Y - rect.Y : inner.X - rect.X;
+            padStart = axis == Axis.Vertical ? inner.Y - rect.Y : inner.X - rect.X;
             var total = rows + padStart + padStart;
 
             // An atom is a row where the list says so (AtomDesignUnits) and one surface unit otherwise.
-            var atom = scroll.AtomDesignUnits > 0f
+            atom = scroll.AtomDesignUnits > 0f
                 ? MathF.Max(1f, float.CreateChecked(ToSurfaceOn(ctx, scroll.AtomDesignUnits, axis)))
                 : 1f;
+            if (reserve > T.Zero)
+            {
+                scroll.RestoreOffsetForNextExtent(offsetOnEntry);
+            }
+            else
+            {
+                offsetOnEntry = scroll.Offset;
+            }
+
             scroll.SetExtent(
                 new RectF32(float.CreateChecked(rect.X), float.CreateChecked(rect.Y),
                     float.CreateChecked(rect.Width), float.CreateChecked(rect.Height)),
@@ -480,6 +598,42 @@ public static class Engine
                 totalAtoms: (int)MathF.Ceiling(float.CreateChecked(total) / atom),
                 new DesignScale(float.CreateChecked(ctx.ToSurfaceX(1f)), float.CreateChecked(ctx.ToSurfaceY(1f))));
 
+            if (reserve > T.Zero)
+            {
+                break; // the second pass: resolved at the reserved extent, and the bar still shows
+            }
+
+            // The bar is drawn in the viewport's trailing cross column, so the reserve is that column less
+            // the trailing padding the stack already has (the bar sits on the rect's edge, so padding at
+            // least as wide as the bar needs no further reserve). No bar, or a controller on the other
+            // axis, and the first pass stands.
+            var crossFull = float.CreateChecked(axis == Axis.Vertical ? rect.Width : rect.Height);
+            var barColumn = crossFull - scroll.ContentCrossExtentPx;
+            if (barColumn <= 0f || (scroll.Axis == ScrollAxis.Vertical) != (axis == Axis.Vertical))
+            {
+                break;
+            }
+
+            var padEnd = axis == Axis.Vertical
+                ? (rect.X + rect.Width) - (inner.X + inner.Width)
+                : (rect.Y + rect.Height) - (inner.Y + inner.Height);
+            reserve = T.CreateChecked(barColumn) - padEnd;
+            if (reserve <= T.Zero)
+            {
+                break;
+            }
+        }
+
+        // Final pass: resolve cross-axis size + position each surviving child along the main axis.
+        var cursor = axis == Axis.Vertical ? inner.Y : inner.X;
+
+        // The stretch of the main axis a SCROLLED stack arranges its children in: the viewport, and a viewport's extent
+        // of margin on each side. Only read when the stack scrolls; a stack that does not arranges every child.
+        var arrangeFrom = T.Zero;
+        var arrangeTo = T.Zero;
+
+        if (scroll is not null)
+        {
             // What the controller cannot work out from an atom of one surface unit: how far a wheel notch
             // should go (a ROW, as WheelStepAtoms means on a list that counts rows, not a pixel), and the
             // padding a row brought into view by the keyboard should clear.
@@ -500,16 +654,39 @@ public static class Engine
             scroll.LineExtentPx = linePx;
             scroll.ContentInsetPx = float.CreateChecked(padStart);
 
-            // Slid, not clipped: the children that land outside the viewport are still arranged, and it
-            // is the PAINTER that clips them and declines to register what cannot be seen. Arrange has
-            // no surface to clip on, and a cell painter and a pixel painter clip differently.
+            // Slid, not clipped: Arrange has no surface to clip on, and a cell painter and a pixel painter clip
+            // differently, so it is the PAINTER that clips what lands outside the viewport and declines to register
+            // what cannot be seen. Arrange still leaves out the children that are nowhere near it. A long list
+            // (pilot's chat is 300 rows and more) was laid out in full every frame for the sake of the few rows
+            // shown, so a child is arranged only when it touches the viewport widened by a viewport's extent on
+            // each side; the rest are stepped over by the main extent already resolved above, which the scroll
+            // extent counted, so the rows after them land where they always did.
+            //
+            // The margin is what the keyboard needs, and it is a viewport and not a row because it is a distance in
+            // surface units that holds for rows of any height. A row the paint clips out is still a row of its list
+            // that the arrows can step onto (MoveListCursor, ListCursor.Step), and the step lands on the nearest
+            // ARRANGED row: stepping off the last row in view needs the next one to have been arranged, and the
+            // reveal that follows scrolls it into view, so the margin refills as the list is walked.
             cursor -= T.CreateTruncating(scroll.Offset * atom);
+
+            var viewStart = axis == Axis.Vertical ? rect.Y : rect.X;
+            var viewExtent = axis == Axis.Vertical ? rect.Height : rect.Width;
+            arrangeFrom = viewStart - viewExtent;
+            arrangeTo = viewStart + viewExtent + viewExtent;
         }
 
         for (var i = 0; i < n; i++)
         {
             if (!included[i])
             {
+                continue;
+            }
+
+            // Out of reach of the viewport and its margin: only the cursor moves. No cross extent is worked out for it,
+            // since nothing about it is placed, and none of its subtree is arranged.
+            if (scroll is not null && (cursor + mains[i] < arrangeFrom || cursor > arrangeTo))
+            {
+                cursor += mains[i] + gap;
                 continue;
             }
 
@@ -914,6 +1091,8 @@ public static class Engine
             return;
         }
 
+        // ArrangeNode added the wrap's own entry just before calling here.
+        var wrapIndex = output.Count - 1;
         var axis = wrap.Axis;
         var gap = ToSurfaceOn(ctx, wrap.Gap, axis);
         var lineGap = ToSurfaceOn(ctx, wrap.LineGap, CrossAxis(axis));
@@ -961,16 +1140,34 @@ public static class Engine
                 lineEnd++;
             }
 
-            var mainCursor = axis == Axis.Horizontal ? inner.X : inner.Y;
+            var mainOrigin = axis == Axis.Horizontal ? inner.X : inner.Y;
+            var mainCursor = mainOrigin;
+            // The cap cuts after this line with children left over: that is where the wrap is truncated.
+            var cutHere = wrap.MaxLines > 0 && lineIndex + 1 >= wrap.MaxLines && lineEnd < n;
+            if (cutHere)
+            {
+                output[wrapIndex] = output[wrapIndex] with { Truncated = true };
+            }
+
             for (var i = lineStart; i < lineEnd; i++)
             {
                 // A Star cross stretches to the line's extent; everything else keeps its natural cross.
                 var crossSizing = CrossSizing(axis, children[i]);
                 var cross = crossSizing.IsStar ? Clamp(lineCross, crossSizing, ctx, CrossAxis(axis)) : childCrosses[i];
+                var child = children[i];
+                var childMain = childMains[i];
+                if (cutHere && wrap.Ellipsis && i == lineEnd - 1 && child is Node.Leaf { Content: Content.Text text } leaf)
+                {
+                    var room = mainOrigin + lineAvail - mainCursor;
+                    var (cutText, cutMain) = EllipsizeWrapText(text, childMain, room, axis, ctx);
+                    child = leaf with { Content = text with { Value = cutText, WidthSample = null } };
+                    childMain = cutMain;
+                }
+
                 var childRect = axis == Axis.Horizontal
-                    ? new Rect<T>(mainCursor, crossCursor, childMains[i], cross)
-                    : new Rect<T>(crossCursor, mainCursor, cross, childMains[i]);
-                ArrangeNode(children[i], childRect, ctx, output, depth);
+                    ? new Rect<T>(mainCursor, crossCursor, childMain, cross)
+                    : new Rect<T>(crossCursor, mainCursor, cross, childMain);
+                ArrangeNode(child, childRect, ctx, output, depth);
                 mainCursor += childMains[i] + gap;
                 if (i + 1 < lineEnd)
                 {
@@ -990,6 +1187,25 @@ public static class Engine
                 break;
             }
         }
+    }
+
+    /// <summary>
+    /// The text of a capped wrap's last kept leaf with its tail replaced by an ellipsis, and the main extent
+    /// the leaf then takes. Cuts characters from the end until the run (plus whatever the leaf adds around its
+    /// text, such as padding) fits <paramref name="room"/>; when even the bare ellipsis does not, it is the
+    /// bare ellipsis.
+    /// </summary>
+    private static (string Text, T Main) EllipsizeWrapText<T>(Content.Text text, T oldMain, T room, Axis axis,
+        IMeasureContext<T> ctx) where T : INumber<T>
+    {
+        var value = text.Value.TrimEnd();
+        var oldText = ctx.MeasureText((text.WidthSample ?? text.Value).AsSpan(), text.FontSize);
+        var overhead = oldMain - MainOf(axis, oldText);
+        string Cut(int len) => string.Concat(value.AsSpan(0, len), "…");
+        T MainFor(int len) => MainOf(axis, ctx.MeasureText(Cut(len).AsSpan(), text.FontSize)) + overhead;
+
+        var kept = TextFit.LongestFit(value.Length, len => MainFor(len) <= room);
+        return (Cut(kept), MainFor(kept));
     }
 
     // --- Measure helpers ---
@@ -1501,6 +1717,31 @@ public static class Engine
     /// </summary>
     private static T ToSurfaceOn<T>(IMeasureContext<T> ctx, float designUnits, Axis axis) where T : INumber<T>
         => axis == Axis.Horizontal ? ctx.ToSurfaceX(designUnits) : ctx.ToSurfaceY(designUnits);
+
+    /// <summary>The extent a node's children are measured within: its Fixed extent, else <paramref name="available"/>
+    /// held to the Max when it has one.</summary>
+    private static T NarrowTo<T>(T available, Sizing sizing, IMeasureContext<T> ctx, Axis axis) where T : INumber<T>
+    {
+        if (sizing.IsFixed)
+        {
+            return ToSurfaceOn(ctx, sizing.Value, axis);
+        }
+
+        return sizing.Max > 0f ? Min(available, ToSurfaceOn(ctx, sizing.Max, axis)) : available;
+    }
+
+    private static Size<T> MeasureAnchored<T>(Node.Anchored anchored, Size<T> available, IMeasureContext<T> ctx)
+        where T : INumber<T>
+    {
+        if (anchored.MaxWidth <= 0f)
+        {
+            return Measure(anchored.Child, available, ctx);
+        }
+
+        var cap = ctx.ToSurfaceX(anchored.MaxWidth);
+        var size = Measure(anchored.Child, new Size<T>(Min(available.Width, cap), available.Height), ctx);
+        return new Size<T>(Min(size.Width, cap), size.Height);
+    }
 
     /// <summary>Applies a <see cref="Sizing"/>'s design-unit Min/Max clamps to a resolved extent.
     /// No-op for Fixed (explicit wins) and for unset bounds (0 = unclamped sentinel).</summary>

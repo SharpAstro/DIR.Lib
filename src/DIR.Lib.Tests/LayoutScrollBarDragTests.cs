@@ -136,8 +136,10 @@ public class LayoutScrollBarDragTests
         scroll.InteractiveScrollBarRect.ShouldBeNull();
         BarRegions(widget).ShouldBe(0);
 
-        Down(router, PageW - 2f, 50f);
-        Up(router, PageW - 2f, 50f);
+        // The rows end where the bar's column begins (#161), so the press is aimed at the row's last pixels.
+        var x = PageW - ListScrollController.ScrollBarBaseWidthPx - 2f;
+        Down(router, x, 50f);
+        Up(router, x, 50f);
 
         clicked.ShouldBe([2]);
     }

@@ -304,6 +304,14 @@ public sealed class ListScrollController
     }
 
     /// <summary>
+    /// Puts back an offset an earlier <see cref="SetExtent"/> of the same layout frame clamped, so the next
+    /// one clamps it against ITS extent. Raises nothing and clamps nothing itself: the <see cref="SetExtent"/>
+    /// that follows does. The layout engine uses it between the two passes of a scrolled stack whose bar
+    /// reserve makes the second extent longer than the first.
+    /// </summary>
+    internal void RestoreOffsetForNextExtent(float offset) => _offset = offset;
+
+    /// <summary>
     /// The viewport half of <see cref="SetExtent"/> on its own: where the list IS, with what it contains
     /// left alone.
     /// </summary>

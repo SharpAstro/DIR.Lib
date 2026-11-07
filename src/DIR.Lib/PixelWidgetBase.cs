@@ -1558,6 +1558,9 @@ namespace DIR.Lib
                             });
                             break;
                         }
+                        case Layout.Content.Fill { Key: SelectionKey } when _selectionOptedIn:
+                            PaintSelection(ctx);
+                            break;
                         case Layout.Content.Fill fill:
                             drawFill?.Invoke(fill, new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height));
                             break;

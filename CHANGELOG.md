@@ -9,6 +9,155 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.51
+
+Additive. A raster host gets drag-select, highlight and copy of `.Selectable()` text runs with no per-app code.
+
+- **Opt in with one call.** A `PixelWidgetBase` wraps its page in `WithSelection(page)`. That lays a Fill leaf (key
+  `PixelWidgetBase.SelectionKey`) over the page, which `PaintLayout` paints itself: a bar under the selected stretch and its
+  glyphs redrawn on it through the widget's own `DrawText` and the fallback resolver the run was measured with. A menu or
+  popover laid over the page still covers the highlight. `Selection` exposes the `TextSelection<TSurface>`; override
+  `SelectionViewport` for a scrolled part, `SelectionBackground` / `SelectionForeground` or set `SelectionPalette` for colours.
+- **`InputRouter` routes it.** Through the new non-generic `ITextSelectionHost` (implemented by `PixelWidgetBase`, checked with
+  `is`; no `IPixelWidget` member changed). A left press selects only where the topmost painted region is plain chrome or none and
+  no popover owns the pointer; a press on a button, link, field or scrollbar is theirs and starts nothing, and a press elsewhere
+  clears the selection. Ctrl+C with selected text and no focused field calls `SetClipboardText` and is consumed.
+- **`InputRouter.OpenSelectionMenu`** (`Action<PointerPress, string>?`, null by default): a right press over the selection
+  where no region offers a menu calls it with the press and the text, so the host opens its own Copy menu. Null leaves the press
+  routed as before.
+- **`UiPalette.SelectionText`**: init-only glyph colour on the `Selection` fill, defaulting to `BodyText`.
+
+A widget that never calls `WithSelection` sees no change.
+
+## 11.50
+
+Layout: a scrolled list lays out only what can be seen, and a subtree's measure is kept across frames (#170).
+Measured on pilot's chat page (300 entries) a frame made about 50,000 `MeasureText` calls and arranged every
+row, the ones scrolled out of view included. Two changes, which work together.
+
+A subtree's measure is kept across frames. `IMeasureContext.MeasureKey` is a new default interface member: a
+value naming everything the context's measures depend on (metrics, scale, font, fallback). The engine keeps a
+pure subtree's measure, keyed by node reference, available size and that key, in a `ConditionalWeakTable`, so
+an entry dies with its node and a host that reuses a heavy subtree between frames (pilot keeps each reply's
+Markdown document) measures it once. A subtree holding a `TextEditor` or `TextInput` is never kept, because it
+measures mutable state. `PixelMeasureContext` supplies a key (renderer, font path, both scales, line height
+factor, fallback and emoji font). A context that supplies none, which is the default (`null`), keeps nothing
+across calls, as before; one that does must change its key whenever the measure of any text would, or a stale
+size is served. Whatever the key, within one `Measure` or `Arrange` call no child is measured twice at the same
+available size, which also ends the repeated measure of nested stacks.
+
+A scrolled stack arranges only the children in or near its viewport. A child of a `WithScroll` stack is
+arranged only when it touches the viewport widened by one viewport's extent on each side; the others are
+stepped over by their resolved main extent. So the controller's extent (`TotalAtoms`), `LineExtentPx` and
+`ContentInsetPx` still count every row and come out as before, and every row that is arranged sits where it
+did. **`Arrange` no longer returns the children of a scrolled stack that are far outside its viewport, nor
+anything beneath them**, so a consumer that looked one up in the arranged list must not: take the position
+from the controller or from the row heights it already has. The painter never drew or registered such a row.
+
+The margin is what keeps the keyboard working. A row the painter clips is still a row of its list that the
+arrows can step onto, and `MoveListCursor` steps to the nearest arranged row, so the step off the last row in
+view lands on the next one and the reveal scrolls it in. When the cursor's row has been scrolled away by more
+than a viewport, the next arrow lands on the nearest arranged row in that direction, not on the row beside
+the old one.
+
+On a 300-row list of padded rows with wrapping text (`LayoutScrollCullTests`) a frame arranges 13 to 19 rows
+and about 500 of 11,000 nodes, at the top, the middle and the end, and a second frame with a keyed context
+makes no `MeasureText` call. Additive: no constructor or `Deconstruct` changed arity.
+
+## 11.49
+
+A scrolled stack can scroll to its end again (#192, a regression of 11.46). The second arrange pass added in
+11.46 resolves the rows at the extent less the bar column, which makes them taller and so raises the
+controller's `MaxOffset`; but the first pass's `SetExtent` had already clamped the offset to its shorter
+`MaxOffset`, and nothing put it back. A list scrolled to its end was pulled short of it on the next frame,
+so the last lines of the content could not be reached. The engine now remembers the offset the controller
+held on entry and restores it, through an internal member that raises no `Changed`, before the second pass's
+`SetExtent`, which clamps it to the final `MaxOffset`. A `ScrollAnchor.Bottom` stack still starts at, and
+follows, its final end. No public API changes.
+
+## 11.48
+
+Slug glyph encoder (#188), the CPU half of Slug text drawing. `SlugGlyphEncoder` is an `IGlyphSink` that turns
+an outline into a `SlugGlyphBlob`: one versioned run of 32-bit integers a GPU backend uploads as it is, plus
+the glyph's em-space bounds. Lines become degenerate quadratics, cubics (CFF, Type 1) are split in halves
+until one quadratic stands in for each within a tolerance in em units (default 1/2048), points are snapped to
+a quarter font unit, and at most 16 horizontal and 16 vertical bands are computed from the SNAPPED points,
+so a curve that rounding moves across a band edge is not missed (HarfBuzz #6132). Each band keeps two curve
+lists, ascending by min and descending by max along the ray, plus a split, for the shader's early-out.
+`SlugGlyphEncoder.TryEncode` draws a glyph straight from `ManagedFontRasterizer.TryDrawGlyphOutline` (an SFNT
+by glyph id, a Type 1 by name); `SlugGlyphBlob.IsReadable` lets a disk cache reject an old format version.
+The layout is documented word by word on `SlugGlyphBlob`. Nothing existing changes.
+
+The test project carries a CPU port of the Slug shader's coverage function (`SlugCoverageOracle`) that reads
+only the blob, so it exercises the layout the shader will read. It is held to the analytic area of a disc and
+to a supersampled nonzero-winding rasterisation of the original outline for glyphs with a counter (DejaVu
+Sans and Computer Modern `o`, the latter all cubics) and a self-overlapping contour: pixels clear of an edge
+are exactly 1 or 0, a counter is 0 and a doubly wound overlap is 1, and the split's list, either list
+forced, and no bands at all give the same coverage. Edge pixels differ from true area by up to 0.12 on
+smooth outlines and 0.20 at sharp corners, which is Slug's own approximation (two rays through the pixel
+centre), not the encoder's. Encoding costs about 35 us a glyph for DejaVu Sans (1 to 2 us a curve) with a
+mean blob of 1.9 kB.
+
+## 11.47
+
+A tooltip wraps its text and a wrapping child is measured at the width it gets (#157). Before, `Engine.Measure`
+measured a node's intrinsic at the whole available width and only afterwards applied a Fixed width or a Max
+cap, so a fixed-width `VStack` of `WrapH` paragraphs, or any wrapping child of an `Anchored`, counted the
+lines it would take at window width and its box was too short: the last lines hung out under it. A node is now
+measured at the width it will be arranged in, and `Node.Anchored.MaxWidth` (init-only, design units, 0 means
+no cap) caps the width an anchored child is measured and arranged at. `TooltipStyle.MaxWidth` (init-only,
+default 420, 0 means no cap) is the text width a tooltip wraps at: `Builder.Tooltip(TooltipRequest, TooltipStyle)`
+breaks a long text at words and a long word (a path) after its separators, keeping explicit newlines as lines,
+and `Builder.Tooltip(anchor, content, style, side)` caps its box at that width plus the padding and border.
+Additive. A consumer's own TooltipLayer workaround for the short box, and its LayoutDrivenTests allowance
+for it, can come out. A tooltip's text collapses runs of spaces and tabs and drops leading whitespace (prose, not
+preformatted), and a single run longer than `MaxWidth` with none of the separator characters (a hash) still
+overflows the capped box. Against an anchor to the left or right, the room on that side is the width a child
+is measured at, not a cap: with no usable room the child keeps its width and is clamped on screen as before.
+
+## 11.46
+
+A wrapping row in a scrolled stack no longer overlaps the next row when the scrollbar shows (regression
+in 11.44). 11.44 reserved the bar column when arranging a `WithScroll` stack's rows but still measured
+them at the full width, so a `WrapH` or Markdown row that fit on N lines at the full width took more
+beside the bar: its extra lines were drawn over the next row, and the scroll extent came out short by as
+much, cutting off the last row. When the bar shows, the rows are now resolved again at the reserved
+width, and the controller scrolls over that total. The second pass can only make rows taller, so the bar
+still shows after it and nothing flips between frames. A stack that fits, or whose controller is
+`ScrollBarMode.None`, takes one pass as before.
+
+## 11.45
+
+Layout: a wrap capped by `WithMaxLines` can end its last kept line with an ellipsis when the cap drops
+children (#155). `Wrap.Ellipsis` (init-only) turns it on and `WithMaxLines(int, bool)` is the new overload
+that sets it, so `WithMaxLines(n, ellipsis: true)` is the whole opt-in. The ellipsis fits within the wrap's
+width and behaves the same on pixel and cell measure contexts. `ArrangedNode.Truncated` (init-only) reports
+that an arranged wrap was cut, so a host adds hover text only when there is something hidden. The case is
+pilot's For-you cards, whose text is capped to a few lines and needs both.
+
+The default is unchanged: it is opt-in because a capped toolbar of text buttons must not get an ellipsis
+appended to its last visible button. Nothing is a binary break: the new members are init-only properties
+and a new overload, and no constructor or `Deconstruct` changed arity (`InputEventCompatibilityTests` still
+passes).
+
+## 11.44
+
+A scrolled stack reserves its scrollbar column (#161). A VStack or HStack declared `WithScroll` now
+arranges its children within the controller's content area (the viewport less the bar column, when the
+bar shows), as the virtual list does, so a Star-width row or a right-aligned leaf no longer ends under
+the bar. A stack that fits, or whose controller is `ScrollBarMode.None`, arranges as before, and trailing
+padding at least as wide as the bar needs no further reserve. Rows are still measured at the full cross
+extent and arranged at the narrower one. pilot can drop `TranscriptEntryView.ScrollGutter`.
+
+## 11.43
+
+- `PaletteColors.Backing` (DIR.Lib #182): an opt-in opaque backing drawn under the whole `FloatingPalette`
+  panel (grip and rows) at its own alpha, not faded, so content panning beneath it (a map's labels under a
+  LAYERS menu) is not drawn through it. The idle fade still dims the panel's own colours on top. It is an
+  init-only property, so the primary constructor is unchanged; null keeps today's translucent panel. The
+  panel's arranged rect and click regions are the same with or without it. Pilot sets it and drops its
+  'flights canvas' allow-list entry in `src/Pilot.Gui.Tests/TextOverlapAllowList.cs`.
+
 ## 11.42
 
 Inspector: a timed-out multi-pump operation no longer holds its slot (#178). Before, a screenshot (or any
