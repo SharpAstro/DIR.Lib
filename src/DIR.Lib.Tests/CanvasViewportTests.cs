@@ -276,7 +276,8 @@ public sealed class CanvasViewportTests
         vp.UpdatePan(5f, 5f);
         vp.EndPan();
 
-        n.ShouldBe(6);
+        // SetView, Update, Fit, PanBy, ZoomAt, BeginPan (IsPanning flips), UpdatePan, EndPan (it flips back).
+        n.ShouldBe(8);
     }
 
     // A 800x600 view shown at (100, 50) on the surface, a 400x300 canvas at scale 1.
@@ -347,15 +348,18 @@ public sealed class CanvasViewportTests
     [Fact]
     public void EventsOutsideBoundsAreNotTaken()
     {
+        // Live() already counts as moved (it sets the scale), so Moved cannot tell a taken event from a refused one: the pan can.
         var vp = Live();
-        var movedBefore = vp.Moved;
+        var (panX, panY) = (vp.PanX, vp.PanY);
         vp.HandleInput(new InputEvent.Scroll(1f, 10f, 10f, InputModifier.Ctrl), Bounds).ShouldBeFalse();
         vp.HandleInput(new InputEvent.Scroll(1f, 10f, 10f), Bounds).ShouldBeFalse();
+        vp.HandleInput(new InputEvent.Scroll(1f, 10f, 10f, InputModifier.Shift), Bounds).ShouldBeFalse();
         vp.HandleInput(new InputEvent.Pinch(1.5f, 10f, 10f), Bounds).ShouldBeFalse();
         vp.HandleInput(new InputEvent.MouseDown(10f, 10f, MouseButton.Middle), Bounds).ShouldBeFalse();
         vp.IsPanning.ShouldBeFalse();
         vp.Scale.ShouldBe(1f);
-        vp.Moved.ShouldBe(movedBefore);
+        vp.PanX.ShouldBe(panX);
+        vp.PanY.ShouldBe(panY);
     }
 
     [Fact]
@@ -383,6 +387,54 @@ public sealed class CanvasViewportTests
         vp.HandleInput(new InputEvent.MouseUp(20f, 360f, MouseButton.Middle), Bounds).ShouldBeTrue();
         vp.IsPanning.ShouldBeFalse();
         vp.HandleInput(new InputEvent.MouseMove(30f, 360f), Bounds).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ChangedIsRaisedWhenAPanBeginsAndEndsSoAHostShowsTheCursorOnTheEventThatChangesIt()
+    {
+        var vp = Live();
+        var seenPanning = new List<bool>();
+        vp.Changed += () => seenPanning.Add(vp.IsPanning);
+
+        vp.HandleInput(new InputEvent.MouseDown(500f, 350f, MouseButton.Middle), Bounds).ShouldBeTrue();
+        seenPanning.ShouldBe([true]);
+
+        vp.HandleInput(new InputEvent.MouseMove(530f, 350f), Bounds).ShouldBeTrue();
+        seenPanning.ShouldBe([true, true]);
+
+        vp.HandleInput(new InputEvent.MouseUp(530f, 350f, MouseButton.Middle), Bounds).ShouldBeTrue();
+        seenPanning.ShouldBe([true, true, false]);
+
+        // Nothing flips when no drag is in flight, so nothing is raised.
+        vp.EndPan();
+        vp.HandleInput(new InputEvent.MouseUp(530f, 350f, MouseButton.Middle), Bounds).ShouldBeFalse();
+        seenPanning.Count.ShouldBe(3);
+    }
+
+    [Fact]
+    public void ASecondPanButtonPressedDuringADragTakesItOverAndOnlyItsReleaseEndsIt()
+    {
+        var vp = Live();
+        vp.HandleInput(new InputEvent.MouseDown(500f, 350f, MouseButton.Middle), Bounds).ShouldBeTrue();
+        vp.HandleInput(new InputEvent.MouseMove(510f, 350f), Bounds).ShouldBeTrue();
+        vp.PanX.ShouldBe(10f);
+
+        // Left also pans here (the host says so), pressed while Middle is still down: the drag re-anchors at this press.
+        var changed = 0;
+        vp.Changed += () => changed++;
+        vp.HandleInput(new InputEvent.MouseDown(600f, 350f), Bounds, (x, y) => true).ShouldBeTrue();
+        vp.IsPanning.ShouldBeTrue();
+        changed.ShouldBe(0);
+        vp.PanX.ShouldBe(10f);
+
+        // The first button's release no longer ends the pan: the drag now belongs to the second one.
+        vp.HandleInput(new InputEvent.MouseUp(600f, 350f, MouseButton.Middle), Bounds).ShouldBeFalse();
+        vp.IsPanning.ShouldBeTrue();
+        vp.HandleInput(new InputEvent.MouseMove(625f, 350f), Bounds).ShouldBeTrue();
+        vp.PanX.ShouldBe(35f);
+
+        vp.HandleInput(new InputEvent.MouseUp(625f, 350f, MouseButton.Left), Bounds).ShouldBeTrue();
+        vp.IsPanning.ShouldBeFalse();
     }
 
     [Fact]
