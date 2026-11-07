@@ -92,7 +92,7 @@ Layout.Builder.HStack(
 
 The data views are builders over the same declarations, not widgets: `Builder.VirtualList` builds only the rows in view, however many there are; `TableHeader` and `TableRow` take one span of `TableColumn`, so a title sits over its values (and over a dragged width); `TreeRow` is the indent, the caret and the content of one tree row.
 
-`GroupedTreeState` + `Builder.GroupedTreeTable` (11.52) put them together for a table whose rows sit in groups, nested to any depth (org, repo, row). It is for pilot's Pull requests page, from which it was upstreamed, and for tianwen:
+`GroupedTreeState` + `Builder.GroupedTreeTable` (11.53) put them together for a table whose rows sit in groups, nested to any depth (org, repo, row). It is for pilot's Pull requests page, from which it was upstreamed, and for tianwen:
 
 - **The tree is yours.** Hand over `GroupedTreeNode<TGroup, TRow>` items (`.Group(key, payload, children)` and `.Leaf(key, payload)`), each with a stable string key that is unique among the visible items. The widget never reorders: sort each group's children before handing the tree over.
 - **The state is keyed, never by object.** `GroupedTreeState` holds the folded keys and `SelectedKey`, so a tree rebuilt from fresh objects on every refresh, re-sorted or filtered, keeps its folds and its selection. Groups are open unless folded, so a new group is open. If the selected item disappears, the selection moves to the nearest row that survived.
