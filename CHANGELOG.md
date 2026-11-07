@@ -9,6 +9,40 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.52
+
+Additive. A grouped tree table: groups nested to any depth over table columns, the tree keyboard, and folds that survive a
+refresh and a restart. Upstreamed from pilot's Pull requests page, and meant for tianwen as well. Two new source files,
+nothing existing edited, no record primary constructor changed.
+
+- **`GroupedTreeNode<TGroup, TRow>`** (`GroupedTreeGroup`, `GroupedTreeLeaf`): the consumer's tree, handed over each refresh.
+  `GroupedTreeNode<TGroup, TRow>.Group(key, payload, children)` and `.Leaf(key, payload)` build it without restating both
+  type arguments. Every item has a stable string key, unique among the items visible at once; the widget never reorders, so
+  sorting is applied to each group's children before the tree is handed over.
+- **`GroupedTreeState`**: the part that outlives the tree, held by key and never by object, so a tree rebuilt from fresh
+  objects keeps its folds and its selection. `Flatten` gives the visible rows (`GroupedTreeRow<TGroup, TRow>`, with its
+  `GroupedTreeRowKind`, `Depth`, `HasChildren`, `IsExpanded` and `ParentIndex`) depth first in the consumer's order.
+  Groups are open unless folded, so a group that appears later is open. `SelectedKey` follows its item across a refresh, a
+  re-sort and a fold, and when the item is gone `Reselect` moves it to the nearest row that survived (the folded group
+  that hides it, a sibling, the parent). `SyncCursor` puts an open `ListCursor` on that row every frame.
+- **The tree keyboard**: `HandleTableKey(key, widget.HandleListKey(key, mods), cursor, listId, rows, onActivate)` is the
+  whole key line. The list keeps Up, Down and Enter on a painted row and the selection follows its cursor; the state adds
+  Right (unfold, or onto the first child), Left (fold, or to the parent) and Enter on a group (toggle). `HandleKey` is the same
+  rule without the cursor, for a host that has its own.
+- **Folds a consumer can persist**: `Save()` returns a `GroupedTreeState.Saved` record (the folded keys, sorted, so an
+  unchanged state saves the same bytes) and `Restore` / `GroupedTreeState.From` are its inverse. Only folds are
+  recorded, and keys of groups not in the tree right now are kept, so filtering a group away does not unfold it. `Changed`
+  is raised on every fold change, which is the host's cue to ask for a frame and save.
+- **`Builder.GroupedTreeTable`** (with `GroupedTreeTableStyle`): one `TableHeader` over a span of `TableColumn`, then a
+  `VirtualList` of the visible rows, so only the window is built whatever the row count. A leaf is a `TableRow` in the same
+  columns, style and dragged widths as the header; a group header is a `TreeRow` that spans the whole row, with the
+  consumer's own content (name, counts, actions) after the caret. Every row is row `i` of one list id, so the click, the
+  cursor and the lit row are one list; a press on a header selects it and toggles its fold, a double-click on a leaf and Enter
+  are `onActivate`. `GroupedTreeTableStyle` fills the selected row and the row under the cursor, with an optional band
+  behind group headers.
+
+A table that never calls any of this sees no change.
+
 ## 11.51
 
 Additive. A raster host gets drag-select, highlight and copy of `.Selectable()` text runs with no per-app code.
