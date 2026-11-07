@@ -9,7 +9,7 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
-## 11.53
+## 11.54
 
 Additive. A grouped tree table: groups nested to any depth over table columns, the tree keyboard, and folds that survive a
 refresh and a restart. Upstreamed from pilot's Pull requests page, and meant for tianwen as well. Two new source files,
@@ -42,6 +42,23 @@ nothing existing edited, no record primary constructor changed.
   behind group headers.
 
 A table that never calls any of this sees no change.
+
+## 11.53
+
+Additive. The round-1 review notes on `CanvasViewport` (#198), which landed after 11.52 was published.
+
+- **`Changed` on pan begin and end**: `CanvasViewport.Changed` is now raised when `IsPanning` flips (and when `SpaceHeld`
+  flips), so a host that repaints on `Changed` shows the move cursor on the event that changes it rather than one event
+  late. `BeginPan` and `EndPan` raise it only when they change `IsPanning`: beginning again during a drag re-anchors it and
+  ending with no drag in flight raise nothing.
+- **A second pan button during a pan** takes the drag over (as in pilot's `MapViewport`): it re-anchors at that press, and
+  only the second button's release ends the pan, so releasing the first button first leaves it running. This was the
+  behaviour already; it is now documented on `HandleInput` and pinned by a test.
+- **`MaxFitScale` is not clamped to `MaxZoom`**: a fit can exceed the zoom ceiling when `MaxFitScale` is set above it, and
+  the next zoom snaps it back into range. Behaviour unchanged (pilot's `MapViewport` does the same); stated in the doc
+  comment of both properties.
+- **`InputEvent.Pinch.Scale`** is documented as the factor since the previous pinch event (what the SdlVulkan emitter
+  sends and what `HandleInput` applies), not an absolute scale from the pinch's start. A doc correction; no behaviour change.
 
 ## 11.52
 

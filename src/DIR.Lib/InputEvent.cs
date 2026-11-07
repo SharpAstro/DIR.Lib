@@ -198,7 +198,9 @@ public abstract record InputEvent
     /// <summary>Mouse wheel scroll at pixel coordinates. Positive delta = scroll up.</summary>
     public sealed record Scroll(float Delta, float X, float Y, InputModifier Modifiers = default) : InputEvent;
 
-    /// <summary>Touch pinch gesture. Scale is absolute from pinch start (1.0 = start, &gt;1 = spread, &lt;1 = squeeze).
+    /// <summary>Touch pinch gesture. Scale is the factor since the PREVIOUS pinch event, not since the pinch began, so a
+    /// consumer applies each one as it arrives (1.0 = no change, &gt;1 = spread, &lt;1 = squeeze) and a whole pinch is the
+    /// product of its events.
     /// X/Y are the anchor point in pixel coordinates: the finger midpoint for a touchscreen, or the mouse
     /// cursor for a touchpad (see <see cref="Source"/>). Kept as an init-only property rather than a
     /// positional parameter so existing <c>(Scale, X, Y)</c> deconstructions keep compiling.</summary>

@@ -26,7 +26,10 @@ needs to plan, build, check and land.
   flight first; its consumers pin that PR's preview package or wait for the release, and move the pin to the release
   before they land.
 - Label a DIR.Lib PR `preview` and CI publishes its packages to nuget.org as `<Major.Minor>.<run><attempt>-pr<N>` (a
-  same-repo PR only; nuget.org keeps every prerelease, so label only when a consumer needs one).
+  same-repo PR only). Each push to the PR publishes a new version; the PR's newest "Preview packages published" comment
+  (and that run's job summary) names it, and a consumer pins that exact version. Expect NU1102 for a few minutes until
+  nuget.org serves it. The label is a convention, not an access gate, and nuget.org keeps every prerelease, so label
+  only when a consumer needs one.
 - An exception that must build sibling source is named in the consumer's flight.
 
 ## Build and check
