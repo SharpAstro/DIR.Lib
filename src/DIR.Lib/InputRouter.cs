@@ -142,6 +142,12 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     public Action<string>? SetClipboardText { get; set; }
 
     /// <summary>
+    /// Opens the host's own Copy menu for a right press over selected text, given the press and the selected text. Null
+    /// (the default) leaves such a press routed as before. Only asked where no region under the point offers a menu.
+    /// </summary>
+    public Action<PointerPress, string>? OpenSelectionMenu { get; set; }
+
+    /// <summary>
     /// The search whose field is currently active, enabling Up/Down over its results
     /// (<see cref="TextInputInteraction.KeyContext.ActiveSearch"/>). Null when the focused field is not a
     /// search box.
@@ -297,6 +303,11 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
 
         var press = new PointerPress(down.X, down.Y, down.Button, down.Modifiers, down.ClickCount);
         var widgets = Widgets();
+
+        if (SelectionPress(widgets, down, press))
+        {
+            return true;
+        }
 
         for (var w = widgets.Count - 1; w >= 0; w--)
         {
@@ -588,6 +599,12 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             widgets[i].Pointer = _pointer;
         }
 
+        if (SelectionInput(widgets, move))
+        {
+            requestRedraw();
+            return true;
+        }
+
         // Motion is not a reason to draw a frame by itself. It is a reason when it changed something the
         // frame shows, which is a lit background or a tooltip, and those are the two the router can see.
         if (NoteHover(from, move.X, move.Y))
@@ -609,6 +626,12 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             return Unhandled?.Invoke(up) ?? false;
         }
 
+        if (_capture is null && SelectionInput(Widgets(), up))
+        {
+            requestRedraw();
+            return true;
+        }
+
         if (_capture is { } capture)
         {
             // Cleared BEFORE the release runs, so a handler that arms a fresh gesture from its own
@@ -620,6 +643,135 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         }
 
         return Unhandled?.Invoke(up) ?? false;
+    }
+
+    // ---- text selection ---------------------------------------------------------------------
+
+    // Whether the topmost painted region under the point is plain chrome (or there is none) and no popover owns the pointer:
+    // a press there is the selection's; on a button, link, field, scrollbar or menu it is the region's.
+    private bool SelectionInert(IReadOnlyList<IPixelWidget> widgets, float x, float y)
+    {
+        if (WithinPointerOwner(x, y))
+        {
+            return false;
+        }
+
+        for (var w = widgets.Count - 1; w >= 0; w--)
+        {
+            _regions.Clear();
+            widgets[w].CollectPaintedRegions(_regions);
+            for (var i = _regions.Count - 1; i >= 0; i--)
+            {
+                var r = _regions[i];
+                if (Contains(r, x, y))
+                {
+                    return r is { Result: HitResult.ChromeHit }
+                        and not ({ OnPress: not null } or { OnActivate: not null } or { OnDoubleClick: not null } or { Opens: not null }
+                            or { Dismisses: not null } or { FocusOnOpen: true });
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private bool AnyRegionOffersMenu(IReadOnlyList<IPixelWidget> widgets, float x, float y)
+    {
+        for (var w = 0; w < widgets.Count; w++)
+        {
+            _regions.Clear();
+            widgets[w].CollectPaintedRegions(_regions);
+            for (var i = 0; i < _regions.Count; i++)
+            {
+                if (_regions[i].OnContextMenu is not null && Contains(_regions[i], x, y))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // A press: the right button over selected text asks the host's menu hook; the left starts, or lets go of, a selection.
+    private bool SelectionPress(IReadOnlyList<IPixelWidget> widgets, InputEvent.MouseDown down, in PointerPress press)
+    {
+        if (down.Button == MouseButton.Right)
+        {
+            if (OpenSelectionMenu is { } open && !AnyRegionOffersMenu(widgets, down.X, down.Y) && SelectionInert(widgets, down.X, down.Y))
+            {
+                for (var i = widgets.Count - 1; i >= 0; i--)
+                {
+                    if (widgets[i] is ITextSelectionHost { SelectionEnabled: true } host && host.SelectionContains(down.X, down.Y)
+                        && host.SelectedText is { } text)
+                    {
+                        open(press, text);
+                        requestRedraw();
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        if (down.Button != MouseButton.Left)
+        {
+            return false;
+        }
+
+        var inert = SelectionInert(widgets, down.X, down.Y);
+        var took = false;
+        var changed = false;
+        for (var i = widgets.Count - 1; i >= 0; i--)
+        {
+            if (widgets[i] is not ITextSelectionHost { SelectionEnabled: true } host)
+            {
+                continue;
+            }
+
+            var had = host.SelectedText is not null;
+            // Only the topmost host that takes the press keeps it; the rest let go.
+            if (!took && host.HandleSelectionInput(down, (_, _) => inert))
+            {
+                took = true;
+            }
+            else
+            {
+                host.ClearSelection();
+            }
+
+            changed |= had;
+        }
+
+        if (took)
+        {
+            BlurFocusedField();
+            requestRedraw();
+            return true;
+        }
+
+        if (changed)
+        {
+            requestRedraw();
+        }
+
+        return false;
+    }
+
+    // A move or a left release: followed by whichever host has a drag going.
+    private static bool SelectionInput(IReadOnlyList<IPixelWidget> widgets, InputEvent evt)
+    {
+        var took = false;
+        for (var i = widgets.Count - 1; i >= 0; i--)
+        {
+            if (widgets[i] is ITextSelectionHost { SelectionEnabled: true, SelectionDragging: true } host)
+            {
+                took |= host.HandleSelectionInput(evt, static (_, _) => false);
+            }
+        }
+
+        return took;
     }
 
     private bool HandleScroll(InputEvent.Scroll scroll)
@@ -656,6 +808,21 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             {
                 requestRedraw();
                 return true;
+            }
+        }
+
+        // Ctrl+C copies selected text, unless a field has the keyboard (then it is the field's).
+        if (key is { Key: InputKey.C, Modifiers: InputModifier.Ctrl } && ui.Focus.Current is null && SetClipboardText is { } copy)
+        {
+            var hosts = Widgets();
+            for (var i = hosts.Count - 1; i >= 0; i--)
+            {
+                if (hosts[i] is ITextSelectionHost { SelectionEnabled: true, SelectedText: { } text })
+                {
+                    copy(text);
+                    requestRedraw();
+                    return true;
+                }
             }
         }
 

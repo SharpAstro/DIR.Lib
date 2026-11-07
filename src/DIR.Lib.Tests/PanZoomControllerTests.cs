@@ -101,4 +101,25 @@ public class PanZoomControllerTests
         c.FitToView();                // 4
         count.ShouldBe(4);
     }
+
+    [Fact]
+    public void ZoomByWheel_ScalesTheStepByTheDelta_AndLeavesZoomAtCursorFixed()
+    {
+        var view = new RectF32(0f, 0f, 100f, 100f);
+        var unit = new PanZoomController();
+        unit.ZoomByWheel(1f, 50f, 50f, view).ShouldBeTrue();
+        unit.Zoom.ShouldBe(1.15f, 1e-5f);
+
+        var tenth = new PanZoomController();
+        tenth.ZoomByWheel(0.1f, 50f, 50f, view);
+        tenth.Zoom.ShouldBe(MathF.Pow(1.15f, 0.1f), 1e-5f);
+
+        var zoomOut = new PanZoomController();
+        zoomOut.ZoomByWheel(-1f, 50f, 50f, view);
+        zoomOut.Zoom.ShouldBe(1f / 1.15f, 1e-5f);
+
+        var old = new PanZoomController();
+        old.ZoomAtCursor(0.1f, 50f, 50f, view);
+        old.Zoom.ShouldBe(1.15f, 1e-5f);
+    }
 }
