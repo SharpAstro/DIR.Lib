@@ -88,6 +88,140 @@ Layout.Builder.HStack(
   cell. A radius of `0` takes the plain `FillRectangle` path, so untouched trees paint byte-identically.
 - **Consumer convention** — alias `using Layout = DIR.Lib.Layout;` (a `global using`, or a csproj `<Using Include="DIR.Lib.Layout" Alias="Layout" />`) and write the qualified `Layout.Node` / `Layout.Builder`. Do **not** `using DIR.Lib.Layout;` directly — it drops the collision-prone barewords (`Node`, `Content`, `Size<T>`) into scope. (A plain `using DIR.Lib;` does not surface the nested `Layout` namespace; a using-directive imports types, not nested namespaces.) A consumer that already owns a `Layout` type must rename it.
 
+### Data views and the grouped tree table
+
+The data views are builders over the same declarations, not widgets: `Builder.VirtualList` builds only the rows in view, however many there are; `TableHeader` and `TableRow` take one span of `TableColumn`, so a title sits over its values (and over a dragged width); `TreeRow` is the indent, the caret and the content of one tree row.
+
+`GroupedTreeState` + `Builder.GroupedTreeTable` (11.54) put them together for a table whose rows sit in groups, nested to any depth (org, repo, row). It is for pilot's Pull requests page, from which it was upstreamed, and for tianwen:
+
+- **The tree is yours.** Hand over `GroupedTreeNode<TGroup, TRow>` items (`.Group(key, payload, children)` and `.Leaf(key, payload)`), each with a stable string key that is unique among the visible items. The widget never reorders: sort each group's children before handing the tree over.
+- **The state is keyed, never by object.** `GroupedTreeState` holds the folded keys and `SelectedKey`, so a tree rebuilt from fresh objects on every refresh, re-sorted or filtered, keeps its folds and its selection. Groups are open unless folded, so a new group is open. If the selected item disappears, the selection moves to the nearest row that survived.
+- **One list.** Every visible row, group header or leaf, is row `i` of one list id, so the click, the cursor and the lit row agree. A header spans the whole row (caret, then your content: name, counts, actions); a leaf is a `TableRow` in the header's columns.
+- **The keyboard** is `HandleTableKey`, called after the widget's own `HandleListKey`: the list keeps Up, Down and Enter, and the state adds Right (unfold, or onto the first child), Left (fold, or to the parent) and Enter on a group (toggle).
+- **Folds persist.** `Save()` returns plain data (the folded keys, sorted); `Restore` / `GroupedTreeState.From` read it back, and `Changed` says when to save. Keys of groups not in the tree right now are kept, so filtering a group away does not unfold it. The selection is not part of it.
+
+```csharp
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using DIR.Lib;
+using Layout = DIR.Lib.Layout;
+
+// What a group header and a leaf row carry: your own types.
+record OrgOrRepo(string Name, int Open);
+record PullRequest(int Number, string Title, string Author, string Checks);
+
+// Folds are plain data, so a source-generated context saves them with no reflection.
+[JsonSerializable(typeof(Layout.GroupedTreeState.Saved))]
+partial class SettingsJson : JsonSerializerContext;
+
+sealed class PullRequestsPage : PixelWidgetBase<RgbaImage>
+{
+    const string ListId = "prs";
+
+    static readonly Layout.TableColumn[] Columns =
+    [
+        new("#", Layout.Sizing.Fixed(56f), TextAlign.Far),
+        new("Title", Layout.Sizing.Star()),
+        new("Author", Layout.Sizing.Fixed(120f)),
+        new("Checks", Layout.Sizing.Fixed(80f)),
+    ];
+
+    readonly Layout.GroupedTreeState _tree = new();
+    readonly ListScrollController _scroll = new();
+    readonly Layout.GroupedTreeTableStyle _style;
+    readonly string _foldsFile;
+    IReadOnlyList<Layout.GroupedTreeNode<OrgOrRepo, PullRequest>> _roots = [];
+    List<Layout.GroupedTreeRow<OrgOrRepo, PullRequest>> _rows = [];
+
+    public PullRequestsPage(Renderer<RgbaImage> renderer, Action requestFrame, string foldsFile) : base(renderer)
+    {
+        _foldsFile = foldsFile;
+        _style = new(new Layout.TableStyle(Grey(0x20), Grey(0xe0), Grey(0x30), Grey(0xff)),
+                     new Layout.TreeRowStyle(Grey(0xc0)));
+
+        // Restore the folds of the last run; groups the file does not name are open.
+        if (File.Exists(foldsFile) &&
+            JsonSerializer.Deserialize(File.ReadAllText(foldsFile), SettingsJson.Default.Saved) is { } saved)
+        {
+            _tree.Restore(saved);
+        }
+
+        // Raised on every fold change: ask for a frame and save.
+        _tree.Changed = () =>
+        {
+            File.WriteAllText(_foldsFile, JsonSerializer.Serialize(_tree.Save(), SettingsJson.Default.Saved));
+            requestFrame();
+        };
+
+        ListCursor.Moved += i => _scroll.EnsureVisible(i);   // the arrows scroll the row they land on into view
+        ListCursor.Open(ListId);                             // the table has the keyboard (Close() when it gives it up)
+    }
+
+    static RGBAColor32 Grey(byte v) => new(v, v, v, 0xff);
+
+    // The tree is yours: key every item with something stable (an id, "org/repo"), and sort each
+    // group's children yourself before handing it over, because the widget never reorders.
+    public void SetPullRequests(IEnumerable<(string Org, string Repo, PullRequest Pr)> prs)
+    {
+        _roots =
+        [
+            .. prs.GroupBy(p => p.Org).OrderBy(g => g.Key).Select(org =>
+                Layout.GroupedTreeNode<OrgOrRepo, PullRequest>.Group($"org:{org.Key}", new(org.Key, org.Count()),
+                [
+                    .. org.GroupBy(p => p.Repo).OrderBy(g => g.Key).Select(repo =>
+                        Layout.GroupedTreeNode<OrgOrRepo, PullRequest>.Group($"repo:{org.Key}/{repo.Key}",
+                            new(repo.Key, repo.Count()),
+                            [
+                                .. repo.OrderByDescending(p => p.Pr.Number).Select(p =>
+                                    Layout.GroupedTreeNode<OrgOrRepo, PullRequest>.Leaf(
+                                        $"pr:{org.Key}/{repo.Key}#{p.Pr.Number}", p.Pr)),
+                            ])),
+                ])),
+        ];
+    }
+
+    public void Paint(RectF32 bounds)
+    {
+        BeginFrame();
+        _rows = _tree.Flatten(_roots);                         // folds applied, your order kept
+        _tree.SyncCursor(_rows, ListCursor, ListId);           // SelectedKey -> the row it is on now
+
+        var table = Layout.Builder.GroupedTreeTable(Columns, _style, _rows, _tree, _scroll, ListId, rowHeight: 28f,
+            groupHeader: row => Layout.Builder.HStack(         // spans the row, after the caret and the indent
+                Layout.Builder.Text(row.GroupPayload!.Name, 14f, Grey(0xff)).WStar(),
+                Layout.Builder.Text($"{row.GroupPayload.Open} open", 12f, Grey(0x90)).WAuto()),
+            rowCells: row =>                                   // one node per column, in the columns' order
+            [
+                Layout.Builder.Text($"#{row.RowPayload!.Number}", 13f, Grey(0x90), TextAlign.Far),
+                Layout.Builder.Text(row.RowPayload.Title, 13f, Grey(0xe0)),
+                Layout.Builder.Text(row.RowPayload.Author, 13f, Grey(0xc0)),
+                Layout.Builder.Text(row.RowPayload.Checks, 13f, Grey(0xc0)),
+            ],
+            onActivate: row => Open(row.RowPayload!));         // double-click or Enter on a leaf
+
+        RenderLayout(table.Stretch(), bounds, fontPath: "font.ttf", scale: DesignScale.One);
+    }
+
+    public override bool HandleInput(InputEvent evt)
+    {
+        if (evt is not InputEvent.KeyDown(var key, var mods)) return false;
+
+        // The list claims Up, Down and Enter on a painted row. The state follows its cursor with the
+        // selection and adds Left, Right and Enter on a group. A fold raises Changed; the next Paint
+        // flattens again.
+        return _tree.HandleTableKey(key, HandleListKey(key, mods), ListCursor, ListId, _rows,
+            row => Open(row.RowPayload!));
+    }
+
+    // SelectedKey can name a group, so look it up among the rows and check the kind.
+    public PullRequest? Selected =>
+        _rows.FirstOrDefault(r => r.Key == _tree.SelectedKey) is { Kind: Layout.GroupedTreeRowKind.Row } row
+            ? row.RowPayload : null;
+
+    void Open(PullRequest pr) { /* your navigation */ }
+}
+```
+
 ## Text Input
 
 - **`TextInputState`** — single-line text input state machine with cursor and selection
