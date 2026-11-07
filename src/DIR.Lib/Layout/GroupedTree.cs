@@ -316,6 +316,102 @@ public sealed class GroupedTreeState
         return found;
     }
 
+    /// <summary>
+    /// Every frame, after <see cref="Flatten{TGroup,TRow}"/>: finds the selected row (<see cref="Reselect{TGroup,TRow}"/>)
+    /// and puts <paramref name="cursor"/> on it, with the row count, so the arrows can walk past the rows
+    /// <see cref="Builder.GroupedTreeTable{TGroup,TRow}"/> built. That is what keeps the selection and the cursor on one
+    /// row across a refresh, a re-sort and a fold: the key is the truth and the index follows it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>It refreshes a cursor that is in <paramref name="listId"/> and touches no other.</b> A cursor in no list stays
+    /// out of it, and one in another list stays there, so a host that closed the cursor (focus went elsewhere) is not
+    /// answered by it opening again, and two lists on one widget do not take it from each other every frame. The host
+    /// puts it in this list when the table takes the keyboard, <c>cursor.Open(listId)</c>, and takes it out with
+    /// <see cref="ListCursor.Close"/>.
+    /// </para>
+    /// <para>Opening raises no <see cref="ListCursor.Moved"/>, so a refresh never scrolls.</para>
+    /// </remarks>
+    /// <returns>The selected row's index in <paramref name="rows"/>, or -1, as <see cref="Reselect{TGroup,TRow}"/>,
+    /// whether or not the cursor was in the list.</returns>
+    public int SyncCursor<TGroup, TRow>(IReadOnlyList<GroupedTreeRow<TGroup, TRow>> rows, ListCursor cursor, string listId)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        ArgumentNullException.ThrowIfNull(cursor);
+        ArgumentNullException.ThrowIfNull(listId);
+
+        var index = Reselect(rows);
+        if (string.Equals(cursor.ListId, listId, StringComparison.Ordinal))
+        {
+            cursor.Open(listId, index, rows.Count);
+        }
+
+        return index;
+    }
+
+    /// <summary>
+    /// The whole keyboard of a grouped tree table, called for every key AFTER the widget's own
+    /// <c>HandleListKey</c> (Up, Down and Enter on a painted row) and handed what it answered:
+    /// <c>state.HandleTableKey(key, widget.HandleListKey(key, mods), widget.ListCursor, listId, rows, onActivate)</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When the list claimed the key, the cursor has moved (or a row's own handler has run), so the selection follows
+    /// the cursor: <see cref="SelectedKey"/> becomes the cursor's row. Nothing else runs, which is what stops Enter
+    /// being answered twice (the list activated the row, and this would toggle it back).
+    /// </para>
+    /// <para>
+    /// Otherwise the key is the state's (<see cref="HandleKey{TGroup,TRow}"/>): Left and Right fold, unfold and step,
+    /// and Enter, which only reaches here when the cursor was on a row that was not painted, toggles a group or
+    /// reports a leaf to <paramref name="activate"/>. A step moves the cursor with <see cref="ListCursor.MoveTo"/>,
+    /// which raises <see cref="ListCursor.Moved"/> so the row is scrolled into view, and moves the selection with it.
+    /// </para>
+    /// <para>
+    /// A cursor that is in another list is not touched: the key was not for this table, so the answer is the list's.
+    /// <b>Flatten again after a true</b>, since a fold changes the rows; the next <see cref="SyncCursor{TGroup,TRow}"/>
+    /// then re-finds the selection.
+    /// </para>
+    /// </remarks>
+    /// <param name="key">The key pressed.</param>
+    /// <param name="listHandled">What the widget's <c>HandleListKey</c> returned for it.</param>
+    /// <param name="cursor">The widget's <c>ListCursor</c>.</param>
+    /// <param name="listId">The list the table was built for.</param>
+    /// <param name="rows">The rows <see cref="Flatten{TGroup,TRow}"/> last returned.</param>
+    /// <param name="activate">Opens a leaf row, for Enter on one the list did not activate. May be null.</param>
+    /// <returns>Whether the key was claimed, by the list or here.</returns>
+    public bool HandleTableKey<TGroup, TRow>(InputKey key, bool listHandled, ListCursor cursor, string listId,
+        IReadOnlyList<GroupedTreeRow<TGroup, TRow>> rows, Action<GroupedTreeRow<TGroup, TRow>>? activate = null)
+    {
+        ArgumentNullException.ThrowIfNull(cursor);
+        ArgumentNullException.ThrowIfNull(listId);
+        ArgumentNullException.ThrowIfNull(rows);
+
+        if (!cursor.IsOpen || !string.Equals(cursor.ListId, listId, StringComparison.Ordinal))
+        {
+            return listHandled;
+        }
+
+        if (listHandled)
+        {
+            if ((uint)cursor.Index < (uint)rows.Count) SelectedKey = rows[cursor.Index].Key;
+            return true;
+        }
+
+        if (!HandleKey(key, cursor.Index, rows, out var moveTo, out var activated))
+        {
+            return false;
+        }
+
+        if ((uint)moveTo < (uint)rows.Count)
+        {
+            cursor.MoveTo(moveTo);
+            SelectedKey = rows[moveTo].Key;
+        }
+
+        if (activated) activate?.Invoke(rows[cursor.Index]);
+        return true;
+    }
+
     private static int IndexOfKey<TGroup, TRow>(IReadOnlyList<GroupedTreeRow<TGroup, TRow>> rows, string key)
     {
         for (var i = 0; i < rows.Count; i++)
