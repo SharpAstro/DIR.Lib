@@ -33,6 +33,8 @@ public class TextSelectionHostTests : IDisposable
     {
         protected override RGBAColor32 SelectionBackground => Bar;
 
+        public void ShareWith(Host other) => ShareUiContext(other);
+
         public void Render(Layout.Node page, Layout.Node? over = null)
         {
             BeginFrame();
@@ -156,6 +158,97 @@ public class TextSelectionHostTests : IDisposable
         host.Selection.HasSelection.ShouldBeFalse();
         router.Handle(new InputEvent.KeyDown(InputKey.C, InputModifier.Ctrl));
         _clipboard.ShouldBeEmpty();
+    }
+
+    // A list row, as pilot's flights table draws one: clickable as a whole, its text a selectable run inside a cell that carries
+    // its own whole-text tooltip (a region of plain chrome painted over the row).
+    private Layout.Node Row() =>
+        Layout.Builder.HStack(
+            Layout.Builder.Text("hello world", 20f).Selectable().WithTooltip("hello world, whole").WFixed(200f).HFixed(20f))
+            .Clickable(new HitResult.ListItemHit("rows", 0), _ => _clicks++)
+            .WFixed(200f).HFixed(20f);
+
+    [Fact]
+    public void AClickWithNoDragOnTheTextOfAClickableRowIsTheRowsClick()
+    {
+        // pilot, 2026-11-09: a click on a flight row's text, or the blank part of a cell, started an empty selection and the
+        // row was never selected; arrow keys did select it.
+        var (host, router) = Fixture();
+        host.Render(Row());
+
+        Down(router, 25f, 10f).ShouldBeTrue();
+        router.Handle(new InputEvent.MouseUp(25f, 10f, MouseButton.Left));
+        _clicks.ShouldBe(1);
+        host.Selection.HasSelection.ShouldBeFalse();
+
+        // Past the text, inside the cell: the same.
+        Down(router, 180f, 10f).ShouldBeTrue();
+        router.Handle(new InputEvent.MouseUp(180f, 10f, MouseButton.Left));
+        _clicks.ShouldBe(2);
+    }
+
+    [Fact]
+    public void ADragOnTheTextOfAClickableRowSelectsItAndDoesNotClickTheRow()
+    {
+        var (host, router) = Fixture();
+        host.Render(Row());
+
+        DragHello(router);
+        router.Handle(new InputEvent.KeyDown(InputKey.C, InputModifier.Ctrl));
+
+        _clipboard.ShouldBe(["hello"]);
+        _clicks.ShouldBe(0, "the gesture was a selection");
+    }
+
+    [Fact]
+    public void AClickOnTextOverARegionThatClaimsADragArmsNoDragAfterTheButtonIsUp()
+    {
+        // The release runs only the click half of what lies beneath: an OnPress run there would arm a drag with no button to end it.
+        var (host, router) = Fixture();
+        var moves = 0;
+        host.Render(Layout.Builder.HStack(
+                Layout.Builder.Text("hello world", 20f).Selectable().WithTooltip("whole").WFixed(200f).HFixed(20f))
+            .Pressable(new HitResult.ListItemHit("rows", 0), _ => new DragCapture(_ => moves++, _ => { }))
+            .WFixed(200f).HFixed(20f));
+
+        Down(router, 25f, 10f).ShouldBeTrue();
+        router.Handle(new InputEvent.MouseUp(25f, 10f, MouseButton.Left));
+        router.Handle(new InputEvent.MouseMove(60f, 10f, MouseButton.None));
+
+        moves.ShouldBe(0, "no capture was armed by the release");
+    }
+
+    [Fact]
+    public void AClickOnTheTextOfADisabledPartOfAClickableCardIsSwallowedAsBefore()
+    {
+        // A disabled region registers with its handlers stripped so the press is swallowed: the look-through stops at it.
+        var (host, router) = Fixture();
+        host.Render(Layout.Builder.HStack(
+                Layout.Builder.Text("hello world", 20f).Selectable().Disabled("not now").WFixed(200f).HFixed(20f))
+            .Clickable(new HitResult.ButtonHit("card"), _ => _clicks++)
+            .WFixed(200f).HFixed(20f));
+
+        Down(router, 25f, 10f);
+        router.Handle(new InputEvent.MouseUp(25f, 10f, MouseButton.Left));
+
+        _clicks.ShouldBe(0);
+    }
+
+    [Fact]
+    public void AClickOnTextInAPanelOverAPageNeverClicksThePageBeneathThePanel()
+    {
+        // The press stops at the topmost widget with a region under it, as HandleMouseDown does: a row of the page below is covered.
+        var page = new Host(_renderer, optIn: false);
+        var panel = new Host(_renderer, optIn: true);
+        page.ShareWith(panel);
+        var router = new InputRouter(page.Ui, new BackgroundTaskTracker(), () => _redraws++) { Widgets = () => [page, panel] };
+        page.Render(Layout.Builder.Box(200f, 20f).WFixed(200f).HFixed(20f).Clickable(new HitResult.ButtonHit("page-row"), _ => _clicks++));
+        panel.Render(Layout.Builder.Text("hello world", 20f).Selectable().WithTooltip("whole").WFixed(200f).HFixed(20f));
+
+        Down(router, 25f, 10f);
+        router.Handle(new InputEvent.MouseUp(25f, 10f, MouseButton.Left));
+
+        _clicks.ShouldBe(0);
     }
 
     [Fact]
