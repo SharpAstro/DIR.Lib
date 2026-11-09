@@ -690,7 +690,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                 }
 
                 any = true;
-                if (r is { Result: HitResult.ChromeHit, IsDisabled: false, OnClick: null, OnPress: null, OnActivate: null, OnDoubleClick: null, Opens: null, Dismisses: null })
+                if (IsInertChrome(r))
                 {
                     continue;
                 }
@@ -755,6 +755,8 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                 var r = _regions[i];
                 if (Contains(r, x, y))
                 {
+                    // Not IsInertChrome: this asks whether the press is the text selection's, so a disabled region (its handlers
+                    // stripped) and one with only a click or a menu still let the selection take it, and a field that focuses on open does not.
                     return r is { Result: HitResult.ChromeHit }
                         and not ({ OnPress: not null } or { OnActivate: not null } or { OnDoubleClick: not null } or { Opens: not null }
                             or { Dismisses: not null } or { FocusOnOpen: true });
@@ -765,7 +767,8 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         return true;
     }
 
-    // Plain chrome: a region that only shows a tooltip or a cursor, with nothing to do on a press and not disabled.
+    // Plain chrome: a region that only shows a tooltip or a cursor, with nothing to do on a press and not disabled. The one rule for
+    // looking past chrome to the region beneath, at a press (FirstBeneath) and at a click under a selection (ClickableBeneath).
     private static bool IsInertChrome(in ClickableRegion r) =>
         r is { Result: HitResult.ChromeHit, IsDisabled: false, OnClick: null, OnPress: null, OnActivate: null, OnDoubleClick: null, Opens: null, Dismisses: null, OnContextMenu: null };
 
