@@ -329,6 +329,14 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                     continue;
                 }
 
+                // A press on plain chrome painted over a region of the same widget (a cell's tooltip-only region over its clickable
+                // row) is that region's: the first region beneath that is not plain chrome takes it, a disabled one included, which
+                // swallows it as a disabled region does (#205). Only within this widget: a widget below is covered, as before.
+                if (IsInertChrome(region) && FirstBeneath(i, down.X, down.Y) is { } beneath)
+                {
+                    region = beneath;
+                }
+
                 // A right press over a part with no menu of its own (a twirl caret, a cell button) belongs to
                 // the row's menu beneath it: the reader right-clicked the row. See Node.OnContextMenu.
                 if (down.Button == MouseButton.Right && region.OnContextMenu is null && region.Dismisses is null
@@ -755,6 +763,26 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         }
 
         return true;
+    }
+
+    // Plain chrome: a region that only shows a tooltip or a cursor, with nothing to do on a press and not disabled.
+    private static bool IsInertChrome(in ClickableRegion r) =>
+        r is { Result: HitResult.ChromeHit, IsDisabled: false, OnClick: null, OnPress: null, OnActivate: null, OnDoubleClick: null, Opens: null, Dismisses: null, OnContextMenu: null };
+
+    // In the widget whose regions are in _regions, the first region under the point below index above that is not plain chrome; null
+    // when there is none, and the press stays with the chrome (and does nothing), as it did.
+    private ClickableRegion? FirstBeneath(int above, float x, float y)
+    {
+        for (var i = above - 1; i >= 0; i--)
+        {
+            var r = _regions[i];
+            if (Contains(r, x, y) && !IsInertChrome(r))
+            {
+                return r;
+            }
+        }
+
+        return null;
     }
 
     private bool AnyRegionOffersMenu(IReadOnlyList<IPixelWidget> widgets, float x, float y)

@@ -299,6 +299,53 @@ public class InputRouterTests
         harness.UnhandledEvents.ShouldBeEmpty();
     }
 
+    // #205: a cell's tooltip-only region over a clickable row, on a host with no text selection.
+    private static Layout.Node RowWithTooltipCell(Action onClick) =>
+        Layout.Builder.HStack(Layout.Builder.Text("hello world", 14f).WithTooltip("hello world, whole").WFixed(150f).HFixed(20f))
+            .Clickable(new HitResult.ListItemHit("rows", 0), _ => onClick())
+            .WFixed(200f).HFixed(20f);
+
+    [Fact]
+    public void APressOnATooltipOnlyCellOfAClickableRowIsTheRowsClick()
+    {
+        var harness = new Harness();
+        var clicked = 0;
+        harness.Paint(front: RowWithTooltipCell(() => clicked++));
+
+        harness.Press(20f, 10f).ShouldBeTrue();
+        clicked.ShouldBe(1, "the cell shows a tooltip and does nothing on a press: the row beneath takes it");
+
+        harness.Press(180f, 10f);
+        clicked.ShouldBe(2, "past the cell, on the row itself, as before");
+    }
+
+    [Fact]
+    public void APressOnATooltipOnlyCellOverADisabledRegionIsSwallowed()
+    {
+        var harness = new Harness();
+        var clicked = 0;
+        harness.Paint(front: Layout.Builder.HStack(Layout.Builder.Text("hello", 14f).WithTooltip("whole").WFixed(150f).HFixed(20f))
+            .Clickable(new HitResult.ButtonHit("go"), _ => clicked++)
+            .Disabled("no camera connected")
+            .WFixed(200f).HFixed(20f));
+
+        harness.Press(20f, 10f).ShouldBeTrue();
+        clicked.ShouldBe(0);
+    }
+
+    [Fact]
+    public void APressOnAFrontWidgetsTooltipOnlyRegionNeverReachesAWidgetBelow()
+    {
+        var harness = new Harness();
+        var clicked = 0;
+        harness.Paint(
+            back: Layout.Builder.Box(200f, 20f).Clickable(new HitResult.ButtonHit("page-row"), _ => clicked++),
+            front: Layout.Builder.Text("hello", 14f).WithTooltip("whole").WFixed(150f).HFixed(20f));
+
+        harness.Press(20f, 10f);
+        clicked.ShouldBe(0, "the front widget covers the page");
+    }
+
     // ---- side buttons -------------------------------------------------------------------------
 
     /// <summary>
