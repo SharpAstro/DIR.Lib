@@ -158,6 +158,46 @@ public class TextSelectionHostTests : IDisposable
         _clipboard.ShouldBeEmpty();
     }
 
+    // A list row, as pilot's flights table draws one: clickable as a whole, its text a selectable run inside a cell that carries
+    // its own whole-text tooltip (a region of plain chrome painted over the row).
+    private Layout.Node Row() =>
+        Layout.Builder.HStack(
+            Layout.Builder.Text("hello world", 20f).Selectable().WithTooltip("hello world, whole").WFixed(200f).HFixed(20f))
+            .Clickable(new HitResult.ListItemHit("rows", 0), _ => _clicks++)
+            .WFixed(200f).HFixed(20f);
+
+    [Fact]
+    public void AClickWithNoDragOnTheTextOfAClickableRowIsTheRowsClick()
+    {
+        // pilot, 2026-11-09: a click on a flight row's text, or the blank part of a cell, started an empty selection and the
+        // row was never selected; arrow keys did select it.
+        var (host, router) = Fixture();
+        host.Render(Row());
+
+        Down(router, 25f, 10f).ShouldBeTrue();
+        router.Handle(new InputEvent.MouseUp(25f, 10f, MouseButton.Left));
+        _clicks.ShouldBe(1);
+        host.Selection.HasSelection.ShouldBeFalse();
+
+        // Past the text, inside the cell: the same.
+        Down(router, 180f, 10f).ShouldBeTrue();
+        router.Handle(new InputEvent.MouseUp(180f, 10f, MouseButton.Left));
+        _clicks.ShouldBe(2);
+    }
+
+    [Fact]
+    public void ADragOnTheTextOfAClickableRowSelectsItAndDoesNotClickTheRow()
+    {
+        var (host, router) = Fixture();
+        host.Render(Row());
+
+        DragHello(router);
+        router.Handle(new InputEvent.KeyDown(InputKey.C, InputModifier.Ctrl));
+
+        _clipboard.ShouldBe(["hello"]);
+        _clicks.ShouldBe(0, "the gesture was a selection");
+    }
+
     [Fact]
     public void APressElsewhereClearsTheSelection()
     {

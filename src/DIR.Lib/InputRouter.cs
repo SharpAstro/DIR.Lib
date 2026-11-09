@@ -84,6 +84,12 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     // identity, TextInputState being a plain class, which is the identity a field actually has.
     private readonly HashSet<TextInputState> _honouredFocusOnOpen = [];
 
+    // The press a text selection took over a region with a click of its own beneath the plain text (a list row under its
+    // tooltip-only cells): a release with nothing selected, a click with no drag, is that region's click. Without it a click
+    // on a row's text, or the blank part of a cell, started an empty selection and the row never heard of it (pilot, 2026-11-09:
+    // "clicks don't always register; arrow up/down do").
+    private (IPixelWidget Widget, ClickableRegion Region, PointerPress Press)? _clickUnderSelection;
+
     private DragCapture? _capture;
     private MouseButton _captureButton;
     private InputModifier _captureModifiers;
@@ -628,9 +634,18 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
 
         if (_capture is null && SelectionInput(Widgets(), up))
         {
+            // A click with no drag selected nothing: it was a click on what lies beneath the text, run as that region's.
+            if (_clickUnderSelection is { } pending && up.Button == MouseButton.Left && !AnySelection(Widgets()))
+            {
+                DispatchPress(pending.Widget, pending.Region, pending.Press);
+            }
+
+            _clickUnderSelection = null;
             requestRedraw();
             return true;
         }
+
+        _clickUnderSelection = null;
 
         if (_capture is { } capture)
         {
@@ -646,6 +661,40 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     }
 
     // ---- text selection ---------------------------------------------------------------------
+
+    // The topmost region under the point that does something when pressed, past the plain chrome painted over it (a cell's
+    // tooltip region); null when there is none.
+    private (IPixelWidget Widget, ClickableRegion Region)? ClickableBeneath(IReadOnlyList<IPixelWidget> widgets, float x, float y)
+    {
+        for (var w = widgets.Count - 1; w >= 0; w--)
+        {
+            _regions.Clear();
+            widgets[w].CollectPaintedRegions(_regions);
+            for (var i = _regions.Count - 1; i >= 0; i--)
+            {
+                var r = _regions[i];
+                if (Contains(r, x, y) && r is { OnClick: not null } or { OnPress: not null } or { OnActivate: not null } or { Opens: not null })
+                {
+                    return (widgets[w], r);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static bool AnySelection(IReadOnlyList<IPixelWidget> widgets)
+    {
+        for (var i = 0; i < widgets.Count; i++)
+        {
+            if (widgets[i] is ITextSelectionHost { SelectedText: { Length: > 0 } })
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // Whether the topmost painted region under the point is plain chrome (or there is none) and no popover owns the pointer:
     // a press there is the selection's; on a button, link, field, scrollbar or menu it is the region's.
@@ -744,8 +793,14 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             changed |= had;
         }
 
+        _clickUnderSelection = null;
         if (took)
         {
+            if (inert && ClickableBeneath(widgets, down.X, down.Y) is { } beneath)
+            {
+                _clickUnderSelection = (beneath.Widget, beneath.Region, press);
+            }
+
             BlurFocusedField();
             requestRedraw();
             return true;
