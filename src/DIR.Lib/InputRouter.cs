@@ -637,7 +637,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             // A click with no drag selected nothing: it was a click on what lies beneath the text, run as that region's.
             if (_clickUnderSelection is { } pending && up.Button == MouseButton.Left && !AnySelection(Widgets()))
             {
-                DispatchPress(pending.Widget, pending.Region, pending.Press);
+                ReleaseClick(pending.Region, pending.Press);
             }
 
             _clickUnderSelection = null;
@@ -662,25 +662,58 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
 
     // ---- text selection ---------------------------------------------------------------------
 
-    // The topmost region under the point that does something when pressed, past the plain chrome painted over it (a cell's
-    // tooltip region); null when there is none.
+    // The region a click on plain chrome lands on: in the topmost widget with a region under the point, past the inert chrome painted
+    // over it (a cell's tooltip region), the first other region there, when it clicks, opens or double-clicks. Null when that first
+    // region does none of these or is disabled (a disabled region swallows the press, as it does at HandleMouseDown), and never a
+    // region of a widget below: HandleMouseDown stops at the topmost widget too.
     private (IPixelWidget Widget, ClickableRegion Region)? ClickableBeneath(IReadOnlyList<IPixelWidget> widgets, float x, float y)
     {
         for (var w = widgets.Count - 1; w >= 0; w--)
         {
             _regions.Clear();
             widgets[w].CollectPaintedRegions(_regions);
+            var any = false;
             for (var i = _regions.Count - 1; i >= 0; i--)
             {
                 var r = _regions[i];
-                if (Contains(r, x, y) && r is { OnClick: not null } or { OnPress: not null } or { OnActivate: not null } or { Opens: not null })
+                if (!Contains(r, x, y))
                 {
-                    return (widgets[w], r);
+                    continue;
                 }
+
+                any = true;
+                if (r is { Result: HitResult.ChromeHit, IsDisabled: false, OnClick: null, OnPress: null, OnActivate: null, OnDoubleClick: null, Opens: null, Dismisses: null })
+                {
+                    continue;
+                }
+
+                return !r.IsDisabled && r is { OnClick: not null } or { OnDoubleClick: not null } or { Opens: not null } ? (widgets[w], r) : null;
+            }
+
+            if (any)
+            {
+                return null;
             }
         }
 
         return null;
+    }
+
+    // The click half of a region, run at the release of a press the selection took: its click (its double-click on a second press)
+    // and the popover it opens. Never its OnPress, a press handler that may arm a drag: run after the button is up, that drag would
+    // have no button to end it.
+    private void ReleaseClick(in ClickableRegion region, in PointerPress press)
+    {
+        if (press.Clicks >= 2 && region.OnDoubleClick is { } doubleClick)
+        {
+            doubleClick(press.Modifiers);
+        }
+        else
+        {
+            region.OnClick?.Invoke(press.Modifiers);
+        }
+
+        region.Opens?.Toggle();
     }
 
     private static bool AnySelection(IReadOnlyList<IPixelWidget> widgets)
