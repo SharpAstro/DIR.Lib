@@ -58,7 +58,11 @@ public sealed class SdfGlyphDiskCache : IDisposable
     // every texel outside it measured to the counter, so its outer edges sat half a texel inside the
     // outline and hairlines (the top of a Times 'a') vanished. Field bytes differ for every such glyph;
     // a v6 file would go on serving the thin ones, so re-rasterize once.
-    private const uint FormatVersion = 7;
+    // v8 (SharpAstro.Fonts 1.17, CFF flex and composites): the Type 2 interpreter skipped flex, so every
+    // glyph using it (serifs and stem joins in any CFF converted from Type 1) was stored displaced past the
+    // flex, and accented composites (endchar with four operands) were stored empty. Those glyphs' fields
+    // are wrong in every earlier file, so re-rasterize once.
+    private const uint FormatVersion = 8;
     // Header: magic(4) + version(4) + rasterSize(4) + spread(4) + fontHash(8) + reserved(8) = 32 bytes.
     private const int HeaderSize = 32;
     // Fixed per-entry metadata size *after* the 4-byte length prefix, i.e. everything before the
