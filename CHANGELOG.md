@@ -17,8 +17,8 @@ SharpAstro.Fonts 1.17, and the `.sdfg` glyph cache moves to format 8 so the glyp
   book's NewBaskerville came out as smears), accented composites draw (a German subset's ä, ö and ü were blank), and a
   bare CFF's built-in encoding is read (a TeX math subset with no PDF `/Encoding` drew `bardbl` for every bullet and
   nothing for `(`, `=` or `∈`).
-- **`SdfGlyphDiskCache` format 7 → 8.** Fields stored before 1.17 are wrong for exactly those glyphs, and a file keeps
-  serving what it holds; a version mismatch truncates and rewrites it, so each glyph is rasterized once more.
+- **`SdfGlyphDiskCache` format 7 → 8.** Fields stored before 1.17 are wrong for those glyphs (CFF flex, Type 2 and Type 1 `seac`
+  composites, and any glyph a bare CFF's built-in encoding now selects differently), and a file keeps serving what it holds; a version mismatch truncates and rewrites it, so each glyph is rasterized once more.
 
 ## 11.54
 

@@ -61,7 +61,11 @@ public sealed class SdfGlyphDiskCache : IDisposable
     // v8 (SharpAstro.Fonts 1.17, CFF flex and composites): the Type 2 interpreter skipped flex, so every
     // glyph using it (serifs and stem joins in any CFF converted from Type 1) was stored displaced past the
     // flex, and accented composites (endchar with four operands) were stored empty. Those glyphs' fields
-    // are wrong in every earlier file, so re-rasterize once.
+    // are wrong in every earlier file, so re-rasterize once. 1.17 also changed the charCode→GID mapping
+    // (this file's own bump rule): a bare CFF's built-in encoding is now read, so its character code
+    // selects a different glyph than charCode-as-GID did; and Type 1 composites (seac) are composed —
+    // their accents were .notdef and are now placed at adx - asb instead of adx — so Type 1 glyphs are
+    // affected too, not only CFF.
     private const uint FormatVersion = 8;
     // Header: magic(4) + version(4) + rasterSize(4) + spread(4) + fontHash(8) + reserved(8) = 32 bytes.
     private const int HeaderSize = 32;
