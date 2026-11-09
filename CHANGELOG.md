@@ -9,6 +9,17 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.55
+
+SharpAstro.Fonts 1.17, and the `.sdfg` glyph cache moves to format 8 so the glyphs it fixes are drawn again.
+
+- **SharpAstro.Fonts 1.16 → 1.17.** CFF glyphs that use flex now draw (they were displaced past the flex: a Manning
+  book's NewBaskerville came out as smears), accented composites draw (a German subset's ä, ö and ü were blank), and a
+  bare CFF's built-in encoding is read (a TeX math subset with no PDF `/Encoding` drew `bardbl` for every bullet and
+  nothing for `(`, `=` or `∈`).
+- **`SdfGlyphDiskCache` format 7 → 8.** Fields stored before 1.17 are wrong for exactly those glyphs, and a file keeps
+  serving what it holds; a version mismatch truncates and rewrites it, so each glyph is rasterized once more.
+
 ## 11.54
 
 Additive. A grouped tree table: groups nested to any depth over table columns, the tree keyboard, and folds that survive a
