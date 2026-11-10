@@ -107,7 +107,8 @@ public class TextSelectionHostTests : IDisposable
     public void TheIBeamShowsOverSelectableTextAndBesideItWhereAPressStartsASelection()
     {
         // The owner, 2026-11-10: the pointer stayed an arrow in front of the text, so nothing said a press there would select.
-        // "hi" sits at x 150..170 on the row at y 0..20; at 20 px a press reaches 100 px beside it.
+        // The region of "hi" is its node's rect, x 150..200 on the row at y 0..20 (WFixed(50)); the reach is measured from that rect,
+        // and at 20 px a press reaches 100 px beside it.
         var (host, router) = Fixture();
         host.Render(Layout.Builder.VStack(
             Layout.Builder.HStack(Layout.Builder.Spacer().WFixed(150f).HFixed(20f), Layout.Builder.Text("hi", 20f).Selectable().WFixed(50f).HFixed(20f)),
@@ -116,7 +117,44 @@ public class TextSelectionHostTests : IDisposable
         router.CursorAt(155f, 10f).ShouldBe(CursorKind.Text, "on the text");
         router.CursorAt(100f, 10f).ShouldBe(CursorKind.Text, "50 px in front of it, within reach");
         router.CursorAt(10f, 10f).ShouldBeNull("140 px in front of it, out of reach");
-        router.CursorAt(40f, 50f).ShouldNotBe(CursorKind.Text, "the button under the next line is the router's");
+    }
+
+    [Fact]
+    public void AButtonWithinReachOfSelectableTextKeepsItsOwnCursorAndTheIBeamStartsOnePixelOffIt()
+    {
+        // One row: a button (x 0..80, no cursor of its own) then selectable text (x 150..200), the text within reach of the button.
+        // The press on the button is the button's (SelectionInert is false there), so the hover must not promise a selection.
+        var (host, router) = Fixture();
+        host.Render(Layout.Builder.HStack(
+            Layout.Builder.Box(80f, 20f).WFixed(80f).HFixed(20f).Clickable(new HitResult.ButtonHit("go"), _ => _clicks++),
+            Layout.Builder.Spacer().WFixed(70f).HFixed(20f),
+            Layout.Builder.Text("hi", 20f).Selectable().WFixed(50f).HFixed(20f)));
+
+        router.CursorAt(40f, 10f).ShouldBeNull("over the button, though the text is in reach of a press beside it");
+        router.CursorAt(79f, 10f).ShouldBeNull("on the button's last pixel");
+        router.CursorAt(81f, 10f).ShouldBe(CursorKind.Text, "one pixel off the button, beside the text");
+    }
+
+    [Fact]
+    public void ASelectionDragKeepsTheIBeamOutOfReachAndOverARegionThatStatesACursor()
+    {
+        // The text "hi" is at x 150..200; a card at x 0..80 states a resize cursor. At rest the card's cursor wins, as the
+        // topmost-region contract says; a drag armed on the text holds the I-beam wherever the pointer goes, as a captured drag does.
+        var (host, router) = Fixture();
+        host.Render(Layout.Builder.HStack(
+            Layout.Builder.Box(80f, 20f).WFixed(80f).HFixed(20f).Clickable(new HitResult.ChromeHit(), null, CursorKind.ResizeEW),
+            Layout.Builder.Spacer().WFixed(70f).HFixed(20f),
+            Layout.Builder.Text("hi", 20f).Selectable().WFixed(50f).HFixed(20f)));
+
+        router.CursorAt(40f, 10f).ShouldBe(CursorKind.ResizeEW, "at rest, a region's stated cursor wins");
+
+        Down(router, 155f, 10f).ShouldBeTrue();
+        router.Handle(new InputEvent.MouseMove(40f, 10f, MouseButton.Left));
+        router.CursorAt(40f, 10f).ShouldBe(CursorKind.Text, "mid-drag, over the card that states a cursor");
+        router.CursorAt(20f, 110f).ShouldBe(CursorKind.Text, "mid-drag, out of reach of any text");
+
+        router.Handle(new InputEvent.MouseUp(40f, 10f, MouseButton.Left));
+        router.CursorAt(40f, 10f).ShouldBe(CursorKind.ResizeEW, "the drag is over");
     }
 
     [Fact]

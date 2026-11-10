@@ -9,6 +9,20 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.56
+
+Additive. The I-beam shows where a press starts a text selection, and a press reaches further beside the text. A new default
+member on an interface and one new method; no record primary constructor changed.
+
+- **`ITextSelectionHost.SelectionStartsAt(x, y)`** (a default member, so an existing implementer still builds) and
+  **`TextSelection<TSurface>.StartsAt`**: whether a press at the point would start a selection, the same test `HandleInput` makes
+  (on a selectable run, or in the reach beside one).
+- **`InputRouter.CursorAt`** returns `CursorKind.Text` over selectable text and in the reach of a press beside it, where nothing that
+  acts on a press (a button, link, field, menu) is under the point; at rest a region that states a cursor keeps it. While a selection
+  drag is in flight it holds the I-beam wherever the pointer goes, as a captured drag holds its cursor.
+- **The beside reach grows from 1.5 letters (minimum 6 px) to 5 letters (minimum 24 px)**, measured from the run's rect. Consumers
+  pinning `11.55.*` need a pin bump to get it.
+
 ## 11.55
 
 SharpAstro.Fonts 1.17, and the `.sdfg` glyph cache moves to format 8 so the glyphs it fixes are drawn again.
