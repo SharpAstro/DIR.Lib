@@ -58,6 +58,15 @@ public class TextSelectionTests : IDisposable
     }
 
     [Fact]
+    public void APressFourLettersInFrontOfTheLineStillStartsAtItsStart()
+    {
+        // The owner, 2026-11-10: a letter and a half in front of the text was too narrow to hit.
+        Frame(Region("Alpha beta", 100, 10));
+        Drag(100 - Size * 4, 20, 100 + Width("Alpha"), 20);
+        _selection.Text.ShouldBe("Alpha");
+    }
+
+    [Fact]
     public void APressJustAfterTheLastLetterStartsTheSelectionAtItsEnd()
     {
         Frame(Region("Alpha beta", 40, 10));
@@ -70,7 +79,7 @@ public class TextSelectionTests : IDisposable
     {
         Frame(Region("Alpha beta", 100, 10));
         // Well to the left of the line, and above it: not beside the text.
-        _selection.HandleInput(new InputEvent.MouseDown(100 - Size * 4, 20), Always).ShouldBeFalse();
+        _selection.HandleInput(new InputEvent.MouseDown(100 - Size * 6, 20), Always).ShouldBeFalse();
         _selection.HandleInput(new InputEvent.MouseDown(100, 10 - 5), Always).ShouldBeFalse();
         _selection.HasSelection.ShouldBeFalse();
     }
