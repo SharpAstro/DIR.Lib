@@ -104,6 +104,31 @@ public class TextSelectionHostTests : IDisposable
     }
 
     [Fact]
+    public void TheIBeamShowsOverSelectableTextAndBesideItWhereAPressStartsASelection()
+    {
+        // The owner, 2026-11-10: the pointer stayed an arrow in front of the text, so nothing said a press there would select.
+        // "hi" sits at x 150..170 on the row at y 0..20; at 20 px a press reaches 100 px beside it.
+        var (host, router) = Fixture();
+        host.Render(Layout.Builder.VStack(
+            Layout.Builder.HStack(Layout.Builder.Spacer().WFixed(150f).HFixed(20f), Layout.Builder.Text("hi", 20f).Selectable().WFixed(50f).HFixed(20f)),
+            Page()));
+
+        router.CursorAt(155f, 10f).ShouldBe(CursorKind.Text, "on the text");
+        router.CursorAt(100f, 10f).ShouldBe(CursorKind.Text, "50 px in front of it, within reach");
+        router.CursorAt(10f, 10f).ShouldBeNull("140 px in front of it, out of reach");
+        router.CursorAt(40f, 50f).ShouldNotBe(CursorKind.Text, "the button under the next line is the router's");
+    }
+
+    [Fact]
+    public void AHostThatDidNotOptInShowsNoIBeam()
+    {
+        var (host, router) = Fixture(optIn: false);
+        host.Render(Page());
+
+        router.CursorAt(5f, 10f).ShouldBeNull();
+    }
+
+    [Fact]
     public void DragSelectsAndCtrlCCopies()
     {
         var (host, router) = Fixture();

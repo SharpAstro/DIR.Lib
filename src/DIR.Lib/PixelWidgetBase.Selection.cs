@@ -30,6 +30,12 @@ namespace DIR.Lib
         /// nothing that acts on a press. True for what it took.
         /// </summary>
         bool HandleSelectionInput(InputEvent evt, Func<float, float, bool> inert);
+
+        /// <summary>
+        /// Whether a left press at the point would start a selection (on its text or beside it on the line), for the I-beam. A default
+        /// so an implementer written before it still builds; it then never shows one.
+        /// </summary>
+        bool SelectionStartsAt(float x, float y) => false;
     }
 
     public abstract partial class PixelWidgetBase<TSurface> : ITextSelectionHost
@@ -87,6 +93,9 @@ namespace DIR.Lib
         /// <inheritdoc/>
         bool ITextSelectionHost.HandleSelectionInput(InputEvent evt, Func<float, float, bool> inert)
             => _selectionOptedIn && Selection.HandleInput(evt, inert);
+
+        /// <inheritdoc/>
+        bool ITextSelectionHost.SelectionStartsAt(float x, float y) => _selectionOptedIn && RegionsAreCurrent && Selection.StartsAt(x, y);
 
         // Called by PaintLayout for the reserved leaf; paints with the resolver the page was measured with.
         private void PaintSelection(PixelMeasureContext<TSurface> ctx)

@@ -169,6 +169,12 @@ public sealed class TextSelection<TSurface>(Renderer<TSurface> renderer)
         return -1;
     }
 
+    /// <summary>
+    /// Whether a left press at the point would start a selection: on the text, or beside it on its line. The router shows the I-beam
+    /// there (when nothing that acts on a press is under the point), so the reach of a press is seen before it is tried.
+    /// </summary>
+    public bool StartsAt(float x, float y) => RegionAt(x, y) >= 0 || RegionBeside(x, y) >= 0;
+
     // The region a press beside text on its line starts in: the point is level with the region (inside its band of rows) and at most
     // BesideSlop of it to the left or right, the nearest one winning; -1 when none. A press just in front of a line's first letter (to
     // take the whole line from its start) fell outside the measured text, which starts exactly at the first glyph, and selected nothing.
@@ -192,8 +198,10 @@ public sealed class TextSelection<TSurface>(Renderer<TSurface> renderer)
         return best;
     }
 
-    // How far beside a region a press still starts a selection in it: a letter and a half at its size, never under a few pixels.
-    private static float BesideSlop(SelectableTextRegion r) => MathF.Max(6f, r.FontSize * 1.5f);
+    // How far beside a region a press still starts a selection in it: five letters at its size, never under 24 pixels. A letter and a
+    // half (18 px at 12 pt) was too narrow to hit on purpose (the owner, 2026-11-10); the nearest region on the row still wins, and a
+    // press on a button or link is still the router's.
+    private static float BesideSlop(SelectableTextRegion r) => MathF.Max(24f, r.FontSize * 5f);
 
     // Where a drag at the point has got to: in a region, its character; between lines or words, the nearest one's nearest end;
     // above or below all the text, the first or last character.

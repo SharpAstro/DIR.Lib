@@ -288,6 +288,18 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             }
         }
 
+        // Selectable text, or the space just beside it on its line, where a press starts a selection: the I-beam, as over a field.
+        // A drag already selecting keeps it wherever the pointer goes. Nothing that acts on a press may be under the point
+        // (the same test the press makes), so a button laid over text keeps its own cursor.
+        for (var i = widgets.Count - 1; i >= 0; i--)
+        {
+            if (widgets[i] is ITextSelectionHost { SelectionEnabled: true } host
+                && (host.SelectionDragging || (host.SelectionStartsAt(x, y) && SelectionInert(widgets, x, y))))
+            {
+                return CursorKind.Text;
+            }
+        }
+
         return null;
     }
 
