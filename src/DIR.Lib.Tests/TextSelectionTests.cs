@@ -49,6 +49,40 @@ public class TextSelectionTests : IDisposable
     }
 
     [Fact]
+    public void APressJustInFrontOfTheFirstLetterStartsTheSelectionAtItsStart()
+    {
+        // The owner, 2026-11-10: a drag had to start on a character; one started just in front of a capital A selected nothing.
+        Frame(Region("Alpha beta", 40, 10));
+        Drag(40 - 6, 20, 40 + Width("Alpha"), 20);
+        _selection.Text.ShouldBe("Alpha");
+    }
+
+    [Fact]
+    public void APressJustAfterTheLastLetterStartsTheSelectionAtItsEnd()
+    {
+        Frame(Region("Alpha beta", 40, 10));
+        Drag(40 + Width("Alpha beta") + 6, 20, 40 + Width("Alpha "), 20);
+        _selection.Text.ShouldBe("beta");
+    }
+
+    [Fact]
+    public void APressFarFromTheTextOrOffItsLineStartsNothing()
+    {
+        Frame(Region("Alpha beta", 100, 10));
+        // Well to the left of the line, and above it: not beside the text.
+        _selection.HandleInput(new InputEvent.MouseDown(100 - Size * 4, 20), Always).ShouldBeFalse();
+        _selection.HandleInput(new InputEvent.MouseDown(100, 10 - 5), Always).ShouldBeFalse();
+        _selection.HasSelection.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void APressBesideTextOverAButtonIsStillTheButtons()
+    {
+        Frame(Region("Alpha beta", 40, 10));
+        _selection.HandleInput(new InputEvent.MouseDown(40 - 6, 20), (_, _) => false).ShouldBeFalse();
+    }
+
+    [Fact]
     public void DraggingBackwardsSelectsTheSameText()
     {
         Frame(Region("hello world", 10, 10));
