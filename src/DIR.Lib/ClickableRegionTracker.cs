@@ -120,7 +120,7 @@ namespace DIR.Lib
         /// <summary>
         /// Returns a snapshot of all clickable regions registered during the last render pass,
         /// in registration (paint) order. Safe copy — the caller can enumerate it without racing
-        /// the next <see cref="BeginFrame"/>. Used by the debug inspector to serialize the live
+        /// the next <see cref="BeginFrame()"/>. Used by the debug inspector to serialize the live
         /// "accessibility tree" (region bounds + <see cref="HitResult"/> role/label).
         /// </summary>
         public ClickableRegion[] GetRegisteredRegions() => _regions.ToArray();

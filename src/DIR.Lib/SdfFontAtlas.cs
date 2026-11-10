@@ -1044,7 +1044,7 @@ public sealed class SdfFontAtlas : IDisposable
     /// <summary>
     /// Batch-warms a set of glyph keys with parallel SDF rasterization. Skips keys already
     /// in the atlas. Rasterization (the expensive part — SDF distance-field computation
-    /// per glyph pixel) runs across the thread pool via <see cref="Parallel.For"/>; the
+    /// per glyph pixel) runs across the thread pool via <see cref="Parallel.For(int, int, Action{int, ParallelLoopState})"/>; the
     /// resulting bitmaps are then inserted into the atlas serially on the calling thread
     /// (cursor placement and the staging buffer aren't thread-safe). On architectural PDFs
     /// where a page touches 60-100 unique glyphs at ~10 ms each, this cuts prewarm time

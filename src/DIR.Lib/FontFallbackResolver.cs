@@ -18,7 +18,7 @@ namespace DIR.Lib;
 /// the primary covers it, because a text face carrying a pictograph outline is not a reason to prefer
 /// it -- see <see cref="TryResolveFont"/>.</para>
 ///
-/// <para>Renderer-agnostic: <see cref="CoverageRuns"/> is pure; the <see cref="Measure"/>/
+/// <para>Renderer-agnostic: <see cref="CoverageRuns(ReadOnlySpan{char}, List{FontRun})"/> is pure; the <see cref="Measure"/>/
 /// <see cref="Draw"/>/<see cref="FitEllipsis"/> helpers are generic over the backend's
 /// <see cref="Renderer{TSurface}"/>. Caches are concurrent; intended for render-thread UI text.</para>
 /// </summary>
@@ -117,7 +117,7 @@ public sealed class FontFallbackResolver
     /// The font that can actually draw <paramref name="rune"/>, or <c>null</c> when none of the
     /// available faces covers it.
     ///
-    /// <para>This is the question <see cref="CoverageRuns"/> deliberately cannot answer: it
+    /// <para>This is the question <see cref="CoverageRuns(ReadOnlySpan{char}, List{FontRun})"/> deliberately cannot answer: it
     /// falls back to the primary so an uncovered glyph degrades to <c>.notdef</c> rather than
     /// vanishing, which is right for drawing but hides the miss from the caller. Ask here when
     /// the answer changes what you draw — substituting an ASCII spelling for a symbol the

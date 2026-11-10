@@ -235,7 +235,7 @@ public sealed class WindowUiSettings
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Set at PAINT time by <see cref="PixelWidgetBase{TSurface}.RenderTextInput"/>, from the same call
+    /// Set at PAINT time by <see cref="PixelWidgetBase{TSurface}.RenderTextInput(TextInputState, int, int, int, int, string, float, TextInputColors?, float, bool)"/>, from the same call
     /// that draws the caret, for the same reason a click binds to the arranged rect: anything that
     /// recomputes the position separately can disagree with what the user is looking at, and here that
     /// disagreement puts the candidate window in the wrong place -- invisible in every test that does not

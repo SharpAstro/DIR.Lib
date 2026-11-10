@@ -234,7 +234,7 @@ public abstract partial record Node
     public Action<PointerPress>? OnContextMenu { get; init; }
 
     /// <summary>
-    /// Hover text for this node, set via <see cref="WithTooltip"/>. A node with a tooltip and no
+    /// Hover text for this node, set via <see cref="WithTooltip(string)"/>. A node with a tooltip and no
     /// <see cref="Hit"/> still registers a region -- inert to presses -- because a statement about what
     /// is under the pointer has nowhere else to live.
     /// </summary>
@@ -299,7 +299,7 @@ public abstract partial record Node
     public ListScrollController? Scroll { get; init; }
 
     /// <summary>
-    /// A keyboard binding that reaches this node, set via <see cref="WithShortcut"/>. Inert in measure
+    /// A keyboard binding that reaches this node, set via <see cref="WithShortcut(InputKey, InputModifier)"/>. Inert in measure
     /// and in paint: the router matches it against the PAINTED tree, so a shortcut on a panel that is not
     /// on screen is inert without anyone saying so.
     /// </summary>

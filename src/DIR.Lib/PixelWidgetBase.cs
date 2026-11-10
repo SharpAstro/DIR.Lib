@@ -95,7 +95,7 @@ namespace DIR.Lib
     }
 
     /// <summary>
-    /// Chrome colours for <see cref="PixelWidgetBase{TSurface}.DrawTrackSlider"/>: the unfilled track
+    /// Chrome colours for <see cref="PixelWidgetBase{TSurface}.DrawTrackSlider(float, float, float, float, float, float, RGBAColor32, RectF32, HitResult, TrackSliderChrome, DesignScale?)"/>: the unfilled track
     /// bar background and the draggable handle marker. The per-slider accent fill is passed separately.
     /// </summary>
     public readonly record struct TrackSliderChrome(RGBAColor32 TrackBackground, RGBAColor32 Handle);
@@ -198,7 +198,7 @@ namespace DIR.Lib
         /// The window's DPI scale (device pixels per design unit), owned per widget instance -- a widget
         /// belongs to exactly one window/renderer, so the host sets this at startup and on resize (SDL
         /// <c>DisplayScale</c>, web <c>devicePixelRatio</c>; a terminal stays at 1). Layout helpers
-        /// (<see cref="RenderLayout"/> / <see cref="ArrangeLayout"/> / <see cref="PaintLayout"/>) and
+        /// (<see cref="RenderLayout(Layout.Node, RectF32, string?, DesignScale?, Action{Layout.Content.Fill, RectF32}?)"/> / <see cref="ArrangeLayout(Layout.Node, RectF32, string?, DesignScale?)"/> / <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, string?, DesignScale?, Action{Layout.Content.Fill, RectF32}?)"/>) and
         /// pixel controls (<see cref="DrawTrackSlider(float,float,float,float,float,RGBAColor32,RectF32,HitResult,TrackSliderChrome,DesignScale?)"/>)
         /// are built from it when their <c>scale</c> argument is omitted, and input handlers can read it
         /// directly (input events carry no DPI). Pass an explicit value only to override -- e.g.
@@ -253,8 +253,8 @@ namespace DIR.Lib
         /// <see cref="Renderer{TSurface}"/> resolves), owned per widget instance like <see cref="DpiScale"/> --
         /// a widget belongs to exactly one window, so the host resolves the font once and sets this at startup
         /// (and again if the font changes). The layout helpers
-        /// (<see cref="RenderLayout"/> / <see cref="ArrangeLayout"/> / <see cref="PaintLayout"/>) default to it
-        /// when their <c>fontPath</c> argument is omitted; the lower-level draw helpers (<see cref="DrawText"/>,
+        /// (<see cref="RenderLayout(Layout.Node, RectF32, string?, DesignScale?, Action{Layout.Content.Fill, RectF32}?)"/> / <see cref="ArrangeLayout(Layout.Node, RectF32, string?, DesignScale?)"/> / <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, string?, DesignScale?, Action{Layout.Content.Fill, RectF32}?)"/>) default to it
+        /// when their <c>fontPath</c> argument is omitted; the lower-level draw helpers (<see cref="DrawText(ReadOnlySpan{char}, string, float, float, float, float, float, RGBAColor32, TextAlign, TextAlign)"/>,
         /// <see cref="RenderButton"/>, ...) still take an explicit font so a caller can draw a run in a
         /// different face (e.g. the emoji font). Empty = unresolved: the text helpers no-op on an empty font,
         /// so an unconfigured widget (headless test, pre-resolve frame) draws no text rather than throwing.
@@ -588,7 +588,7 @@ namespace DIR.Lib
 
         /// <summary>
         /// Registers an already-built region, for the paths that state more than the shorthand above
-        /// covers -- a tooltip, a scroll target, a disabled row. <see cref="PaintLayout"/>'s own path,
+        /// covers -- a tooltip, a scroll target, a disabled row. <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, string?, DesignScale?, Action{Layout.Content.Fill, RectF32}?)"/>'s own path,
         /// since a node can declare all of them at once.
         /// </summary>
         protected void RegisterClickable(in ClickableRegion region) => _tracker.Register(region);
@@ -948,14 +948,14 @@ namespace DIR.Lib
         /// no wider than <paramref name="maxWidth"/> — <see cref="TextTrim.Shrink"/> for the draw helpers, which
         /// take a rect and a size directly rather than a <see cref="Layout.Node"/> tree.
         ///
-        /// <para>Needed because <see cref="DrawText"/> does not bound a run to the rect it is handed: it starts
+        /// <para>Needed because <see cref="DrawText(ReadOnlySpan{char}, string, float, float, float, float, float, RGBAColor32, TextAlign, TextAlign)"/> does not bound a run to the rect it is handed: it starts
         /// at the edge and keeps going, so an over-long label draws over whatever shares its strip. Inside a
         /// layout tree the painter now does this for you from the run's own
         /// <see cref="Layout.Content.Text.Trim"/>; this is the same fit for the hand-placed paths — a status
         /// bar, a two-ended strip either side of a camera cutout, a column header beside a button.</para>
         ///
         /// <para>Measured with the widget's <see cref="FontPath"/> and <see cref="FontFallback"/>, so the width
-        /// is the one <see cref="DrawText"/> will actually produce. Sizes are in drawing units, like every
+        /// is the one <see cref="DrawText(ReadOnlySpan{char}, string, float, float, float, float, float, RGBAColor32, TextAlign, TextAlign)"/> will actually produce. Sizes are in drawing units, like every
         /// other <c>fontSize</c> on this type.</para>
         /// </summary>
         /// <param name="text">The run that has to fit.</param>
@@ -971,7 +971,7 @@ namespace DIR.Lib
         /// <see cref="FitFontSize(ReadOnlySpan{char}, float, float, float)"/> measured with an explicit font —
         /// for a widget that draws a run in a face other than its own <see cref="FontPath"/> (a symbol or
         /// emoji face, a second UI font). The widget's <see cref="FontFallback"/> still applies, matching
-        /// <see cref="DrawText"/>.
+        /// <see cref="DrawText(ReadOnlySpan{char}, string, float, float, float, float, float, RGBAColor32, TextAlign, TextAlign)"/>.
         /// </summary>
         protected float FitFontSize(ReadOnlySpan<char> text, string fontPath, float preferred, float maxWidth,
             float minFontSize = TextFit.DefaultMinFontSize)
@@ -1122,7 +1122,7 @@ namespace DIR.Lib
         /// Paints an already-arranged tree: each node's <see cref="Layout.Node.Background"/> fills first
         /// (parent-before-children emission = correct z-order), then leaf content draws, and any
         /// <see cref="Layout.Node.Hit"/> is bound to the node's arranged rect via
-        /// <see cref="RegisterClickable"/> -- so draw-position and hit-region cannot drift.
+        /// <see cref="RegisterClickable(float, float, float, float, HitResult, Action{InputModifier}?, CursorKind?, Func{PointerPress, DragCapture?}?, bool)"/> -- so draw-position and hit-region cannot drift.
         /// <paramref name="drawFill"/> handles <see cref="Layout.Content.Fill"/> escape-hatch leaves
         /// (charts, sky map, custom widgets).
         /// </summary>
@@ -1610,7 +1610,7 @@ namespace DIR.Lib
         }
 
         /// <summary>
-        /// Convenience: <see cref="ArrangeLayout"/> + <see cref="PaintLayout"/> in one call.
+        /// Convenience: <see cref="ArrangeLayout(Layout.Node, RectF32, string?, DesignScale?)"/> + <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, string?, DesignScale?, Action{Layout.Content.Fill, RectF32}?)"/> in one call.
         /// <paramref name="fontPath"/> defaults to the widget's <see cref="FontPath"/> and
         /// <paramref name="scale"/> to its <see cref="Scale"/>.
         /// </summary>
@@ -1682,7 +1682,7 @@ namespace DIR.Lib
         /// it, which is what makes a baked mark dim exactly as the label beside it does -- the property a
         /// colour-emoji glyph cannot have.</para>
         /// <para>Row and column boundaries are SNAPPED to whole pixels rather than passed through as
-        /// floats, and that is load-bearing: <see cref="FillRect"/> truncates its rect to int, so a scaled
+        /// floats, and that is load-bearing: <see cref="FillRect(float, float, float, float, RGBAColor32)"/> truncates its rect to int, so a scaled
         /// row of height 0.97 can round to zero height and vanish, leaving gaps through the mark. Snapping
         /// each edge and taking the difference makes consecutive rows tile by construction, whatever the
         /// scale.</para>
@@ -1734,7 +1734,7 @@ namespace DIR.Lib
 
         /// <summary>
         /// Draws a circle outline centered at (<paramref name="cx"/>, <paramref name="cy"/>).
-        /// Delegates to <see cref="Renderer{TSurface}.DrawEllipse"/> for GPU-efficient rendering
+        /// Delegates to <see cref="Renderer{TSurface}.DrawEllipse(in RectInt, RGBAColor32, float)"/> for GPU-efficient rendering
         /// when available.
         /// </summary>
         protected void DrawCircle(float cx, float cy, float radius, RGBAColor32 color, float strokeWidth = 1f)
@@ -1968,7 +1968,7 @@ namespace DIR.Lib
         /// Draws a run of text AND registers it as a selectable region for this frame. Unless the host
         /// has opted into native text rendering
         /// (<see cref="Renderer{TSurface}.HostRendersSelectableText"/>, default off) this is
-        /// <see cref="DrawText"/> plus a region registration; a host that HAS opted in (web with a DOM
+        /// <see cref="DrawText(ReadOnlySpan{char}, string, float, float, float, float, float, RGBAColor32, TextAlign, TextAlign)"/> plus a region registration; a host that HAS opted in (web with a DOM
         /// text layer) gets the region ONLY and paints a real, selectable DOM node over the rect itself.
         /// <para>
         /// Takes an immutable <see cref="string"/> (not a <c>ReadOnlySpan&lt;char&gt;</c>) on purpose: the
@@ -1980,7 +1980,7 @@ namespace DIR.Lib
         /// <para>
         /// Use for stable, read-only text worth selecting/copying -- info panels, detail readouts. Do NOT
         /// use for high-churn scene labels (sky-map star/constellation names reflow every pan frame); those
-        /// stay on <see cref="DrawText"/> so they never spill into the host's DOM/selection layer.
+        /// stay on <see cref="DrawText(ReadOnlySpan{char}, string, float, float, float, float, float, RGBAColor32, TextAlign, TextAlign)"/> so they never spill into the host's DOM/selection layer.
         /// </para>
         /// <para>
         /// Pass <paramref name="href"/> to mark the run as a hyperlink (see

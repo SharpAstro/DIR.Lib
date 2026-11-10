@@ -174,7 +174,7 @@ namespace DIR.Lib
 
         /// <summary>
         /// Where the panel was last ARRANGED, in surface units. The consumer writes this after each
-        /// arrange (see <see cref="NoteArranged"/>); the palette needs it to know whether the pointer
+        /// arrange (see <see cref="NoteArranged(RectF32, float, DesignScale)"/>); the palette needs it to know whether the pointer
         /// is over the panel, which is what holds the fade open.
         /// </summary>
         public RectF32 PanelRect { get; private set; }
@@ -384,7 +384,7 @@ namespace DIR.Lib
         /// <para>
         /// Deliberately unclamped: <c>Anchored</c> clamps the arranged panel, which is the one place
         /// that knows both its measured height and the rect it floats in, and
-        /// <see cref="NoteArranged"/> feeds that answer straight back.
+        /// <see cref="NoteArranged(RectF32, float, DesignScale)"/> feeds that answer straight back.
         /// </para>
         /// </summary>
         public bool DragTo(float pointerY, DesignScale scale)
@@ -508,7 +508,7 @@ namespace DIR.Lib
         /// <summary>
         /// The offset that reproduces where a panel was ACTUALLY drawn, from its arranged top and the
         /// top of the rect it floats in, in design units. See
-        /// <see cref="FloatingPaletteState.NoteArranged"/> for why a consumer owes this every frame.
+        /// <see cref="FloatingPaletteState.NoteArranged(RectF32, float, DesignScale)"/> for why a consumer owes this every frame.
         /// </summary>
         public static float DrawnOffset(float panelTop, float contentTop, DesignScale scale)
             => scale.OrOne().ToDesignY(panelTop - contentTop);
@@ -590,7 +590,7 @@ namespace DIR.Lib
         /// <param name="onGripPress">
         /// Invoked when the grip is pressed. A press, not a release: a host dispatches a widget's
         /// clickable regions from its mouse-DOWN handler, so this is where a drag can begin at all.
-        /// Route it to <see cref="FloatingPaletteState.PressGrip"/>.
+        /// Route it to <see cref="FloatingPaletteState.PressGrip(float)"/>.
         /// </param>
         /// <param name="panelWidth">Panel width, design units.</param>
         /// <param name="side">Edge to pin to, or null to take the state's own <see cref="FloatingPaletteState.Side"/> — which is what a palette the reader can re-dock needs.</param>

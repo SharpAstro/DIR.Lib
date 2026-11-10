@@ -108,7 +108,7 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
     /// <remarks>
     /// This is no longer how a host draws a tooltip for <see cref="TabItem{T}.Tooltip"/>: each tab DECLARES its
     /// tooltip on its region, opening away from the strip, and the host paints the router's
-    /// <see cref="InputRouter.Tooltip"/> with <see cref="Layout.Builder.Tooltip"/>, over the whole window and
+    /// <see cref="InputRouter.Tooltip"/> with <see cref="Layout.Builder.Tooltip(TooltipRequest, Layout.TooltipStyle)"/>, over the whole window and
     /// after everything else. The bar still draws none itself, for the reason it never did: a tooltip is
     /// painted outside the strip, over whatever content is adjacent to it, and a widget that clips to its own
     /// bounds cannot put it there.
@@ -444,7 +444,7 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
 
     /// <summary>
     /// A title's drawn width, through whatever fallback the window set — the same split
-    /// <see cref="PixelWidgetBase{TSurface}.DrawText"/> will draw it with, so a tab is sized for the runs
+    /// <see cref="PixelWidgetBase{TSurface}.DrawText(ReadOnlySpan{char}, string, float, float, float, float, float, RGBAColor32, TextAlign, TextAlign)"/> will draw it with, so a tab is sized for the runs
     /// that land in it. Zero on an unresolved font, which lays every tab out at
     /// <see cref="MinTabW"/> rather than throwing (the widget's documented empty-font contract).
     /// </summary>
@@ -488,7 +488,7 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
     /// </summary>
     /// <param name="items">The list that was rendered — the same one, in the same order.</param>
     /// <remarks>
-    /// The items come back in rather than being remembered from <see cref="Render{T}"/> because the bar is
+    /// The items come back in rather than being remembered from <see cref="Render{T}(float, float, IReadOnlyList{TabItem{T}}, T)"/> because the bar is
     /// generic over its SURFACE, not over the item type: holding the last list would mean storing it as
     /// <c>object</c> and casting on the way out, which turns a caller passing the wrong list from a
     /// compile error into a runtime one. A host builds this list per frame anyway.

@@ -73,7 +73,7 @@ public sealed class ListCursor
     /// <remarks>
     /// It exists for the same reason <see cref="RowCount"/> does: once a step can land on a row the last
     /// paint did not draw, something has to bring that row into view, and the cursor is the only thing
-    /// that knows the step happened. Not raised by <see cref="Open"/> or <see cref="Close"/>, which place
+    /// that knows the step happened. Not raised by <see cref="Open(string, int)"/> or <see cref="Close"/>, which place
     /// the cursor rather than moving it -- a list opening at its current selection has not scrolled.
     /// </remarks>
     public event Action<int>? Moved;

@@ -20,7 +20,7 @@ public readonly record struct TooltipRequest(string Text, RectF32 Anchor)
     /// <summary>
     /// Which side of <see cref="Anchor"/> the tooltip opens on: the region's
     /// <see cref="ClickableRegion.TooltipSide"/>, and below it where the region names none.
-    /// <see cref="Layout.Builder.Tooltip"/> places it there.
+    /// <see cref="Layout.Builder.Tooltip(TooltipRequest, Layout.TooltipStyle)"/> places it there.
     /// </summary>
     public Layout.DockSide Side { get; init; } = Layout.DockSide.Bottom;
 }

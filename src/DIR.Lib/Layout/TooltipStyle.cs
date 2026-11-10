@@ -1,7 +1,7 @@
 namespace DIR.Lib.Layout;
 
 /// <summary>
-/// How a host's tooltips look, for <see cref="Builder.Tooltip"/>. Stated once per window, so every tooltip
+/// How a host's tooltips look, for <see cref="Builder.Tooltip(TooltipRequest, TooltipStyle)"/>. Stated once per window, so every tooltip
 /// in it is one decision rather than a box measured and coloured at each place that wanted one.
 /// </summary>
 /// <param name="Background">The box's fill.</param>

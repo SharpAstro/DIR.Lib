@@ -6,7 +6,7 @@ namespace DIR.Lib.MathLayout;
 /// A vertically-stretchy delimiter box backed by the loaded font's OpenType
 /// MATH table — the same recipe TeX/MathML engines use to render scalable
 /// parens, brackets, braces, radicals, and other delimiters at any required
-/// height. Wraps <see cref="ManagedFontRasterizer.RasterizeStretchyVertical"/>:
+/// height. Wraps <see cref="ManagedFontRasterizer.RasterizeStretchyVertical(string, float, Rune, float)"/>:
 /// at construction time the bitmap is composed (variant or assembly), then
 /// <see cref="Draw"/> blits the cached bitmap with the box's foreground tint.
 ///

@@ -39,7 +39,7 @@ public static class IconBaker
     /// </remarks>
     public const int DefaultAlphaLevels = 4;
 
-    /// <summary>How many times <see cref="Bake"/> may shrink its request to fit the mask square.</summary>
+    /// <summary>How many times <see cref="Bake(ManagedFontRasterizer, string, Rune, int, int)"/> may shrink its request to fit the mask square.</summary>
     /// <remarks>
     /// A backstop on the fit loop, not a tuning dial: each pass multiplies the request by the overflow
     /// ratio, so it decreases monotonically and converges in one or two passes for a real face. The cap

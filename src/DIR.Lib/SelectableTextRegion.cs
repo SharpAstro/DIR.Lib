@@ -2,7 +2,7 @@ namespace DIR.Lib
 {
     /// <summary>
     /// A run of selectable text registered during a render pass via
-    /// <see cref="PixelWidgetBase{TSurface}.DrawSelectableText"/>. Backends interpret it differently:
+    /// <see cref="PixelWidgetBase{TSurface}.DrawSelectableText(string, string, float, float, float, float, float, RGBAColor32, TextAlign, TextAlign, string?)"/>. Backends interpret it differently:
     /// a DOM host (web) overlays a real, selectable <c>&lt;span&gt;</c> over the rect; a terminal host can
     /// register it for native drag-select / OSC-52 yank; a GPU host that rasters its own glyphs (the
     /// default) may simply ignore it.
@@ -19,7 +19,7 @@ namespace DIR.Lib
     /// </para>
     /// <para>
     /// Two things set it. An immediate-mode widget passes <c>href:</c> to
-    /// <see cref="PixelWidgetBase{TSurface}.DrawSelectableText"/>. A LAYOUT TREE states a
+    /// <see cref="PixelWidgetBase{TSurface}.DrawSelectableText(string, string, float, float, float, float, float, RGBAColor32, TextAlign, TextAlign, string?)"/>. A LAYOUT TREE states a
     /// <see cref="HitResult.LinkHit"/> on the node instead, and <c>PaintLayout</c> routes the text under it
     /// through this same region (7.7+) -- which is what lets one authored tree be a real anchor on the web
     /// and a real OSC 8 hyperlink on a terminal. Only LINKED layout text takes that route; ordinary layout

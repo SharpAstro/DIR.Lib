@@ -16,7 +16,7 @@ namespace DIR.Lib;
 /// <b><see cref="Icon"/> is a string, not a mark named by meaning.</b> That looks like the wrong choice
 /// next to <see cref="Layout.Content.Icon"/>, whose whole argument is that a symbol character is
 /// unreliable on a pixel surface — but the reason it is unreliable is coverage, and
-/// <see cref="PixelWidgetBase{TSurface}.DrawText"/> already resolves that: it splits a run by coverage
+/// <see cref="PixelWidgetBase{TSurface}.DrawText(ReadOnlySpan{char}, string, float, float, float, float, float, RGBAColor32, TextAlign, TextAlign)"/> already resolves that: it splits a run by coverage
 /// through the widget's <see cref="PixelWidgetBase{TSurface}.FontFallback"/>, and routes
 /// supplementary-plane codepoints to <see cref="PixelWidgetBase{TSurface}.EmojiFontPath"/> even without
 /// one. A pictograph tab icon is therefore already drawable, and a mark built from rectangles could not

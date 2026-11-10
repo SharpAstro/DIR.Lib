@@ -59,7 +59,7 @@ public interface ITextShaper
 /// order, clusters 1:1 with the runes, and — unless <see cref="AppliesKerning"/> — zero
 /// positioning adjustments. This makes <see cref="Renderer{TSurface}.DrawText"/> /
 /// <see cref="Renderer{TSurface}.MeasureText"/> byte-identical to the pre-seam per-rune loops:
-/// the runes come from <see cref="MemoryExtensions.EnumerateRunes"/> (same source, same order,
+/// the runes come from <see cref="MemoryExtensions.EnumerateRunes(ReadOnlySpan{char})"/> (same source, same order,
 /// same U+FFFD substitution for ill-formed input), and the renderer still sources every advance
 /// and bearing from its own glyph cache.
 ///

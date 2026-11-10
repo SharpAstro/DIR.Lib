@@ -700,7 +700,7 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
     /// Draws a connected sequence of line segments through <paramref name="points"/>.
     /// Equivalent to calling <see cref="DrawLine"/> for each consecutive pair.
     /// No special join handling — for thick strokes corners can show small gaps;
-    /// callers needing rounded joins can stamp a small <see cref="FillEllipse"/>
+    /// callers needing rounded joins can stamp a small <see cref="FillEllipse(in RectInt, RGBAColor32)"/>
     /// at each interior vertex. GPU renderers should override with a batched
     /// rotated-quad implementation.
     /// </summary>
@@ -758,7 +758,7 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
     /// <summary>
     /// Set by a HOST that renders selectable text natively -- e.g. a web host overlaying real DOM
     /// <c>&lt;span&gt;</c>s over the canvas. When true,
-    /// <see cref="PixelWidgetBase{TSurface}.DrawSelectableText"/> registers the selectable region but
+    /// <see cref="PixelWidgetBase{TSurface}.DrawSelectableText(string, string, float, float, float, float, float, RGBAColor32, TextAlign, TextAlign, string?)"/> registers the selectable region but
     /// skips the glyph raster, so the host's native text is the only copy on screen (no double-draw).
     /// Deliberately a host choice rather than a backend override: the same web renderer serves consumers
     /// with and without a DOM text layer, and an un-migrated host must keep getting rastered text.
