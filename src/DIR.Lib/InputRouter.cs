@@ -280,6 +280,17 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         }
 
         var widgets = Widgets();
+
+        // A text selection drag in flight keeps the I-beam wherever the pointer goes, over a region that states a cursor too:
+        // tested before the region loop, as _capture is, so the drag does not flicker to the cursor of whatever it crosses.
+        for (var i = widgets.Count - 1; i >= 0; i--)
+        {
+            if (widgets[i] is ITextSelectionHost { SelectionEnabled: true, SelectionDragging: true })
+            {
+                return CursorKind.Text;
+            }
+        }
+
         for (var i = widgets.Count - 1; i >= 0; i--)
         {
             if (widgets[i].HitTestCursor(x, y) is { } cursor)
@@ -288,13 +299,13 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             }
         }
 
-        // Selectable text, or the space just beside it on its line, where a press starts a selection: the I-beam, as over a field.
-        // A drag already selecting keeps it wherever the pointer goes. Nothing that acts on a press may be under the point
-        // (the same test the press makes), so a button laid over text keeps its own cursor.
+        // At rest, selectable text or the space just beside it on its line, where a press starts a selection: the I-beam, as over a
+        // field. A region that states a cursor keeps it (HitTestCursor's topmost-wins contract), and nothing that acts on a press
+        // may be under the point (the same test the press makes), so a button laid over text keeps its own cursor.
         for (var i = widgets.Count - 1; i >= 0; i--)
         {
             if (widgets[i] is ITextSelectionHost { SelectionEnabled: true } host
-                && (host.SelectionDragging || (host.SelectionStartsAt(x, y) && SelectionInert(widgets, x, y))))
+                && host.SelectionStartsAt(x, y) && SelectionInert(widgets, x, y))
             {
                 return CursorKind.Text;
             }
