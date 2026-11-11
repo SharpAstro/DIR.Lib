@@ -480,6 +480,46 @@ public class LayoutDataViewsTests
         ShouldStayOnThePage(widget, columns, width);
     }
 
+    // The pin lifecycle: a capped star an earlier drag widened stays pinned when a later press narrows it, so the
+    // second drag follows the pointer too. Both orders: widen then narrow, narrow then widen.
+    [Theory]
+    [InlineData(250f, 1, 20f, -4f)]
+    [InlineData(250f, 2, 20f, -4f)]
+    [InlineData(250f, 3, 20f, -4f)]
+    [InlineData(250f, 2, 6f, -4f)]
+    [InlineData(300f, 1, 20f, -4f)]
+    [InlineData(300f, 2, 20f, -4f)]
+    [InlineData(300f, 3, 20f, -4f)]
+    [InlineData(300f, 2, 6f, -4f)]
+    [InlineData(250f, 1, -20f, 4f)]
+    [InlineData(250f, 2, -20f, 4f)]
+    [InlineData(250f, 3, -20f, 4f)]
+    [InlineData(300f, 1, -20f, 4f)]
+    [InlineData(300f, 2, -20f, 4f)]
+    [InlineData(300f, 3, -20f, 4f)]
+    public void ASecondDragOfTheSameDividerFollowsThePointer_WhenTheTableIsNarrowerThanTheCaps(
+        float width, int divider, float first, float second)
+    {
+        var columns = SlackFirst;
+        var widget = Widget((uint)width);
+        var widths = new TableColumnWidths();
+        PaintResizable(widget, widths, columns, width: width);
+        var name = "table-header:divider:" + divider;
+
+        var capture = Grab(widget, name, out var x);
+        DragTo(capture, x + first);
+        PaintResizable(widget, widths, columns, width: width);
+        var afterFirst = Named(widget, name).X;
+
+        capture = Grab(widget, name, out x);
+        DragTo(capture, x + second);
+        PaintResizable(widget, widths, columns, width: width);
+
+        Named(widget, name).X.ShouldBe(afterFirst + second, 0.01f, $"{width} wide, divider {divider}, {first} then {second}");
+        ShouldLineUp(widget, columns);
+        ShouldStayOnThePage(widget, columns, width);
+    }
+
     [Fact]
     public void SaveAndRestore_KeepAWidenedCappedStarWhereTheDragLeftIt_InANarrowTable()
     {
