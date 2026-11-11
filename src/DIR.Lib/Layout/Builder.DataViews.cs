@@ -161,9 +161,13 @@ public static partial class Builder
             if (i + 1 < columns.Length)
             {
                 var divider = i;
-                top.Add(Spacer().WFixed(style.Gap).HStar().Pressable(
-                    new HitResult.ButtonHit($"{hitPrefix}divider:{i}"), DividerPress(copy, widths, i, scaleOrOne),
-                    CursorKind.ResizeEW).DoubleClickable(_ => widths.Fit(copy, divider)));
+                // A divider that would resize nothing is a gap like any other: no grip, no resize cursor.
+                var gap = Spacer().WFixed(style.Gap).HStar();
+                top.Add(widths.CanDrag(columns, i)
+                    ? gap.Pressable(
+                        new HitResult.ButtonHit($"{hitPrefix}divider:{i}"), DividerPress(copy, widths, i, scaleOrOne),
+                        CursorKind.ResizeEW).DoubleClickable(_ => widths.Fit(copy, divider))
+                    : gap);
             }
         }
 

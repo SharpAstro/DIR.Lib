@@ -9,6 +9,24 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.57
+
+Additive, with one behaviour change in which column a table divider resizes. One new init-only property and two new methods; no
+record primary constructor changed.
+
+- **A table divider moves the edge it stands on.** Where exactly one column takes the slack (the only star with no cap), a
+  divider left of it resizes the column on its left and one right of it the column on its right, so the divider follows the
+  pointer. Before, a divider resized whichever neighbour was fixed: right of the slack column, with a capped star on its
+  right, that grew the left neighbour away from the pointer and the divider stood still. Two fixed neighbours still trade
+  width, and a table with no slack column or several behaves as before.
+- **A capped star column can be dragged**: the drag moves its cap (`Sizing.Max`), and `TableColumnWidths.SizingOf`, `Save` and
+  `Restore` carry it as they carry a fixed column's width.
+- **`TableColumnWidths.CanDrag(columns, divider)`** and **`TableColumnWidths.SlackColumn(columns)`**. A divider that would
+  resize nothing (between two slack stars, or one whose own column is the slack's neighbour that cannot be resized) is now
+  a plain gap in the header: no hit region, no resize cursor.
+- **`TableColumn.MaxWidth`**: the widest a drag makes the column, for a consumer that drops a column once it cannot have its
+  width.
+
 ## 11.56
 
 Additive. The I-beam shows where a press starts a text selection, and a press reaches further beside the text. A new default

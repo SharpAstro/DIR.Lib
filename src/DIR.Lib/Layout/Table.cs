@@ -31,18 +31,33 @@ public readonly record struct TableColumn(string Header, Sizing Width, TextAlign
     /// <see cref="TableColumnWidths.DefaultMinWidth"/>. Init-only rather than a constructor parameter, so the
     /// primary constructor every compiled caller binds to is unchanged.</summary>
     public float? MinWidth { get; init; }
+
+    /// <summary>The widest this column may be dragged to, design units, or null for no limit. A consumer that
+    /// drops a column once it cannot have its width states here what the page has for it, so a drag never
+    /// takes the column, and the divider with it, off the page.</summary>
+    public float? MaxWidth { get; init; }
 }
 
 /// <summary>
-/// The widths of a table's <see cref="Sizing.Fixed"/> columns once a reader has dragged them: consumer-owned
+/// The widths of a table's columns once a reader has dragged them (a <see cref="Sizing.Fixed"/> column's width,
+/// a capped <see cref="Sizing.Star"/> column's cap): consumer-owned
 /// state, like <see cref="TableSort"/>, handed to BOTH <see cref="Builder.TableHeader(ReadOnlySpan{TableColumn}, TableSort?, Action{TableSort}?, in TableStyle, TableColumnWidths, DesignScale, float, string)"/>
 /// and <see cref="Builder.TableRow(ReadOnlySpan{TableColumn}, ReadOnlySpan{Node}, in TableStyle, TableColumnWidths)"/>
 /// so a title and its values read the same number and cannot drift.
 /// </summary>
 /// <remarks>
 /// A column nobody has dragged keeps the <see cref="Sizing"/> its <see cref="TableColumn"/> declares, so an
-/// untouched object lays a table out exactly as one built without it. A <see cref="Sizing.Star"/> column is
-/// never overridden: it stays the one that takes the slack, and a drag beside it resizes only the fixed side.
+/// untouched object lays a table out exactly as one built without it. A <see cref="Sizing.Star"/> column with
+/// no cap is never overridden: it stays the one that takes the slack. A star with a cap (its
+/// <see cref="Sizing.Max"/>) is as wide as its cap while the table has the room, so a drag moves the cap.
+/// <para>
+/// <b>A divider moves the edge it stands on.</b> Where exactly one column takes the slack, every column left
+/// of it keeps its left edge and every column right of it keeps its right edge, so the divider follows the
+/// pointer only when the column on the slack's far side of it is the one resized: the column on its left when
+/// the divider is left of the slack column, the column on its right otherwise. Resizing the other neighbour
+/// would move that column's far edge and leave the divider standing under the pointer. A divider whose column
+/// cannot be resized offers no grip (<see cref="CanDrag"/>).
+/// </para>
 /// </remarks>
 public sealed class TableColumnWidths
 {
@@ -96,13 +111,95 @@ public sealed class TableColumnWidths
     public float MinWidthOf(in TableColumn spec) => Math.Max(0f, spec.MinWidth ?? DefaultMinWidth);
 
     /// <summary>
-    /// How column <paramref name="index"/> is sized: its declared <see cref="TableColumn.Width"/>, unless it is a
-    /// fixed column that has been dragged, in which case the dragged width, held at or above its minimum.
+    /// How column <paramref name="index"/> is sized: its declared <see cref="TableColumn.Width"/>, unless it has
+    /// been dragged. A dragged fixed column has the dragged width, held at or above its minimum; a dragged
+    /// capped star keeps its weight and has the dragged width as its cap.
     /// </summary>
     public Sizing SizingOf(int index, in TableColumn spec)
-        => spec.Width.IsFixed && (uint)index < (uint)_overrides.Length && _overrides[index] is { } w
-            ? Sizing.Fixed(Math.Max(w, Math.Min(MinWidthOf(spec), spec.Width.Value)))
-            : spec.Width;
+    {
+        if ((uint)index >= (uint)_overrides.Length || _overrides[index] is not { } w)
+        {
+            return spec.Width;
+        }
+
+        if (spec.Width.IsFixed)
+        {
+            return Sizing.Fixed(Math.Max(w, Math.Min(MinWidthOf(spec), spec.Width.Value)));
+        }
+
+        if (IsCapped(spec.Width))
+        {
+            var cap = Math.Max(w, Math.Min(MinWidthOf(spec), spec.Width.Max));
+            return Sizing.Star(spec.Width.Value, Math.Min(spec.Width.Min, cap), cap);
+        }
+
+        return spec.Width;
+    }
+
+    // A star with a cap: as wide as the cap while the table has the room, so the cap is what a drag moves.
+    private static bool IsCapped(Sizing sizing) => sizing.IsStar && sizing.Max > 0f;
+
+    // The width a drag starts from: a fixed column's width, a capped star's cap, null for the star that takes the slack.
+    private static float? DraggedFrom(Sizing sizing) => sizing.IsFixed ? sizing.Value : IsCapped(sizing) ? sizing.Max : null;
+
+    /// <summary>
+    /// The one column that takes the table's slack (the only star with no cap), or -1 when none or several do.
+    /// </summary>
+    public static int SlackColumn(ReadOnlySpan<TableColumn> columns)
+    {
+        var slack = -1;
+        for (var i = 0; i < columns.Length; i++)
+        {
+            if (columns[i].Width.IsStar && columns[i].Width.Max <= 0f)
+            {
+                if (slack >= 0)
+                {
+                    return -1;
+                }
+
+                slack = i;
+            }
+        }
+
+        return slack;
+    }
+
+    /// <summary>
+    /// Whether a drag of the divider after column <paramref name="divider"/> resizes anything: false for a divider
+    /// between two stars that take the slack, and for one whose own column (see the class remarks) cannot be
+    /// resized. The header gives such a divider no grip and no resize cursor.
+    /// </summary>
+    public bool CanDrag(ReadOnlySpan<TableColumn> columns, int divider)
+    {
+        var (left, right) = Sides(columns, divider);
+        return left is not null || right is not null;
+    }
+
+    // The width each side of the divider is dragged from; null for a side the drag leaves alone.
+    private (float? Left, float? Right) Sides(ReadOnlySpan<TableColumn> columns, int divider)
+    {
+        if (divider < 0 || divider + 1 >= columns.Length)
+        {
+            return (null, null);
+        }
+
+        var leftSizing = SizingOf(divider, columns[divider]);
+        var rightSizing = SizingOf(divider + 1, columns[divider + 1]);
+        var slack = SlackColumn(columns);
+        if (slack < 0)
+        {
+            // No one column takes the slack, so no edge is known to stand still: the fixed sides move, as ever.
+            return (leftSizing.IsFixed ? leftSizing.Value : null, rightSizing.IsFixed ? rightSizing.Value : null);
+        }
+
+        // Two fixed neighbours trade width across the divider, which follows the pointer on either side of the slack.
+        if (leftSizing.IsFixed && rightSizing.IsFixed)
+        {
+            return (leftSizing.Value, rightSizing.Value);
+        }
+
+        return divider < slack ? (DraggedFrom(leftSizing), null) : (null, DraggedFrom(rightSizing));
+    }
 
     /// <summary>
     /// The pure resize rule. Dragging the divider between a left and a right column by
@@ -137,7 +234,8 @@ public sealed class TableColumnWidths
     /// <summary>
     /// Begins a drag of the divider after column <paramref name="divider"/>: remembers the widths NOW, so every
     /// move is measured from the press and a pointer that wanders back lands where it started instead of
-    /// accumulating. Null when <paramref name="divider"/> has no column on one side.
+    /// accumulating. Null when <paramref name="divider"/> has no column on one side. Which side it resizes is
+    /// the class remarks' rule: the column whose edge the divider is.
     /// </summary>
     public ResizeGesture? Begin(ReadOnlySpan<TableColumn> columns, int divider)
     {
@@ -148,11 +246,9 @@ public sealed class TableColumnWidths
 
         var left = columns[divider];
         var right = columns[divider + 1];
-        var leftSizing = SizingOf(divider, left);
-        var rightSizing = SizingOf(divider + 1, right);
-        return new ResizeGesture(this, divider,
-            leftSizing.IsFixed ? leftSizing.Value : null, rightSizing.IsFixed ? rightSizing.Value : null,
-            MinWidthOf(left), MinWidthOf(right));
+        var (leftStart, rightStart) = Sides(columns, divider);
+        return new ResizeGesture(this, divider, leftStart, rightStart, MinWidthOf(left), MinWidthOf(right),
+            left.MaxWidth, right.MaxWidth);
     }
 
     /// <summary>A divider drag in progress; <see cref="Apply"/> may be called on every move.</summary>
@@ -162,9 +258,10 @@ public sealed class TableColumnWidths
         private readonly int _divider;
         private readonly float? _leftStart, _rightStart;
         private readonly float _leftMin, _rightMin;
+        private readonly float? _leftMax, _rightMax;
 
         internal ResizeGesture(TableColumnWidths owner, int divider, float? leftStart, float? rightStart,
-            float leftMin, float rightMin)
+            float leftMin, float rightMin, float? leftMax, float? rightMax)
         {
             _owner = owner;
             _divider = divider;
@@ -172,11 +269,25 @@ public sealed class TableColumnWidths
             _rightStart = rightStart;
             _leftMin = leftMin;
             _rightMin = rightMin;
+            _leftMax = leftMax;
+            _rightMax = rightMax;
         }
 
         /// <summary>Sets the two widths to what <paramref name="delta"/> design units from the press makes of them.</summary>
         public void Apply(float delta)
         {
+            // A side that states a widest width grows no further: the delta stops there, so two fixed sides still
+            // trade the same amount. A column already past its widest is not pulled back by a drag that grows it.
+            if (_leftStart is { } l && _leftMax is { } leftMax)
+            {
+                delta = Math.Min(delta, Math.Max(0f, leftMax - l));
+            }
+
+            if (_rightStart is { } r && _rightMax is { } rightMax)
+            {
+                delta = Math.Max(delta, -Math.Max(0f, rightMax - r));
+            }
+
             var (left, right) = Resolve(_leftStart, _rightStart, _leftMin, _rightMin, delta);
             var changed = _owner.Set(_divider, left);
             changed |= _owner.Set(_divider + 1, right);
