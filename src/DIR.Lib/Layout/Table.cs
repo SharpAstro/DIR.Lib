@@ -392,10 +392,18 @@ public sealed class TableColumnWidths
     /// applies).
     /// </summary>
     /// <param name="Widths">Design units, by column index.</param>
-    public sealed record Saved(float?[] Widths);
+    public sealed record Saved(float?[] Widths)
+    {
+        /// <summary>
+        /// Which columns a drag widened past their start, by column index (null in a record saved before this
+        /// existed). A capped star pinned that way keeps its width in a table narrower than its caps, so a
+        /// restore needs it. Init-only, so the record's constructor and <c>Deconstruct</c> keep their arity.
+        /// </summary>
+        public bool[]? Pinned { get; init; }
+    }
 
     /// <summary>The widths as a <see cref="Saved"/> record; <see cref="Restore"/> is its inverse.</summary>
-    public Saved Save() => new((float?[])_overrides.Clone());
+    public Saved Save() => new((float?[])_overrides.Clone()) { Pinned = (bool[])_pinned.Clone() };
 
     /// <summary>
     /// Replaces the widths with <paramref name="saved"/>. Tolerant of a table whose columns changed since: entries
@@ -406,7 +414,7 @@ public sealed class TableColumnWidths
     {
         ArgumentNullException.ThrowIfNull(saved);
         _overrides = (float?[])saved.Widths.Clone();
-        _pinned = [];
+        _pinned = saved.Pinned is { } pinned ? (bool[])pinned.Clone() : [];
         Changed?.Invoke();
     }
 
