@@ -119,6 +119,8 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
     private static string MarkUnpaired(string s)
     {
         char[]? marked = null;
+        int steps = 0;   // characters visited by Walk and ScanLabels, published once at the end
+
         List<int>? textDollars = null;
         void Mark(int at, char standIn) => (marked ??= s.ToCharArray())[at] = standIn;
 
@@ -142,6 +144,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
             int i = 0, bound = s.Length;
             while (true)
             {
+                steps++;
                 if (i >= bound)
                 {
                     // A `[` that nothing closed is text. No pairing above
@@ -314,6 +317,7 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
             var starts = new List<int> { from };   // labels still open, innermost last
             for (int k = from; k < s.Length; k++)
             {
+                steps++;
                 switch (s[k])
                 {
                     case '\\':
@@ -372,8 +376,17 @@ public sealed class MarkdownInlineVisitor : MarkdownInline.IVisitor<object>
         }
 
         Walk();
+        LastPairingSteps = steps;
         return marked is null ? s : new string(marked);
     }
+
+    /// <summary>
+    /// How many characters the pairing pass of this thread's last <see cref="Parse"/> visited, counting
+    /// a character once per scan that reached it. A test reads it to hold the pass linear in the text,
+    /// a count no machine load can move where a timing could (it failed under a parallel suite).
+    /// </summary>
+    [ThreadStatic]
+    internal static int LastPairingSteps;
 
 
     /// <summary>End (exclusive) of the <c>$..$</c> span opening at
