@@ -36,6 +36,10 @@ public readonly record struct TableColumn(string Header, Sizing Width, TextAlign
     /// drops a column once it cannot have its width states here what the page has for it, so a drag never
     /// takes the column, and the divider with it, off the page.</summary>
     public float? MaxWidth { get; init; }
+
+    /// <summary>Whether a divider may resize this column. False for one whose width is not the reader's to
+    /// choose (a column of buttons): a divider that stands on its edge is then no grip.</summary>
+    public bool Resizable { get; init; } = true;
 }
 
 /// <summary>
@@ -140,7 +144,8 @@ public sealed class TableColumnWidths
     private static bool IsCapped(Sizing sizing) => sizing.IsStar && sizing.Max > 0f;
 
     // The width a drag starts from: a fixed column's width, a capped star's cap, null for the star that takes the slack.
-    private static float? DraggedFrom(Sizing sizing) => sizing.IsFixed ? sizing.Value : IsCapped(sizing) ? sizing.Max : null;
+    private static float? DraggedFrom(in TableColumn spec, Sizing sizing)
+        => !spec.Resizable ? null : sizing.IsFixed ? sizing.Value : IsCapped(sizing) ? sizing.Max : null;
 
     /// <summary>
     /// The one column that takes the table's slack (the only star with no cap), or -1 when none or several do.
@@ -185,20 +190,24 @@ public sealed class TableColumnWidths
 
         var leftSizing = SizingOf(divider, columns[divider]);
         var rightSizing = SizingOf(divider + 1, columns[divider + 1]);
+        var leftFixed = leftSizing.IsFixed && columns[divider].Resizable;
+        var rightFixed = rightSizing.IsFixed && columns[divider + 1].Resizable;
         var slack = SlackColumn(columns);
         if (slack < 0)
         {
             // No one column takes the slack, so no edge is known to stand still: the fixed sides move, as ever.
-            return (leftSizing.IsFixed ? leftSizing.Value : null, rightSizing.IsFixed ? rightSizing.Value : null);
+            return (leftFixed ? leftSizing.Value : null, rightFixed ? rightSizing.Value : null);
         }
 
         // Two fixed neighbours trade width across the divider, which follows the pointer on either side of the slack.
-        if (leftSizing.IsFixed && rightSizing.IsFixed)
+        if (leftFixed && rightFixed)
         {
             return (leftSizing.Value, rightSizing.Value);
         }
 
-        return divider < slack ? (DraggedFrom(leftSizing), null) : (null, DraggedFrom(rightSizing));
+        return divider < slack
+            ? (DraggedFrom(columns[divider], leftSizing), null)
+            : (null, DraggedFrom(columns[divider + 1], rightSizing));
     }
 
     /// <summary>

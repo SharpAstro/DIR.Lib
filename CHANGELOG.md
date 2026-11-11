@@ -26,6 +26,8 @@ record primary constructor changed.
   a plain gap in the header: no hit region, no resize cursor.
 - **`TableColumn.MaxWidth`**: the widest a drag makes the column, for a consumer that drops a column once it cannot have its
   width.
+- **`TableColumn.Resizable`** (default true): false for a column whose width is not the reader's to choose, such as a column
+  of buttons. No divider resizes it.
 
 ## 11.56
 

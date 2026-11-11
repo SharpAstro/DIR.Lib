@@ -493,6 +493,21 @@ public class LayoutDataViewsTests
     }
 
     [Fact]
+    public void AColumnThatIsNotResizable_HasNoGripOnItsEdge()
+    {
+        var columns = new TableColumn[]
+        {
+            new("name", Sizing.Star()),
+            new("state", Sizing.Fixed(60f)),
+            new("", Sizing.Star(1f, 0f, 50f)) { Resizable = false },
+        };
+        var widths = new TableColumnWidths();
+
+        widths.CanDrag(columns, 0).ShouldBeTrue("state's left edge");
+        widths.CanDrag(columns, 1).ShouldBeFalse("the edge of the column that is not resizable");
+    }
+
+    [Fact]
     public void AColumnGrowsNoFurtherThanItsMaxWidth()
     {
         var columns = new TableColumn[]
