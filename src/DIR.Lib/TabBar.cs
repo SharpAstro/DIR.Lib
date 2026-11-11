@@ -31,7 +31,7 @@ public static class TabBarRegions
 
 /// <summary>
 /// Reusable tab strip: one tab per item, an active highlight + accent, a close button per tab,
-/// ellipsis truncation, hover feedback (give it <see cref="Pointer"/>), and drag-to-reorder
+/// ellipsis truncation, hover feedback (give it <see cref="PixelWidgetBase{TSurface}.Pointer"/>), and drag-to-reorder
 /// hit-testing. Backend-agnostic — it draws through its <see cref="Renderer{TSurface}"/> and is told the
 /// model (the tabs + which one is active) each frame; the host maps the returned <see cref="TabClick"/> /
 /// <see cref="SlotAt"/> to its own actions.
@@ -141,7 +141,7 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
 
     /// <summary>Whether the pointer is over the +, set by the host, which is what owns the mouse
     /// position. Affects only its plate, so leaving it false just means no hover feedback.
-    /// <para>Superseded by <see cref="Pointer"/>, which covers the tabs as well; the two OR together,
+    /// <para>Superseded by <see cref="PixelWidgetBase{TSurface}.Pointer"/>, which covers the tabs as well; the two OR together,
     /// so a host that already sets this keeps working.</para></summary>
     public bool NewTabHovered { get; set; }
 

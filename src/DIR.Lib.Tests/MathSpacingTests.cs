@@ -659,7 +659,7 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
         var parser = Latex.BuildParser(new LatexUnicodeVisitor());
         using var lexer = BytesLexer.FromString(latex, Latex.BuildLexer());
         using var tokens = new SyncLATokenIterator(lexer);
-        var item = parser.ParseInput(tokens, debugger: null);
+        var item = parser.ParseInput(tokens, debugger: null, cancellationToken: TestContext.Current.CancellationToken);
         item.IsError.ShouldBeFalse();
         item.Content.ShouldBeOfType<string>().ShouldBe(expected);
     }
@@ -681,7 +681,7 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
         var parser = Latex.BuildParser(new LatexUnicodeVisitor());
         using var lexer = BytesLexer.FromString(@"{\sin} x", Latex.BuildLexer());
         using var tokens = new NestingAtEnd(new SyncLATokenIterator(lexer), () => MarkdownMacros.RenderMathUnicode(@"\sin"));
-        var item = parser.ParseInput(tokens, debugger: null);
+        var item = parser.ParseInput(tokens, debugger: null, cancellationToken: TestContext.Current.CancellationToken);
         item.IsError.ShouldBeFalse();
         tokens.Nested.ShouldBe("sin", "the nested parse ran, mid-way through the outer one");
         item.Content.ShouldBeOfType<string>().ShouldBe("sinx");
@@ -763,7 +763,7 @@ public sealed class MathSpacingTests(ITestOutputHelper output)
         {
             using var lexer = BytesLexer.FromString(source, MarkdownMacros.MathLexerTable);
             using var tokens = new SyncLATokenIterator(lexer);
-            var item = parser.ParseInput(tokens, debugger: null);
+            var item = parser.ParseInput(tokens, debugger: null, cancellationToken: TestContext.Current.CancellationToken);
             return item.IsError || item.Content is not Func<BoxStyle, Box> builder ? null : builder(style);
         }
         catch (InvalidOperationException)

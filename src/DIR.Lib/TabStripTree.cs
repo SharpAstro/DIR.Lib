@@ -214,7 +214,7 @@ public static class TabStripTree
     /// <summary>
     /// Describes the strip. The caller arranges and paints the result.
     /// </summary>
-    /// <param name="source">The tabs, in order.</param>
+    /// <param name="items">The tabs, in order.</param>
     /// <param name="activeIndex">Index of the tab wearing the accent, or -1 for none.</param>
     /// <param name="pointerFlow">Where the pointer is along the flow axis, measured from the strip's own
     /// start, or null when it is outside the strip (or the surface has no pointer). The strip resolves
@@ -240,7 +240,7 @@ public static class TabStripTree
         => Build(new TabItemsSource<T>(items), activeIndex, pointerFlow, pointerCross, availableFlow,
             measureLabel, options, onSelect);
 
-    /// <inheritdoc cref="Build{T}(IReadOnlyList{TabItem{T}}, int, float?, float, Func{string, float}, TabStripOptions, Action{int}?)"/>
+    /// <inheritdoc cref="Build{T}(IReadOnlyList{TabItem{T}}, int, float?, float?, float, Func{string, float}, TabStripOptions, Action{int}?)"/>
     public static TabStrip Build<TSource>(
         TSource source,
         int activeIndex,
