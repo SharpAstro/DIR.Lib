@@ -305,7 +305,7 @@ public sealed class TableColumnWidths
                 return false;
             }
 
-            return w == start ? _owner.Reinstate(index, prior) : _owner.Set(index, w, w > start);
+            return w == start ? _owner.Reinstate(index, prior) : _owner.Set(index, w, w > start || prior.Pinned);
         }
 
         /// <summary>Sets the two widths to what <paramref name="delta"/> design units from the press makes of them.</summary>
