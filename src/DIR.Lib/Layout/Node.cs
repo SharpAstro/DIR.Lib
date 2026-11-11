@@ -370,6 +370,11 @@ public abstract partial record Node
     /// whatever encloses it. Bound to the rect the content was painted in, like <see cref="Hit"/>.</summary>
     public CursorKind? Cursor { get; init; }
 
+    /// <summary>Told this node's arranged WIDTH, in design units, every time the tree is arranged. It is how a
+    /// consumer whose gesture starts from what is DRAWN (a table's divider, beside a star squeezed below its cap)
+    /// learns it, since a press handler sees no layout. Called on the arranging thread: keep it to storing a number.</summary>
+    public Action<float>? OnArranged { get; init; }
+
     /// <summary>Collapse threshold in design units, honoured by a parent <see cref="Stack"/>: when this
     /// node's resolved main-axis extent lands below the threshold, the node drops out of the arrangement
     /// entirely (not painted, no hit region, no gap) and its space redistributes to the surviving

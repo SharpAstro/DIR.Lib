@@ -133,8 +133,14 @@ public sealed class TableColumnWidths
 
         if (IsCapped(spec.Width))
         {
-            var cap = Math.Max(w, Math.Min(MinWidthOf(spec), spec.Width.Max));
-            return Sizing.Star(spec.Width.Value, Math.Min(spec.Width.Min, cap), cap);
+            // Not forced up to the minimum: a star drawn below it (a table narrower than the caps) can be dragged
+            // no narrower, but a drag must never WIDEN it either.
+            // (A cap of 0 would mean "no cap", so it stays above it.)
+            var cap = Math.Max(w, 1f);
+            // A star a drag WIDENED is pinned at its width: left to take a share it would stay at the share of a
+            // narrow table, and the divider would lag the pointer.
+            var floor = index < _pinned.Length && _pinned[index] ? cap : Math.Min(spec.Width.Min, cap);
+            return Sizing.Star(spec.Width.Value, floor, cap);
         }
 
         return spec.Width;
@@ -143,9 +149,42 @@ public sealed class TableColumnWidths
     // A star with a cap: as wide as the cap while the table has the room, so the cap is what a drag moves.
     private static bool IsCapped(Sizing sizing) => sizing.IsStar && sizing.Max > 0f;
 
-    // The width a drag starts from: a fixed column's width, a capped star's cap, null for the star that takes the slack.
-    private static float? DraggedFrom(in TableColumn spec, Sizing sizing)
-        => !spec.Resizable ? null : sizing.IsFixed ? sizing.Value : IsCapped(sizing) ? sizing.Max : null;
+    private bool[] _pinned = [];
+    private float[] _drawn = [];
+
+    /// <summary>Records how wide column <paramref name="index"/> was last drawn, design units. The header's
+    /// grip row reports it on every arrange, so a drag of a capped star starts from what is drawn.</summary>
+    internal void NoteDrawn(int index, float width)
+    {
+        if (index >= _drawn.Length)
+        {
+            Array.Resize(ref _drawn, index + 1);
+        }
+
+        _drawn[index] = width;
+    }
+
+    // The width a drag starts from: a fixed column's width, a capped star's drawn width (its cap while the table has
+    // the room for it, less when the table is narrower than the caps), null for the star that takes the slack.
+    private float? DraggedFrom(int index, in TableColumn spec, Sizing sizing)
+    {
+        if (!spec.Resizable)
+        {
+            return null;
+        }
+
+        if (sizing.IsFixed)
+        {
+            return sizing.Value;
+        }
+
+        if (!IsCapped(sizing))
+        {
+            return null;
+        }
+
+        return index < _drawn.Length && _drawn[index] > 0f ? Math.Min(sizing.Max, _drawn[index]) : sizing.Max;
+    }
 
     /// <summary>
     /// Whether a drag of the divider after column <paramref name="divider"/> resizes anything: false between two
@@ -168,8 +207,8 @@ public sealed class TableColumnWidths
 
         var leftSizing = SizingOf(divider, columns[divider]);
         var rightSizing = SizingOf(divider + 1, columns[divider + 1]);
-        var left = DraggedFrom(columns[divider], leftSizing);
-        var right = DraggedFrom(columns[divider + 1], rightSizing);
+        var left = DraggedFrom(divider, columns[divider], leftSizing);
+        var right = DraggedFrom(divider + 1, columns[divider + 1], rightSizing);
         if (left is not null && right is not null)
         {
             return (left, right);
@@ -253,6 +292,20 @@ public sealed class TableColumnWidths
             _rightMin = rightMin;
             _leftMax = leftMax;
             _rightMax = rightMax;
+            _leftPrior = owner.Prior(divider);
+            _rightPrior = owner.Prior(divider + 1);
+        }
+
+        private readonly (float? Width, bool Pinned) _leftPrior, _rightPrior;
+
+        private bool Put(int index, float? width, float? start, (float? Width, bool Pinned) prior)
+        {
+            if (width is not { } w)
+            {
+                return false;
+            }
+
+            return w == start ? _owner.Reinstate(index, prior) : _owner.Set(index, w, w > start);
         }
 
         /// <summary>Sets the two widths to what <paramref name="delta"/> design units from the press makes of them.</summary>
@@ -271,8 +324,11 @@ public sealed class TableColumnWidths
             }
 
             var (left, right) = Resolve(_leftStart, _rightStart, _leftMin, _rightMin, delta);
-            var changed = _owner.Set(_divider, left);
-            changed |= _owner.Set(_divider + 1, right);
+            // A side whose width did not change is left as it is: writing its drawn width would cap a star at
+            // what a narrow table happened to give it.
+            // Back at the start, it is as it was before the press.
+            var changed = Put(_divider, left, _leftStart, _leftPrior);
+            changed |= Put(_divider + 1, right, _rightStart, _rightPrior);
             if (changed)
             {
                 _owner.Changed?.Invoke();
@@ -280,7 +336,34 @@ public sealed class TableColumnWidths
         }
     }
 
-    private bool Set(int index, float? width)
+    private (float? Width, bool Pinned) Prior(int index)
+        => (index < _overrides.Length ? _overrides[index] : null, index < _pinned.Length && _pinned[index]);
+
+    private bool Reinstate(int index, (float? Width, bool Pinned) prior)
+    {
+        if (index >= _overrides.Length)
+        {
+            if (prior.Width is null)
+            {
+                return false;
+            }
+
+            Array.Resize(ref _overrides, index + 1);
+        }
+
+        if (index >= _pinned.Length)
+        {
+            Array.Resize(ref _pinned, index + 1);
+        }
+
+        var changed = _overrides[index] != prior.Width || _pinned[index] != prior.Pinned;
+        _overrides[index] = prior.Width;
+        _pinned[index] = prior.Pinned;
+        return changed;
+    }
+
+    // widened: the drag made the column wider than it started, which pins a capped star there (SizingOf).
+    private bool Set(int index, float? width, bool widened = false)
     {
         if (width is not { } w)
         {
@@ -292,13 +375,15 @@ public sealed class TableColumnWidths
             Array.Resize(ref _overrides, index + 1);
         }
 
-        if (_overrides[index] == w)
+        if (index >= _pinned.Length)
         {
-            return false;
+            Array.Resize(ref _pinned, index + 1);
         }
 
+        var changed = _overrides[index] != w || _pinned[index] != widened;
         _overrides[index] = w;
-        return true;
+        _pinned[index] = widened;
+        return changed;
     }
 
     /// <summary>
@@ -321,6 +406,7 @@ public sealed class TableColumnWidths
     {
         ArgumentNullException.ThrowIfNull(saved);
         _overrides = (float?[])saved.Widths.Clone();
+        _pinned = [];
         Changed?.Invoke();
     }
 

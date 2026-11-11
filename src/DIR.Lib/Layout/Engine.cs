@@ -184,6 +184,18 @@ public static class Engine
     {
         output.Add(new ArrangedNode<T>(node, rect) { Depth = depth });
 
+        if (node.OnArranged is { } arranged)
+        {
+            // Surface units per design unit, probed over a long run so a cell surface, which rounds a single
+            // design unit, still gives its true ratio.
+            const float probe = 4096f;
+            var perUnit = float.CreateSaturating(ctx.ToSurfaceX(probe)) / probe;
+            if (perUnit > 0f)
+            {
+                arranged(float.CreateSaturating(rect.Width) / perUnit);
+            }
+        }
+
         var inner = Inset(rect, ctx.ToSurfaceX(node.Padding), ctx.ToSurfaceY(node.PadDown));
         var childDepth = depth + 1;
         switch (node)

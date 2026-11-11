@@ -18,6 +18,14 @@ primary constructor changed.
   star) trade it across the divider between them. Before, only two fixed columns traded; beside a capped star the divider
   resized the fixed side alone, and where that column kept the edge under the pointer the divider stood still and the
   column's far edge moved. Beside the star that takes the slack only the other side is resized, as before.
+- **The trade is of what is drawn.** A capped star in a table narrower than the sum of the caps is drawn below its cap, so a
+  drag starts from the width it is drawn at, and the divider follows the pointer at any table width, until a column reaches its
+  minimum (a column drawn below its minimum is not forced up to it, and a drag never widens the column it narrows). A star a
+  drag widens is pinned at its width for the session. `Node.OnArranged` (new, init-only: told the node's arranged width in
+  design units) is how the header's grip row reports the drawn widths. A divider beside the slack star in so narrow a table
+  moves by the star's share, since the capped stars share the slack with it.
+- **No grip beside a `Sizing.Auto` column** either (it is neither a width of its own nor the slack): before, the fixed
+  neighbour was resized alone, which pushed the Auto column along. A drag there is no longer offered.
 - **A capped star column can be dragged**: the drag moves its cap (`Sizing.Max`), and `TableColumnWidths.SizingOf`, `Save` and
   `Restore` carry it as they carry a fixed column's width.
 - **`TableColumnWidths.CanDrag(columns, divider)`**. A divider that would resize nothing (between two slack stars, or beside a

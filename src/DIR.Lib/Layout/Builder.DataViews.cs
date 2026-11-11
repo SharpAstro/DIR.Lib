@@ -157,7 +157,13 @@ public static partial class Builder
         var top = new List<Node>(columns.Length * 2 - 1);
         for (var i = 0; i < columns.Length; i++)
         {
-            top.Add(Spacer() with { Width = widths.SizingOf(i, columns[i]), Height = Sizing.Star() });
+            var column = i;
+            top.Add(Spacer() with
+            {
+                Width = widths.SizingOf(i, columns[i]),
+                Height = Sizing.Star(),
+                OnArranged = w => widths.NoteDrawn(column, w),
+            });
             if (i + 1 < columns.Length)
             {
                 var divider = i;
