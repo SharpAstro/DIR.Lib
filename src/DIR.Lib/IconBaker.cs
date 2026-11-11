@@ -23,7 +23,7 @@ namespace DIR.Lib;
 /// Runtime callers should cache per (codepoint, size) -- rasterising is not free, and a mask is immutable
 /// and safe to share.</para>
 /// <para><b>Runs, not a bitmap.</b> A run is one horizontal span, so drawing is a loop of rectangle fills
-/// and needs no new primitive on a renderer -- the same reason <see cref="IconKind"/>'s pixel painter is
+/// and needs no new primitive on a renderer -- the same reason <see cref="Layout.IconKind"/>'s pixel painter is
 /// built from rectangles. It also stays tiny: a 20px mark is around a hundred runs.</para>
 /// <para><b>Reproducible.</b> <see cref="ManagedFontRasterizer"/> is pure managed (no FreeType, no
 /// DirectWrite), so given the same font file the same inputs produce byte-identical output on any host.

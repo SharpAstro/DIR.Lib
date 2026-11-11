@@ -745,7 +745,7 @@ namespace DIR.Lib
 
         /// <summary>
         /// Arranged-rect overload of
-        /// <see cref="RenderTextInput(TextInputState,int,int,int,int,string,float)"/> for layout-driven
+        /// <see cref="RenderTextInput(TextInputState,int,int,int,int,string,float,TextInputColors?,float,bool)"/> for layout-driven
         /// callers that hold a float <see cref="RectF32"/> (a Fill leaf's arranged bounds) rather than
         /// integer pixel positions. Rounds to whole pixels once here -- the text-input renderer is
         /// integer-grid (RectInt) internally -- so call sites stop repeating the four-way (int) cast.
@@ -1109,7 +1109,7 @@ namespace DIR.Lib
             };
 
         /// <summary>
-        /// <see cref="ArrangeLayout(Layout.Node, RectF32, string?, float?)"/> with an explicit measure
+        /// <see cref="ArrangeLayout(Layout.Node, RectF32, string?, DesignScale?)"/> with an explicit measure
         /// context — for a tree authored in another unit convention (e.g.
         /// <see cref="PixelMeasureContext{TSurface}.CellAuthored"/> for a cell-authored tree shared with a
         /// terminal). Pass the SAME context to <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, PixelMeasureContext{TSurface}, Action{Layout.Content.Fill, RectF32}?)"/>,
@@ -1131,7 +1131,7 @@ namespace DIR.Lib
             => PaintLayout(arranged, DefaultContext(fontPath, scale), drawFill);
 
         /// <summary>
-        /// <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, string?, float?, Action{Layout.Content.Fill, RectF32}?)"/>
+        /// <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, string?, DesignScale?, Action{Layout.Content.Fill, RectF32}?)"/>
         /// driven by the SAME measure context the tree was arranged with — the context is the one authority
         /// on font (<see cref="PixelMeasureContext{TSurface}.FontPath"/>), text scale
         /// (<see cref="PixelMeasureContext{TSurface}.FontScale"/>) and chrome scale, so a paint cannot use a
@@ -1619,7 +1619,7 @@ namespace DIR.Lib
             => RenderLayout(root, bounds, DefaultContext(fontPath, scale), drawFill);
 
         /// <summary>
-        /// <see cref="RenderLayout(Layout.Node, RectF32, string?, float?, Action{Layout.Content.Fill, RectF32}?)"/>
+        /// <see cref="RenderLayout(Layout.Node, RectF32, string?, DesignScale?, Action{Layout.Content.Fill, RectF32}?)"/>
         /// with an explicit measure context, threaded through BOTH halves — one object answers measure and
         /// paint, so the two cannot drift.
         /// </summary>

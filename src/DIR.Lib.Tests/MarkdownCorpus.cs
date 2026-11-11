@@ -11,7 +11,7 @@ namespace DIR.Lib.Tests;
 /// The markdown parse corpus, read from <c>Fixtures/MarkdownCorpus</c>: three real documents copied
 /// from SharpAstro/Console.Lib (its README and CHANGELOG, and mdcat's README) and one document per
 /// formula of Console.Lib's <c>MathCorpus</c> (<c>formulas.tsv</c>), each written inline in a sentence
-/// and as a <c>$$</c> display block. <see cref="MarkdownCorpusGoldenTests"/> pins the parsed AST of every
+/// and as a <c>$$</c> display block. <c>MarkdownCorpusGoldenTests</c> pins the parsed AST of every
 /// document, and the <c>MarkdownParse</c> benchmark times the same documents; the benchmark project
 /// compiles this file in by link, so the two read one corpus.
 /// </summary>

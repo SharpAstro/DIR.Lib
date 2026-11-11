@@ -1,7 +1,7 @@
 namespace DIR.Lib;
 
 /// <summary>
-/// Colour palette for <see cref="TabBar"/>. Defaults are the values the bar has always drawn, so a
+/// Colour palette for <see cref="TabBar{TSurface}"/>. Defaults are the values the bar has always drawn, so a
 /// consumer that sets nothing looks exactly as before.
 /// </summary>
 /// <remarks>

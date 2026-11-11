@@ -3,8 +3,8 @@
 namespace DIR.Lib.MathLayout;
 
 /// <summary>
-/// Display-style limits attachment: <paramref name="lower"/> stacks
-/// directly below the base, <paramref name="upper"/> directly above —
+/// Display-style limits attachment: <c>lower</c> stacks
+/// directly below the base, <c>upper</c> directly above —
 /// both centred on the base's horizontal axis. Used for big-operator
 /// limits in math display mode (<c>\int_0^\infty</c>, <c>\sum_{i=0}^n</c>,
 /// <c>\lim_{x \to 0}</c>) where TeX puts the limits above and below

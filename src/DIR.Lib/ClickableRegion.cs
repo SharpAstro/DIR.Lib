@@ -10,11 +10,11 @@ namespace DIR.Lib;
 /// underneath. Declared beside the click for the reason given on <see cref="CursorKind"/>: the region
 /// list already knows what is under the pointer, so a host that answers it separately is maintaining a
 /// second, divergent copy of the same knowledge.</param>
-/// <param name="FocusOnOpen">This region is a text field that asked for the keyboard when it appeared
+/// <remarks><see cref="FocusOnOpen"/>: this region is a text field that asked for the keyboard when it appeared
 /// (<see cref="Layout.Content.TextInput.FocusOnOpen"/>). Carried on the region because the request has to
 /// be answered AFTER the frame is painted, when the whole painted set is known, and the regions are what
 /// records that set. The request never takes the keyboard off a field being typed in -- the rule, and why
-/// it can only be applied after the paint, is on the property.</param>
+/// it can only be applied after the paint, is on the property.</remarks>
 public readonly record struct ClickableRegion(
     float X, float Y, float Width, float Height, HitResult Result,
     Action<InputModifier>? OnClick = null, CursorKind? Cursor = null)

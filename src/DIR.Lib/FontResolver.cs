@@ -96,7 +96,7 @@ public static class FontResolver
     /// tables in its own UI layer and grew a second copy of them in a second renderer.</para>
     /// <para>Every caller needs a non-emoji fallback regardless. An unavailable glyph does not draw a
     /// placeholder, it draws NOTHING, so a control whose only mark is an emoji silently loses it rather
-    /// than degrading. Pair this with <see cref="FontFallbackResolver.CanRender(Rune)"/> to ask whether a
+    /// than degrading. Pair this with <see cref="FontFallbackResolver.CanRender(System.Text.Rune)"/> to ask whether a
     /// specific mark is actually drawable before committing to it.</para>
     /// </remarks>
     /// <param name="extra">

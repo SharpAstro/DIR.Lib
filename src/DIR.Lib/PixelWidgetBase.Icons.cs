@@ -24,6 +24,7 @@ namespace DIR.Lib
         /// and it is the property that makes the set usable as a family: before it, the same declared size
         /// produced ink spanning 63% (a half-disc) to 100% (the grid) of it, a 1.6x spread that no amount of
         /// centring can hide. A new kind owes the same, and the LayoutIconTests measure it.
+        /// </para>
         /// <para>
         /// <see cref="Layout.IconKind.Minus"/> is the sole exception and could not be otherwise: a horizontal
         /// bar has no height to give. It fills its full WIDTH and borrows <see cref="Layout.IconKind.Plus"/>'s

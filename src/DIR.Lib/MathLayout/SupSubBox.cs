@@ -8,7 +8,7 @@ namespace DIR.Lib.MathLayout;
 /// a subscript (lowered), or both. The script's font is shrunk
 /// (<see cref="BoxStyle.Smaller"/>) before its sub-tree is constructed —
 /// callers pass already-rasterized smaller boxes via
-/// <paramref name="sup"/> / <paramref name="sub"/>.
+/// <c>sup</c> / <c>sub</c>.
 /// </summary>
 public sealed class SupSubBox : Box
 {

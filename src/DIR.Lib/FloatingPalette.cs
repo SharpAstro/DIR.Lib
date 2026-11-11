@@ -399,7 +399,7 @@ namespace DIR.Lib
         /// Design units, so the pointer delta is divided by the DPI scale; without that the panel runs
         /// away from the pointer at exactly the scale factor. Deliberately unclamped, for the reason on
         /// the single-axis overload: <c>Anchored</c> clamps the arranged panel and
-        /// <see cref="NoteArranged(RectF32, RectF32, float)"/> feeds that answer straight back.
+        /// <see cref="NoteArranged(RectF32, RectF32, DesignScale)"/> feeds that answer straight back.
         /// </remarks>
         public bool DragTo(float pointerX, float pointerY, DesignScale scale)
         {
