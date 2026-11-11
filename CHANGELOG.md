@@ -22,6 +22,9 @@ member on an interface and one new method; no record primary constructor changed
   drag is in flight it holds the I-beam wherever the pointer goes, as a captured drag holds its cursor.
 - **The beside reach grows from 1.5 letters (minimum 6 px) to 5 letters (minimum 24 px)**, measured from the run's rect. Consumers
   pinning `11.55.*` need a pin bump to get it.
+- **Fix: a tap on a row-snapped `ListScrollController` selects the row drawn under it.** A snapped list keeps the wheel's fractional
+  carry but draws whole rows with no sub-row shift, and the tap added that shift back, so after a trackpad or browser wheel left a
+  fraction behind, a press in the lower part of a row selected the row below it.
 
 ## 11.55
 

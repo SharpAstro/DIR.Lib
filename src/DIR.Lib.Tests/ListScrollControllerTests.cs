@@ -144,6 +144,43 @@ public class ListScrollControllerTests
     }
 
     [Fact]
+    public void SnapToAtom_TapAfterAFractionalWheel_SelectsTheRowDrawnUnderThePress()
+    {
+        // A snapped list keeps the wheel's fractional carry but draws whole rows from FirstVisibleAtom
+        // with no sub-atom shift. The tap must read the rows as drawn: adding SubAtomPx here selected
+        // the row BELOW the one under the pointer for any press in the lower part of a row (TianWen's
+        // planner in the browser, whose trackpad wheel leaves a fraction behind).
+        var c = Make(snap: true);
+        for (var i = 0; i < 4; i++) c.HandleInput(new InputEvent.Scroll(-0.3f, 50f, 50f)); // 3.6 atoms
+        c.Offset.ShouldBe(3.6f, 0.0001);
+
+        var drawn = new List<(int Index, RectF32 Rect)>();
+        foreach (var row in c.VisibleRows()) drawn.Add(row);
+        var (index, rect) = drawn[1];
+        index.ShouldBe(4);
+
+        c.HandleInput(new InputEvent.MouseDown(50f, rect.Y + rect.Height * 0.75f));
+        c.HandleInput(new InputEvent.MouseUp(50f, rect.Y + rect.Height * 0.75f));
+        c.TakeAtomTap().ShouldBe(index);
+    }
+
+    [Fact]
+    public void Smooth_TapAfterAFractionalWheel_SelectsTheRowDrawnUnderThePress()
+    {
+        var c = Make();
+        for (var i = 0; i < 4; i++) c.HandleInput(new InputEvent.Scroll(-0.3f, 50f, 50f)); // 3.6 atoms
+
+        foreach (var (index, rect) in c.VisibleRows())
+        {
+            var y = rect.Y + rect.Height * 0.5f;
+            if (y < 0f || y >= 100f) continue;
+            c.HandleInput(new InputEvent.MouseDown(50f, y));
+            c.HandleInput(new InputEvent.MouseUp(50f, y));
+            c.TakeAtomTap().ShouldBe(index);
+        }
+    }
+
+    [Fact]
     public void SnapToAtom_RoundsOnDragEnd()
     {
         var c = Make(snap: true);

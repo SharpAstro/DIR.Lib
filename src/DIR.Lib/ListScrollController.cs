@@ -689,8 +689,12 @@ public sealed class ListScrollController
             return null;
         }
 
+        // The same shift VisibleRows() draws with: none on a snapped list, which keeps the wheel's
+        // fractional carry in _offset but draws whole rows from FirstVisibleAtom. Adding SubAtomPx there
+        // picked the row BELOW the one under the pointer in the lower part of every row.
         var relMain = MainCoord(Axis, x, y) - MainStart;
-        var atom = FirstVisibleAtom + (int)MathF.Floor((relMain + SubAtomPx) / _atomExtentPx);
+        var shift = SnapToAtom ? 0f : SubAtomPx;
+        var atom = FirstVisibleAtom + (int)MathF.Floor((relMain + shift) / _atomExtentPx);
         return atom >= 0 && atom < _totalAtoms ? atom : null;
     }
 
