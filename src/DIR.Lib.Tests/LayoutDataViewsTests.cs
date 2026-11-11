@@ -455,6 +455,7 @@ public class LayoutDataViewsTests
     [InlineData(250f, 2, -4f)]
     [InlineData(250f, 3, -4f)]
     [InlineData(300f, 1, 4f)]
+    [InlineData(300f, 1, -4f)]
     [InlineData(300f, 2, 4f)]
     [InlineData(300f, 2, -4f)]
     [InlineData(300f, 3, 4f)]
@@ -463,21 +464,40 @@ public class LayoutDataViewsTests
     {
         // FlooredSlack is not here: its star leaves the capped ones 8 wide at 300, under their 24 minimum, so a
         // divider beside one cannot move (it may not shrink, and must not widen). The next theory covers it.
-        foreach (var columns in new[] { SlackFirst })
+        var columns = SlackFirst;
+        var widget = Widget((uint)width);
+        var widths = new TableColumnWidths();
+        PaintResizable(widget, widths, columns, width: width);
+        var name = "table-header:divider:" + divider;
+        var before = Named(widget, name).X;
+        var capture = Grab(widget, name, out var x);
+
+        DragTo(capture, x + by);
+        PaintResizable(widget, widths, columns, width: width);
+
+        Named(widget, name).X.ShouldBe(before + by, 0.01f, $"{width} wide, divider {divider}");
+        ShouldLineUp(widget, columns);
+        ShouldStayOnThePage(widget, columns, width);
+    }
+
+    [Fact]
+    public void SaveAndRestore_KeepAWidenedCappedStarWhereTheDragLeftIt_InANarrowTable()
+    {
+        var widget = Widget(300);
+        var widths = new TableColumnWidths();
+        PaintResizable(widget, widths, SlackFirst, width: 300f);
+        var capture = Grab(widget, "table-header:divider:1", out var x);
+        DragTo(capture, x - 4f);
+        PaintResizable(widget, widths, SlackFirst, width: 300f);
+        var drawn = Enumerable.Range(0, 5).Select(i => Named(widget, "cell" + i).Width).ToArray();
+
+        var restored = TableColumnWidths.From(widths.Save());
+        var again = Widget(300);
+        PaintResizable(again, restored, SlackFirst, width: 300f);
+
+        for (var i = 0; i < 5; i++)
         {
-            var widget = Widget((uint)width);
-            var widths = new TableColumnWidths();
-            PaintResizable(widget, widths, columns, width: width);
-            var name = "table-header:divider:" + divider;
-            var before = Named(widget, name).X;
-            var capture = Grab(widget, name, out var x);
-
-            DragTo(capture, x + by);
-            PaintResizable(widget, widths, columns, width: width);
-
-            Named(widget, name).X.ShouldBe(before + by, 0.01f, $"{width} wide, divider {divider}");
-            ShouldLineUp(widget, columns);
-            ShouldStayOnThePage(widget, columns, width);
+            Named(again, "cell" + i).Width.ShouldBe(drawn[i], 0.01f, "column " + i);
         }
     }
 

@@ -11,7 +11,8 @@ changed and why.
 
 ## 11.57
 
-Additive, with one behaviour change in what a table divider resizes. Two new init-only properties and one new method; no record
+Additive, with one behaviour change in what a table divider resizes. Three new init-only properties (`TableColumn.MaxWidth`, `TableColumn.Resizable`, `Node.OnArranged`), one new
+public method (`TableColumnWidths.CanDrag`) and an init-only `TableColumnWidths.Saved.Pinned`; no record
 primary constructor changed.
 
 - **A table divider follows the pointer.** Two neighbouring columns that each have a width of their own (fixed, or a capped
