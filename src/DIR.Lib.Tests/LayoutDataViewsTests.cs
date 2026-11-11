@@ -399,7 +399,7 @@ public class LayoutDataViewsTests
         moved.X.ShouldBeGreaterThan(x - 4f);
     }
 
-    // The slack column first, then fixed and capped-star columns by turns: every column right of the slack keeps its right edge.
+    // The slack column first, then fixed and capped-star columns by turns.
     private static readonly TableColumn[] SlackFirst =
     [
         new("name", Sizing.Star()),
@@ -435,25 +435,25 @@ public class LayoutDataViewsTests
     }
 
     [Fact]
-    public void RightOfTheSlackColumn_ADividerResizesTheColumnOnItsRight_ACappedStarIncluded()
+    public void AFixedColumnAndACappedStarTradeWidthAcrossTheirDivider()
     {
         var widget = Widget();
         var widths = new TableColumnWidths();
         PaintResizable(widget, widths, SlackFirst);
         var capture = Grab(widget, "table-header:divider:3", out var x);
 
-        // The divider after state: spend (a star capped at 50) gives up what the pointer moved, and state keeps its 60.
+        // The divider after state: state takes what spend (a star capped at 50) gives up.
         DragTo(capture, x + 10f);
         PaintResizable(widget, widths, SlackFirst);
 
-        Named(widget, "cell3").Width.ShouldBe(60f, 0.01f);
+        Named(widget, "cell3").Width.ShouldBe(70f, 0.01f);
         Named(widget, "cell4").Width.ShouldBe(40f, 0.01f);
-        widths.Save().Widths.ShouldBe([null, null, null, null, 40f]);
+        widths.Save().Widths.ShouldBe([null, null, null, 70f, 40f]);
         widths.SizingOf(4, SlackFirst[4]).ShouldBe(Sizing.Star(1f, 0f, 40f));
     }
 
     [Fact]
-    public void LeftOfTheSlackColumn_ADividerResizesTheColumnOnItsLeft_ACappedStarIncluded()
+    public void BesideTheSlackStar_ACappedStarIsResizedAlone()
     {
         var columns = new TableColumn[]
         {
@@ -488,8 +488,6 @@ public class LayoutDataViewsTests
         widths.CanDrag(columns, 1).ShouldBeFalse();
         Regions(widget).Where(r => r.Result is HitResult.ButtonHit b && b.Action.Contains("divider")).Select(r => ((HitResult.ButtonHit)r.Result).Action)
             .ShouldBe([Divider0]);
-        TableColumnWidths.SlackColumn(columns).ShouldBe(-1);
-        TableColumnWidths.SlackColumn(SlackFirst).ShouldBe(0);
     }
 
     [Fact]
@@ -503,8 +501,8 @@ public class LayoutDataViewsTests
         };
         var widths = new TableColumnWidths();
 
-        widths.CanDrag(columns, 0).ShouldBeTrue("state's left edge");
-        widths.CanDrag(columns, 1).ShouldBeFalse("the edge of the column that is not resizable");
+        widths.CanDrag(columns, 0).ShouldBeTrue("state beside the slack star");
+        widths.CanDrag(columns, 1).ShouldBeFalse("beside the column that is not resizable");
     }
 
     [Fact]
@@ -520,7 +518,7 @@ public class LayoutDataViewsTests
         PaintResizable(widget, widths, columns);
         var capture = Grab(widget, Divider0, out var x);
 
-        // Dragged left the column on the right grows, to its widest and no further.
+        // Dragged left, the column beside the slack star grows, to its widest and no further.
         DragTo(capture, x - 200f);
         PaintResizable(widget, widths, columns);
 

@@ -32,9 +32,10 @@ public readonly record struct TableColumn(string Header, Sizing Width, TextAlign
     /// primary constructor every compiled caller binds to is unchanged.</summary>
     public float? MinWidth { get; init; }
 
-    /// <summary>The widest this column may be dragged to, design units, or null for no limit. A consumer that
-    /// drops a column once it cannot have its width states here what the page has for it, so a drag never
-    /// takes the column, and the divider with it, off the page.</summary>
+    /// <summary>The widest this column may be dragged to beside the star that takes the slack, design units, or
+    /// null for no limit. A consumer that drops a column once it cannot have its width states here what the page
+    /// has for it, so a drag never takes the column, and the divider with it, off the page. Two columns that
+    /// trade width leave the table as wide as it was and are not held to it.</summary>
     public float? MaxWidth { get; init; }
 
     /// <summary>Whether a divider may resize this column. False for one whose width is not the reader's to
@@ -55,12 +56,11 @@ public readonly record struct TableColumn(string Header, Sizing Width, TextAlign
 /// no cap is never overridden: it stays the one that takes the slack. A star with a cap (its
 /// <see cref="Sizing.Max"/>) is as wide as its cap while the table has the room, so a drag moves the cap.
 /// <para>
-/// <b>A divider moves the edge it stands on.</b> Where exactly one column takes the slack, every column left
-/// of it keeps its left edge and every column right of it keeps its right edge, so the divider follows the
-/// pointer only when the column on the slack's far side of it is the one resized: the column on its left when
-/// the divider is left of the slack column, the column on its right otherwise. Resizing the other neighbour
-/// would move that column's far edge and leave the divider standing under the pointer. A divider whose column
-/// cannot be resized offers no grip (<see cref="CanDrag"/>).
+/// <b>A divider follows the pointer.</b> Two neighbours that each have a width of their own (fixed, or a capped
+/// star) trade it across the divider between them: one grows by what the other gives up, so the divider moves
+/// with the pointer wherever the table's slack is and whether or not there is any. Beside the star that takes
+/// the slack only the other side is resized, and the star takes the difference. A divider with nothing to
+/// resize on one side, and no slack star on it either, offers no grip (<see cref="CanDrag"/>).
 /// </para>
 /// </remarks>
 public sealed class TableColumnWidths
@@ -148,31 +148,9 @@ public sealed class TableColumnWidths
         => !spec.Resizable ? null : sizing.IsFixed ? sizing.Value : IsCapped(sizing) ? sizing.Max : null;
 
     /// <summary>
-    /// The one column that takes the table's slack (the only star with no cap), or -1 when none or several do.
-    /// </summary>
-    public static int SlackColumn(ReadOnlySpan<TableColumn> columns)
-    {
-        var slack = -1;
-        for (var i = 0; i < columns.Length; i++)
-        {
-            if (columns[i].Width.IsStar && columns[i].Width.Max <= 0f)
-            {
-                if (slack >= 0)
-                {
-                    return -1;
-                }
-
-                slack = i;
-            }
-        }
-
-        return slack;
-    }
-
-    /// <summary>
-    /// Whether a drag of the divider after column <paramref name="divider"/> resizes anything: false for a divider
-    /// between two stars that take the slack, and for one whose own column (see the class remarks) cannot be
-    /// resized. The header gives such a divider no grip and no resize cursor.
+    /// Whether a drag of the divider after column <paramref name="divider"/> resizes anything: false between two
+    /// stars that take the slack, and where one side cannot be resized (<see cref="TableColumn.Resizable"/>) and is
+    /// no slack star either. The header gives such a divider no grip and no resize cursor.
     /// </summary>
     public bool CanDrag(ReadOnlySpan<TableColumn> columns, int divider)
     {
@@ -190,31 +168,26 @@ public sealed class TableColumnWidths
 
         var leftSizing = SizingOf(divider, columns[divider]);
         var rightSizing = SizingOf(divider + 1, columns[divider + 1]);
-        var leftFixed = leftSizing.IsFixed && columns[divider].Resizable;
-        var rightFixed = rightSizing.IsFixed && columns[divider + 1].Resizable;
-        var slack = SlackColumn(columns);
-        if (slack < 0)
+        var left = DraggedFrom(columns[divider], leftSizing);
+        var right = DraggedFrom(columns[divider + 1], rightSizing);
+        if (left is not null && right is not null)
         {
-            // No one column takes the slack, so no edge is known to stand still: the fixed sides move, as ever.
-            return (leftFixed ? leftSizing.Value : null, rightFixed ? rightSizing.Value : null);
+            return (left, right);
         }
 
-        // Two fixed neighbours trade width across the divider, which follows the pointer on either side of the slack.
-        if (leftFixed && rightFixed)
-        {
-            return (leftSizing.Value, rightSizing.Value);
-        }
-
-        return divider < slack
-            ? (DraggedFrom(columns[divider], leftSizing), null)
-            : (null, DraggedFrom(columns[divider + 1], rightSizing));
+        // One side only: it is resized where the other is the star that takes the difference. Beside a column that
+        // is neither (one that is not resizable) the divider would stand still or push it, so it moves nothing.
+        return (IsSlack(rightSizing) ? left : null, IsSlack(leftSizing) ? right : null);
     }
+
+    // A star with no cap: it takes what the others leave.
+    private static bool IsSlack(Sizing sizing) => sizing.IsStar && sizing.Max <= 0f;
 
     /// <summary>
     /// The pure resize rule. Dragging the divider between a left and a right column by
     /// <paramref name="delta"/> design units (positive = right) grows the left and shrinks the right when both
-    /// are fixed; beside a star column only the fixed side moves (the star takes the difference); two stars
-    /// move nothing. Neither fixed column goes below its minimum, however far the delta runs.
+    /// have a width of their own; beside the star that takes the slack only the other side moves (the star takes
+    /// the difference); two such stars move nothing. Neither fixed column goes below its minimum, however far the delta runs.
     /// </summary>
     /// <param name="leftStart">The left column's width, or null when it is not fixed.</param>
     /// <param name="rightStart">The right column's width, or null when it is not fixed.</param>
@@ -243,8 +216,8 @@ public sealed class TableColumnWidths
     /// <summary>
     /// Begins a drag of the divider after column <paramref name="divider"/>: remembers the widths NOW, so every
     /// move is measured from the press and a pointer that wanders back lands where it started instead of
-    /// accumulating. Null when <paramref name="divider"/> has no column on one side. Which side it resizes is
-    /// the class remarks' rule: the column whose edge the divider is.
+    /// accumulating. Null when <paramref name="divider"/> has no column on one side. Which sides it resizes is
+    /// the class remarks' rule.
     /// </summary>
     public ResizeGesture? Begin(ReadOnlySpan<TableColumn> columns, int divider)
     {
@@ -285,14 +258,14 @@ public sealed class TableColumnWidths
         /// <summary>Sets the two widths to what <paramref name="delta"/> design units from the press makes of them.</summary>
         public void Apply(float delta)
         {
-            // A side that states a widest width grows no further: the delta stops there, so two fixed sides still
-            // trade the same amount. A column already past its widest is not pulled back by a drag that grows it.
-            if (_leftStart is { } l && _leftMax is { } leftMax)
+            // A side resized alone, beside the slack star, grows no further than the widest it states. Two sides that
+            // trade keep the table as wide as it was, so neither needs the limit.
+            if (_leftStart is { } l && _rightStart is null && _leftMax is { } leftMax)
             {
                 delta = Math.Min(delta, Math.Max(0f, leftMax - l));
             }
 
-            if (_rightStart is { } r && _rightMax is { } rightMax)
+            if (_rightStart is { } r && _leftStart is null && _rightMax is { } rightMax)
             {
                 delta = Math.Max(delta, -Math.Max(0f, rightMax - r));
             }

@@ -11,21 +11,19 @@ changed and why.
 
 ## 11.57
 
-Additive, with one behaviour change in which column a table divider resizes. One new init-only property and two new methods; no
-record primary constructor changed.
+Additive, with one behaviour change in what a table divider resizes. Two new init-only properties and one new method; no record
+primary constructor changed.
 
-- **A table divider moves the edge it stands on.** Where exactly one column takes the slack (the only star with no cap), a
-  divider left of it resizes the column on its left and one right of it the column on its right, so the divider follows the
-  pointer. Before, a divider resized whichever neighbour was fixed: right of the slack column, with a capped star on its
-  right, that grew the left neighbour away from the pointer and the divider stood still. Two fixed neighbours still trade
-  width, and a table with no slack column or several behaves as before.
+- **A table divider follows the pointer.** Two neighbouring columns that each have a width of their own (fixed, or a capped
+  star) trade it across the divider between them. Before, only two fixed columns traded; beside a capped star the divider
+  resized the fixed side alone, and where that column kept the edge under the pointer the divider stood still and the
+  column's far edge moved. Beside the star that takes the slack only the other side is resized, as before.
 - **A capped star column can be dragged**: the drag moves its cap (`Sizing.Max`), and `TableColumnWidths.SizingOf`, `Save` and
   `Restore` carry it as they carry a fixed column's width.
-- **`TableColumnWidths.CanDrag(columns, divider)`** and **`TableColumnWidths.SlackColumn(columns)`**. A divider that would
-  resize nothing (between two slack stars, or one whose own column is the slack's neighbour that cannot be resized) is now
-  a plain gap in the header: no hit region, no resize cursor.
-- **`TableColumn.MaxWidth`**: the widest a drag makes the column, for a consumer that drops a column once it cannot have its
-  width.
+- **`TableColumnWidths.CanDrag(columns, divider)`**. A divider that would resize nothing (between two slack stars, or beside a
+  column that is not resizable) is now a plain gap in the header: no hit region, no resize cursor.
+- **`TableColumn.MaxWidth`**: the widest a drag beside the slack star makes the column, for a consumer that drops a column once
+  it cannot have its width.
 - **`TableColumn.Resizable`** (default true): false for a column whose width is not the reader's to choose, such as a column
   of buttons. No divider resizes it.
 
