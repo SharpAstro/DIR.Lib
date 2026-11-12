@@ -678,6 +678,42 @@ public class LayoutDataViewsTests
     }
 
     [Fact]
+    public void AColumnDrawnAgain_GetsItsGripBack_AndFitsAgain()
+    {
+        var columns = new TableColumn[]
+        {
+            new("a", Sizing.Fixed(80f)),
+            new("b", Sizing.Fixed(80f)),
+            new("c", Sizing.Fixed(80f)),
+            new("d", Sizing.Star()),
+        };
+        var widths = new TableColumnWidths { FitWidth = _ => 100f };
+        var widget = Widget();
+
+        void Paint(float width)
+        {
+            var header = Layout.Builder.TableHeader(columns, null, _ => { }, Style, widths, DesignScale.One);
+            var overlay = (Layout.Node.Overlay)header;
+            var grips = (Layout.Node.Stack)overlay.Top;
+            var kids = grips.Children.ToArray();
+            kids[2] = Layout.Builder.HStack(kids[2]).WFixed(80f).HStar().CollapseBelow(300f);
+            widget.Render(Layout.Builder.Overlay(overlay.Base, grips with { Children = [.. kids] }).RowH(24f),
+                new RectF32(0, 0, width, 24f));
+        }
+
+        Paint(200f);
+        Paint(200f);
+        widths.CanDrag(columns, 0).ShouldBeFalse("column 1 is collapsed at 200");
+        widths.Fit(columns, 1).ShouldBeFalse("a collapsed column is not fitted");
+
+        Paint(500f);
+        Paint(500f);
+        widths.CanDrag(columns, 0).ShouldBeTrue("column 1 is drawn again at 500");
+        widths.CanDrag(columns, 1).ShouldBeTrue();
+        widths.Fit(columns, 1).ShouldBeTrue();
+    }
+
+    [Fact]
     public void AColumnThatIsNotResizable_HasNoGripOnItsEdge()
     {
         var columns = new TableColumn[]

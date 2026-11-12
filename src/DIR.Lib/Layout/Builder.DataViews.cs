@@ -152,6 +152,9 @@ public static partial class Builder
         // between two of them a divider the gap's width. A zero-gap stack of [column, gap, column, ...] puts
         // every edge where the header's gapped stack puts it, star columns included, because the fixed total
         // is the same.
+        // A consumer that swaps a grip cell for a node of its own must keep the cell's OnArranged (or call
+        // widths.NoteDrawn itself, which is how a column counts as drawn): a column whose cell never reports is
+        // treated as collapsed for good, and its grips are gone.
         var scaleOrOne = scale.OrOne();
         var copy = columns.ToArray();
         var top = new List<Node>(columns.Length * 2 - 1);
