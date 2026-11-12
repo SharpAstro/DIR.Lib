@@ -696,7 +696,7 @@ public class LayoutDataViewsTests
             var overlay = (Layout.Node.Overlay)header;
             var grips = (Layout.Node.Stack)overlay.Top;
             var kids = grips.Children.ToArray();
-            kids[2] = Layout.Builder.HStack(kids[2]).WFixed(80f).HStar().CollapseBelow(300f);
+            kids[2] = Layout.Builder.HStack(kids[2]).WStar().HStar().CollapseBelow(50f);
             widget.Render(Layout.Builder.Overlay(overlay.Base, grips with { Children = [.. kids] }).RowH(24f),
                 new RectF32(0, 0, width, 24f));
         }
