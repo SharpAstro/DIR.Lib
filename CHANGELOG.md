@@ -9,6 +9,18 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.58
+
+Additive; two behaviour fixes to the resizable table header (#212).
+
+- A divider drag that trades width between two columns, each with a width of its own, holds the widened
+  side to its `TableColumn.MaxWidth`, so it never passes the room the page has and drops; the narrowed
+  side gives up no more than that.
+- `TableHeader` gives no grip to a divider beside a collapsed column (one the last arrange did not draw,
+  as a `CollapseBelow` drops pilot's `ListTable` grip cell). `TableColumnWidths.CanDrag` is false for it
+  and `Begin` returns null, so a stale grip cannot drag a hidden column back. A header not yet arranged
+  keeps all its grips. No public constructor changes. pilot#1000 bumps its pin to this release.
+
 ## 11.57
 
 Additive, with one behaviour change in what a table divider resizes. Three new init-only properties (`TableColumn.MaxWidth`, `TableColumn.Resizable`, `Node.OnArranged`), one new

@@ -642,6 +642,40 @@ public class LayoutDataViewsTests
     }
 
     [Fact]
+    public void ADividerBesideACollapsedColumn_HasNoGrip_AndMovesNothing()
+    {
+        var columns = new TableColumn[]
+        {
+            new("a", Sizing.Fixed(80f)),
+            new("b", Sizing.Fixed(80f)),
+            new("c", Sizing.Fixed(80f)),
+            new("d", Sizing.Star()),
+        };
+        var widths = new TableColumnWidths();
+        var widget = Widget();
+
+        // The way pilot's ListTable.Dropping does it: the grip cell of column 1 in a group a CollapseBelow drops.
+        void Paint(float width)
+        {
+            var header = Layout.Builder.TableHeader(columns, null, _ => { }, Style, widths, DesignScale.One);
+            var overlay = (Layout.Node.Overlay)header;
+            var grips = (Layout.Node.Stack)overlay.Top;
+            var kids = grips.Children.ToArray();
+            kids[2] = Layout.Builder.HStack(kids[2]).WFixed(80f).HStar().CollapseBelow(10000f);
+            widget.Render(Layout.Builder.Overlay(overlay.Base, grips with { Children = [.. kids] }).RowH(24f),
+                new RectF32(0, 0, width, 24f));
+        }
+
+        Paint(400f);
+        widths.CanDrag(columns, 0).ShouldBeFalse("column 1 is collapsed, so the divider before it has no grip");
+        widths.CanDrag(columns, 1).ShouldBeFalse();
+        widths.CanDrag(columns, 2).ShouldBeTrue("column 2 and 3 are both drawn");
+        widths.Begin(columns, 0).ShouldBeNull();
+        widths.Begin(columns, 1).ShouldBeNull();
+        Regions(widget).Where(r => r.Result is HitResult.ButtonHit b && b.Action.Contains("divider")).ShouldBeEmpty();
+    }
+
+    [Fact]
     public void AColumnThatIsNotResizable_HasNoGripOnItsEdge()
     {
         var columns = new TableColumn[]
