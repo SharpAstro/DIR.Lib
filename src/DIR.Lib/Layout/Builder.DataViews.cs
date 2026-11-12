@@ -177,7 +177,8 @@ public static partial class Builder
             }
         }
 
-        return Overlay(header, HStack(top.ToArray()).PadX(style.PadX));
+        var count = columns.Length;
+        return Overlay(header, HStack(top.ToArray()).PadX(style.PadX) with { OnArranged = _ => widths.BeginArrange(count) });
     }
 
     private static Func<PointerPress, DragCapture?> DividerPress(TableColumn[] columns, TableColumnWidths widths,

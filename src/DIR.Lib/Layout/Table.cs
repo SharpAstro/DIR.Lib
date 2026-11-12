@@ -162,7 +162,27 @@ public sealed class TableColumnWidths
         }
 
         _drawn[index] = width;
+        if (index < _collapsed.Length)
+        {
+            _collapsed[index] = false;
+        }
     }
+
+    private bool[] _collapsed = [];
+
+    /// <summary>The grip row's own arrange, which runs before its cells': marks all <paramref name="count"/>
+    /// columns collapsed, and each cell the arrange then reaches (<see cref="NoteDrawn"/>) drawn again.</summary>
+    internal void BeginArrange(int count)
+    {
+        if (_collapsed.Length != count)
+        {
+            _collapsed = new bool[count];
+        }
+
+        Array.Fill(_collapsed, true);
+    }
+
+    private bool IsCollapsed(int index) => index < _collapsed.Length && _collapsed[index];
 
     // The width a drag starts from: a fixed column's width, a capped star's drawn width (its cap while the table has
     // the room for it, less when the table is narrower than the caps), null for the star that takes the slack.
@@ -189,7 +209,9 @@ public sealed class TableColumnWidths
     /// <summary>
     /// Whether a drag of the divider after column <paramref name="divider"/> resizes anything: false between two
     /// stars that take the slack, and where one side cannot be resized (<see cref="TableColumn.Resizable"/>) and is
-    /// no slack star either. The header gives such a divider no grip and no resize cursor.
+    /// no slack star either. The header gives such a divider no grip and no resize cursor. It is also false beside a
+    /// collapsed column: one the last arrange did not draw (a Stack dropped its grip cell, as a CollapseBelow does), so
+    /// a drag cannot bring a hidden column back. Before any arrange no column counts as collapsed.
     /// </summary>
     public bool CanDrag(ReadOnlySpan<TableColumn> columns, int divider)
     {
@@ -200,7 +222,7 @@ public sealed class TableColumnWidths
     // The width each side of the divider is dragged from; null for a side the drag leaves alone.
     private (float? Left, float? Right) Sides(ReadOnlySpan<TableColumn> columns, int divider)
     {
-        if (divider < 0 || divider + 1 >= columns.Length)
+        if (divider < 0 || divider + 1 >= columns.Length || IsCollapsed(divider) || IsCollapsed(divider + 1))
         {
             return (null, null);
         }
@@ -260,7 +282,7 @@ public sealed class TableColumnWidths
     /// </summary>
     public ResizeGesture? Begin(ReadOnlySpan<TableColumn> columns, int divider)
     {
-        if (divider < 0 || divider + 1 >= columns.Length)
+        if (divider < 0 || divider + 1 >= columns.Length || IsCollapsed(divider) || IsCollapsed(divider + 1))
         {
             return null;
         }
