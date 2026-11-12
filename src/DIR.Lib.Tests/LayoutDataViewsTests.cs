@@ -677,6 +677,43 @@ public class LayoutDataViewsTests
     }
 
     [Fact]
+    public void TradingColumnsHoldTheWidenedRightSideToItsMaxWidth()
+    {
+        var columns = new TableColumn[]
+        {
+            new("age", Sizing.Fixed(80f)),
+            new("spend", Sizing.Fixed(60f)) { MaxWidth = 90f },
+        };
+        var widths = new TableColumnWidths();
+        var gesture = widths.Begin(columns, 0).ShouldNotBeNull();
+
+        // 30 left would take spend to 90 exactly; 50 left would pass it, so it stops at 90 and age keeps the rest.
+        gesture.Apply(-50f);
+
+        var saved = widths.Save();
+        saved.Widths[1].ShouldBe(90f);
+        saved.Widths[0].ShouldBe(50f);
+    }
+
+    [Fact]
+    public void TradingColumnsHoldTheWidenedLeftSideToItsMaxWidth()
+    {
+        var columns = new TableColumn[]
+        {
+            new("age", Sizing.Fixed(60f)) { MaxWidth = 90f },
+            new("spend", Sizing.Fixed(80f)),
+        };
+        var widths = new TableColumnWidths();
+        var gesture = widths.Begin(columns, 0).ShouldNotBeNull();
+
+        gesture.Apply(50f);
+
+        var saved = widths.Save();
+        saved.Widths[0].ShouldBe(90f);
+        saved.Widths[1].ShouldBe(50f);
+    }
+
+    [Fact]
     public void ADividerLiesInTheGapBetweenTwoTitles()
     {
         var widget = Widget();

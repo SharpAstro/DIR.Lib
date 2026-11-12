@@ -32,10 +32,10 @@ public readonly record struct TableColumn(string Header, Sizing Width, TextAlign
     /// primary constructor every compiled caller binds to is unchanged.</summary>
     public float? MinWidth { get; init; }
 
-    /// <summary>The widest this column may be dragged to beside the star that takes the slack, design units, or
-    /// null for no limit. A consumer that drops a column once it cannot have its width states here what the page
-    /// has for it, so a drag never takes the column, and the divider with it, off the page. Two columns that
-    /// trade width leave the table as wide as it was and are not held to it.</summary>
+    /// <summary>The widest this column may be dragged to, design units, or null for no limit. A consumer that
+    /// drops a column once it cannot have its width states here what the page has for it, so a drag never takes
+    /// the column, and the divider with it, off the page. A drag never widens a column past it, whoever takes
+    /// the difference: the star that takes the slack, or the neighbour it trades width with.</summary>
     public float? MaxWidth { get; init; }
 
     /// <summary>Whether a divider may resize this column. False for one whose width is not the reader's to
@@ -311,14 +311,14 @@ public sealed class TableColumnWidths
         /// <summary>Sets the two widths to what <paramref name="delta"/> design units from the press makes of them.</summary>
         public void Apply(float delta)
         {
-            // A side resized alone, beside the slack star, grows no further than the widest it states. Two sides that
-            // trade keep the table as wide as it was, so neither needs the limit.
-            if (_leftStart is { } l && _rightStart is null && _leftMax is { } leftMax)
+            // A drag never widens a column past its MaxWidth, whoever takes the difference (the slack star, or the
+            // neighbour it trades with). A side already at or past its MaxWidth is not widened.
+            if (_leftStart is { } l && _leftMax is { } leftMax)
             {
                 delta = Math.Min(delta, Math.Max(0f, leftMax - l));
             }
 
-            if (_rightStart is { } r && _leftStart is null && _rightMax is { } rightMax)
+            if (_rightStart is { } r && _rightMax is { } rightMax)
             {
                 delta = Math.Max(delta, -Math.Max(0f, rightMax - r));
             }
