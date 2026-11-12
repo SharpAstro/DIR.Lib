@@ -667,12 +667,14 @@ public class LayoutDataViewsTests
         }
 
         Paint(400f);
+        Paint(400f);
         widths.CanDrag(columns, 0).ShouldBeFalse("column 1 is collapsed, so the divider before it has no grip");
         widths.CanDrag(columns, 1).ShouldBeFalse();
         widths.CanDrag(columns, 2).ShouldBeTrue("column 2 and 3 are both drawn");
         widths.Begin(columns, 0).ShouldBeNull();
         widths.Begin(columns, 1).ShouldBeNull();
-        Regions(widget).Where(r => r.Result is HitResult.ButtonHit b && b.Action.Contains("divider")).ShouldBeEmpty();
+        Regions(widget).Where(r => r.Result is HitResult.ButtonHit b && b.Action.Contains("divider"))
+            .Select(r => ((HitResult.ButtonHit)r.Result).Action).ShouldBe(["table-header:divider:2"]);
     }
 
     [Fact]
