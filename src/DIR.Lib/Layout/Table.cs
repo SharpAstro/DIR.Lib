@@ -92,12 +92,12 @@ public sealed class TableColumnWidths
     /// Sizes the fixed column <paramref name="divider"/> to <see cref="FitWidth"/>'s answer, held at or above
     /// its minimum. Only that column moves: its neighbour keeps its width and the star column takes the
     /// difference. Returns whether a width changed; false without a callback, with an unknown answer, or when
-    /// the column is a star.
+    /// the column is a star or has collapsed (the last arrange did not draw it, see <see cref="CanDrag"/>).
     /// </summary>
     public bool Fit(ReadOnlySpan<TableColumn> columns, int divider)
     {
         if (FitWidth is not { } fit || (uint)divider >= (uint)columns.Length || divider + 1 >= columns.Length
-            || !columns[divider].Width.IsFixed || fit(divider) is not { } wanted || float.IsNaN(wanted))
+            || IsCollapsed(divider) || !columns[divider].Width.IsFixed || fit(divider) is not { } wanted || float.IsNaN(wanted))
         {
             return false;
         }
