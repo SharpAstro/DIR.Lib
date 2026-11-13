@@ -932,13 +932,19 @@ public static class Engine
 
     /// <summary>
     /// Splits <paramref name="leftover"/> among the Star children. Unclamped stars go through the exact
-    /// <see cref="DistributeByWeight"/> split; when any star carries a Min/Max clamp, each pass freezes one kind
-    /// of violator at its bound, as CSS flexbox does: the stars under their Min when the floors ask for more
-    /// than the caps give back, the stars over their Max when the caps give back more, both when the two cancel.
-    /// The remaining space then redistributes among the rest, so a capped star's surplus flows to its siblings
-    /// (a floored one included), and a min-clamped star holds its floor even when that overflows the container
-    /// (visible overflow beats invisible zero-extent content).
+    /// <see cref="DistributeByWeight"/> split; when any star carries a Min/Max clamp, violators freeze at
+    /// their bound and the remaining space redistributes among the rest -- so a capped star's surplus flows
+    /// to its siblings, and a min-clamped star holds its floor even when that overflows the container
+    /// (visible overflow beats invisible zero-extent content). When every star has frozen and space is still
+    /// left, it goes to the stars frozen at their floor, up to their Max: they were frozen in a pass that also
+    /// capped their siblings, and what the caps gave back would otherwise reach no one.
     /// </summary>
+    /// <remarks>
+    /// Not CSS flexbox's rule (freeze only the winning kind per pass), on purpose: that one, in 11.58.6221, let a
+    /// floor freeze first and split what was left among capped stars below their caps, so a table's optional
+    /// columns (stars capped at their width, collapsing below it) dropped where they used to keep their width.
+    /// Freezing every violator keeps a capped star at its cap; only the space nobody was given moves.
+    /// </remarks>
     private static void DistributeStars<T>(T leftover, ImmutableArray<Node> children, Axis axis,
         List<int> starIndices, List<float> starWeights, IMeasureContext<T> ctx, T[] mains) where T : INumber<T>
     {
@@ -964,10 +970,10 @@ public static class Engine
             return;
         }
 
-        // Iterative freeze: distribute over the active subset, pin the winning kind of clamp violator at its
-        // bound (see below), then redistribute what is left among the rest. A positive total violation has a
-        // Min violator and a negative one a Max violator, so each pass freezes >= 1 star: <= count passes.
+        // Iterative freeze: distribute over the active subset, pin every clamp violator at its bound,
+        // then redistribute what is left among the rest. Each pass freezes >= 1 star, so <= count passes.
         var frozen = new bool[count];
+        var atFloor = new bool[count];
         var remaining = leftover;
         var activeSlots = new List<int>(count);
         var activeWeights = new List<float>(count);
@@ -986,32 +992,21 @@ public static class Engine
 
             if (activeSlots.Count == 0)
             {
+                GiveLeftoverToFloors(remaining, children, axis, starIndices, starWeights, atFloor, ctx, mains);
                 return;
             }
 
             var shares = DistributeByWeight(remaining, activeWeights);
-            // Only one kind of violator freezes per pass, as CSS flexbox resolves flexible lengths: the floors when they
-            // ask for more than the caps give back, the caps otherwise. Freezing both at once froze a star at its floor
-            // in the same pass that capped its siblings, and what the caps gave back reached no one (a table's slack
-            // column held at its MinWidth with a third of the row empty after the last column).
-            var clamps = new T[activeSlots.Count];
-            var violation = T.Zero;
-            for (var a = 0; a < activeSlots.Count; a++)
-            {
-                clamps[a] = Clamp(shares[a], MainSizing(axis, children[starIndices[activeSlots[a]]]), ctx, axis);
-                violation += clamps[a] - shares[a];
-            }
-
             var anyFrozen = false;
             for (var a = 0; a < activeSlots.Count; a++)
             {
                 var s = activeSlots[a];
-                var clamped = clamps[a];
-                var freeze = violation > T.Zero ? clamped > shares[a] : violation < T.Zero ? clamped < shares[a] : clamped != shares[a];
-                if (freeze)
+                var clamped = Clamp(shares[a], MainSizing(axis, children[starIndices[s]]), ctx, axis);
+                if (clamped != shares[a])
                 {
                     mains[starIndices[s]] = clamped;
                     frozen[s] = true;
+                    atFloor[s] = clamped > shares[a];
                     remaining = Max(T.Zero, remaining - clamped);
                     anyFrozen = true;
                 }
@@ -1026,6 +1021,52 @@ public static class Engine
 
                 return;
             }
+        }
+    }
+
+    // Every star has frozen and space is left: what the caps gave back goes to the stars frozen at their floor, by
+    // weight, each held to its Max (a star at its Max takes no more, and what it leaves goes round the others).
+    private static void GiveLeftoverToFloors<T>(T remaining, ImmutableArray<Node> children, Axis axis,
+        List<int> starIndices, List<float> starWeights, bool[] atFloor, IMeasureContext<T> ctx, T[] mains) where T : INumber<T>
+    {
+        var growing = new List<int>();
+        for (var s = 0; s < atFloor.Length; s++)
+        {
+            if (atFloor[s])
+            {
+                growing.Add(s);
+            }
+        }
+
+        while (remaining > T.Zero && growing.Count > 0)
+        {
+            var weights = new List<float>(growing.Count);
+            foreach (var s in growing)
+            {
+                weights.Add(starWeights[s]);
+            }
+
+            var shares = DistributeByWeight(remaining, weights);
+            var capped = new List<int>();
+            for (var g = 0; g < growing.Count; g++)
+            {
+                var index = starIndices[growing[g]];
+                var grown = mains[index] + shares[g];
+                var held = Clamp(grown, MainSizing(axis, children[index]), ctx, axis);
+                remaining -= held - mains[index];
+                mains[index] = held;
+                if (held < grown)
+                {
+                    capped.Add(growing[g]);
+                }
+            }
+
+            if (capped.Count == 0)
+            {
+                return;
+            }
+
+            growing.RemoveAll(capped.Contains);
         }
     }
 
