@@ -729,11 +729,11 @@ public class LayoutEngineTests
     public void ClampedStar_SurplusOfCappedStarsReachesAFlooredOne_NotLeftOver()
     {
         // A table's slack column (a star with a floor) beside capped optional columns. The even split (300 / 4 = 75)
-        // is under the floor and over every cap, and freezing both kinds in one pass held the floored star at 60
-        // with 210 of the 300 left empty. The caps win (they give back more than the floor asks for), so they
-        // freeze first and the floored star takes everything they leave: 300 - 3 * 30.
+        // is under the floor (100) and over every cap (30), and freezing both kinds in one pass held the floored star
+        // at 100 with 110 of the 300 left empty. The caps win (they give back 135, the floor asks 25), so they freeze
+        // first and the floored star takes everything they leave: 300 - 3 * 30.
         var floored = new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
-        { Height = Layout.Sizing.Star(min: 60f), Width = Layout.Sizing.Star() };
+        { Height = Layout.Sizing.Star(min: 100f), Width = Layout.Sizing.Star() };
         Layout.Node Capped() => new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
         { Height = Layout.Sizing.Star(1f, 0f, 30f), Width = Layout.Sizing.Star() };
         var capped = new[] { Capped(), Capped(), Capped() };
