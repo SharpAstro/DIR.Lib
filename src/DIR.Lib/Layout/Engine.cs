@@ -987,12 +987,25 @@ public static class Engine
             }
 
             var shares = DistributeByWeight(remaining, activeWeights);
+            // Only one kind of violator freezes per pass, as CSS flexbox resolves flexible lengths: the floors when they
+            // ask for more than the caps give back, the caps otherwise. Freezing both at once froze a star at its floor
+            // in the same pass that capped its siblings, and what the caps gave back reached no one (a table's slack
+            // column held at its MinWidth with a third of the row empty after the last column).
+            var clamps = new T[activeSlots.Count];
+            var violation = T.Zero;
+            for (var a = 0; a < activeSlots.Count; a++)
+            {
+                clamps[a] = Clamp(shares[a], MainSizing(axis, children[starIndices[activeSlots[a]]]), ctx, axis);
+                violation += clamps[a] - shares[a];
+            }
+
             var anyFrozen = false;
             for (var a = 0; a < activeSlots.Count; a++)
             {
                 var s = activeSlots[a];
-                var clamped = Clamp(shares[a], MainSizing(axis, children[starIndices[s]]), ctx, axis);
-                if (clamped != shares[a])
+                var clamped = clamps[a];
+                var freeze = violation > T.Zero ? clamped > shares[a] : violation < T.Zero ? clamped < shares[a] : clamped != shares[a];
+                if (freeze)
                 {
                     mains[starIndices[s]] = clamped;
                     frozen[s] = true;

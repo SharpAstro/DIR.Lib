@@ -726,6 +726,46 @@ public class LayoutEngineTests
     }
 
     [Fact]
+    public void ClampedStar_SurplusOfCappedStarsReachesAFlooredOne_NotLeftOver()
+    {
+        // A table's slack column (a star with a floor) beside capped optional columns. The even split (300 / 4 = 75)
+        // is under the floor and over every cap, and freezing both kinds in one pass held the floored star at 60
+        // with 210 of the 300 left empty. The caps win (they give back more than the floor asks for), so they
+        // freeze first and the floored star takes everything they leave: 300 - 3 * 30.
+        var floored = new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
+        { Height = Layout.Sizing.Star(min: 60f), Width = Layout.Sizing.Star() };
+        Layout.Node Capped() => new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
+        { Height = Layout.Sizing.Star(1f, 0f, 30f), Width = Layout.Sizing.Star() };
+        var capped = new[] { Capped(), Capped(), Capped() };
+        var stack = new Layout.Node.Stack([floored, .. capped]);
+
+        var arranged = Layout.Engine.Arrange(stack, new Rect<float>(0, 0, 100, 300), new PixelCtx());
+
+        RectOf(arranged, floored).Height.ShouldBe(210f, 0.001);
+        foreach (var c in capped)
+        {
+            RectOf(arranged, c).Height.ShouldBe(30f, 0.001);
+        }
+    }
+
+    [Fact]
+    public void ClampedStar_FloorWinsOverCaps_WhenItAsksForMoreThanTheyGiveBack()
+    {
+        // The other side of the same rule: split 100 / 2 = 50, the floor asks 30 more (80) and the cap gives back
+        // 10 (40). The floor freezes first at 80; the capped star gets the 20 left, which is under its cap.
+        var floored = new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
+        { Height = Layout.Sizing.Star(min: 80f), Width = Layout.Sizing.Star() };
+        var capped = new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
+        { Height = Layout.Sizing.Star(1f, 0f, 40f), Width = Layout.Sizing.Star() };
+        var stack = new Layout.Node.Stack([floored, capped]);
+
+        var arranged = Layout.Engine.Arrange(stack, new Rect<float>(0, 0, 100, 100), new PixelCtx());
+
+        RectOf(arranged, floored).Height.ShouldBe(80f, 0.001);
+        RectOf(arranged, capped).Height.ShouldBe(20f, 0.001);
+    }
+
+    [Fact]
     public void ClampedStar_CrossAxis_MaxCapsTheStretch()
     {
         var child = new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
