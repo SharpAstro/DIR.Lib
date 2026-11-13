@@ -932,9 +932,11 @@ public static class Engine
 
     /// <summary>
     /// Splits <paramref name="leftover"/> among the Star children. Unclamped stars go through the exact
-    /// <see cref="DistributeByWeight"/> split; when any star carries a Min/Max clamp, violators freeze at
-    /// their bound and the remaining space redistributes among the rest -- so a capped star's surplus flows
-    /// to its siblings, and a min-clamped star holds its floor even when that overflows the container
+    /// <see cref="DistributeByWeight"/> split; when any star carries a Min/Max clamp, each pass freezes one kind
+    /// of violator at its bound, as CSS flexbox does: the stars under their Min when the floors ask for more
+    /// than the caps give back, the stars over their Max when the caps give back more, both when the two cancel.
+    /// The remaining space then redistributes among the rest, so a capped star's surplus flows to its siblings
+    /// (a floored one included), and a min-clamped star holds its floor even when that overflows the container
     /// (visible overflow beats invisible zero-extent content).
     /// </summary>
     private static void DistributeStars<T>(T leftover, ImmutableArray<Node> children, Axis axis,
@@ -962,8 +964,9 @@ public static class Engine
             return;
         }
 
-        // Iterative freeze: distribute over the active subset, pin every clamp violator at its bound,
-        // then redistribute what is left among the rest. Each pass freezes >= 1 star, so <= count passes.
+        // Iterative freeze: distribute over the active subset, pin the winning kind of clamp violator at its
+        // bound (see below), then redistribute what is left among the rest. A positive total violation has a
+        // Min violator and a negative one a Max violator, so each pass freezes >= 1 star: <= count passes.
         var frozen = new bool[count];
         var remaining = leftover;
         var activeSlots = new List<int>(count);
