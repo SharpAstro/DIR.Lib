@@ -9,6 +9,22 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.60
+
+Additive; a frame can be recorded and checked for overlaps in a unit test.
+
+- `WireframeRenderer` (a `RgbaImageRenderer`) records where a frame puts its text, its opaque fills and its
+  clickable regions, in one paint order, and rasterizes nothing unless asked to. It records at the draw call,
+  so text a widget draws by hand into a slot is seen as well as what the layout engine placed.
+- `Wireframe.Check(frame, options)` returns what a person would see as broken: text over text, text half on a
+  control, two controls sharing a place, anything past the surface, and text a clip cut with no ellipsis.
+  What an opaque fill was painted over (the page under a popover) collides with nothing. `WireframeOptions`
+  picks the rules and names text or regions to leave alone (labels on a map or a chart).
+- `Renderer<TSurface>.NoteRegion(in ClickableRegion)` is told each region as `PixelWidgetBase` registers it.
+  The default does nothing; the recorder uses it to place regions in the paint order.
+- Use: draw a widget on a `WireframeRenderer` at one size after another and assert the findings are empty.
+  tianwen sweeps its tabs over twelve widths, two heights and two scales in about six seconds.
+
 ## 11.59
 
 Additive; the pointer leaving the window is an input event, and a palette says when it next needs a frame (#218).
