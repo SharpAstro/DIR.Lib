@@ -293,6 +293,28 @@ var unicode = MarkdownMacros.RenderMathUnicode("E = mc^2");      // "E = mc²"
 var image   = BoxRasterizer.RenderToRgba(boxBuilder(style), style);
 ```
 
+## Wireframe checks in unit tests
+
+`WireframeRenderer` is a CPU renderer that records where a frame puts its text, its opaque fills and its
+clickable regions, and `Wireframe.Check` says what of it a person would see as broken. A row that only
+overlaps at half a window's width fails a test instead of waiting to be seen:
+
+```csharp
+foreach (var width in new uint[] { 560, 800, 1100, 1700, 2400 })
+{
+    using var renderer = new WireframeRenderer(width, 900);
+    renderer.Begin();
+    new MyTab<RgbaImage>(renderer) { FontPath = font }.Render(state, new RectF32(0, 0, width, 900));
+    Wireframe.Describe(Wireframe.Check(renderer.Frame)).ShouldBeEmpty();
+}
+```
+
+The rules: text over text, text half on a control, two controls sharing a place, anything past the surface,
+and text a clip cut with no ellipsis. Each is decided in paint order, so the page under an open popover
+collides with nothing. It records at the draw call, so text drawn by hand into a slot is seen too.
+`WireframeOptions.IgnoreText` leaves out labels that lie where data puts them (a map, a chart). It cannot
+see what a GPU pipeline draws, and it only finds what the state it is given produces: feed it long names.
+
 ## Debug builds (`DIR.Lib.Debug`)
 
 The published `DIR.Lib` is built Release, so the `#if DEBUG` types (`DIR.Lib.Diagnostics`, the debug
