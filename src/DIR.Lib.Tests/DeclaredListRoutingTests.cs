@@ -151,4 +151,142 @@ public class DeclaredListRoutingTests
         DeclaredList.Active([a], null, "gone").ShouldBe(a);
         DeclaredList.Active([a, b], null, "gone").ShouldBeNull();
     }
+
+    // ---- the same tree painted by a PixelWidgetBase ------------------------------------------
+
+    private static readonly RGBAColor32 Rest = new(0x20, 0x40, 0x60, 0xff);
+    private static readonly RGBAColor32 Lit = new(0xc0, 0x30, 0x10, 0xff);
+
+    private sealed class StubRenderer(uint w, uint h) : RgbaImageRenderer(w, h)
+    {
+        public override (float Width, float Height) MeasureText(ReadOnlySpan<char> text, string fontFamily, float fontSize)
+            => (text.Length * fontSize * 0.5f, fontSize);
+
+        public override void DrawText(ReadOnlySpan<char> text, string fontFamily, float fontSize,
+            RGBAColor32 fontColor, in RectInt layout, TextAlign horizAlign = TextAlign.Near,
+            TextAlign vertAlign = TextAlign.Center)
+        { }
+    }
+
+    private sealed class PaintedWidget(Renderer<RgbaImage> renderer) : PixelWidgetBase<RgbaImage>(renderer)
+    {
+        public void Render(Layout.Node root, RectF32 bounds)
+        {
+            BeginFrame();
+            RenderLayout(root, bounds, fontPath: "stub.ttf", scale: DesignScale.One);
+        }
+    }
+
+    private sealed class PixelFixture
+    {
+        public StubRenderer Renderer { get; } = new(300, 40);
+        public PaintedWidget Widget { get; }
+        public ListCursor A { get; } = new();
+        public ListCursor B { get; } = new();
+        public List<int> Activated { get; } = [];
+        public InputRouter Router { get; }
+        public List<InputEvent> Unhandled { get; } = [];
+        public int HostSteps { get; private set; }
+
+        public PixelFixture()
+        {
+            Widget = new PaintedWidget(Renderer);
+            Widget.Render(Layout.Builder.HStack(List("A", A), Layout.Builder.Spacer().WFixed(100f).HStar(), List("B", B)).Stretch(),
+                new RectF32(0f, 0f, 300f, 40f));
+            Router = new InputRouter(Widget.Ui, new BackgroundTaskTracker(), static () => { })
+            {
+                Widgets = () => [Widget],
+                Unhandled = e =>
+                {
+                    Unhandled.Add(e);
+                    if (e is InputEvent.KeyDown k && Widget.HandleListKey(k.Key, k.Modifiers)) { HostSteps++; return true; }
+                    return false;
+                },
+            };
+        }
+
+        private Layout.Node List(string id, ListCursor cursor)
+        {
+            var rows = new Layout.Node[3];
+            for (var i = 0; i < 3; i++)
+            {
+                var row = i;
+                rows[i] = Layout.Builder.Spacer().RowH(10f).Bg(Rest).BgFocus(Lit)
+                    .Clickable(new HitResult.ListItemHit(id, row), _ => { })
+                    .Activatable(_ => Activated.Add(id == "A" ? 100 + row : row));
+            }
+
+            return Layout.Builder.VStack(rows).WFixed(100f).HStar().ListOf(cursor, id);
+        }
+
+        public RGBAColor32 PixelAt(int x, int y)
+        {
+            var img = Renderer.Surface;
+            var o = (y * img.Width + x) * 4;
+            return new RGBAColor32(img.Pixels[o], img.Pixels[o + 1], img.Pixels[o + 2], img.Pixels[o + 3]);
+        }
+    }
+
+    [Fact]
+    public void Pixel_widget_routed_by_InputRouter_matches_the_bare_widget()
+    {
+        var f = new PixelFixture();
+        f.A.Open("A", 1);
+
+        f.Router.Handle(new InputEvent.MouseDown(210f, 5f, MouseButton.Left, InputModifier.None, 1)).ShouldBeTrue();
+        f.Router.Handle(new InputEvent.KeyDown(InputKey.Down, InputModifier.None)).ShouldBeTrue();
+        f.Router.Handle(new InputEvent.KeyDown(InputKey.Down, InputModifier.None)).ShouldBeTrue();
+
+        f.B.Index.ShouldBe(2);
+        f.A.Index.ShouldBe(1);
+        f.Router.Handle(new InputEvent.KeyDown(InputKey.Enter, InputModifier.None)).ShouldBeTrue();
+        f.Activated.ShouldBe([2]);
+        // The router consumed every key, so the host's own HandleListKey never stepped a second time.
+        f.Unhandled.OfType<InputEvent.KeyDown>().ShouldBeEmpty();
+        f.HostSteps.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Pixel_widget_HandleListKey_steps_the_declared_list_and_not_its_own_cursor()
+    {
+        var f = new PixelFixture();
+        f.B.Open("B", 0); // the only list with an open cursor is the one the reader is in
+
+        f.Widget.HandleListKey(InputKey.Down).ShouldBeTrue();
+        f.Widget.HandleListKey(InputKey.Down).ShouldBeTrue();
+
+        f.B.Index.ShouldBe(2);
+        f.A.IsOpen.ShouldBeFalse();
+        f.Widget.ListCursor.IsOpen.ShouldBeFalse();
+        f.Widget.HandleListKey(InputKey.Enter).ShouldBeTrue();
+        f.Activated.ShouldBe([2]);
+    }
+
+    [Fact]
+    public void Pixel_widget_two_declared_lists_with_no_hint_step_neither()
+    {
+        var f = new PixelFixture();
+
+        f.Widget.HandleListKey(InputKey.Down).ShouldBeFalse();
+
+        f.A.IsOpen.ShouldBeFalse();
+        f.B.IsOpen.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Pixel_widget_FocusBackground_lights_the_row_of_the_declared_cursor()
+    {
+        var f = new PixelFixture();
+        f.B.Open("B", 2);
+        f.Widget.Render(Layout.Builder.HStack(
+            Layout.Builder.Spacer().WFixed(100f).HStar(), Layout.Builder.Spacer().WFixed(100f).HStar(),
+            Layout.Builder.VStack(Row(0), Row(1), Row(2)).WFixed(100f).HStar().ListOf(f.B, "B")).Stretch(),
+            new RectF32(0f, 0f, 300f, 40f));
+
+        f.PixelAt(250, 25).ShouldBe(Lit);
+        f.PixelAt(250, 5).ShouldBe(Rest);
+    }
+
+    private static Layout.Node Row(int i)
+        => Layout.Builder.Spacer().RowH(10f).Bg(Rest).BgFocus(Lit).Clickable(new HitResult.ListItemHit("B", i), _ => { });
 }
