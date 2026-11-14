@@ -22,7 +22,7 @@ public static class ListKeys
         if (delta == 0 || !cursor.IsOpen) return false;
 
         scratch.Clear();
-        for (var i = 0; i < regions.Count; i++)
+        for (var i = 0; i < regions.Length; i++)
         {
             if (regions[i].Result is HitResult.ListItemHit item && cursor.Owns(item))
             {
@@ -55,7 +55,7 @@ public static class ListKeys
             onMoved?.Invoke();
         }
 
-        for (var i = 0; i < regions.Count; i++)
+        for (var i = 0; i < regions.Length; i++)
         {
             var region = regions[i];
             if (!cursor.IsOn(region.Result)) continue;
