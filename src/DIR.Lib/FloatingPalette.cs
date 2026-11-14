@@ -282,6 +282,22 @@ namespace DIR.Lib
                 && y >= PanelRect.Y && y < PanelRect.Y + PanelRect.Size.Y;
         }
 
+        /// <summary>
+        /// Tells the palette the pointer left the window (<see cref="InputEvent.PointerLeft"/>). Hover ends, and
+        /// the idle delay starts at the leave rather than at the last frame drawn while the pointer was over
+        /// the panel. Nothing changes if the pointer was not over it.
+        /// </summary>
+        public void NotePointerLeft()
+        {
+            if (!_pointerOver)
+            {
+                return;
+            }
+
+            _pointerOver = false;
+            _engagedAt = Stopwatch.GetTimestamp();
+        }
+
         /// <summary>Holds the panel fully present, as any deliberate use of it should.</summary>
         public void NoteEngaged() => _engagedAt = Stopwatch.GetTimestamp();
 

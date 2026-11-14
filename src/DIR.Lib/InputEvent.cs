@@ -212,4 +212,16 @@ public abstract record InputEvent
 
     /// <summary>Touch pinch gesture ended (fingers lifted).</summary>
     public sealed record PinchEnd() : InputEvent;
+
+    /// <summary>
+    /// The pointer left the window (SDL's window mouse-leave, the browser's <c>pointerleave</c>). No position
+    /// is carried: the last one is the last place the pointer was, and what the router does is forget it, so
+    /// a lit node goes out and a tooltip is dropped. A host that never sends it behaves as before.
+    /// </summary>
+    /// <remarks>
+    /// A host must not send it while a button is held and the platform still captures the mouse: the drag
+    /// goes on and its release still arrives. If it does, the router leaves the capture alone and only
+    /// offers the event to <c>Unhandled</c>.
+    /// </remarks>
+    public sealed record PointerLeft() : InputEvent;
 }
