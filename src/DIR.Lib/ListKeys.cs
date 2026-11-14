@@ -7,7 +7,7 @@ namespace DIR.Lib;
 /// The step and activate walks of a declared list, over the regions a paint registered, so the pixel
 /// widget's own keys and <see cref="InputRouter"/>'s declared-list keys are one implementation.
 /// </summary>
-public static class ListKeys
+internal static class ListKeys
 {
     /// <summary>
     /// Moves <paramref name="cursor"/> <paramref name="delta"/> rows through the rows of its list that

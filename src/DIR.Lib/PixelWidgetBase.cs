@@ -604,6 +604,12 @@ namespace DIR.Lib
         /// Escape is deliberately NOT here. Closing is the widget's own business — a menu dismisses, a
         /// panel may commit, a nested list may only step out one level — and a shared answer would be
         /// wrong for most of them.
+        /// <para>
+        /// Where several lists are declared and none is open or alone on the frame (a reader who pressed in
+        /// both), this widget cannot tell which list the keys mean, so it answers false and the key stays the
+        /// host's. <see cref="InputRouter"/> knows the last pressed list and steps that one, so it is the
+        /// router that resolves the ambiguity, never this method guessing.
+        /// </para>
         /// </remarks>
         public bool HandleListKey(InputKey key, InputModifier modifier = InputModifier.None) => key switch
         {
@@ -629,8 +635,9 @@ namespace DIR.Lib
 
         /// <summary>
         /// Registers an already-built region, for the paths that state more than the shorthand above
-        /// covers -- a tooltip, a scroll target, a disabled row. <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, string?, DesignScale?, Action{Layout.Content.Fill, RectF32}?)"/>'s own path,
-        /// since a node can declare all of them at once.
+        /// covers -- a tooltip, a scroll target, a disabled row. This is the path
+        /// <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, string?, DesignScale?, Action{Layout.Content.Fill, RectF32}?)"/>
+        /// takes, since a node can declare all of them at once.
         /// </summary>
         protected void RegisterClickable(in ClickableRegion region)
         {
