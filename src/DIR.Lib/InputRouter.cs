@@ -225,8 +225,43 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         InputEvent.Scroll scroll => HandleScroll(scroll),
         InputEvent.KeyDown key => HandleKeyDown(key),
         InputEvent.TextInput text => HandleTextInput(text),
+        InputEvent.PointerLeft left => HandlePointerLeft(left),
         _ => Unhandled?.Invoke(evt) ?? false,
     };
+
+    /// <summary>
+    /// The pointer left the window: forget it. A drag capture in flight is left alone, because the platform
+    /// keeps delivering moves and the release while a button is held. Otherwise the router's pointer and every
+    /// widget's go, a lit node goes out and a pending or shown tooltip is dropped, with one redraw if any of
+    /// those was showing. The host's own routing (a palette's idle fade) hears it through <see cref="Unhandled"/>.
+    /// </summary>
+    private bool HandlePointerLeft(InputEvent.PointerLeft left)
+    {
+        if (_capture is null)
+        {
+            var changed = _tooltip is not null
+                || (_pointer is { } at && ResolveHoverNode(at.X, at.Y) is not null);
+
+            _pointer = null;
+            var widgets = Widgets();
+            for (var i = 0; i < widgets.Count; i++)
+            {
+                widgets[i].Pointer = null;
+            }
+
+            if (_tooltip is not null)
+            {
+                SetTooltip(null);
+            }
+
+            if (changed)
+            {
+                requestRedraw();
+            }
+        }
+
+        return Unhandled?.Invoke(left) ?? false;
+    }
 
     /// <summary>
     /// Call once the whole frame is painted, before the next event is routed.

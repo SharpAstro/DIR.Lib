@@ -218,6 +218,36 @@ public class FloatingPaletteTests
     }
 
     [Fact]
+    public void ThePointerLeavingTheWindowEndsHoverAndStartsTheIdleDelayAtTheLeave()
+    {
+        var state = new FloatingPaletteState();
+        state.NoteArranged(new RectF32(100f, 100f, 120f, 200f), 0f, DesignScale.One);
+        state.NotePointer(150f, 150f);
+        state.IsEngaged.ShouldBeTrue();
+
+        state.NotePointerLeft();
+
+        state.IsEngaged.ShouldBeFalse();
+        state.Fade.ShouldBe(1f, 0.001f);
+    }
+
+    [Fact]
+    public void ThePointerLeavingWhileAlreadyOutsideThePanelChangesNothing()
+    {
+        var state = new FloatingPaletteState();
+        state.NoteArranged(new RectF32(100f, 100f, 120f, 200f), 0f, DesignScale.One);
+        state.NotePointer(10f, 10f);
+        state.AgeEngagement(FloatingPalette.IdleDelaySeconds + FloatingPalette.FadeSeconds + 1f);
+        var rested = state.Fade;
+        rested.ShouldBeLessThan(1f);
+
+        state.NotePointerLeft();
+
+        state.IsEngaged.ShouldBeFalse();
+        state.Fade.ShouldBe(rested, 0.001f);
+    }
+
+    [Fact]
     public void ClickingARowReportsThatRowsAction()
     {
         var clicked = new List<string>();

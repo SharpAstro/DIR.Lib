@@ -504,6 +504,82 @@ public class InputRouterTests
         harness.UnhandledEvents.ShouldHaveSingleItem().ShouldBeOfType<InputEvent.MouseMove>();
     }
 
+    // ---- PointerLeft --------------------------------------------------------------------------
+
+    [Fact]
+    public void ThePointerLeavingUnlightsTheHoveredNodeAndAsksForOneRedraw()
+    {
+        var harness = new Harness();
+        harness.Paint(front: Layout.Builder.Box(200f, 20f).RowH(20f).BgHover(Lit).Stretch());
+        harness.Move(10f, 10f);
+        var before = harness.Redraws;
+
+        harness.Router.Handle(new InputEvent.PointerLeft());
+
+        harness.Redraws.ShouldBe(before + 1);
+        harness.Back.Pointer.ShouldBeNull();
+        harness.Front.Pointer.ShouldBeNull();
+
+        harness.Router.Handle(new InputEvent.PointerLeft());
+        harness.Redraws.ShouldBe(before + 1, "nothing was left to drop the second time");
+    }
+
+    [Fact]
+    public void ThePointerLeavingDropsAPendingAndAShownTooltip()
+    {
+        var harness = new Harness();
+        harness.Paint(front: Layout.Builder.Box(200f, 20f).RowH(20f).WithTooltip("Cool the camera"));
+
+        harness.Move(10f, 10f);
+        var before = harness.Redraws;
+        harness.Router.Handle(new InputEvent.PointerLeft());
+        harness.Router.Tooltip.ShouldBeNull();
+        harness.Clock.Advance(harness.Router.TooltipDelay);
+        harness.Router.Tooltip.ShouldBeNull("the pending tooltip was dropped, not delayed");
+        harness.Redraws.ShouldBe(before + 1);
+
+        harness.Move(10f, 10f);
+        harness.Clock.Advance(harness.Router.TooltipDelay);
+        harness.Router.Tooltip.ShouldNotBeNull();
+        before = harness.Redraws;
+        harness.Router.Handle(new InputEvent.PointerLeft());
+        harness.Router.Tooltip.ShouldBeNull();
+        harness.Redraws.ShouldBe(before + 1);
+    }
+
+    [Fact]
+    public void ThePointerLeavingWithNothingHoveredAsksForNoRedrawAndReachesTheHost()
+    {
+        var harness = new Harness();
+        harness.Paint(front: Layout.Builder.Box(200f, 20f).RowH(20f));
+        harness.Move(10f, 10f);
+        var before = harness.Redraws;
+
+        harness.Router.Handle(new InputEvent.PointerLeft());
+
+        harness.Redraws.ShouldBe(before);
+        harness.UnhandledEvents.OfType<InputEvent.PointerLeft>().ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void ThePointerLeavingDuringADragLeavesTheCaptureWorking()
+    {
+        var harness = new Harness();
+        var moves = 0;
+        MouseUp? released = null;
+        harness.Paint(front: Layout.Builder.Box(50f, 20f).Pressable(
+            new HitResult.ButtonHit("drag"), _ => new DragCapture(_ => moves++, m => released = m)));
+        harness.Press(10f, 10f);
+
+        harness.Router.Handle(new InputEvent.PointerLeft());
+        harness.Move(120f, 120f, MouseButton.Left);
+        harness.Release(130f, 120f);
+
+        moves.ShouldBe(1);
+        released.ShouldNotBeNull();
+        harness.UnhandledEvents.OfType<InputEvent.PointerLeft>().ShouldHaveSingleItem();
+    }
+
     [Fact]
     public void AMoveDuringAGestureGoesToTheCaptureAndNowhereElse()
     {
