@@ -9,6 +9,24 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.61
+
+Additive; a list declares the cursor that owns its rows, every surface's router steps it, and a non-pixel
+surface can carry a popover's pointer claim. Consumer: Console.Lib#57 (CON57).
+
+- `Layout.Node.ListOf(cursor, listId)` declares a `DeclaredList` on a list's container. Any router reading the
+  PAINTED nodes finds it, whatever kind of widget painted them.
+- `DeclaredList.Active` states the active-list rule once: the list holding the focus, else the one holding the
+  pointer's last press, else the only list on the frame, else none (the key goes to `InputRouter.Unhandled`).
+- `InputRouter` steps the active declared cursor (Up/Down) and activates its row (Enter) for any
+  `IPixelWidget`, including one that paints nothing itself. `PixelWidgetBase` follows the same declaration, so
+  a pixel surface behaves exactly as a non-pixel one; widgets that declare nothing keep today's behaviour.
+- `IPixelWidget.CollectClippedListRows` lets a widget report the rows of a list its viewport clips, so the
+  cursor steps only through rows that are reachable.
+- `WindowUiSettings.NoteFrameBegin`, `NotePopoverPainted` and `ClaimPointer` are public and documented, so a
+  surface that is not a `PixelWidgetBase` can note a painted popover and claim the pointer for its content.
+  A press inside the claimed content reaches the popover's regions, not the declared list's rows beneath.
+
 ## 11.60
 
 Additive; a frame can be recorded and checked for overlaps in a unit test.

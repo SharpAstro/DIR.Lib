@@ -92,14 +92,16 @@ public sealed class WindowUiSettings
 
     /// <summary>
     /// Records that <paramref name="popover"/> painted, putting it on top of this cycle's stack. Called by
-    /// the layout painter for every OPEN popover node it draws.
+    /// the layout painter for every OPEN popover node it draws, and by a surface that paints its own
+    /// popovers (a terminal, say) and has no <c>PixelWidgetBase</c> to do it: call it once per painted open
+    /// popover, after <see cref="NoteFrameBegin"/> for the cycle.
     /// </summary>
     /// <remarks>
     /// Re-registering one already in the list MOVES it to the top rather than duplicating it, so a popover
     /// drawn in more than one of a widget's paint passes is ordered by its LAST paint, which is the one
     /// actually on top.
     /// </remarks>
-    internal void NotePopoverPainted(PopoverState popover)
+    public void NotePopoverPainted(PopoverState popover)
     {
         _paintedPopovers.Remove(popover);
         _paintedPopovers.Add(popover);
@@ -168,8 +170,11 @@ public sealed class WindowUiSettings
     private RectF32? _carriedPointerOwner;
 
     /// <summary>Records that <paramref name="popover"/>'s content, at <paramref name="content"/>, claims the
-    /// pointer this cycle. Called by the layout painter.</summary>
-    internal void ClaimPointer(RectF32 content, PopoverState popover)
+    /// pointer this cycle. Called by the layout painter, and by a non-pixel surface that paints a popover
+    /// itself, right after <see cref="NotePopoverPainted"/>, so a press inside the content reaches the
+    /// popover's regions and not the chrome (a declared list's rows) beneath it. The claim is carried to the
+    /// next cycle while <paramref name="popover"/> stays open.</summary>
+    public void ClaimPointer(RectF32 content, PopoverState popover)
     {
         PointerOwner = content;
         _pointerOwnerPopover = popover;
@@ -186,8 +191,10 @@ public sealed class WindowUiSettings
     /// twenty, in any paint order, the first repeat is the boundary. Within a cycle the owner survives every
     /// other widget's BeginFrame, which is the property the whole mechanism exists for, since a popover in
     /// one widget must confine hover in the widgets painted after it.
+    /// A non-pixel surface calls it at the start of each of its paint passes, passing itself (or any stable
+    /// object), so the claim and the painted popovers clear once per cycle.
     /// </remarks>
-    internal void NoteFrameBegin(object widget)
+    public void NoteFrameBegin(object widget)
     {
         if (_begunThisCycle.Add(widget))
         {
