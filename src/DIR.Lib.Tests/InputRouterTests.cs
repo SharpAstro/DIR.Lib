@@ -513,6 +513,8 @@ public class InputRouterTests
         harness.Paint(front: Layout.Builder.Box(200f, 20f).RowH(20f).BgHover(Lit).Stretch());
         harness.Move(10f, 10f);
         var before = harness.Redraws;
+        harness.Back.Pointer.ShouldNotBeNull();
+        harness.Front.Pointer.ShouldNotBeNull();
 
         harness.Router.Handle(new InputEvent.PointerLeft());
 

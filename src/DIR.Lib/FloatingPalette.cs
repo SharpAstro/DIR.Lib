@@ -543,7 +543,8 @@ namespace DIR.Lib
         /// will change by itself (engaged, or already at the floor), the time left of the idle delay while it
         /// waits (one wake is enough, not a frame per refresh), and <see cref="TimeSpan.Zero"/> while the
         /// alpha is moving. A host schedules one wake for a positive value and draws every frame only at zero.
-        /// Pure, like <see cref="FadeFor"/>.
+        /// Pure, like <see cref="FadeFor"/>. <paramref name="collapsed"/> is there for symmetry with
+        /// <see cref="FadeFor"/>: both floors ramp over the same delay and fade, so the timing is the same.
         /// </summary>
         public static TimeSpan? NextFrameFor(float idleSeconds, bool engaged, bool collapsed = false)
         {

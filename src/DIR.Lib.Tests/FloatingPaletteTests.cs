@@ -224,11 +224,14 @@ public class FloatingPaletteTests
         state.NoteArranged(new RectF32(100f, 100f, 120f, 200f), 0f, DesignScale.One);
         state.NotePointer(150f, 150f);
         state.IsEngaged.ShouldBeTrue();
+        // A host reads nothing while the pointer rests on the palette, so the engagement clock goes stale.
+        state.AgeEngagement(FloatingPalette.IdleDelaySeconds + FloatingPalette.FadeSeconds + 1f);
 
         state.NotePointerLeft();
 
         state.IsEngaged.ShouldBeFalse();
         state.Fade.ShouldBe(1f, 0.001f);
+        state.NextFrameIn!.Value.TotalSeconds.ShouldBe(FloatingPalette.IdleDelaySeconds, 0.25);
     }
 
     [Theory]
