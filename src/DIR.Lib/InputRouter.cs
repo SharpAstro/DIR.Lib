@@ -1075,8 +1075,14 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     private void NoteListPress(IReadOnlyList<IPixelWidget> widgets, float x, float y)
     {
         CollectDeclaredLists(widgets);
+        if (_declaredLists.Count == 0) { _pressedListId = null; return; }
+
+        // A press inside a popover's claimed content belongs to the popover: it must not choose the list
+        // underneath it, or a menu click would switch the keyboard to whichever list the menu covers. Only a
+        // list the popover itself declares (its container lies inside the claim) can be chosen by that press.
+        var claimed = WithinPointerOwner(x, y);
+        var previous = _pressedListId;
         _pressedListId = null;
-        if (_declaredLists.Count == 0) return;
 
         // A press on one of a declared list's rows: the cursor follows the click into that list.
         for (var w = widgets.Count - 1; w >= 0 && _pressedListId is null; w--)
@@ -1092,6 +1098,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                     foreach (var list in _declaredLists)
                     {
                         if (!string.Equals(list.ListId, item.ListId, StringComparison.Ordinal)) continue;
+                        if (claimed && !DeclaredInsideOwner(list)) break;
                         _pressedListId = list.ListId;
                         if (!string.Equals(list.Cursor.ListId, list.ListId, StringComparison.Ordinal))
                         {
@@ -1106,10 +1113,26 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             }
         }
 
-        if (_pressedListId is null && InnermostDeclaredAt(x, y) is var at and >= 0)
+        if (_pressedListId is null && InnermostDeclaredAt(x, y) is var at and >= 0
+            && (!claimed || DeclaredInsideOwner(_declaredLists[at])))
         {
             _pressedListId = _declaredLists[at].ListId;
         }
+
+        if (claimed && _pressedListId is null)
+        {
+            _pressedListId = previous;
+        }
+    }
+
+    // Whether a declared list's container lies wholly inside the popover's claimed content.
+    private bool DeclaredInsideOwner(DeclaredList list)
+    {
+        if (ui.PointerOwner is not { } owner) return false;
+        var i = _declaredLists.IndexOf(list);
+        if (i < 0) return false;
+        var b = _declaredBounds[i];
+        return b.X >= owner.X && b.Y >= owner.Y && b.X + b.Width <= owner.X + owner.Width && b.Y + b.Height <= owner.Y + owner.Height;
     }
 
     /// <summary>The list holding the focused field: the innermost declared container around it.</summary>
@@ -1159,13 +1182,21 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             widget.CollectClippedListRows(active.ListId, _listClipped);
         }
 
-        var regions = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_listRegions);
-        return key.Key switch
+        void Reveal()
         {
-            InputKey.Up => ListKeys.Move(cursor, -1, regions, _listClipped, _listScratch),
-            InputKey.Down => ListKeys.Move(cursor, 1, regions, _listClipped, _listScratch),
-            _ => ListKeys.Activate(cursor, key.Modifiers, regions, _listClipped, _listScratch),
-        };
+            foreach (var widget in widgets) widget.RevealListRow(cursor);
+        }
+
+        var regions = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_listRegions);
+        switch (key.Key)
+        {
+            case InputKey.Up or InputKey.Down:
+                if (!ListKeys.Move(cursor, key.Key == InputKey.Up ? -1 : 1, regions, _listClipped, _listScratch)) return false;
+                Reveal();
+                return true;
+            default:
+                return ListKeys.Activate(cursor, key.Modifiers, regions, _listClipped, _listScratch, Reveal);
+        }
     }
 
     private bool HandleTextInput(InputEvent.TextInput text)

@@ -99,6 +99,14 @@ namespace DIR.Lib
         /// the default reports none, which is right for a surface whose lists are not scrolled.
         /// </summary>
         void CollectClippedListRows(string listId, List<ListCursor.PaintedRow> into) { }
+
+        /// <summary>
+        /// Brings the row <paramref name="cursor"/> is on into view, in the scrolled node the last paint met
+        /// it in. <see cref="InputRouter"/> calls it after it stepped a declared list's cursor, so an arrow
+        /// that lands on a row the viewport clipped scrolls to it. A default interface method: the default
+        /// does nothing, which is right for a surface whose lists do not scroll.
+        /// </summary>
+        void RevealListRow(ListCursor cursor) { }
     }
 
     /// <summary>
@@ -539,6 +547,8 @@ namespace DIR.Lib
         /// and a row of a virtualised list the paint never arranged is the host's to bring into view, off
         /// <see cref="ListCursor.Moved"/>, as before.
         /// </summary>
+        public virtual void RevealListRow(ListCursor cursor) => RevealListCursor(cursor);
+
         private void RevealListCursor(ListCursor cursor)
         {
             foreach (var row in _scrolledListRows)
