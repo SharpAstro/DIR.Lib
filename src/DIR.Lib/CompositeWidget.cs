@@ -153,6 +153,16 @@
             }
         }
 
+        /// <inheritdoc/>
+        public override void RevealListRow(ListCursor cursor)
+        {
+            base.RevealListRow(cursor);
+            foreach (var child in Children)
+            {
+                child.RevealListRow(cursor);
+            }
+        }
+
         private void CollectOwnRegions(List<ClickableRegion> into) => base.CollectPaintedRegions(into);
 
         private void CollectOwnNodes(List<Layout.ArrangedNode<float>> into) => base.CollectPaintedNodes(into);

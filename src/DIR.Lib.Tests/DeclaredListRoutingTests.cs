@@ -71,13 +71,13 @@ public class DeclaredListRoutingTests
     }
 
     [Fact]
-    public void A_popover_over_a_declared_list_claims_a_click_inside_it_and_the_row_cursor_stays()
+    public void A_press_inside_a_popover_over_list_A_does_not_move_the_keyboard_from_B_to_A()
     {
-        var f = new Fixture(declareB: false);
-        f.A.Open("A", 1);
+        var f = new Fixture();
+        f.Press(210f, 5f).ShouldBeTrue(); // the reader last pressed in B (row 0)
+
         var popover = new PopoverState();
         popover.Open();
-
         // A non-pixel surface paints an open popover over list A (x 0..100, rows 0..30) through public API only.
         var content = new RectF32(10f, 0f, 60f, 20f);
         f.Widget.Ui.NoteFrameBegin(f.Widget);
@@ -90,11 +90,62 @@ public class DeclaredListRoutingTests
 
         f.Widget.Ui.PointerOwner.ShouldBe(content);
         f.Press(20f, 5f).ShouldBeTrue(); // inside the content, over row 0 of A
-
-        contentHits.ShouldBe(1, "the popover's region took the press, not the row beneath");
-        f.Activated.ShouldBeEmpty();
+        contentHits.ShouldBe(1, "the popover's region took the press");
         popover.IsOpen.ShouldBeTrue("a press inside the content does not dismiss");
-        f.A.Index.ShouldBe(1);
+        f.Activated.ShouldBeEmpty();
+
+        f.Key(InputKey.Down).ShouldBeTrue();
+        f.B.Index.ShouldBe(1, "Down still steps B, the list the reader was in");
+        f.A.IsOpen.ShouldBeFalse("the menu click did not open A under it");
+    }
+
+    private sealed class ScrollWidget(Renderer<RgbaImage> renderer) : PixelWidgetBase<RgbaImage>(renderer)
+    {
+        public void Render(Layout.Node root, RectF32 bounds)
+        {
+            BeginFrame();
+            RenderLayout(root, bounds, fontPath: "stub.ttf", scale: DesignScale.One);
+        }
+    }
+
+    [Fact]
+    public void A_declared_list_under_WithScroll_routed_by_InputRouter_scrolls_to_the_row_Down_lands_on()
+    {
+        var renderer = new StubRenderer(200, 200);
+        var widget = new ScrollWidget(renderer);
+        var scroll = new ListScrollController { Mode = ScrollBarMode.None };
+        var cursor = new ListCursor();
+        const float rowH = 20f, viewportH = 50f;
+        Layout.Node Card()
+        {
+            var rows = new Layout.Node[10];
+            for (var i = 0; i < rows.Length; i++)
+            {
+                rows[i] = Layout.Builder.Spacer().RowH(rowH).Clickable(new HitResult.ListItemHit("rows", i), _ => { });
+            }
+
+            return Layout.Builder.VStack(
+                    Layout.Builder.VStack(rows).WStar().HClamp(0f, viewportH).WithScroll(scroll).ListOf(cursor, "rows"),
+                    Layout.Builder.Spacer().RowH(30f))
+                .Stretch();
+        }
+
+        var bounds = new RectF32(0, 0, 200, 200);
+        widget.Render(Card(), bounds);
+        var router = new InputRouter(widget.Ui, new BackgroundTaskTracker(), static () => { }) { Widgets = () => [widget] };
+
+        router.Handle(new InputEvent.MouseDown(10f, 5f, MouseButton.Left, InputModifier.None, 1)).ShouldBeTrue(); // row 0
+        for (var expected = 1; expected < 10; expected++)
+        {
+            router.Handle(new InputEvent.KeyDown(InputKey.Down, InputModifier.None)).ShouldBeTrue();
+            cursor.Index.ShouldBe(expected);
+            widget.Render(Card(), bounds);
+            var region = widget.GetRegisteredRegions().Cast<ClickableRegion?>()
+                .FirstOrDefault(r => r!.Value.Result is HitResult.ListItemHit { Index: var i } && i == expected);
+            region.ShouldNotBeNull($"row {expected} is on screen after the router stepped onto it");
+            region.Value.Height.ShouldBe(rowH, $"all of row {expected} is shown");
+            (region.Value.Y + region.Value.Height).ShouldBeLessThanOrEqualTo(viewportH);
+        }
     }
 
     [Fact]
