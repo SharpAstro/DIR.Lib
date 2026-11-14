@@ -9,6 +9,24 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.59
+
+Additive; the pointer leaving the window is an input event, and a palette says when it next needs a frame (#218).
+
+- `InputEvent.PointerLeft` (a sealed record with no parameters, like `PinchEnd`) says the pointer left the
+  window. `InputRouter` handles it by forgetting the pointer, so hover state does not outlive the leave.
+  A consumer whose exhaustive `switch` over `InputEvent` has no default arm sees the new case; every switch
+  inside DIR.Lib has a default arm.
+- `FloatingPaletteState.NotePointerLeft()` ends hover and starts the idle delay at the leave.
+- `FloatingPalette.NextFrameFor(idleSeconds, engaged, collapsed)` and `FloatingPaletteState.NextFrameIn`:
+  null when nothing will change by itself, the time left of the idle delay while it waits (schedule one
+  wake), zero while the alpha is moving (draw every frame).
+- Behaviour change: `FloatingPaletteState.IsFading` is true only while the alpha is moving. It used to be
+  true whenever the alpha sat above its floor, so a host polling it drew 60 frames a second while the
+  palette rested hovered or waited out its delay (tianwen#2130).
+- Follow-ups, not buildable here: SdlVulkan.Renderer dispatches `PointerLeft` from SDL's window
+  mouse-leave, and tianwen moves from `IsFading` to `NextFrameIn`.
+
 ## 11.58
 
 Additive; two behaviour fixes to the resizable table header (#212).
