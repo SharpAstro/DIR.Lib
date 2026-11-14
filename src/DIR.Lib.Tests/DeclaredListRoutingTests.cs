@@ -86,7 +86,7 @@ public class DeclaredListRoutingTests
         var contentHits = 0;
         f.Widget.Regions.Add(new ClickableRegion(0f, 0f, 400f, 400f, new HitResult.ButtonHit("backdrop"), null) { Dismisses = popover });
         f.Widget.Regions.Add(new ClickableRegion(content.X, content.Y, content.Width, content.Height,
-            new HitResult.ButtonHit("content"), null) { OnActivate = _ => contentHits++ });
+            new HitResult.ButtonHit("content"), null) { OnClick = _ => contentHits++ });
 
         f.Widget.Ui.PointerOwner.ShouldBe(content);
         f.Press(20f, 5f).ShouldBeTrue(); // inside the content, over row 0 of A
