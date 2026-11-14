@@ -82,6 +82,12 @@ public abstract partial record Node
     /// <see cref="Node.Hit"/>, so a row needs no state of its own to be navigable.</summary>
     public Node BgFocus(RGBAColor32 color) => this with { FocusBackground = color };
 
+    /// <summary>Declares this node the container of the list <paramref name="listId"/>, whose rows
+    /// (<c>ListItemHit(listId, i)</c>) <paramref name="cursor"/> owns. <see cref="InputRouter"/> then steps
+    /// the cursor on Up/Down and activates its row on Enter, for any widget that painted this node.</summary>
+    public Node ListOf(ListCursor cursor, string listId)
+        => this with { DeclaredList = new DIR.Lib.DeclaredList(cursor, listId) };
+
     /// <summary>Round the corners of this node's <see cref="Bg"/> (and a <see cref="Content.Box"/> leaf's
     /// own fill) by <paramref name="designUnits"/>. Chrome only -- arrange is unchanged, so a rounded node
     /// occupies exactly the rect a square one would. See <see cref="CornerRadius"/> for how each surface

@@ -367,6 +367,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
 
         var press = new PointerPress(down.X, down.Y, down.Button, down.Modifiers, down.ClickCount);
         var widgets = Widgets();
+        NoteListPress(widgets, down.X, down.Y);
 
         if (SelectionPress(widgets, down, press))
         {
@@ -1020,7 +1021,151 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             return true;
         }
 
+        if (key.Key is InputKey.Up or InputKey.Down or InputKey.Enter && HandleDeclaredListKey(key))
+        {
+            requestRedraw();
+            return true;
+        }
+
         return Unhandled?.Invoke(key) ?? false;
+    }
+
+    // ---- declared lists ---------------------------------------------------------------------
+
+    // The list id of the pointer's last press: on one of a declared list's rows, or inside its container's
+    // arranged rect. A press anywhere else clears it. Read by DeclaredList.Active.
+    private string? _pressedListId;
+    private readonly List<DeclaredList> _declaredLists = [];
+    private readonly List<RectF32> _declaredBounds = [];
+    private readonly List<ClickableRegion> _listRegions = [];
+    private readonly List<ListCursor.PaintedRow> _listClipped = [];
+    private readonly List<ListCursor.PaintedRow> _listScratch = [];
+
+    /// <summary>Fills the declared lists of the PAINTED nodes (paint order) and their arranged rects.</summary>
+    private void CollectDeclaredLists(IReadOnlyList<IPixelWidget> widgets)
+    {
+        _declaredLists.Clear();
+        _declaredBounds.Clear();
+        for (var w = 0; w < widgets.Count; w++)
+        {
+            _nodes.Clear();
+            widgets[w].CollectPaintedNodes(_nodes);
+            foreach (var arranged in _nodes)
+            {
+                if (arranged.Node.DeclaredList is { } list)
+                {
+                    _declaredLists.Add(list);
+                    _declaredBounds.Add(new RectF32(arranged.Bounds.X, arranged.Bounds.Y, arranged.Bounds.Width, arranged.Bounds.Height));
+                }
+            }
+        }
+    }
+
+    private int InnermostDeclaredAt(float x, float y)
+    {
+        for (var i = _declaredBounds.Count - 1; i >= 0; i--)
+        {
+            var b = _declaredBounds[i];
+            if (x >= b.X && x < b.X + b.Width && y >= b.Y && y < b.Y + b.Height) return i;
+        }
+
+        return -1;
+    }
+
+    private void NoteListPress(IReadOnlyList<IPixelWidget> widgets, float x, float y)
+    {
+        CollectDeclaredLists(widgets);
+        _pressedListId = null;
+        if (_declaredLists.Count == 0) return;
+
+        // A press on one of a declared list's rows: the cursor follows the click into that list.
+        for (var w = widgets.Count - 1; w >= 0 && _pressedListId is null; w--)
+        {
+            _listRegions.Clear();
+            widgets[w].CollectPaintedRegions(_listRegions);
+            for (var i = _listRegions.Count - 1; i >= 0; i--)
+            {
+                var region = _listRegions[i];
+                if (!Contains(region, x, y)) continue;
+                if (region.Result is HitResult.ListItemHit item)
+                {
+                    foreach (var list in _declaredLists)
+                    {
+                        if (!string.Equals(list.ListId, item.ListId, StringComparison.Ordinal)) continue;
+                        _pressedListId = list.ListId;
+                        if (!string.Equals(list.Cursor.ListId, list.ListId, StringComparison.Ordinal))
+                        {
+                            list.Cursor.Open(list.ListId, item.Index);
+                        }
+
+                        break;
+                    }
+                }
+
+                break; // only the topmost region under the point
+            }
+        }
+
+        if (_pressedListId is null && InnermostDeclaredAt(x, y) is var at and >= 0)
+        {
+            _pressedListId = _declaredLists[at].ListId;
+        }
+    }
+
+    /// <summary>The list holding the focused field: the innermost declared container around it.</summary>
+    private string? FocusedListId(IReadOnlyList<IPixelWidget> widgets)
+    {
+        if (ui.Focus.Current is not { } field) return null;
+        for (var w = widgets.Count - 1; w >= 0; w--)
+        {
+            _listRegions.Clear();
+            widgets[w].CollectPaintedRegions(_listRegions);
+            foreach (var region in _listRegions)
+            {
+                if (region.Result is HitResult.TextInputHit hit && ReferenceEquals(hit.Input, field)
+                    && InnermostDeclaredAt(region.X + region.Width / 2f, region.Y + region.Height / 2f) is var at and >= 0)
+                {
+                    return _declaredLists[at].ListId;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Up/Down step and Enter activates the cursor of the ACTIVE declared list (<see cref="DeclaredList.Active"/>),
+    /// over the regions every widget painted. False when no list is active or nothing was moved or acted on,
+    /// so the key still reaches <see cref="Unhandled"/>.
+    /// </summary>
+    private bool HandleDeclaredListKey(InputEvent.KeyDown key)
+    {
+        var widgets = Widgets();
+        CollectDeclaredLists(widgets);
+        if (_declaredLists.Count == 0) return false;
+        if (DeclaredList.Active(_declaredLists, FocusedListId(widgets), _pressedListId) is not { } active) return false;
+
+        var cursor = active.Cursor;
+        if (!string.Equals(cursor.ListId, active.ListId, StringComparison.Ordinal))
+        {
+            cursor.Open(active.ListId);
+        }
+
+        _listRegions.Clear();
+        _listClipped.Clear();
+        foreach (var widget in widgets)
+        {
+            widget.CollectPaintedRegions(_listRegions);
+            widget.CollectClippedListRows(active.ListId, _listClipped);
+        }
+
+        var regions = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_listRegions);
+        return key.Key switch
+        {
+            InputKey.Up => ListKeys.Move(cursor, -1, regions, _listClipped, _listScratch),
+            InputKey.Down => ListKeys.Move(cursor, 1, regions, _listClipped, _listScratch),
+            _ => ListKeys.Activate(cursor, key.Modifiers, regions, _listClipped, _listScratch),
+        };
     }
 
     private bool HandleTextInput(InputEvent.TextInput text)

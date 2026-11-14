@@ -191,6 +191,12 @@ public abstract partial record Node
     public Action<InputModifier>? OnActivate { get; init; }
 
     /// <summary>
+    /// The list this node is the container of, set via <see cref="ListOf"/>: the cursor that owns its rows
+    /// and their list id. An init-only property, so no constructor changes shape. See <see cref="DIR.Lib.DeclaredList"/>.
+    /// </summary>
+    public DIR.Lib.DeclaredList? DeclaredList { get; init; }
+
+    /// <summary>
     /// What the SECOND press of a double-click does, set via <see cref="DoubleClickable"/>: a rig card
     /// that selects on one click and opens on two, a file row that highlights and then loads.
     /// </summary>
