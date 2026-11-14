@@ -580,7 +580,7 @@ namespace DIR.Lib
         protected void RegisterClickable(float x, float y, float w, float h, HitResult result,
             Action<InputModifier>? onClick = null, CursorKind? cursor = null,
             Func<PointerPress, DragCapture?>? onPress = null, bool focusOnOpen = false)
-            => _tracker.Register(new ClickableRegion(x, y, w, h, result, onClick, cursor)
+            => RegisterClickable(new ClickableRegion(x, y, w, h, result, onClick, cursor)
             {
                 OnPress = onPress,
                 FocusOnOpen = focusOnOpen
@@ -591,11 +591,15 @@ namespace DIR.Lib
         /// covers -- a tooltip, a scroll target, a disabled row. <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, string?, DesignScale?, Action{Layout.Content.Fill, RectF32}?)"/>'s own path,
         /// since a node can declare all of them at once.
         /// </summary>
-        protected void RegisterClickable(in ClickableRegion region) => _tracker.Register(region);
+        protected void RegisterClickable(in ClickableRegion region)
+        {
+            _tracker.Register(region);
+            Renderer.NoteRegion(region);
+        }
 
         /// <summary>Registers a region that only states a cursor -- a card, a bar -- with no action.</summary>
         protected void RegisterCursor(float x, float y, float w, float h, CursorKind cursor)
-            => _tracker.RegisterCursor(x, y, w, h, cursor);
+            => RegisterClickable(new ClickableRegion(x, y, w, h, new HitResult.ChromeHit(), null, cursor));
 
         /// <summary>
         /// The scroll controller of the innermost region under the point that declared one

@@ -870,5 +870,13 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
     public virtual void DrawScrim(in RectInt bounds, RGBAColor32 scrimColor)
         => FillRectangle(bounds, scrimColor);
 
+    /// <summary>
+    /// Told each clickable region as a widget registers it, in paint order. Nothing draws from it: it is here so
+    /// a renderer that RECORDS a frame (<see cref="WireframeRenderer"/>) sees the regions on the same clock as the
+    /// text and the fills, which is what says whether a region was painted over or under them. The default does
+    /// nothing.
+    /// </summary>
+    public virtual void NoteRegion(in ClickableRegion region) { }
+
     public abstract void Dispose();
 }
