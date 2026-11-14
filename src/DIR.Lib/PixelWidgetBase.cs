@@ -126,6 +126,8 @@ namespace DIR.Lib
         // viewport, with where it sits in what that node scrolls over: what lets the keyboard step onto a
         // row the viewport hides, and bring the row it lands on into view. Mirrors _tracker's lifecycle.
         private readonly List<ScrolledListRow> _scrolledListRows = [];
+        // The lists the painted tree declared (Node.ListOf), in paint order; rebuilt every frame.
+        private readonly List<DeclaredList> _declaredLists = [];
 
         private readonly record struct ScrolledListRow(
             HitResult.ListItemHit Hit, bool IsDisabled, bool IsClipped, ListScrollController Scroll, float Start, float End);
@@ -318,6 +320,7 @@ namespace DIR.Lib
             _selectableText.Clear();
             _capturedLayout?.Clear();
             _scrolledListRows.Clear();
+            _declaredLists.Clear();
 
             // Window-level, so it is cleared once per paint CYCLE rather than once per widget: see the
             // remarks on WindowUiSettings.PointerOwner for why clearing it here unconditionally would break
@@ -453,17 +456,64 @@ namespace DIR.Lib
         /// </remarks>
         public bool MoveListCursor(int delta)
         {
-            if (delta == 0 || !ListCursor.IsOpen) return false;
+            var cursor = ActiveCursor();
+            if (delta == 0 || cursor is null || !cursor.IsOpen) return false;
 
             _clippedListRows.Clear();
-            CollectClippedListRows(ListCursor.ListId!, _clippedListRows);
-            if (!ListKeys.Move(ListCursor, delta, RegisteredRegions, _clippedListRows, _paintedListRows))
+            CollectClippedListRows(cursor.ListId!, _clippedListRows);
+            if (!ListKeys.Move(cursor, delta, RegisteredRegions, _clippedListRows, _paintedListRows))
             {
                 return false;
             }
 
-            RevealListCursor();
+            RevealListCursor(cursor);
             return true;
+        }
+
+        /// <summary>
+        /// The cursor the keys act on. Where the painted tree declares lists (<see cref="Layout.Node.ListOf"/>)
+        /// it is the active declared list's own cursor, by <see cref="DeclaredList.Active"/>: this widget sees
+        /// no presses, so its hint is the one declared list whose cursor is already open (a press opens it),
+        /// else the only list on the frame, else none. Where nothing is declared it is
+        /// <see cref="ListCursor"/>, exactly as before.
+        /// </summary>
+        private ListCursor? ActiveCursor()
+        {
+            if (_declaredLists.Count == 0 || !RegionsAreCurrent) return ListCursor;
+
+            string? openId = null;
+            foreach (var list in _declaredLists)
+            {
+                if (!string.Equals(list.Cursor.ListId, list.ListId, StringComparison.Ordinal)) continue;
+                if (openId is not null && !string.Equals(openId, list.ListId, StringComparison.Ordinal))
+                {
+                    openId = null;
+                    break;
+                }
+
+                openId = list.ListId;
+            }
+
+            var active = DeclaredList.Active(_declaredLists, null, openId);
+            if (active is null) return null;
+            if (!string.Equals(active.Cursor.ListId, active.ListId, StringComparison.Ordinal))
+            {
+                active.Cursor.Open(active.ListId);
+            }
+
+            return active.Cursor;
+        }
+
+        // Whether the row is under this widget's cursor or under any declared list's own cursor.
+        private bool CursorIsOn(HitResult? hit)
+        {
+            if (ListCursor.IsOn(hit)) return true;
+            foreach (var list in _declaredLists)
+            {
+                if (list.Cursor.IsOn(hit)) return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -489,11 +539,11 @@ namespace DIR.Lib
         /// and a row of a virtualised list the paint never arranged is the host's to bring into view, off
         /// <see cref="ListCursor.Moved"/>, as before.
         /// </summary>
-        private void RevealListCursor()
+        private void RevealListCursor(ListCursor cursor)
         {
             foreach (var row in _scrolledListRows)
             {
-                if (ListCursor.IsOn(row.Hit))
+                if (cursor.IsOn(row.Hit))
                 {
                     row.Scroll.RevealExtent(row.Start, row.End);
                     return;
@@ -522,15 +572,16 @@ namespace DIR.Lib
         /// </remarks>
         public bool ActivateListCursor(InputModifier modifier = InputModifier.None)
         {
-            if (!ListCursor.IsOpen) return false;
+            var cursor = ActiveCursor();
+            if (cursor is null || !cursor.IsOpen) return false;
 
             // The walk is ListKeys.Activate's: Enter's own handler where the row declared one (Enter pins
             // the target, a click merely selects it), a disabled row refusing, and a row with NEITHER
             // handler answering false, so a host forwarding the key still reaches its own binding.
             _clippedListRows.Clear();
-            CollectClippedListRows(ListCursor.ListId!, _clippedListRows);
-            return ListKeys.Activate(ListCursor, modifier, RegisteredRegions, _clippedListRows, _paintedListRows,
-                RevealListCursor);
+            CollectClippedListRows(cursor.ListId!, _clippedListRows);
+            return ListKeys.Activate(cursor, modifier, RegisteredRegions, _clippedListRows, _paintedListRows,
+                () => RevealListCursor(cursor));
         }
 
         /// <summary>
@@ -1176,6 +1227,7 @@ namespace DIR.Lib
             foreach (var arrangedNode in arranged)
             {
                 var (node, bounds) = arrangedNode;
+                if (node.DeclaredList is { } declaredList) _declaredLists.Add(declaredList);
 
                 while (links.Count > 0 && links.Peek().Depth >= arrangedNode.Depth)
                 {
@@ -1301,7 +1353,7 @@ namespace DIR.Lib
                 var nodeFill = node.HoverBackground is { } hover && PointerWithin(bounds, openPopoverDepth >= 0) ? hover
                     // And the keyboard's own position, resolved against the node's HIT rather than
                     // against a rect -- the row already says which list and index it is.
-                    : node.FocusBackground is { } focus && ListCursor.IsOn(node.Hit) ? focus
+                    : node.FocusBackground is { } focus && CursorIsOn(node.Hit) ? focus
                     : node.Background;
                 if (nodeFill is { } bg)
                 {
