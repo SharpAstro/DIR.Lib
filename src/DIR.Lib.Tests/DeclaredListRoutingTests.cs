@@ -71,6 +71,33 @@ public class DeclaredListRoutingTests
     }
 
     [Fact]
+    public void A_popover_over_a_declared_list_claims_a_click_inside_it_and_the_row_cursor_stays()
+    {
+        var f = new Fixture(declareB: false);
+        f.A.Open("A", 1);
+        var popover = new PopoverState();
+        popover.Open();
+
+        // A non-pixel surface paints an open popover over list A (x 0..100, rows 0..30) through public API only.
+        var content = new RectF32(10f, 0f, 60f, 20f);
+        f.Widget.Ui.NoteFrameBegin(f.Widget);
+        f.Widget.Ui.NotePopoverPainted(popover);
+        f.Widget.Ui.ClaimPointer(content, popover);
+        var contentHits = 0;
+        f.Widget.Regions.Add(new ClickableRegion(0f, 0f, 400f, 400f, new HitResult.ButtonHit("backdrop"), null) { Dismisses = popover });
+        f.Widget.Regions.Add(new ClickableRegion(content.X, content.Y, content.Width, content.Height,
+            new HitResult.ButtonHit("content"), null) { OnActivate = _ => contentHits++ });
+
+        f.Widget.Ui.PointerOwner.ShouldBe(content);
+        f.Press(20f, 5f).ShouldBeTrue(); // inside the content, over row 0 of A
+
+        contentHits.ShouldBe(1, "the popover's region took the press, not the row beneath");
+        f.Activated.ShouldBeEmpty();
+        popover.IsOpen.ShouldBeTrue("a press inside the content does not dismiss");
+        f.A.Index.ShouldBe(1);
+    }
+
+    [Fact]
     public void Two_lists_a_press_on_B_makes_B_the_one_the_arrows_step()
     {
         var f = new Fixture();
