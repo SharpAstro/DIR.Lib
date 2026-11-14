@@ -566,9 +566,9 @@ public class InputRouterTests
     {
         var harness = new Harness();
         var moves = 0;
-        MouseUp? released = null;
+        var released = false;
         harness.Paint(front: Layout.Builder.Box(50f, 20f).Pressable(
-            new HitResult.ButtonHit("drag"), _ => new DragCapture(_ => moves++, m => released = m)));
+            new HitResult.ButtonHit("drag"), _ => new DragCapture(_ => moves++, _ => released = true)));
         harness.Press(10f, 10f);
 
         harness.Router.Handle(new InputEvent.PointerLeft());
@@ -576,7 +576,7 @@ public class InputRouterTests
         harness.Release(130f, 120f);
 
         moves.ShouldBe(1);
-        released.ShouldNotBeNull();
+        released.ShouldBeTrue();
         harness.UnhandledEvents.OfType<InputEvent.PointerLeft>().ShouldHaveSingleItem();
     }
 
