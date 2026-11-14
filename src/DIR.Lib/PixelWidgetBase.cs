@@ -92,6 +92,13 @@ namespace DIR.Lib
         /// <summary>The cursor stated by the topmost region under the point, or null where nothing under
         /// it had a view.</summary>
         CursorKind? HitTestCursor(float x, float y);
+
+        /// <summary>
+        /// Appends the rows of list <paramref name="listId"/> that a scrolled list arranged but its viewport
+        /// clipped out, so the keyboard can step onto a row nobody can see. A default interface method:
+        /// the default reports none, which is right for a surface whose lists are not scrolled.
+        /// </summary>
+        void CollectClippedListRows(string listId, List<ListCursor.PaintedRow> into) { }
     }
 
     /// <summary>
@@ -113,6 +120,7 @@ namespace DIR.Lib
         // Reused rather than allocated, for the reason the router's region buffer is -- a key repeat is
         // a step per frame.
         private readonly List<ListCursor.PaintedRow> _paintedListRows = [];
+        private readonly List<ListCursor.PaintedRow> _clippedListRows = [];
 
         // Every list row this frame's paint met inside a scrolled node, painted or clipped out of its
         // viewport, with where it sits in what that node scrolls over: what lets the keyboard step onto a
@@ -447,34 +455,32 @@ namespace DIR.Lib
         {
             if (delta == 0 || !ListCursor.IsOpen) return false;
 
-            _paintedListRows.Clear();
-            foreach (var region in RegisteredRegions)
-            {
-                if (region.Result is HitResult.ListItemHit item && ListCursor.Owns(item))
-                {
-                    _paintedListRows.Add(new ListCursor.PaintedRow(item.Index, region.IsDisabled));
-                }
-            }
-
-            // And the rows a scrolled list arranged but its viewport clipped out. They registered nothing,
-            // because a row nobody can see must not answer a press, but they are rows of the list all the
-            // same: the paint met them, declared. Without them the arrows stopped dead at the last row
-            // the viewport showed, half of which could be under its edge.
-            foreach (var row in _scrolledListRows)
-            {
-                if (row.IsClipped && ListCursor.Owns(row.Hit))
-                {
-                    _paintedListRows.Add(new ListCursor.PaintedRow(row.Hit.Index, row.IsDisabled));
-                }
-            }
-
-            if (!ListCursor.Step(delta, _paintedListRows))
+            _clippedListRows.Clear();
+            CollectClippedListRows(ListCursor.ListId!, _clippedListRows);
+            if (!ListKeys.Move(ListCursor, delta, RegisteredRegions, _clippedListRows, _paintedListRows))
             {
                 return false;
             }
 
             RevealListCursor();
             return true;
+        }
+
+        /// <summary>
+        /// The rows a scrolled list arranged but its viewport clipped out. They registered nothing,
+        /// because a row nobody can see must not answer a press, but they are rows of the list all the
+        /// same: the paint met them, declared. Without them the arrows stop dead at the last row
+        /// the viewport showed, half of which could be under its edge.
+        /// </summary>
+        public virtual void CollectClippedListRows(string listId, List<ListCursor.PaintedRow> into)
+        {
+            foreach (var row in _scrolledListRows)
+            {
+                if (row.IsClipped && string.Equals(row.Hit.ListId, listId, StringComparison.Ordinal))
+                {
+                    into.Add(new ListCursor.PaintedRow(row.Hit.Index, row.IsDisabled));
+                }
+            }
         }
 
         /// <summary>
@@ -517,40 +523,14 @@ namespace DIR.Lib
         public bool ActivateListCursor(InputModifier modifier = InputModifier.None)
         {
             if (!ListCursor.IsOpen) return false;
-            if (ListCursor.Index < 0 && !MoveListCursor(1)) return false;
 
-            foreach (var region in RegisteredRegions)
-            {
-                if (!ListCursor.IsOn(region.Result)) continue;
-                // Declared unavailable: the press is swallowed, so Enter is too, and for the same
-                // reason. The arrows do not stop here either, so reaching this is a cursor placed by
-                // hand rather than walked.
-                if (region.IsDisabled)
-                {
-                    return false;
-                }
-
-                // Enter's own handler where the row declared one, because Enter and a click are not
-                // always the same act -- Enter pins the target, a click merely selects it. Without
-                // somewhere to say so, such a list had to keep Enter by hand and the cursor could not
-                // own the whole keyboard contract.
-                //
-                // A row can also declare itself and carry NEITHER handler: it registers so the cursor
-                // can reach it and a debug inspector can name it, while its host takes the action on the
-                // pointer RELEASE somewhere else (a list whose press must reach a scroll controller, or
-                // a touch drag would act on whichever row it started on). This used to answer true
-                // there, reporting an activation that had not happened, and a host forwarding the key
-                // saw it claimed and never reached its own binding. Silently, there being no handler to
-                // notice it was missing.
-                if ((region.OnActivate ?? region.OnClick) is not { } act)
-                {
-                    return false;
-                }
-
-                act(modifier);
-                return true;
-            }
-            return false;
+            // The walk is ListKeys.Activate's: Enter's own handler where the row declared one (Enter pins
+            // the target, a click merely selects it), a disabled row refusing, and a row with NEITHER
+            // handler answering false, so a host forwarding the key still reaches its own binding.
+            _clippedListRows.Clear();
+            CollectClippedListRows(ListCursor.ListId!, _clippedListRows);
+            return ListKeys.Activate(ListCursor, modifier, RegisteredRegions, _clippedListRows, _paintedListRows,
+                RevealListCursor);
         }
 
         /// <summary>

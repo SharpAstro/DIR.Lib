@@ -143,6 +143,16 @@
                 static (child, list) => child.CollectPaintedNodes(list),
                 static (self, list) => self.CollectOwnNodes(list));
 
+        /// <inheritdoc/>
+        public override void CollectClippedListRows(string listId, List<ListCursor.PaintedRow> into)
+        {
+            base.CollectClippedListRows(listId, into);
+            foreach (var child in Children)
+            {
+                child.CollectClippedListRows(listId, into);
+            }
+        }
+
         private void CollectOwnRegions(List<ClickableRegion> into) => base.CollectPaintedRegions(into);
 
         private void CollectOwnNodes(List<Layout.ArrangedNode<float>> into) => base.CollectPaintedNodes(into);
