@@ -25,7 +25,12 @@ surface can carry a popover's pointer claim. Consumer: Console.Lib#57 (CON57).
   cursor steps only through rows that are reachable.
 - `WindowUiSettings.NoteFrameBegin`, `NotePopoverPainted` and `ClaimPointer` are public and documented, so a
   surface that is not a `PixelWidgetBase` can note a painted popover and claim the pointer for its content.
-  A press inside the claimed content reaches the popover's regions, not the declared list's rows beneath.
+  A press inside the claimed content reaches the popover's regions, and `InputRouter` leaves the last pressed
+  list alone for it, so a menu click does not move the keyboard to the list beneath the menu.
+- `IPixelWidget.RevealListRow` (default empty) is called by `InputRouter` after it steps a declared list, so a
+  list under `WithScroll` scrolls to the row an arrow lands on.
+- A widget that declares lists and also drives its own `PixelWidgetBase.ListCursor` gets the declared lists'
+  keys only; `ListCursor` is used when nothing on the frame is declared.
 
 ## 11.60
 
