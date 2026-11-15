@@ -109,12 +109,11 @@ public class LayoutWrapFirstLineTrailingTests
     [Fact]
     public void LaterLinesUseTheFullExtent()
     {
-        // 12 items, narrow trailing: line 2 would hold 8 at 667 (8*60+7*12=564, a 9th needs 636... fits), so a
-        // run of 20 shows line 2 filling beyond what line 1 could.
+        // Line 1 holds seven (the trailing node takes the rest). Line 2 has the full 667 and holds nine:
+        // 9 * 60 + 8 * 12 = 636 fits and a tenth would need 708.
         var root = Items(20).WithGap(12f).WithFirstLineTrailing(Trailing(15));
         var (items, _) = Split(Px.Arrange(root, 667, 400));
         items.Count(r => r.Y == 0).ShouldBe(7);
-        // 9 * 60 + 8 * 12 = 636 <= 667 < 708.
         items.Count(r => r.Y == items[7].Y).ShouldBe(9);
     }
 
@@ -171,6 +170,17 @@ public class LayoutWrapFirstLineTrailingTests
 
             var measured = Px.Measure(root, width, 1000);
             measured.Height.ShouldBe(arrangedBottom, $"count {count} width {width}");
+
+            // Measured main extent: the longest line. Line 1 is its items, a gap and the trailing node.
+            var trailW = trailing!.Value.Width;
+            var firstItems = items.Where(r => r.Y == trailing.Value.Y).ToList();
+            var expected = firstItems.Count == 0 ? trailW : firstItems.Max(r => r.X + r.Width) + 12 + trailW;
+            foreach (var r in items.Where(r => r.Y != trailing.Value.Y))
+            {
+                expected = Math.Max(expected, r.X + r.Width);
+            }
+
+            measured.Width.ShouldBe(expected, $"main count {count} width {width}");
         }
     }
 
@@ -237,6 +247,36 @@ public class LayoutWrapFirstLineTrailingTests
         var a = Px.Arrange(root, 300, 400);
 
         a.Single(e => e.Depth == 1 && e.Node is Layout.Node.Leaf { Content: Layout.Content.Box { Width: 50f } }).Bounds.Height.ShouldBe(30);
+    }
+
+    [Fact]
+    public void TrailingNodeWiderThanTheContainerStartsAtTheOrigin()
+    {
+        var root = Items(2).WithGap(12f).WithFirstLineTrailing(Layout.Builder.Box(150f, 20f, Ink));
+        var a = Px.Arrange(root, 100, 400);
+        var trailing = a.Single(e => e.Depth == 1 && e.Node is Layout.Node.Leaf { Content: Layout.Content.Box { Width: 150f } }).Bounds;
+
+        trailing.X.ShouldBe(0);
+        trailing.Width.ShouldBe(150);
+    }
+
+    [Fact]
+    public void VerticalWrapFlowsDownColumnsAndPlacesTheTrailingNodeAtTheBottom()
+    {
+        var items = Enumerable.Range(0, 8).Select(_ => Layout.Builder.Box(10f, 60f, Ink)).ToArray();
+        var root = Layout.Builder.WrapV(items).WithGap(12f).WithFirstLineTrailing(Layout.Builder.Box(20f, 150f, Ink));
+        var a = Px.Arrange(root, 400, 667);
+
+        var boxes = a.Where(e => e.Depth == 1 && e.Node is Layout.Node.Leaf { Content: Layout.Content.Box { Height: 60f } }).Select(e => e.Bounds).ToList();
+        var trailing = a.Single(e => e.Depth == 1 && e.Node is Layout.Node.Leaf { Content: Layout.Content.Box { Height: 150f } }).Bounds;
+
+        // 667 - 150 - 12 = 505 holds seven; the eighth starts column two, which has the full height.
+        boxes.Count(r => r.X == 0).ShouldBe(7);
+        boxes[7].X.ShouldBeGreaterThan(0);
+        boxes[7].Y.ShouldBe(0);
+        trailing.X.ShouldBe(0);
+        trailing.Y.ShouldBe(517);
+        Px.Measure(root, 400, 667).Height.ShouldBe(517 + 150);
     }
 
     [Fact]

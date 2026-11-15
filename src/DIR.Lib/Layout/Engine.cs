@@ -1215,9 +1215,9 @@ public static class Engine
         var availSize = new Size<T>(inner.Width, inner.Height);
         var mainAvail = MainOf(axis, availSize);
         // The first line alone stops short, so a run can flow BENEATH a corner item and still use the
-        // whole extent once it has. Clamped at zero: a reserve wider than the container would otherwise
-        // make the first line's limit negative and push every child onto line two.
-        // The measured trailing node takes its main extent and the gap before it off the first line's item room.
+        // whole extent once it has. The measured trailing node takes its main extent and the gap before
+        // it off the first line's item room. That room is clamped at zero: a reserve or trailing node wider
+        // than the container would otherwise make the limit negative and push every child onto line two.
         var (trailMain, trailCross) = trailing is null
             ? (T.Zero, T.Zero)
             : ResolveWrapChild(trailing, axis, availSize, ctx);
@@ -1233,12 +1233,14 @@ public static class Engine
         }
 
         // Flush at the inner rect's main end, on the line's cross extent (a Star cross stretches like an item).
+        // A node wider than the container starts at the main origin and overflows at the end, never before it.
         void PlaceTrailing(T lineCrossExtent, T crossPos)
         {
             var t = trailing!;
             var tCrossSizing = CrossSizing(axis, t);
             var tc = tCrossSizing.IsStar ? Clamp(lineCrossExtent, tCrossSizing, ctx, CrossAxis(axis)) : trailCross;
-            var mainPos = (axis == Axis.Horizontal ? inner.X : inner.Y) + mainAvail - trailMain;
+            var mainOrigin0 = axis == Axis.Horizontal ? inner.X : inner.Y;
+            var mainPos = Max(mainOrigin0, mainOrigin0 + mainAvail - trailMain);
             var r = axis == Axis.Horizontal
                 ? new Rect<T>(mainPos, crossPos, trailMain, tc)
                 : new Rect<T>(crossPos, mainPos, tc, trailMain);
@@ -1251,7 +1253,8 @@ public static class Engine
         var lineIndex = 0;
         var crossCursor = axis == Axis.Horizontal ? inner.Y : inner.X;
         // Narrow rule: when the first item does not fit beside the trailing node, line 1 holds only the
-        // trailing node and the items start on line 2 (a child no longer always takes an empty line here).
+        // trailing node and the items start on line 2. (Without a trailing node the first child always
+        // takes line 1, however wide it is.)
         if (trailing is not null && (n == 0 || childMains[0] > firstLineAvail))
         {
             PlaceTrailing(trailCross, crossCursor);
