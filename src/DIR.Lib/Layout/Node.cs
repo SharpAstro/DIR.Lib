@@ -397,6 +397,13 @@ public abstract partial record Node
     /// <see cref="CollapseBelow"/>; only a Stack parent honours it (Dock/Grid strips are explicit).</summary>
     public float CollapseThreshold { get; init; }
 
+    /// <summary>A node that is only the space BETWEEN its siblings (a table header's grip cell): a parent
+    /// <see cref="Stack"/> draws it only between two surviving non-separator siblings, and one per run, so a
+    /// sibling that collapses (<see cref="CollapseBelow"/>) takes one separator with it, as the stack's own
+    /// <see cref="Stack.Gap"/> goes with it. A separator never collapses by threshold. Init-only, so it
+    /// adds nothing to any record's constructor.</summary>
+    public bool Separator { get; init; }
+
     /// <summary>Children laid out sequentially along <paramref name="Axis"/>, separated by <paramref name="Gap"/> design units.</summary>
     public sealed record Stack(ImmutableArray<Node> Children, Axis Axis = Axis.Vertical, float Gap = 0f) : Node;
 

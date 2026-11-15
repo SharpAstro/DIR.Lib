@@ -1060,4 +1060,119 @@ public class LayoutDataViewsTests
                 bad.Add($"cols [{string.Join(", ", columns.Select(c => c.Width))}] pad {pad} cells {cells} divider {i}: grip {grip}, left {left}, next {next}");
         }
     }
+
+    // ---- Table: droppable columns and grip-less dividers (#233) --------------------------------
+
+    /// <summary>One design unit a surface unit: the pixel host.</summary>
+    private sealed class PixelHostCtx : Layout.IMeasureContext<int>
+    {
+        public Layout.Size<int> MeasureText(ReadOnlySpan<char> text, float fontSize) => new(text.Length * 7, 14);
+        public int ToSurface(float designUnits) => (int)MathF.Round(designUnits);
+        public int ToSurfaceX(float designUnits) => (int)MathF.Round(designUnits);
+        public int ToSurfaceY(float designUnits) => (int)MathF.Round(designUnits);
+    }
+
+    private static TableColumn[] DroppableMix() =>
+    [
+        new("name", Sizing.Star(1f, 80f, 0f)),
+        new("size", Sizing.Fixed(70f)),
+        new("kind", Sizing.Star(1f, 0f, 90f)) { DropBelow = 60f },
+        new("age", Sizing.Star(1f, 0f, 70f)) { DropBelow = 50f },
+        new("state", Sizing.Fixed(60f)) { DropBelow = 100000f },
+        new("path", Sizing.Star(1f, 0f, 120f)) { DropBelow = 100f },
+    ];
+
+    private static (Dictionary<int, Rect<int>> Titles, Dictionary<int, Rect<int>> Cells, List<(string Name, Rect<int> Bounds)> Grips)
+        ArrangeTable(TableColumn[] columns, int width, Layout.IMeasureContext<int> ctx, TableStyle style)
+    {
+        var header = Layout.Builder.TableHeader(columns, null, _ => { }, style, new TableColumnWidths(), DesignScale.One);
+        var titles = new Dictionary<int, Rect<int>>();
+        var grips = new List<(string, Rect<int>)>();
+        foreach (var a in Layout.Engine.Arrange(header, new Rect<int>(0, 0, width, 1), ctx))
+        {
+            if (a.Node.Hit is not HitResult.ButtonHit b) continue;
+            if (b.Action.StartsWith("table-header:divider:", StringComparison.Ordinal)) { grips.Add((b.Action, a.Bounds)); continue; }
+            for (var i = 0; i < columns.Length; i++)
+                if (b.Action == "table-header:" + columns[i].Header) titles[i] = a.Bounds;
+        }
+
+        var cellNodes = columns.Select((c, i) => Layout.Builder.Spacer().Clickable(new HitResult.ButtonHit("row:" + i), null)).ToArray();
+        var row = Layout.Builder.TableRow(columns, cellNodes, style, new TableColumnWidths());
+        var cells = new Dictionary<int, Rect<int>>();
+        foreach (var a in Layout.Engine.Arrange(row, new Rect<int>(0, 0, width, 1), ctx))
+            if (a.Node.Hit is HitResult.ButtonHit rb && rb.Action.StartsWith("row:", StringComparison.Ordinal))
+                cells[int.Parse(rb.Action[4..])] = a.Bounds;
+        return (titles, cells, grips);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DroppableColumns_TakeTheirTitleGapAndGripWithThem_AtEveryWidth(bool cellHost)
+    {
+        Layout.IMeasureContext<int> ctx = cellHost ? new CellHostCtx() : new PixelHostCtx();
+        var unit = cellHost ? 8 : 1;
+        var columns = DroppableMix();
+        var style = Style with { Gap = 14f, PadX = 6f };
+        var gapSize = (int)MathF.Round(14f / unit);
+        var bad = new List<string>();
+        var sawDrop = false;
+        for (var width = cellHost ? 8 : 60; width <= (cellHost ? 110 : 880); width += cellHost ? 1 : 3)
+        {
+            var (titles, cells, grips) = ArrangeTable(columns, width, ctx, style);
+            if (titles.Count < columns.Length) sawDrop = true;
+            if (titles.Count == 0) continue;
+
+            if (!titles.Keys.OrderBy(k => k).SequenceEqual(cells.Keys.OrderBy(k => k)))
+                bad.Add($"width {width}: header drew [{string.Join(",", titles.Keys.OrderBy(k => k))}] but the row drew [{string.Join(",", cells.Keys.OrderBy(k => k))}]");
+            foreach (var (k, t) in titles)
+                if (cells.TryGetValue(k, out var c) && (c.X != t.X || c.Width != t.Width))
+                    bad.Add($"width {width}: column {k} title {t} but cell {c}");
+
+            var drawn = titles.OrderBy(kv => kv.Value.X).Select(kv => kv.Value).ToArray();
+            // No hole and no double gap: every neighbouring pair of titles is one gap apart.
+            for (var k = 0; k + 1 < drawn.Length; k++)
+            {
+                var between = drawn[k + 1].X - (drawn[k].X + drawn[k].Width);
+                if (between != gapSize) bad.Add($"width {width}: {between} cells between titles {k} and {k + 1}, want {gapSize}");
+            }
+
+            foreach (var (name, g) in grips)
+            {
+                var ok = false;
+                for (var k = 0; k + 1 < drawn.Length && !ok; k++)
+                    ok = g.X == drawn[k].X + drawn[k].Width && g.X + g.Width == drawn[k + 1].X;
+                if (!ok) bad.Add($"width {width}: {name} at {g} is not exactly one gap");
+            }
+        }
+
+        sawDrop.ShouldBeTrue("the sweep must cross a drop point");
+        bad.Count.ShouldBe(0, string.Join(Environment.NewLine, bad.Take(12)) + $" ({bad.Count} problems)");
+    }
+
+    [Fact]
+    public void ADroppedColumn_LeavesNoGripOrGapBehind_AtTheEnd()
+    {
+        // A narrow page drops the capped star columns; the last column left must not trail a gap or a grip.
+        var columns = DroppableMix();
+        var (titles, _, grips) = ArrangeTable(columns, 40, new CellHostCtx(), Style with { Gap = 14f, PadX = 0f });
+        titles.ContainsKey(5).ShouldBeFalse("path drops at this width");
+        var last = titles.Values.OrderBy(t => t.X).Last();
+        foreach (var (name, g) in grips)
+            g.X.ShouldBeLessThan(last.X + last.Width, name + " trails the last drawn column");
+    }
+
+    [Fact]
+    public void ADividerDeclaredWithoutAGrip_HasNoButtonHit_AndKeepsItsGap()
+    {
+        var columns = new TableColumn[]
+        {
+            new("a", Sizing.Fixed(80f)) { GripAfter = false },
+            new("b", Sizing.Fixed(80f)),
+            new("c", Sizing.Star()),
+        };
+        var (titles, _, grips) = ArrangeTable(columns, 300, new CellHostCtx(), Style with { Gap = 14f, PadX = 0f });
+        grips.Select(g => g.Name).ShouldBe(["table-header:divider:1"]);
+        (titles[1].X - (titles[0].X + titles[0].Width)).ShouldBe(2, "the gap is still there");
+    }
 }
