@@ -17,6 +17,10 @@ public static class MenuLayout
     /// <summary>Three spaces: unselected item indent matching the selected prefix width.</summary>
     private const string UnselectedPrefix = "   ";
 
+    // D1..D9 select-and-confirm row i, as MenuModel.HandleKey does; rows past the ninth have no digit.
+    private static Layout.Node WithDigit(Layout.Node row, int i)
+        => i < 9 ? row.WithShortcut(new KeyChord((InputKey)((int)InputKey.D1 + i))) : row;
+
     /// <summary>
     /// Builds a vertically-centered <see cref="Layout.Node"/> tree from the given
     /// <paramref name="model"/> and <paramref name="colors"/>.
@@ -24,7 +28,10 @@ public static class MenuLayout
     /// Tree structure: outer vertical Stack with two Star spacers (before/after) that center
     /// the content block: title leaf, prompt leaf, a small gap box, and one leaf per item.
     /// Each item leaf carries a <see cref="HitResult.ListItemHit"/> ("MenuItem", i) and
-    /// an OnClick that calls <see cref="MenuModel.ConfirmAt"/>.
+    /// an OnClick that calls <see cref="MenuModel.ConfirmAt"/>. The keys are declared too, as
+    /// <see cref="Layout.Node.Shortcut"/>s that call <see cref="MenuModel.HandleKey"/> (Up and Down on the
+    /// spacers, Enter on the gap, D1..D9 on the rows), so <see cref="InputRouter"/> reaches the model with no
+    /// host fallback and <see cref="MenuModel"/> stays the one owner of the selection.
     /// </para>
     /// </summary>
     /// <param name="model">The menu model supplying title, prompt, items, and selected index.</param>
@@ -39,11 +46,12 @@ public static class MenuLayout
         var children = ImmutableArray.CreateBuilder<Layout.Node>(model.Items.Length + 5);
 
         // Top Star spacer - fills available space above the content block.
+        // Carries Up: the menu's keys are declared in the tree, so InputRouter reaches them with no host fallback.
         children.Add(new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
         {
             Height = Layout.Sizing.Star(),
             Width = Layout.Sizing.Star(),
-        });
+        }.WithShortcut(InputKey.Up).Activatable(_ => model.HandleKey(InputKey.Up)));
 
         // Title leaf - centered horizontally, larger font.
         children.Add(new Layout.Node.Leaf(new Layout.Content.Text(model.Title, titleSize)
@@ -70,11 +78,12 @@ public static class MenuLayout
         });
 
         // Small gap between prompt and items.
+        // Carries Enter.
         children.Add(new Layout.Node.Leaf(new Layout.Content.Box(0, gapH))
         {
             Height = Layout.Sizing.Fixed(gapH),
             Width = Layout.Sizing.Star(),
-        });
+        }.WithShortcut(InputKey.Enter).Activatable(_ => model.HandleKey(InputKey.Enter)));
 
         // One leaf per item.
         for (var i = 0; i < model.Items.Length; i++)
@@ -87,7 +96,7 @@ public static class MenuLayout
 
             // Capture i for the closure.
             var capturedIndex = i;
-            children.Add(new Layout.Node.Leaf(new Layout.Content.Text(label, fontSize)
+            children.Add(WithDigit(new Layout.Node.Leaf(new Layout.Content.Text(label, fontSize)
             {
                 Color = fgColor,
                 HAlign = TextAlign.Center,
@@ -99,15 +108,16 @@ public static class MenuLayout
                 Background = bgColor,
                 Hit = new HitResult.ListItemHit("MenuItem", capturedIndex),
                 OnClick = _ => model.ConfirmAt(capturedIndex),
-            });
+            }, i));
         }
 
         // Bottom Star spacer - mirrors the top spacer to vertically center the block.
+        // Carries Down.
         children.Add(new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
         {
             Height = Layout.Sizing.Star(),
             Width = Layout.Sizing.Star(),
-        });
+        }.WithShortcut(InputKey.Down).Activatable(_ => model.HandleKey(InputKey.Down)));
 
         return new Layout.Node.Stack(children.MoveToImmutable(), Layout.Axis.Vertical);
     }

@@ -66,7 +66,11 @@ public class PixelMenuWidget<TSurface>(Renderer<TSurface> renderer, string fontP
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Keys only. A press on a row reaches <see cref="MenuLayout.BuildTree"/>'s own <c>.Clickable</c>
+    /// A host needs no <c>Unhandled</c>: list the widget on <see cref="InputRouter"/> and Up, Down, Enter and
+    /// the digits reach <see cref="MenuModel"/> through the shortcuts <see cref="MenuLayout.BuildTree"/>
+    /// declares (also inside a modal Top). The router consumes the key there, so a host that still wires
+    /// <c>Unhandled = menu.HandleInput</c> steps once per key; this method stays for a host that calls it
+    /// directly with no router. Keys only. A press on a row reaches <see cref="MenuLayout.BuildTree"/>'s own <c>.Clickable</c>
     /// through <see cref="InputRouter"/>, which walks the regions this widget registered while painting --
     /// so a host lists the widget on the router and writes no press arm. Until 10.0 this branch hit-tested
     /// and dispatched for itself, which is a second dispatcher beside the router's for the same rects.
