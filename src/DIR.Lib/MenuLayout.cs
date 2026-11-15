@@ -38,6 +38,14 @@ public static class MenuLayout
     /// <param name="colors">The color palette for all menu elements.</param>
     /// <param name="fontSize">Base font size in design units. Title uses 1.6x this value.</param>
     public static Layout.Node BuildTree(MenuModel model, MenuColors colors, float fontSize)
+        => BuildColumn(model, colors, fontSize, Layout.Sizing.Star());
+
+    /// <summary>
+    /// The rows both <see cref="BuildTree"/> and <see cref="BuildPanel"/> carry: title, prompt, gap and one leaf per
+    /// item between two edge leaves of height <paramref name="edge"/> (Star to centre a block in a surface, Fixed for
+    /// a card's padding). The edge leaves carry Up and Down and the gap carries Enter, so the keys are declared once.
+    /// </summary>
+    private static Layout.Node BuildColumn(MenuModel model, MenuColors colors, float fontSize, Layout.Sizing edge)
     {
         var titleSize = fontSize * 1.6f;
         var itemLineH = fontSize * 2f;
@@ -49,7 +57,7 @@ public static class MenuLayout
         // Carries Up: the menu's keys are declared in the tree, so InputRouter reaches them with no host fallback.
         children.Add(new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
         {
-            Height = Layout.Sizing.Star(),
+            Height = edge,
             Width = Layout.Sizing.Star(),
         }.WithShortcut(InputKey.Up).Activatable(_ => model.HandleKey(InputKey.Up)));
 
@@ -115,10 +123,119 @@ public static class MenuLayout
         // Carries Down.
         children.Add(new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
         {
-            Height = Layout.Sizing.Star(),
+            Height = edge,
             Width = Layout.Sizing.Star(),
         }.WithShortcut(InputKey.Down).Activatable(_ => model.HandleKey(InputKey.Down)));
 
         return new Layout.Node.Stack(children.MoveToImmutable(), Layout.Axis.Vertical);
     }
+
+    // Row heights of the shared column in base font sizes: title 2 x 1.6, prompt 2, gap 0.5, items 2 each.
+    private const float TitleLines = 3.2f, PromptLines = 2f, GapLines = 0.5f, ItemLines = 2f;
+
+    /// <summary>
+    /// Sizes the panel card for <paramref name="model"/> on a surface of <paramref name="surfaceWidth"/> x
+    /// <paramref name="surfaceHeight"/> design units, measuring text through <paramref name="ctx"/> so every surface
+    /// resolves it its own way. The card is as wide as its widest line wants, clamped to
+    /// <see cref="MenuPanelStyle.MinWidth"/>..<see cref="MenuPanelStyle.MaxWidth"/> (full width less the side margins on
+    /// a portrait surface); the font starts at <see cref="MenuPanelStyle.FontToCard"/> of the card's widest allowed
+    /// extent and is capped so the widest line (title at 1.6x, the selected-row prefix) fits inside it.
+    /// </summary>
+    public static MenuPanelPlan PlanPanel(MenuModel model, MenuPanelStyle style, Layout.IMeasureContext<float> ctx,
+        float surfaceWidth, float surfaceHeight)
+    {
+        var unit = ctx.ToSurface(1f);
+        if (unit <= 0f) unit = 1f;
+        float Width(string text, float size) => ctx.MeasureText(text.AsSpan(), size).Width / unit;
+
+        var portrait = surfaceHeight > surfaceWidth * style.PortraitAspect;
+        var room = MathF.Max(1f, surfaceWidth - 2f * style.SideMargin);
+        var maxW = portrait ? room : MathF.Min(style.MaxWidth, room);
+        var minW = portrait ? room : MathF.Min(style.MinWidth, maxW);
+        var border = style.Border is { Width: > 0f } b ? b.Width : 0f;
+
+        // Widest line per unit of font size; text width is linear in size, so one measurement at 1 is enough.
+        var w1 = Width(model.Title, 1.6f);
+        w1 = MathF.Max(w1, Width(model.Prompt, 1f));
+        foreach (var item in model.Items)
+            w1 = MathF.Max(w1, Width("▶  " + item, 1f));
+
+        // Horizontal padding is PadX font sizes per side, so the widest line plus padding is linear in size too.
+        var perFont = w1 + 2f * style.PadX;
+        var font = MathF.Min(maxW * style.FontToCard, (maxW - 2f * border) / perFont);
+        var wanted = perFont * font + 2f * border;
+        var width = portrait ? room : MathF.Max(minW, MathF.Min(maxW, wanted));
+        // A min width above the wanted one only adds room; the cap against the final width keeps the fit exact.
+        font = MathF.Min(font, (width - 2f * border) / perFont);
+
+        var lines = TitleLines + PromptLines + GapLines + ItemLines * model.Items.Length + 2f * style.PadY;
+        var height = MathF.Min(lines * font + 2f * border, MathF.Max(1f, surfaceHeight - 2f * style.SideMargin));
+        return new MenuPanelPlan(width, height, font, portrait);
+    }
+
+    /// <summary>
+    /// The menu as a panel: a modal <see cref="Layout.Node.Overlay"/> whose base is a full-surface scrim and whose top
+    /// is a card centred on the surface, sized by <see cref="PlanPanel"/> and edged with <see cref="MenuPanelStyle.Border"/>
+    /// as a declared <see cref="Layout.Node.BorderStyle"/>. The card holds the very rows <see cref="BuildTree"/> builds
+    /// (same Clickable regions, same declared keys), so <see cref="MenuModel"/> stays the one owner of the selection. While
+    /// the panel is painted the router sees the card only: a press on the scrim is consumed and reaches nothing beneath.
+    /// </summary>
+    public static Layout.Node BuildPanel(MenuModel model, MenuColors colors, MenuPanelStyle style,
+        Layout.IMeasureContext<float> ctx, float surfaceWidth, float surfaceHeight)
+    {
+        var plan = PlanPanel(model, style, ctx, surfaceWidth, surfaceHeight);
+        var column = BuildColumn(model, colors, plan.FontSize, Layout.Sizing.Fixed(plan.FontSize * style.PadY));
+        var card = new Layout.Node.Stack([column], Layout.Axis.Vertical)
+        {
+            Width = Layout.Sizing.Fixed(plan.CardWidth),
+            Height = Layout.Sizing.Fixed(plan.CardHeight),
+            Background = style.CardBackground,
+            BorderStyle = style.Border,
+            Padding = plan.FontSize * style.PadX,
+            PaddingY = 0f,
+        };
+        var scrim = new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
+        {
+            Width = Layout.Sizing.Star(),
+            Height = Layout.Sizing.Star(),
+            Background = style.Scrim,
+            Hit = new HitResult.ChromeHit(),
+        };
+        var top = Layout.Builder.Anchored(card, side: null,
+            offsetAlong: (surfaceWidth - plan.CardWidth) / 2f,
+            offsetAcross: (surfaceHeight - plan.CardHeight) / 2f);
+        return Layout.Builder.Modal(scrim, top);
+    }
+}
+
+/// <summary>What <see cref="MenuLayout.PlanPanel"/> decided, in design units.</summary>
+/// <param name="CardWidth">Card width, border included.</param>
+/// <param name="CardHeight">Card height, border included.</param>
+/// <param name="FontSize">Base font size (the title is 1.6x).</param>
+/// <param name="Portrait">Whether the portrait rule applied (full width less side margins).</param>
+public readonly record struct MenuPanelPlan(float CardWidth, float CardHeight, float FontSize, bool Portrait);
+
+/// <summary>Declared look and sizing of <see cref="MenuLayout.BuildPanel"/>, in design units. Init-only throughout.</summary>
+public sealed record MenuPanelStyle
+{
+    /// <summary>Narrowest card on a landscape surface.</summary>
+    public float MinWidth { get; init; } = 320f;
+    /// <summary>Widest card on a landscape surface.</summary>
+    public float MaxWidth { get; init; } = 560f;
+    /// <summary>Portrait when height exceeds width times this; a portrait card is full width less <see cref="SideMargin"/> each side.</summary>
+    public float PortraitAspect { get; init; } = 1f;
+    /// <summary>Gap kept between the card and the surface edge.</summary>
+    public float SideMargin { get; init; } = 16f;
+    /// <summary>Starting font size as a fraction of the card's widest allowed width, before the widest line caps it.</summary>
+    public float FontToCard { get; init; } = 1f / 20f;
+    /// <summary>Horizontal padding per side, in font sizes.</summary>
+    public float PadX { get; init; } = 1f;
+    /// <summary>Vertical padding top and bottom, in font sizes.</summary>
+    public float PadY { get; init; } = 1f;
+    /// <summary>Colour over the whole surface behind the card.</summary>
+    public RGBAColor32 Scrim { get; init; } = new(0, 0, 0, 0xa0);
+    /// <summary>Card fill.</summary>
+    public RGBAColor32 CardBackground { get; init; } = new(0x1c, 0x1f, 0x2a, 0xff);
+    /// <summary>The card's edge, declared as a node border; null for none.</summary>
+    public Layout.BorderStyle? Border { get; init; } = new() { Color = new RGBAColor32(0x60, 0x70, 0xa0, 0xff), Width = 2f, Radius = 8f };
 }
