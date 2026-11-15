@@ -1201,6 +1201,30 @@ public class LayoutDataViewsTests
         Drawn(130).ShouldBe(["row:0"], "the kind cell is narrower than its own CollapseBelow here");
     }
 
+    [Fact]
+    public void AColumnsDropBelow_WinsOverARowCellsOwnCollapseBelow()
+    {
+        // The precedence the TableRow comment states: the column declares 100, the cell 10, so the column's 100 decides.
+        var columns = new TableColumn[]
+        {
+            new("name", Sizing.Star(1f, 80f, 0f)),
+            new("kind", Sizing.Star(1f, 0f, 90f)) { DropBelow = 100f },
+        };
+        var cells = new[]
+        {
+            Layout.Builder.Spacer().Clickable(new HitResult.ButtonHit("row:0"), null),
+            Layout.Builder.Spacer().Clickable(new HitResult.ButtonHit("row:1"), null).CollapseBelow(10f),
+        };
+
+        List<string> Drawn(int width) => Layout.Engine.Arrange(
+                Layout.Builder.TableRow(columns, cells, Style with { Gap = 14f, PadX = 0f }, new TableColumnWidths()),
+                new Rect<int>(0, 0, width, 1), new PixelHostCtx())
+            .Select(a => a.Node.Hit).OfType<HitResult.ButtonHit>().Select(b => b.Action).ToList();
+
+        Drawn(400).ShouldBe(["row:0", "row:1"]);
+        Drawn(130).ShouldBe(["row:0"], "the kind cell is wider than its own 10 but narrower than its column's 100");
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
