@@ -513,7 +513,7 @@ public class LayoutScrollTests
     }
 
     private static Layout.Node BarRows(Layout.Node.Stack? _ = null)
-        => Layout.Builder.VStack(Layout.Builder.Text("wide row", 10f), Layout.Builder.Text("row", 10f), Layout.Builder.Text("rows", 10f));
+        => Layout.Builder.VStack(Layout.Builder.Text("wide row", 10f).WStar(), Layout.Builder.Text("row", 10f).WStar(), Layout.Builder.Text("rows", 10f).WStar());
 
 
     private static Layout.Size<float> MeasureOf(Layout.Node node)
@@ -541,7 +541,7 @@ public class LayoutScrollTests
     public void AScrolledHStackWithAHorizontalControllerMeasuresItsBarOnTheHeight()
     {
         var scroll = new ListScrollController { Axis = ScrollAxis.Horizontal };
-        var list = Layout.Builder.HStack(Layout.Builder.Text("a", 10f), Layout.Builder.Text("b", 10f)).WithScroll(scroll);
+        var list = Layout.Builder.HStack(Layout.Builder.Text("a", 10f).HStar(), Layout.Builder.Text("b", 10f).HStar()).WithScroll(scroll);
         var size = MeasureOf(list);
         size.Height.ShouldBe(10f + ListScrollController.ScrollBarBaseWidthPx, 1e-3f);
         size.Width.ShouldBe(20f, 1e-3f);
