@@ -11,6 +11,10 @@ public enum ExtentKind
     Fixed,
     /// <summary>One side of a node's inner padding (<see cref="Node.Padding"/> across, <see cref="Node.PadDown"/> down).</summary>
     Padding,
+    /// <summary>One side of a node's <see cref="Node.BorderStyle"/> (its <see cref="BorderStyle.Width"/>), reserved outside the padding.
+    /// The default mapping is the surface extent of the width but never less than one surface unit, so a border does not round away;
+    /// a cell context answers one cell per declared side.</summary>
+    Border,
 }
 
 /// <summary>
@@ -75,7 +79,7 @@ internal sealed class ExtentFacts
 
     private static ExtentFacts Compute(Node node)
     {
-        var fill = node.Background is not null;
+        var fill = node.Background is not null || node.BorderStyle is { Color.Alpha: > 0, Sides: not BorderSides.None };
         var has = false;
         var lines = 0;
         var mutable = false;

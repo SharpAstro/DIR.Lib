@@ -68,7 +68,13 @@ public interface IMeasureContext<T> where T : INumber<T>
     /// </para>
     /// </summary>
     T MapExtent(in ExtentRequest request)
-        => request.Axis == Axis.Horizontal ? ToSurfaceX(request.Value) : ToSurfaceY(request.Value);
+    {
+        var mapped = request.Axis == Axis.Horizontal ? ToSurfaceX(request.Value) : ToSurfaceY(request.Value);
+
+        // A border never rounds away: one surface unit at least. A cell context answers one cell per side;
+        // Console.Lib's overrides this in its own flight.
+        return request.Kind == ExtentKind.Border && request.Value > 0f && mapped < T.One ? T.One : mapped;
+    }
 
     /// <summary>
     /// A value that names everything this context's measures depend on: the metrics behind
