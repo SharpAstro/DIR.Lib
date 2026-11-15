@@ -1006,12 +1006,17 @@ public class LayoutDataViewsTests
         public int ToSurfaceY(float designUnits) => (int)MathF.Round(designUnits / 16f);
     }
 
-    [Theory]
-    [InlineData(250)]
-    [InlineData(200)]
-    [InlineData(173)]
-    [InlineData(120)]
-    public void ResizableHeader_InACellHost_GripsCoverExactlyTheGapCells(int cells)
+    [Fact]
+    public void ResizableHeader_InACellHost_GripsCoverExactlyTheGapCells()
+    {
+        var bad = new List<string>();
+        for (var cells = 20; cells <= 320; cells++) Check(cells, bad);
+        bad.Count.ShouldBe(0, string.Join("
+", bad.Take(12)) + $"
+({bad.Count} mismatches)");
+    }
+
+    private static void Check(int cells, List<string> bad)
     {
         var columns = new TableColumn[]
         {
@@ -1042,11 +1047,11 @@ public class LayoutDataViewsTests
 
         for (var i = 0; i < grips.Length; i++)
         {
-            var grip = grips[i].ShouldNotBeNull($"divider {i}");
+            var grip = grips[i] ?? default;
             var left = titles[i];
             var next = titles[i + 1];
-            grip.X.ShouldBe(left.X + left.Width, $"divider {i} starts at the left title's right edge (grip {grip}, left {left}, next {next})");
-            (grip.X + grip.Width).ShouldBe(next.X, $"divider {i} ends at the next title's x (grip {grip}, left {left}, next {next})");
+            if (grips[i] is null || grip.X != left.X + left.Width || grip.X + grip.Width != next.X)
+                bad.Add($"cells {cells} divider {i}: grip {grip}, left {left}, next {next}");
         }
     }
 }
