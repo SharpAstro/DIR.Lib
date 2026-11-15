@@ -16,7 +16,10 @@ sets it (a no-op on a node that is not a `Wrap`). The node is drawn flush at the
 and its main extent is MEASURED: a Fixed size goes through `IMeasureContext<T>.MapExtent`, an Auto size is measured
 by the surface context. Line 1 holds the items in the room left after that extent and one gap; every later line
 uses the full extent. Measure and arrange honour it identically. A wrap without it lays out as before, so existing
-`WrapH` layouts and snapshots do not change.
+`WrapH` layouts and snapshots do not change. A trailing node wider than the container is placed at the main
+origin and overflows at the end, never at a negative position.
+
+11.64 was never released: it was the number of a PR (#228) that closed unmerged, so the series goes 11.63 to 11.65.
 
 - Narrow-case rule: when the first item does not fit in the room left on line 1, line 1 holds only the trailing
   node and the items start on line 2. The gap before the trailing node applies only when line 1 holds an item.
