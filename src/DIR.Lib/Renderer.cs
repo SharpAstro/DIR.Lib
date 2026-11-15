@@ -852,6 +852,98 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
     }
 
     /// <summary>
+    /// Strokes a node's border inside <paramref name="rect"/>: <paramref name="width"/> pixels on each of
+    /// <paramref name="sides"/>, with the corners rounded to <paramref name="radius"/> pixels when all four sides
+    /// are drawn.
+    /// <para>
+    /// The default fills non-overlapping bands (and, for a rounded ring, non-overlapping scanline spans, as
+    /// <see cref="FillRoundedRectangle"/> does), so a translucent <paramref name="color"/> never double-blends
+    /// where two sides meet. It is virtual, not abstract, so every renderer compiles unchanged; a GPU renderer
+    /// may override it with an antialiased SDF stroke. A radius applies only to a border on all four sides (a
+    /// single-side separator has no corner to round). The radius clamps to half the shorter side, and a width of
+    /// half the shorter side or more degrades to a filled rect.
+    /// </para>
+    /// </summary>
+    public virtual void DrawBorder(in RectInt rect, RGBAColor32 color, int width, float radius, Layout.BorderSides sides)
+    {
+        var left = Math.Min(rect.UpperLeft.X, rect.LowerRight.X);
+        var right = Math.Max(rect.UpperLeft.X, rect.LowerRight.X);
+        var top = Math.Min(rect.UpperLeft.Y, rect.LowerRight.Y);
+        var bottom = Math.Max(rect.UpperLeft.Y, rect.LowerRight.Y);
+        if (width <= 0 || sides == Layout.BorderSides.None || right <= left || bottom <= top) return;
+
+        var shorter = Math.Min(right - left, bottom - top);
+        if (sides == Layout.BorderSides.All && radius > 0f)
+        {
+            var outer = MathF.Min(radius, shorter * 0.5f);
+            if (outer > 0f)
+            {
+                if (width * 2 >= shorter)
+                {
+                    FillRoundedRectangle(rect, color, outer);
+                    return;
+                }
+                var innerRadius = MathF.Max(0f, outer - width);
+                for (var y = top; y < bottom; y++)
+                {
+                    if (!RoundedSpan(left, right, top, bottom, outer, y, out var oL, out var oR)) continue;
+                    if (RoundedSpan(left + width, right - width, top + width, bottom - width, innerRadius, y, out var iL, out var iR)
+                        && iR > iL)
+                    {
+                        if (iL > oL) FillRectangle(new RectInt((iL, y + 1), (oL, y)), color);
+                        if (oR > iR) FillRectangle(new RectInt((oR, y + 1), (iR, y)), color);
+                    }
+                    else
+                    {
+                        FillRectangle(new RectInt((oR, y + 1), (oL, y)), color);
+                    }
+                }
+                return;
+            }
+        }
+
+        var hasTop = sides.HasFlag(Layout.BorderSides.Top);
+        var hasBottom = sides.HasFlag(Layout.BorderSides.Bottom);
+        var topEnd = hasTop ? Math.Min(top + width, bottom) : top;
+        var bottomStart = hasBottom ? Math.Max(bottom - width, topEnd) : bottom;
+        if (hasTop) FillRectangle(new RectInt((right, topEnd), (left, top)), color);
+        if (hasBottom) FillRectangle(new RectInt((right, bottom), (left, bottomStart)), color);
+        if (bottomStart > topEnd)
+        {
+            if (sides.HasFlag(Layout.BorderSides.Left))
+            {
+                FillRectangle(new RectInt((Math.Min(left + width, right), bottomStart), (left, topEnd)), color);
+            }
+            if (sides.HasFlag(Layout.BorderSides.Right))
+            {
+                var rl = Math.Max(right - width, sides.HasFlag(Layout.BorderSides.Left) ? Math.Min(left + width, right) : left);
+                FillRectangle(new RectInt((right, bottomStart), (rl, topEnd)), color);
+            }
+        }
+    }
+
+    /// <summary>The span a rounded rect covers on row <paramref name="y"/>, by the rule
+    /// <see cref="FillRoundedRectangle"/> uses; false when the row misses it.</summary>
+    private static bool RoundedSpan(int left, int right, int top, int bottom, float radius, int y,
+        out int spanLeft, out int spanRight)
+    {
+        spanLeft = spanRight = 0;
+        if (right <= left || bottom <= top || y < top || y >= bottom) return false;
+        radius = MathF.Min(radius, MathF.Min(right - left, bottom - top) * 0.5f);
+        spanLeft = left;
+        spanRight = right;
+        if (radius <= 0f) return true;
+        var dy = MathF.Abs(y + 0.5f - (top + bottom) * 0.5f) - ((bottom - top) * 0.5f - radius);
+        if (dy <= 0f) return true;
+        var chord = radius * radius - dy * dy;
+        if (chord <= 0f) return false;
+        var inset = (int)MathF.Round(radius - MathF.Sqrt(chord));
+        spanLeft = left + inset;
+        spanRight = right - inset;
+        return spanRight > spanLeft;
+    }
+
+    /// <summary>
     /// Fills multiple rectangles in a single batched draw call.
     /// Default implementation falls back to individual FillRectangle calls.
     /// </summary>

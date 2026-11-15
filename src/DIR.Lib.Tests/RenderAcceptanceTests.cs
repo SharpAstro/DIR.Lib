@@ -479,6 +479,54 @@ public class RenderAcceptanceTests : IDisposable
         }
     }
 
+    private sealed class BorderWidget(Renderer<RgbaImage> renderer) : PixelWidgetBase<RgbaImage>(renderer)
+    {
+        public void Render(Layout.Node root, RectF32 bounds)
+        {
+            BeginFrame();
+            RenderLayout(root, bounds, fontPath: string.Empty, scale: DesignScale.One);
+        }
+    }
+
+    private static readonly RGBAColor32 BorderBackdrop = new(16, 16, 24, 255);
+
+    private static RgbaImage RenderBordered(Layout.Node root, uint w, uint h)
+    {
+        var renderer = new RgbaImageRenderer(w, h);
+        renderer.Surface.Clear(BorderBackdrop);
+        new BorderWidget(renderer).Render(root, new RectF32(0, 0, w, h));
+        return renderer.Surface;
+    }
+
+    private static RGBAColor32 Px(RgbaImage img, int x, int y)
+    {
+        var at = (y * (int)img.Width + x) * 4;
+        return new RGBAColor32(img.Pixels[at], img.Pixels[at + 1], img.Pixels[at + 2], img.Pixels[at + 3]);
+    }
+
+    [Fact]
+    public void BorderedPanelsRoundedAndSingleSideSeparator()
+    {
+        var panel = new RGBAColor32(40, 48, 72, 255);
+        var line = new RGBAColor32(240, 180, 60, 255);
+        var rounded = Layout.Builder.Box(0, 0).Stretch().Bg(panel).Border(line, 3f, 12f);
+        var separated = Layout.Builder.Box(0, 0).Stretch().Bg(panel).BorderBottom(line, 3f);
+        var img = RenderBordered(Layout.Builder.HStack(rounded.WStar().HStar(), separated.WStar().HStar()).Pad(8f), 200, 100);
+        CompareBaseline(img, "border_rounded_and_single_side.png");
+    }
+
+    [Fact]
+    public void BorderedRoundedRingDoesNotDoubleBlendTranslucentCorners()
+    {
+        var translucent = new RGBAColor32(255, 255, 255, 128);
+        var rounded = Layout.Builder.Box(0, 0).Stretch().Border(translucent, 4f, 16f);
+        var img = RenderBordered(rounded, 60, 60);
+        // Every band pixel is blended once, so the straight top and left edges read the same.
+        Px(img, 30, 1).ShouldBe(Px(img, 1, 30));
+        Px(img, 30, 30).ShouldBe(BorderBackdrop, "the inside stays clear");
+        Px(img, 0, 0).ShouldBe(BorderBackdrop, "outside the arc stays clear");
+    }
+
     private static void CompareBaseline(RgbaImage img, string name)
     {
         var baselinePath = Path.Combine(BaselineDir, name);

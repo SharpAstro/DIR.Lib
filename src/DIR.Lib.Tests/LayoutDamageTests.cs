@@ -200,6 +200,29 @@ namespace DIR.Lib.Tests
             rects[0].Width.ShouldBe(220f);
         }
 
+        [Fact]
+        public void ABorderColourOrWidthChangeDamagesTheNode()
+        {
+            var line = new RGBAColor32(200, 0, 0, 255);
+            var plain = new[] { Arranged(Layout.Builder.Box(50, 50), 0, 0, 50, 50) };
+            var bordered = new[] { Arranged(Layout.Builder.Box(50, 50).Border(line, 1f), 0, 0, 50, 50) };
+            var recoloured = new[] { Arranged(Layout.Builder.Box(50, 50).Border(new RGBAColor32(0, 200, 0, 255), 1f), 0, 0, 50, 50) };
+            var wider = new[] { Arranged(Layout.Builder.Box(50, 50).Border(line, 2f), 0, 0, 50, 50) };
+
+            Damage(plain, bordered).ShouldNotBeEmpty("a border appearing paints");
+            Damage(bordered, recoloured).ShouldNotBeEmpty("a colour change paints");
+            Damage(bordered, wider).ShouldNotBeEmpty("a width change paints");
+            Damage(bordered, bordered).ShouldBeEmpty();
+        }
+
+        [Fact]
+        public void AnUnborderedNodesSignatureCarriesNoBorder()
+        {
+            var sig = LayoutDamage.Signature(Arranged(Layout.Builder.Box(10, 10), 0, 0, 10, 10), null);
+            sig.Border.ShouldBeNull();
+            sig.ShouldBe(sig with { Border = null });
+        }
+
         // ---- helpers ----
 
         private static List<Rect<float>> Damage(

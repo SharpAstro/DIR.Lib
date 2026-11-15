@@ -180,6 +180,25 @@ public class WireframeRenderer(uint width, uint height, bool paint = false) : Rg
         }
     }
 
+    public override void DrawBorder(in RectInt rect, RGBAColor32 color, int width, float radius, Layout.BorderSides sides)
+    {
+        // Records nothing: a border is a stroke on the edge of a node, not a fill or text a rule could read as a
+        // control or a collision. Its bands are built from FillRectangle, so they are fenced off from RecordFill.
+        if (!paint)
+        {
+            return;
+        }
+        _constructing++;
+        try
+        {
+            base.DrawBorder(rect, color, width, radius, sides);
+        }
+        finally
+        {
+            _constructing--;
+        }
+    }
+
     public override void DrawRectangle(in RectInt rect, RGBAColor32 strokeColor, int strokeWidth)
     {
         if (paint)

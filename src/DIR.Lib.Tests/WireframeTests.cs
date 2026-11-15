@@ -75,6 +75,19 @@ public class WireframeTests
     }
 
     [Fact]
+    public void ABorderedPanelHoldingTextGivesNoFindings()
+    {
+        using var renderer = new FixedPitch(200, 40);
+        var widget = new Widget(renderer);
+        renderer.Begin();
+        var panel = Layout.Builder.HStack(
+                Layout.Builder.Text("Hello", FontSize, Ink).WStar().HStar())
+            .Bg(Panel).Border(new RGBAColor32(0xf0, 0xb4, 0x3c, 0xff), 2f, 6f);
+        widget.Render(panel, new RectF32(0, 0, 200, 40));
+        Check(renderer).ShouldBeEmpty();
+    }
+
+    [Fact]
     public void ARowWithRoomForBothEndsIsSound()
     {
         using var renderer = ReadoutAndControls(width: 400);

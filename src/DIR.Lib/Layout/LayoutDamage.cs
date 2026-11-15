@@ -58,7 +58,13 @@ namespace DIR.Lib
             RGBAColor32 Color,
             int Discriminator,
             int Caret,
-            int SelectionAnchor);
+            int SelectionAnchor)
+        {
+            /// <summary>The node's border, or null. Init-only, set in <see cref="Signature"/>, so the positional
+            /// constructor keeps its arity (a new positional parameter would be a binary break). An unbordered
+            /// node leaves it null, so its signature is what it was before borders existed.</summary>
+            public Layout.BorderStyle? Border { get; init; }
+        }
 
         /// <summary>Which kind of content a signature describes.</summary>
         public enum ContentShape
@@ -97,10 +103,11 @@ namespace DIR.Lib
                 ? hover
                 : n.Background;
 
-            return n is Layout.Node.Leaf { Content: { } content }
+            var signature = n is Layout.Node.Leaf { Content: { } content }
                 ? SignatureOfContent(content, bounds, background, n.CornerRadius)
                 : new PaintSignature(bounds, background, n.CornerRadius, ContentShape.Container,
                     null, null, 0f, default, 0, 0, 0);
+            return n.BorderStyle is { } border ? signature with { Border = border } : signature;
         }
 
         private static PaintSignature SignatureOfContent(Layout.Content content, in Rect<float> bounds,

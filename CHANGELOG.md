@@ -9,6 +9,22 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.68
+
+Additive. A node can declare a border (SharpAstro/DIR.Lib#238): `Node.BorderStyle` (colour, width and corner radius
+in design units, and the `BorderSides` it covers), set with `Node.Border(...)` and `BorderTop`, `BorderBottom`,
+`BorderLeft`, `BorderRight`. The engine reserves it inside the node's extent, outside the padding, in measure and
+arrange alike, through the new `ExtentKind.Border` on the 11.63 extent hook; its default mapping is the surface
+extent of the width but never less than one surface unit, so a border does not round away. Pixel painting strokes
+it after the background through the new virtual `Renderer.DrawBorder`, whose software default fills
+non-overlapping bands (a rounded ring when all four sides are drawn with a radius), so a translucent border never
+double-blends. `LayoutDamage.PaintSignature` carries the border as an init-only property, so a border change
+damages the node and an unbordered tree's signature is unchanged. `WireframeRenderer` records no fills for a
+border, so a bordered panel holding text gives no findings. Nothing changes for a tree without a border.
+Follow-ups in the consumers: Console.Lib paints box-drawing cells and answers `ExtentKind.Border` with one cell
+per side; SdlVulkan.Renderer and WebGl.Renderer may override `DrawBorder` with an antialiased SDF stroke;
+pilot-tui's cards panel adopts it.
+
 ## 11.67
 
 Additive. A table can now declare what pilot's `ListTable.Dropping` and `Inert` rebuilt by hand
