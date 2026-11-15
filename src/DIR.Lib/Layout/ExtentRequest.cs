@@ -33,14 +33,15 @@ public readonly record struct ExtentRequest
     /// <summary>Whether <see cref="Value"/> is a fixed size or a padding.</summary>
     public ExtentKind Kind { get; init; }
 
-    /// <summary>The node (or a descendant) holds text: a <see cref="Content.Text"/> or <see cref="Content.TextEditor"/> leaf.</summary>
+    /// <summary>The node (or a descendant) holds content that paints: a <see cref="Content.Text"/>, <see cref="Content.TextEditor"/>,
+    /// <see cref="Content.TextInput"/>, <see cref="Content.Icon"/> or <see cref="Content.Slider"/> leaf.</summary>
     public bool HasContent { get; init; }
 
-    /// <summary>The lines of that text as authored (explicit line breaks, not wrapping): vertical stacks add their children's,
+    /// <summary>The lines of that content as authored (a text input, icon or slider is one) (explicit line breaks, not wrapping): vertical stacks add their children's,
     /// other containers take the most; 0 when <see cref="HasContent"/> is false.</summary>
     public int ContentLines { get; init; }
 
-    /// <summary>The node or a descendant carries a <see cref="Node.Background"/> (or is a <see cref="Content.Fill"/>),
+    /// <summary>The node or a descendant carries a <see cref="Node.Background"/> (or is a <see cref="Content.Fill"/>, or a <see cref="Content.Box"/> with a visible colour),
     /// so it paints something even with no content.</summary>
     public bool HasFill { get; init; }
 }
@@ -54,7 +55,9 @@ internal sealed class ExtentFacts
     public int Lines { get; private init; }
     public bool HasFill { get; private init; }
 
-    public static ExtentFacts Of(Node node) => Cache.GetValue(node, Compute);
+    /// <summary>Facts of <paramref name="node"/>. A subtree that reads mutable caller-owned state (see <see cref="MeasurePurity"/>:
+    /// a text editor's <c>State.Text</c>) is computed per call, so a keystroke is seen; a pure one is cached per node reference.</summary>
+    public static ExtentFacts Of(Node node) => MeasurePurity.IsPure(node) ? Cache.GetValue(node, Compute) : Compute(node);
 
     private static ExtentFacts Compute(Node node)
     {
@@ -70,6 +73,14 @@ internal sealed class ExtentFacts
             case Node.Leaf { Content: Content.TextEditor e }:
                 has = true;
                 lines = CountLines(e.State.Text);
+                break;
+            case Node.Leaf { Content: Content.TextInput or Content.Icon or Content.Slider }:
+                // A single-line field, a pictogram and a slider all paint: one line of content each.
+                has = true;
+                lines = 1;
+                break;
+            case Node.Leaf { Content: Content.Box { Color.Alpha: > 0 } }:
+                fill = true;
                 break;
             case Node.Leaf { Content: Content.Fill }:
                 fill = true;
