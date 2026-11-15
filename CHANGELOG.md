@@ -9,6 +9,23 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.63
+
+Additive. `IMeasureContext<T>` gains a default interface method, `T MapExtent(in ExtentRequest request)`, and the
+engine routes every Fixed extent and every padding it resolves through it, in measure and arrange alike (a node's
+Fixed width and height, the narrowing its children are measured in, a stack's Fixed main and cross, a Fixed grid
+column, a wrap child's main and cross, a dock strip, `Padding` and `PadDown`).
+
+- `ExtentRequest` (a readonly record struct with init-only properties, so later fields stay additive) carries
+  `Value`, `Axis`, `Kind` (`ExtentKind.Fixed` or `Padding`), `HasContent`, `ContentLines` (authored lines of the
+  node's text) and `HasFill` (the node or a descendant has a `Background`, or is a `Fill` leaf).
+- The default returns `ToSurfaceX` or `ToSurfaceY` of `Value` by axis, which is today's mapping, so no existing
+  context changes and every arrangement is byte-identical (`LayoutArrangeSnapshotTests` pins it).
+- Gaps, margins, Box and Icon content, split dividers, Min/Max clamps and anchored offsets stay on `ToSurface*`.
+- Why: a terminal cannot map a pixel-authored extent to cells without knowing what the node holds. Console.Lib#60
+  (CON60) uses it in `CellMeasureContext.PixelAuthored` so a one-line row stays one row whatever its fixed pixel
+  height, padding rounds down, an empty spacer adds nothing and a filled bar thinner than a cell keeps one row.
+
 ## 11.62
 
 A fix; nothing to migrate. A scrolled stack given exactly the room its content takes no longer scrolls.

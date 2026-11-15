@@ -44,6 +44,33 @@ public interface IMeasureContext<T> where T : INumber<T>
     T ToSurfaceY(float designUnits) => ToSurface(designUnits);
 
     /// <summary>
+    /// Map one authored Fixed extent or padding to surface units, with the node it belongs to in view.
+    /// <para>
+    /// The engine calls this, in measure and in arrange alike, for every <see cref="SizeKind.Fixed"/> extent
+    /// (a node's width and height, the narrowing its children are measured in, a stack's Fixed main and cross,
+    /// a Fixed grid column, a wrap child's main and cross, a dock strip) and every padding
+    /// (<see cref="Node.Padding"/>, <see cref="Node.PadDown"/>). Gaps, margins, Box and Icon content, split
+    /// dividers, Min/Max clamps and anchored offsets still go through <see cref="ToSurfaceX"/> /
+    /// <see cref="ToSurfaceY"/> directly, because they belong to no single node's content.
+    /// </para>
+    /// <para>
+    /// <see cref="ExtentRequest"/> says which it is (<see cref="ExtentRequest.Kind"/>), along which axis, and what
+    /// the node holds (<see cref="ExtentRequest.HasContent"/>, <see cref="ExtentRequest.ContentLines"/>,
+    /// <see cref="ExtentRequest.HasFill"/>). A cell surface uses that to keep a one-line row one row tall whatever
+    /// pixel height it was authored at, round padding down, collapse an empty spacer to nothing, and keep a
+    /// filled bar thinner than a cell as one row.
+    /// </para>
+    /// <para>
+    /// The default is today's mapping, <see cref="ToSurfaceX"/> or <see cref="ToSurfaceY"/> of
+    /// <see cref="ExtentRequest.Value"/> by axis, so an existing context arranges byte-identically. An override's
+    /// answer must depend only on the request and on what <see cref="MeasureKey"/> names, since a measure is kept
+    /// across calls under that key.
+    /// </para>
+    /// </summary>
+    T MapExtent(in ExtentRequest request)
+        => request.Axis == Axis.Horizontal ? ToSurfaceX(request.Value) : ToSurfaceY(request.Value);
+
+    /// <summary>
     /// A value that names everything this context's measures depend on: the metrics behind
     /// <see cref="MeasureText"/> and the <see cref="ToSurface"/> family (scale, font, fallback). Two contexts whose keys
     /// are <see cref="object.Equals(object?)"/> must measure every node identically. The engine keeps a pure subtree's
@@ -108,11 +135,11 @@ public static class Engine
         // was arranged in, came out a line short, and ran out of its box (pilot's flight page cut its last report).
         // Children are measured at the extent this node will have: a Fixed extent, or the room up to a Max. Measured at the
         // whole available extent and only then overridden, a wrapping child counted the lines it would take at window width.
-        available = new Size<T>(NarrowTo(available.Width, node.Width, ctx, Axis.Horizontal), NarrowTo(available.Height, node.Height, ctx, Axis.Vertical));
+        available = new Size<T>(NarrowTo(available.Width, node, node.Width, ctx, Axis.Horizontal), NarrowTo(available.Height, node, node.Height, ctx, Axis.Vertical));
 
         var padded = node is not Node.Dock and not Node.Split && (node.Padding != 0f || node.PadDown != 0f);
-        var padX = padded ? ctx.ToSurfaceX(node.Padding) : T.Zero;
-        var padY = padded ? ctx.ToSurfaceY(node.PadDown) : T.Zero;
+        var padX = padded ? Extent(ctx, node, node.Padding, Axis.Horizontal, ExtentKind.Padding) : T.Zero;
+        var padY = padded ? Extent(ctx, node, node.PadDown, Axis.Vertical, ExtentKind.Padding) : T.Zero;
         if (padded)
         {
             available = new Size<T>(T.Max(T.Zero, available.Width - padX - padX), T.Max(T.Zero, available.Height - padY - padY));
@@ -148,8 +175,8 @@ public static class Engine
 
         // Explicit Fixed sizing on the node overrides the intrinsic extent on that axis;
         // Auto/Star intrinsics honour the Sizing's Min/Max clamps.
-        var w = node.Width.IsFixed ? ctx.ToSurfaceX(node.Width.Value) : Clamp(intrinsic.Width, node.Width, ctx, Axis.Horizontal);
-        var h = node.Height.IsFixed ? ctx.ToSurfaceY(node.Height.Value) : Clamp(intrinsic.Height, node.Height, ctx, Axis.Vertical);
+        var w = node.Width.IsFixed ? Extent(ctx, node, node.Width.Value, Axis.Horizontal, ExtentKind.Fixed) : Clamp(intrinsic.Width, node.Width, ctx, Axis.Horizontal);
+        var h = node.Height.IsFixed ? Extent(ctx, node, node.Height.Value, Axis.Vertical, ExtentKind.Fixed) : Clamp(intrinsic.Height, node.Height, ctx, Axis.Vertical);
         return new Size<T>(w, h);
     }
 
@@ -203,7 +230,7 @@ public static class Engine
             }
         }
 
-        var inner = Inset(rect, ctx.ToSurfaceX(node.Padding), ctx.ToSurfaceY(node.PadDown));
+        var inner = Inset(rect, Extent(ctx, node, node.Padding, Axis.Horizontal, ExtentKind.Padding), Extent(ctx, node, node.PadDown, Axis.Vertical, ExtentKind.Padding));
         var childDepth = depth + 1;
         switch (node)
         {
@@ -721,7 +748,7 @@ public static class Engine
             var crossSizing = CrossSizing(axis, children[i]);
             var cross = crossSizing.Kind switch
             {
-                SizeKind.Fixed => ToSurfaceOn(ctx, crossSizing.Value, CrossAxis(axis)),
+                SizeKind.Fixed => Extent(ctx, children[i], crossSizing.Value, CrossAxis(axis), ExtentKind.Fixed),
                 SizeKind.Star when !crossSizing.UpToContent => crossAvail,     // stretch to fill cross axis
                 // Auto, and a content-capped Star: its content at the main extent it was given, never more than the
                 // axis holds. Measured at the stack's whole main, a wrapping text asked for fewer lines than it takes.
@@ -812,7 +839,7 @@ public static class Engine
             T size;
             if (sizing.IsFixed)
             {
-                size = ToSurfaceOn(ctx, sizing.Value, axis);
+                size = Extent(ctx, children[i], sizing.Value, axis, ExtentKind.Fixed);
             }
             else
             {
@@ -1100,7 +1127,7 @@ public static class Engine
             T size;
             if (dc.Size.IsFixed)
             {
-                size = ToSurfaceOn(ctx, dc.Size.Value, stripAxis);
+                size = Extent(ctx, dc.Child, dc.Size.Value, stripAxis, ExtentKind.Fixed);
             }
             else
             {
@@ -1364,7 +1391,7 @@ public static class Engine
         // One line is what the context says a line is tall; every line of the box is that tall.
         var line = ctx.MeasureText("Ag".AsSpan(), fontSize).Height;
         var lineHeight = float.CreateChecked(line);
-        var width = node.Width.IsFixed ? ctx.ToSurfaceX(node.Width.Value) : available.Width;
+        var width = node.Width.IsFixed ? Extent(ctx, node, node.Width.Value, Axis.Horizontal, ExtentKind.Fixed) : available.Width;
         var wrapWidth = float.CreateChecked(width - insetX);
 
         var text = state.Text.Length > 0 ? state.Text : state.Placeholder;
@@ -1480,7 +1507,7 @@ public static class Engine
             switch (size.Kind)
             {
                 case SizeKind.Fixed:
-                    widths[col] = Clamp(ToSurfaceOn(ctx, size.Value, Axis.Horizontal), size, ctx, Axis.Horizontal);
+                    widths[col] = Clamp(ColumnExtent(ctx, grid, col, columns, size.Value), size, ctx, Axis.Horizontal);
                     spent += widths[col];
                     break;
                 case SizeKind.Auto:
@@ -1606,11 +1633,11 @@ public static class Engine
         var measured = Measure(child, available, ctx);
         var mainSizing = MainSizing(axis, child);
         var main = mainSizing.IsFixed
-            ? ToSurfaceOn(ctx, mainSizing.Value, axis)
+            ? Extent(ctx, child, mainSizing.Value, axis, ExtentKind.Fixed)
             : Clamp(MainOf(axis, measured), mainSizing, ctx, axis);
         var crossSizing = CrossSizing(axis, child);
         var cross = crossSizing.IsFixed
-            ? ToSurfaceOn(ctx, crossSizing.Value, CrossAxis(axis))
+            ? Extent(ctx, child, crossSizing.Value, CrossAxis(axis), ExtentKind.Fixed)
             : Clamp(CrossOf(axis, measured), crossSizing, ctx, CrossAxis(axis));
         return (main, cross);
     }
@@ -1805,14 +1832,60 @@ public static class Engine
 
     /// <summary>The extent a node's children are measured within: its Fixed extent, else <paramref name="available"/>
     /// held to the Max when it has one.</summary>
-    private static T NarrowTo<T>(T available, Sizing sizing, IMeasureContext<T> ctx, Axis axis) where T : INumber<T>
+    private static T NarrowTo<T>(T available, Node node, Sizing sizing, IMeasureContext<T> ctx, Axis axis) where T : INumber<T>
     {
         if (sizing.IsFixed)
         {
-            return ToSurfaceOn(ctx, sizing.Value, axis);
+            return Extent(ctx, node, sizing.Value, axis, ExtentKind.Fixed);
         }
 
         return sizing.Max > 0f ? Min(available, ToSurfaceOn(ctx, sizing.Max, axis)) : available;
+    }
+
+    /// <summary>One Fixed extent or padding of <paramref name="node"/>, through <see cref="IMeasureContext{T}.MapExtent"/>.
+    /// Measure and arrange both come here, so they cannot disagree. The node's facts are cached per node reference.</summary>
+    private static T Extent<T>(IMeasureContext<T> ctx, Node node, float value, Axis axis, ExtentKind kind)
+        where T : INumber<T>
+    {
+        var facts = ExtentFacts.Of(node);
+        return ctx.MapExtent(new ExtentRequest
+        {
+            Value = value,
+            Axis = axis,
+            Kind = kind,
+            HasContent = facts.HasContent,
+            ContentLines = facts.Lines,
+            HasFill = facts.HasFill,
+        });
+    }
+
+    /// <summary>A Fixed grid column's width: the request describes what the column's cells hold together.</summary>
+    private static T ColumnExtent<T>(IMeasureContext<T> ctx, Node.Grid grid, int col, int columns, float value)
+        where T : INumber<T>
+    {
+        var has = false;
+        var lines = 0;
+        var fill = false;
+        for (var i = col; i < grid.Cells.Length; i += columns)
+        {
+            var f = ExtentFacts.Of(grid.Cells[i]);
+            fill |= f.HasFill;
+            if (f.HasContent)
+            {
+                has = true;
+                lines = Math.Max(lines, f.Lines);
+            }
+        }
+
+        return ctx.MapExtent(new ExtentRequest
+        {
+            Value = value,
+            Axis = Axis.Horizontal,
+            Kind = ExtentKind.Fixed,
+            HasContent = has,
+            ContentLines = lines,
+            HasFill = fill,
+        });
     }
 
     private static Size<T> MeasureAnchored<T>(Node.Anchored anchored, Size<T> available, IMeasureContext<T> ctx)
