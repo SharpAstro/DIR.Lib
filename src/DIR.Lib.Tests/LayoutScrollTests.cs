@@ -512,7 +512,7 @@ public class LayoutScrollTests
         public float ToSurface(float designUnits) => designUnits;
     }
 
-    private static Layout.Node BarRows(Layout.Node.Stack? _ = null)
+    private static Layout.Node BarRows()
         => Layout.Builder.VStack(Layout.Builder.Text("wide row", 10f).WStar(), Layout.Builder.Text("row", 10f).WStar(), Layout.Builder.Text("rows", 10f).WStar());
 
 
