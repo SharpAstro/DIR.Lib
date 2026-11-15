@@ -1378,6 +1378,21 @@ namespace DIR.Lib
                     backgrounds.Push((arrangedNode.Depth, bg));
                 }
 
+                // The border strokes over the background, in the width the engine reserved (through the same
+                // MapExtent mapping, so stroke and reservation agree to the pixel). Hover, focus and disabled
+                // never change it. A transparent colour reserves room and paints nothing.
+                if (node.BorderStyle is { Color.Alpha: > 0 } border)
+                {
+                    var inset = Layout.Engine.BorderInsets(ctx, node);
+                    var strokeWidth = (int)MathF.Round(MathF.Max(MathF.Max(inset.Left, inset.Right), MathF.Max(inset.Top, inset.Bottom)));
+                    if (strokeWidth > 0 && bounds.Width > 0 && bounds.Height > 0)
+                    {
+                        var borderRect = new RectInt(new PointInt((int)(bounds.X + bounds.Width), (int)(bounds.Y + bounds.Height)),
+                            new PointInt((int)bounds.X, (int)bounds.Y));
+                        Renderer.DrawBorder(borderRect, border.Color, strokeWidth, ctx.ToSurface(border.Radius), border.Sides);
+                    }
+                }
+
                 // The engine is the only thing that knows where the list was arranged, so it is the only
                 // thing that can state the viewport without keeping a second copy of the rect. What the
                 // list contains stays the consumer's, through SetExtent -- and bound BEFORE the leaf

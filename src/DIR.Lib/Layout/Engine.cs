@@ -2013,12 +2013,12 @@ public static class Engine
 
     /// <summary>The surface extent reserved on each side by a node's <see cref="Node.BorderStyle"/>, through
     /// <see cref="IMeasureContext{T}.MapExtent"/> as <see cref="ExtentKind.Border"/>. All zero without a border.</summary>
-    private readonly record struct BorderInset<T>(T Left, T Right, T Top, T Bottom) where T : INumber<T>
+    internal readonly record struct BorderInset<T>(T Left, T Right, T Top, T Bottom) where T : INumber<T>
     {
         public bool Any => Left != T.Zero || Right != T.Zero || Top != T.Zero || Bottom != T.Zero;
     }
 
-    private static BorderInset<T> BorderInsets<T>(IMeasureContext<T> ctx, Node node) where T : INumber<T>
+    internal static BorderInset<T> BorderInsets<T>(IMeasureContext<T> ctx, Node node) where T : INumber<T>
     {
         if (node.BorderStyle is not { Width: > 0f } style || style.Sides == BorderSides.None)
         {
