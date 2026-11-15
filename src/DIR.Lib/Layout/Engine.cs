@@ -211,7 +211,7 @@ public static class Engine
         if (node is Node.Stack { Scroll: { } barScroll } barStack && ScrollBarMeasured(barScroll, barStack.Axis))
         {
             var bar = T.CreateChecked(ScrollBarColumn(ctx));
-            var trailing = barStack.Axis == Axis.Vertical ? padX + border.Right : padY + border.Bottom;
+            var trailing = barStack.Axis == Axis.Vertical ? padX : padY;
             var extra = T.Max(T.Zero, bar - trailing);
             intrinsic = barStack.Axis == Axis.Vertical
                 ? new Size<T>(intrinsic.Width + extra, intrinsic.Height)
@@ -577,6 +577,17 @@ public static class Engine
         var gap = ToSurfaceOn(ctx, stack.Gap, axis);
         var scroll = stack.Scroll;
 
+        // From here `rect` is the stack's VIEWPORT: the arranged rect inside its border. The stroke is not
+        // scrolled content, so the clip, the scroll extent, the bar column and the rows all stay inside it;
+        // only the padding is counted as scrolled padding. Without a border it is the arranged rect itself.
+        var borderInset = BorderInsets(ctx, stack);
+        if (borderInset.Any)
+        {
+            rect = new Rect<T>(rect.X + borderInset.Left, rect.Y + borderInset.Top,
+                Max(T.Zero, rect.Width - borderInset.Left - borderInset.Right),
+                Max(T.Zero, rect.Height - borderInset.Top - borderInset.Bottom));
+        }
+
         // The measure of such a stack includes this same bar column (MeasureUncached, 11.66), so the rows
         // measured at the natural width are arranged at least that wide here.
         // A scrolled stack whose bar shows gives its children the controller's content area: the viewport
@@ -689,9 +700,13 @@ public static class Engine
             // end, the arrange slid the rows a padding further down than the clip, and the last half-row
             // of a padded list could never be scrolled into view.
             padStart = axis == Axis.Vertical ? inner.Y - rect.Y : inner.X - rect.X;
-            var padEndMain = axis == Axis.Vertical
-                ? (rect.Y + rect.Height) - (inner.Y + inner.Height)
-                : (rect.X + rect.Width) - (inner.X + inner.Width);
+            // Unbordered, the end padding is the start padding as it always was (a degenerate stack smaller
+            // than twice its padding clamps `inner`, which would make the end shorter).
+            var padEndMain = !borderInset.Any
+                ? padStart
+                : axis == Axis.Vertical
+                    ? (rect.Y + rect.Height) - (inner.Y + inner.Height)
+                    : (rect.X + rect.Width) - (inner.X + inner.Width);
             var total = rows + padStart + padEndMain;
 
             // An atom is a row where the list says so (AtomDesignUnits) and one surface unit otherwise.

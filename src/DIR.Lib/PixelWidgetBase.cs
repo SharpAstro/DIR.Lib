@@ -1397,7 +1397,20 @@ namespace DIR.Lib
                 // thing that can state the viewport without keeping a second copy of the rect. What the
                 // list contains stays the consumer's, through SetExtent -- and bound BEFORE the leaf
                 // draws, so a drawFill that states the whole extent is the later word and wins.
-                node.Scroll?.BindViewport(new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height));
+                // A scrolled node's viewport is the rect inside its border (the engine arranges and measures
+                // the scroll extent against that same rect), so rows and the bar never cover the stroke.
+                var viewBounds = bounds;
+                if (node.Scroll is not null && node.BorderStyle is not null)
+                {
+                    var vi = Layout.Engine.BorderInsets(ctx, node);
+                    if (vi.Any)
+                    {
+                        viewBounds = new Rect<float>(bounds.X + vi.Left, bounds.Y + vi.Top,
+                            MathF.Max(0f, bounds.Width - vi.Left - vi.Right), MathF.Max(0f, bounds.Height - vi.Top - vi.Bottom));
+                    }
+                }
+
+                node.Scroll?.BindViewport(new RectF32(viewBounds.X, viewBounds.Y, viewBounds.Width, viewBounds.Height));
 
                 // Auto-bind the click region to the arranged rect. Any node can be a hit target -- a whole
                 // slot row or panel, not just a leaf -- and inner nodes register later so they win the hit.
@@ -1463,7 +1476,7 @@ namespace DIR.Lib
                 // background and region, which are the viewport itself and are never clipped by it.
                 if (node.Scroll is { } scrolled)
                 {
-                    var clip = scrolls.Count > 0 ? Intersect(scrolls.Peek().Clip, bounds) : bounds;
+                    var clip = scrolls.Count > 0 ? Intersect(scrolls.Peek().Clip, viewBounds) : viewBounds;
                     PushClip(clip.X, clip.Y, clip.Width, clip.Height);
                     scrolls.Push((arrangedNode.Depth, scrolled, new RectF32(clip.X, clip.Y, clip.Width, clip.Height)));
                 }
