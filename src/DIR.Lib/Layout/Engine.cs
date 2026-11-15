@@ -127,6 +127,18 @@ public static class Engine
         }
     }
 
+    /// <summary>True when the controller draws a bar on the stack's own axis, the case that reserves a column.</summary>
+    private static bool ScrollBarMeasured(ListScrollController scroll, Axis axis)
+        => scroll.Mode != ScrollBarMode.None && (scroll.Axis == ScrollAxis.Vertical) == (axis == Axis.Vertical);
+
+    /// <summary>The bar's width in surface units on the cross axis, from the same DesignScale ArrangeStack hands the controller (the controller's bar width is the X scale on either axis).</summary>
+    private static float ScrollBarColumn<T>(IMeasureContext<T> ctx)
+        where T : INumber<T>
+    {
+        var scale = new DesignScale(float.CreateChecked(ctx.ToSurfaceX(1f)), float.CreateChecked(ctx.ToSurfaceY(1f)));
+        return scale.ToSurface(ListScrollController.ScrollBarBaseWidthPx);
+    }
+
     private static Size<T> MeasureUncached<T>(Node node, Size<T> available, IMeasureContext<T> ctx)
         where T : INumber<T>
     {
@@ -171,6 +183,20 @@ public static class Engine
         if (padded)
         {
             intrinsic = new Size<T>(intrinsic.Width + padX + padX, intrinsic.Height + padY + padY);
+        }
+
+        // A scrolled stack whose controller draws a bar on the stack's axis measures the bar column too, less
+        // the trailing padding that already covers it: ArrangeStack reserves exactly that column from the
+        // rows' cross extent, so a measure without it arranged the widest row narrower than it measured.
+        // Always, not only on overflow: the measure cannot know the viewport's height.
+        if (node is Node.Stack { Scroll: { } barScroll } barStack && ScrollBarMeasured(barScroll, barStack.Axis))
+        {
+            var bar = T.CreateChecked(ScrollBarColumn(ctx));
+            var trailing = barStack.Axis == Axis.Vertical ? padX : padY;
+            var extra = T.Max(T.Zero, bar - trailing);
+            intrinsic = barStack.Axis == Axis.Vertical
+                ? new Size<T>(intrinsic.Width + extra, intrinsic.Height)
+                : new Size<T>(intrinsic.Width, intrinsic.Height + extra);
         }
 
         // Explicit Fixed sizing on the node overrides the intrinsic extent on that axis;
