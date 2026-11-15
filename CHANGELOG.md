@@ -9,6 +9,14 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.69
+
+Flight DIR239 (#239): an overlay menu panel, in three additive parts. Binary-compatible: only new members and init-only properties.
+
+- **Declared modal routing.** `Layout.Node.Overlay.Modal` / `OnDismiss` (init-only) and `Builder.Modal(layer, top, onDismiss)`. While a modal is painted, `InputRouter` delivers presses, keys, scroll, drags, shortcuts and declared-list keys to its Top only; nothing reaches Base or a widget painted beneath. A press outside the card is consumed and runs `OnDismiss`; Escape runs it too. The tree is the open state (a null top is the modal closed).
+- **A menu routes its own input.** `MenuLayout.BuildTree` declares Up, Down, Enter and D1..D9 as shortcuts calling `MenuModel.HandleKey`, so a host drives a `PixelMenuWidget` through `InputRouter` with `Widgets = () => [menu]` and no `Unhandled` fallback. Surface-neutral, so Console.Lib gets the keys with no DIR.Lib change.
+- **Menu panel.** `MenuLayout.BuildPanel` / `PlanPanel` with `MenuPanelStyle` and `MenuPanelPlan`, and `PixelMenuWidget.RenderPanel()` with `PanelStyle`: a modal Overlay of a full-surface scrim and a card centred on it, sized to its content between a min and a max width in design units, full width less side margins on a portrait surface, the font taken from the card (not the surface height) and capped so the widest line fits, and the edge declared as `Node.Border`. It shares its rows, regions and key declarations with `BuildTree`. `Render()` is unchanged.
+
 ## 11.68
 
 Additive. A node can declare a border (SharpAstro/DIR.Lib#238): `Node.BorderStyle` (colour, width and corner radius

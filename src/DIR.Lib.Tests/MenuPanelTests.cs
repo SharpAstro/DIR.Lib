@@ -111,7 +111,7 @@ public class MenuPanelTests
     public void FontIsRelativeToTheCardNotTheSurfaceHeight()
     {
         var tall = MenuLayout.PlanPanel(Short, Style, Ctx, 1200, 800).FontSize;
-        var taller = MenuLayout.PlanPanel(Short, Style, Ctx, 1200, 4000).FontSize;
+        var taller = MenuLayout.PlanPanel(Short, Style, Ctx, 1200, 1150).FontSize; // still landscape: only the height differs
         taller.ShouldBe(tall, 0.001f);
     }
 
