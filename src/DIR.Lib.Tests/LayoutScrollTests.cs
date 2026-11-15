@@ -515,7 +515,6 @@ public class LayoutScrollTests
     private static Layout.Node BarRows(Layout.Node.Stack? _ = null)
         => Layout.Builder.VStack(Layout.Builder.Text("wide row", 10f), Layout.Builder.Text("row", 10f), Layout.Builder.Text("rows", 10f));
 
-    private static float Padded(float pad) => pad;
 
     private static Layout.Size<float> MeasureOf(Layout.Node node)
         => Layout.Engine.Measure(node, new Layout.Size<float>(1000f, 1000f), new BarCtx());
@@ -533,7 +532,7 @@ public class LayoutScrollTests
         rows.Count.ShouldBeGreaterThan(0);
         foreach (var row in rows)
         {
-            var natural = ((Layout.Content.Text)((Layout.Node.Leaf)row.Node).Content).Text.Length * 10f;
+            var natural = ((Layout.Content.Text)((Layout.Node.Leaf)row.Node).Content).Value.Length * 10f;
             row.Bounds.Width.ShouldBeGreaterThanOrEqualTo(natural - 1e-3f);
         }
     }
@@ -575,7 +574,7 @@ public class LayoutScrollTests
     public void TrailingPaddingAddsOnlyWhatTheBarNeedsBeyondIt()
     {
         // Pad covers the bar: nothing added. Partial pad (2 of 6): 4 added. Padding counts both sides in the measure.
-        MeasureOf(BarRows().Pad(3f).WithScroll(new ListScrollController())).Width.ShouldBe(80f + 6f, 1e-3f);
+        MeasureOf(BarRows().Pad(3f).WithScroll(new ListScrollController())).Width.ShouldBe(80f + 6f + 3f, 1e-3f);
         MeasureOf(BarRows().Pad(6f).WithScroll(new ListScrollController())).Width.ShouldBe(80f + 12f, 1e-3f);
         MeasureOf(BarRows().Pad(2f).WithScroll(new ListScrollController())).Width.ShouldBe(80f + 4f + 4f, 1e-3f);
     }
