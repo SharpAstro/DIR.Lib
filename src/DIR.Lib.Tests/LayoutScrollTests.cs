@@ -502,4 +502,81 @@ public class LayoutScrollTests
         scroll.Viewport.Height.ShouldBe(rows * fractionalRowH, 1e-3f);
         scroll.MaxOffset.ShouldBe(0f);
     }
+
+    // ---- 11.66: the scrolled stack's measure includes its bar column ----
+
+    private sealed class BarCtx : Layout.IMeasureContext<float>
+    {
+        public Layout.Size<float> MeasureText(ReadOnlySpan<char> text, float fontSize) => new(text.Length * fontSize, fontSize);
+
+        public float ToSurface(float designUnits) => designUnits;
+    }
+
+    private static Layout.Node BarRows(Layout.Node.Stack? _ = null)
+        => Layout.Builder.VStack(Layout.Builder.Text("wide row", 10f), Layout.Builder.Text("row", 10f), Layout.Builder.Text("rows", 10f));
+
+    private static float Padded(float pad) => pad;
+
+    private static Layout.Size<float> MeasureOf(Layout.Node node)
+        => Layout.Engine.Measure(node, new Layout.Size<float>(1000f, 1000f), new BarCtx());
+
+    [Fact]
+    public void AScrolledVStackMeasuresItsBarColumnAndArrangesEveryRowAtLeastAsWideAsMeasured()
+    {
+        var scroll = new ListScrollController();
+        var list = BarRows().WithScroll(scroll);
+        var size = MeasureOf(list);
+        size.Width.ShouldBe(80f + ListScrollController.ScrollBarBaseWidthPx, 1e-3f);
+
+        var arranged = Layout.Engine.Arrange(list, new Rect<float>(0, 0, size.Width, 15f), new BarCtx());
+        var rows = arranged.Where(a => a.Node is Layout.Node.Leaf).ToList();
+        rows.Count.ShouldBeGreaterThan(0);
+        foreach (var row in rows)
+        {
+            var natural = ((Layout.Content.Text)((Layout.Node.Leaf)row.Node).Content).Text.Length * 10f;
+            row.Bounds.Width.ShouldBeGreaterThanOrEqualTo(natural - 1e-3f);
+        }
+    }
+
+    [Fact]
+    public void AScrolledHStackWithAHorizontalControllerMeasuresItsBarOnTheHeight()
+    {
+        var scroll = new ListScrollController { Axis = ScrollAxis.Horizontal };
+        var list = Layout.Builder.HStack(Layout.Builder.Text("a", 10f), Layout.Builder.Text("b", 10f)).WithScroll(scroll);
+        var size = MeasureOf(list);
+        size.Height.ShouldBe(10f + ListScrollController.ScrollBarBaseWidthPx, 1e-3f);
+        size.Width.ShouldBe(20f, 1e-3f);
+
+        var arranged = Layout.Engine.Arrange(list, new Rect<float>(0, 0, 15f, size.Height), new BarCtx());
+        foreach (var row in arranged.Where(a => a.Node is Layout.Node.Leaf))
+        {
+            row.Bounds.Height.ShouldBeGreaterThanOrEqualTo(10f - 1e-3f);
+        }
+    }
+
+    [Fact]
+    public void AFittingListMeasuresTheColumnAndGetsTheRoomBack()
+    {
+        var scroll = new ListScrollController();
+        var list = BarRows().WithScroll(scroll);
+        var size = MeasureOf(list);
+        var arranged = Layout.Engine.Arrange(list, new Rect<float>(0, 0, size.Width, size.Height + 100f), new BarCtx());
+        arranged.Where(a => a.Node is Layout.Node.Leaf).ShouldAllBe(a => a.Bounds.Width == size.Width);
+    }
+
+    [Fact]
+    public void ModeNoneAndAnUnscrolledStackMeasureAsBefore()
+    {
+        MeasureOf(BarRows().WithScroll(new ListScrollController { Mode = ScrollBarMode.None })).Width.ShouldBe(80f, 1e-3f);
+        MeasureOf(BarRows()).Width.ShouldBe(80f, 1e-3f);
+    }
+
+    [Fact]
+    public void TrailingPaddingAddsOnlyWhatTheBarNeedsBeyondIt()
+    {
+        // Pad covers the bar: nothing added. Partial pad (2 of 6): 4 added. Padding counts both sides in the measure.
+        MeasureOf(BarRows().Pad(3f).WithScroll(new ListScrollController())).Width.ShouldBe(80f + 6f, 1e-3f);
+        MeasureOf(BarRows().Pad(6f).WithScroll(new ListScrollController())).Width.ShouldBe(80f + 12f, 1e-3f);
+        MeasureOf(BarRows().Pad(2f).WithScroll(new ListScrollController())).Width.ShouldBe(80f + 4f + 4f, 1e-3f);
+    }
 }
