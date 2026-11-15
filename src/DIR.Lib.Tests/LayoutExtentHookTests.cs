@@ -135,7 +135,7 @@ public class LayoutExtentHookTests
     public void Content_editor_line_count_follows_the_state_between_arranges_of_one_tree()
     {
         var state = new TextEditorState { Text = "a" };
-        var root = new Layout.Node.Stack([new Layout.Node.Leaf(new Layout.Content.TextEditor(state))]) { Height = Layout.Sizing.Fixed(40) };
+        var root = new Layout.Node.Stack([new Layout.Node.Stack([new Layout.Node.Leaf(new Layout.Content.TextEditor(state))]) { Height = Layout.Sizing.Fixed(40) }]);
         var ctx = new HookCellCtx();
         Arrange(root, ctx);
         ctx.Requests.Last(r => r.Value == 40f && r.Axis == Layout.Axis.Vertical).ContentLines.ShouldBe(1);
@@ -159,13 +159,13 @@ public class LayoutExtentHookTests
         foreach (var c in kinds)
         {
             var ctx = new HookCellCtx();
-            Arrange(Fixed40(c), ctx);
+            Arrange(new Layout.Node.Stack([Fixed40(c)]), ctx);
             var r = ctx.Requests.First(q => q.Value == 40f && q.Axis == Layout.Axis.Vertical);
             (r.HasContent || r.HasFill).ShouldBeTrue(c.GetType().Name);
         }
 
         var empty = new HookCellCtx();
-        Arrange(Fixed40(new Layout.Content.Box(0, 0)), empty);
+        Arrange(new Layout.Node.Stack([Fixed40(new Layout.Content.Box(0, 0))]), empty);
         var e = empty.Requests.First(q => q.Value == 40f && q.Axis == Layout.Axis.Vertical);
         (e.HasContent || e.HasFill).ShouldBeFalse();
     }
