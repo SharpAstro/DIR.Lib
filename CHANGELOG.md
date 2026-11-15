@@ -9,6 +9,18 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.67
+
+Additive. A table can now declare what pilot's `ListTable.Dropping` and `Inert` rebuilt by hand
+(SharpAstro.Astro/DIR.Lib#233). `TableColumn.DropBelow` (design units, 0 = never) drops a column below a width:
+its title, its row cell, the gap beside it and the divider in that gap leave together, in `TableHeader` and
+`TableRow`, in pixels and in a cell host alike, so the remaining grips stay exactly over the remaining gaps.
+`TableColumn.GripAfter = false` declares a divider with no grip (no `ButtonHit`, no resize cursor; the gap
+stays). The engine side is a new init-only `Node.Separator`: a Stack draws a separator child only between two
+surviving non-separator siblings, one per run, which is how the header's grip row follows a collapsed column
+without any rounding of its own. Nothing changes for a header that uses neither feature. pilot can delete
+`ListTable.Dropping` and `Inert` and drop the 4 `TerminalWireframeSweepTests` Baseline entries for #233.
+
 ## 11.66
 
 Behaviour change. A stack declared `WithScroll` whose controller draws a bar (`Mode` is not `None`, controller

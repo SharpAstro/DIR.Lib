@@ -85,7 +85,9 @@ public static partial class Builder
     /// own gap, padding and column sizing, holds an empty cell per column and a divider in each gap, and sits
     /// over the header, so a divider region is registered after the cells and wins the press over its own few
     /// units. A divider is as wide as <see cref="TableStyle.Gap"/>; a style with no gap has nothing to grab and
-    /// gets no dividers.
+    /// gets no dividers. A column with <see cref="TableColumn.DropBelow"/> drops its title, its gap and its
+    /// divider together (the overlay's gap cells are <see cref="Node.Separator"/>s, so one goes with each dropped
+    /// column), and <see cref="TableColumn.GripAfter"/> false leaves its gap with no grip.
     /// </para>
     /// <para>
     /// The drag is relative to the press and converted to design units by <paramref name="scale"/> (the
@@ -127,7 +129,7 @@ public static partial class Builder
             {
                 face = Text(column.Header, fontSize, style.HeaderText, column.Align, TextAlign.Center).WStar().HStar();
             }
-            face = face.CrossCenter() with { Width = widths?.SizingOf(i, column) ?? column.Width, Height = Sizing.Star() };
+            face = face.CrossCenter() with { Width = widths?.SizingOf(i, column) ?? column.Width, Height = Sizing.Star(), CollapseThreshold = column.DropBelow };
 
             if (onSort is not null)
             {
@@ -165,14 +167,15 @@ public static partial class Builder
             {
                 Width = widths.SizingOf(i, columns[i]),
                 Height = Sizing.Star(),
+                CollapseThreshold = columns[i].DropBelow,
                 OnArranged = w => widths.NoteDrawn(column, w),
             });
             if (i + 1 < columns.Length)
             {
                 var divider = i;
                 // A divider that would resize nothing is a gap like any other: no grip, no resize cursor.
-                var gap = Spacer().WFixed(style.Gap).HStar();
-                top.Add(widths.CanDrag(columns, i)
+                var gap = Spacer().WFixed(style.Gap).HStar() with { Separator = true };
+                top.Add(columns[i].GripAfter && widths.CanDrag(columns, i)
                     ? gap.Pressable(
                         new HitResult.ButtonHit($"{hitPrefix}divider:{i}"), DividerPress(copy, widths, i, scaleOrOne),
                         CursorKind.ResizeEW).DoubleClickable(_ => widths.Fit(copy, divider))
@@ -230,7 +233,7 @@ public static partial class Builder
         for (var i = 0; i < columns.Length; i++)
         {
             var cell = i < cells.Length ? cells[i] : Spacer();
-            laid[i] = cell with { Width = widths?.SizingOf(i, columns[i]) ?? columns[i].Width, Height = Sizing.Star() };
+            laid[i] = cell with { Width = widths?.SizingOf(i, columns[i]) ?? columns[i].Width, Height = Sizing.Star(), CollapseThreshold = columns[i].DropBelow };
         }
 
         return HStack(laid).WithGap(style.Gap).PadX(style.PadX);

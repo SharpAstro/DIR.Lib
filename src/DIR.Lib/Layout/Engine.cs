@@ -601,12 +601,18 @@ public static class Engine
             includedCount = n;
             while (true)
             {
+                includedCount = ApplySeparators(children, included, includedCount);
+                if (includedCount == 0)
+                {
+                    return; // only separators were left
+                }
+
                 ResolveStackMains(children, included, includedCount, axis, layoutMain, gap, availSize, ctx, mains, measured);
 
                 var anyCollapsed = false;
                 for (var i = 0; i < n; i++)
                 {
-                    if (included[i] && children[i].CollapseThreshold > 0f
+                    if (included[i] && !children[i].Separator && children[i].CollapseThreshold > 0f
                         && mains[i] < ToSurfaceOn(ctx, children[i].CollapseThreshold, axis))
                     {
                         included[i] = false;
@@ -813,6 +819,65 @@ public static class Engine
 
             cursor += mains[i] + gap;
         }
+    }
+
+    /// <summary>
+    /// Decides which <see cref="Node.Separator"/> children are drawn, given which of the others survived the
+    /// collapse. A separator is kept only between two surviving non-separators, and only one of a run, so a
+    /// dropped column takes ONE gap with it (and the first or last column's single neighbour gap), as a stack's
+    /// own <c>Gap</c> does. Non-separator flags are untouched. Returns the number of included children.
+    /// </summary>
+    private static int ApplySeparators(ImmutableArray<Node> children, bool[] included, int includedCount)
+    {
+        var any = false;
+        for (var i = 0; i < children.Length; i++)
+        {
+            if (children[i].Separator)
+            {
+                any = true;
+                break;
+            }
+        }
+
+        if (!any)
+        {
+            return includedCount;
+        }
+
+        var lastReal = -1;
+        for (var i = children.Length - 1; i >= 0; i--)
+        {
+            if (!children[i].Separator && included[i])
+            {
+                lastReal = i;
+                break;
+            }
+        }
+
+        var seenReal = false;
+        var previousWasSeparator = false;
+        var count = 0;
+        for (var i = 0; i < children.Length; i++)
+        {
+            if (children[i].Separator)
+            {
+                var keep = seenReal && i < lastReal && !previousWasSeparator;
+                included[i] = keep;
+                previousWasSeparator = keep || previousWasSeparator;
+            }
+            else if (included[i])
+            {
+                seenReal = true;
+                previousWasSeparator = false;
+            }
+
+            if (included[i])
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     /// <summary>

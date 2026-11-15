@@ -41,6 +41,20 @@ public readonly record struct TableColumn(string Header, Sizing Width, TextAlign
     /// <summary>Whether a divider may resize this column. False for one whose width is not the reader's to
     /// choose (a column of buttons): a divider that stands on its edge is then no grip.</summary>
     public bool Resizable { get; init; } = true;
+
+    /// <summary>Drop this column below a width, design units (0, the default, never drops): the declarative
+    /// form of <see cref="Node.CollapseBelow"/> for a column. When its resolved width is under this, the title,
+    /// the row cells, the gap beside it and the divider in that gap all leave together, in the header and in
+    /// every <see cref="Builder.TableRow(ReadOnlySpan{TableColumn}, ReadOnlySpan{Node}, in TableStyle)"/>, so the
+    /// remaining dividers stay over the remaining gaps in any measure context. Init-only, so the primary
+    /// constructor is unchanged.</summary>
+    public float DropBelow { get; init; }
+
+    /// <summary>Whether the divider between this column and the next is a grip. False leaves the gap as plain
+    /// space (no <see cref="HitResult.ButtonHit"/>, no resize cursor) while both columns still follow the
+    /// widths; <see cref="Resizable"/> false is the stronger statement that the column's width is not the
+    /// reader's to choose.</summary>
+    public bool GripAfter { get; init; } = true;
 }
 
 /// <summary>
