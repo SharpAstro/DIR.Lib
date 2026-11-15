@@ -66,6 +66,13 @@ public interface IMeasureContext<T> where T : INumber<T>
 public static class Engine
 {
     /// <summary>
+    /// How far in atoms a scrolled stack's content may exceed its viewport and still count as held by it: float
+    /// sums of fractional rows land a hair either side of the viewport they were sized to. The controller's own
+    /// <c>AtomFitEpsilon</c>, so the two ends of the count agree.
+    /// </summary>
+    private const float ScrollFitEpsilon = 1e-3f;
+
+    /// <summary>
     /// Measures a node's intrinsic (content-driven) size against <paramref name="available"/>. Exposed for
     /// tests and Auto-sizing callers; <see cref="Arrange{T}"/> uses it internally for <c>Auto</c> children.
     /// </summary>
@@ -603,11 +610,20 @@ public static class Engine
                 offsetOnEntry = scroll.Offset;
             }
 
+            // Content the viewport holds is counted as the viewport's own atoms. The controller counts what it
+            // shows rounded DOWN and the content rounded UP, so rows that are not whole surface units, given
+            // exactly the room they take, came out an atom over what shows: an offset of one, and a bar drawn
+            // beside a list with nothing to scroll.
+            var contentAtoms = float.CreateChecked(total) / atom;
+            var viewportAtoms = float.CreateChecked(axis == Axis.Vertical ? rect.Height : rect.Width) / atom;
+            var totalAtoms = contentAtoms <= viewportAtoms + ScrollFitEpsilon
+                ? (int)MathF.Floor(viewportAtoms + ScrollFitEpsilon)
+                : (int)MathF.Ceiling(contentAtoms);
             scroll.SetExtent(
                 new RectF32(float.CreateChecked(rect.X), float.CreateChecked(rect.Y),
                     float.CreateChecked(rect.Width), float.CreateChecked(rect.Height)),
                 atomExtentPx: atom,
-                totalAtoms: (int)MathF.Ceiling(float.CreateChecked(total) / atom),
+                totalAtoms: totalAtoms,
                 new DesignScale(float.CreateChecked(ctx.ToSurfaceX(1f)), float.CreateChecked(ctx.ToSurfaceY(1f))));
 
             if (reserve > T.Zero)

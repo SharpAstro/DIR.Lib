@@ -476,4 +476,30 @@ public class LayoutScrollTests
         Row(widget, 1)!.Value.Bounds.Y.ShouldBe(RowH);
         Region(widget, 1)!.Value.Height.ShouldBe(RowH);
     }
+    /// <summary>
+    /// A list whose rows are not whole surface units, given exactly the room it holds, has nothing to scroll.
+    /// The content was counted in atoms rounded UP and the viewport in atoms rounded DOWN, so two rows of 20.8
+    /// in a viewport of 41.6 came out as 42 atoms over 41 visible: an offset of one, and a scrollbar drawn beside
+    /// a list that shows every row (found on TianWen's Session tab, whose second row line is 0.8 of a row).
+    /// </summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(7)]
+    public void AListGivenTheRoomItHoldsHasNothingToScroll(int rows)
+    {
+        const float fractionalRowH = 20.8f;
+        var scroll = new ListScrollController { Mode = ScrollBarMode.Decorative };
+        var widget = new DeclarationWidget(new DeclarationStubRenderer(200, 400));
+        var items = Enumerable.Range(0, rows).Select(_ => Layout.Builder.Spacer().RowH(fractionalRowH)).ToArray();
+        var page = Layout.Builder.VStack(
+                Layout.Builder.VStack(items).WithScroll(scroll).WStar().HStarUpToContent(),
+                Layout.Builder.Spacer().HStar())
+            .Stretch();
+
+        widget.Render(page, new RectF32(0, 0, 200, 400));
+
+        scroll.Viewport.Height.ShouldBe(rows * fractionalRowH, 1e-3f);
+        scroll.MaxOffset.ShouldBe(0f);
+    }
 }
