@@ -17,8 +17,11 @@ Fixed width and height, the narrowing its children are measured in, a stack's Fi
 column, a wrap child's main and cross, a dock strip, `Padding` and `PadDown`).
 
 - `ExtentRequest` (a readonly record struct with init-only properties, so later fields stay additive) carries
-  `Value`, `Axis`, `Kind` (`ExtentKind.Fixed` or `Padding`), `HasContent`, `ContentLines` (authored lines of the
-  node's text) and `HasFill` (the node or a descendant has a `Background`, or is a `Fill` leaf).
+  `Value`, `Axis`, `Kind` (`ExtentKind.Fixed` or `Padding`), `HasContent` (the node or a descendant is a `Text`,
+  `TextEditor`, `TextInput`, `Icon` or `Slider` leaf), `ContentLines` (authored lines of that content; a text
+  input, icon or slider is one) and `HasFill` (the node or a descendant has a `Background`, or is a `Fill` leaf or a
+  `Box` with a visible colour).
+- The facts of a subtree are cached per node, except one holding a `TextEditor`, whose line count follows its state.
 - The default returns `ToSurfaceX` or `ToSurfaceY` of `Value` by axis, which is today's mapping, so no existing
   context changes and every arrangement is byte-identical (`LayoutArrangeSnapshotTests` pins it).
 - Gaps, margins, Box and Icon content, split dividers, Min/Max clamps and anchored offsets stay on `ToSurface*`.
