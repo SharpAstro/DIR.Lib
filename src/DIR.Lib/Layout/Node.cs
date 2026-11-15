@@ -472,6 +472,33 @@ public abstract partial record Node
         public float FirstLineReserve { get; init; }
 
         /// <summary>
+        /// A node drawn flush at the main end of the FIRST line only, whose main extent is MEASURED (a Fixed
+        /// size goes through <see cref="IMeasureContext{T}.MapExtent"/>, an Auto size is measured by the
+        /// surface context). Line 1 holds the items in the room left after that extent and one gap; every
+        /// later line uses the full extent. Unlike <see cref="FirstLineReserve"/> (a design-unit number,
+        /// wrong in cells) the reservation is whatever the node measures on the surface it lands on.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Why: pilot's top bar. A <see cref="Dock"/> or an HStack narrows EVERY line by the corner node's
+        /// width, and a hand-computed reserve is in design units, which is the wrong number on a cell surface.
+        /// </para>
+        /// <para>
+        /// Narrow rule: when the first item does not fit in that room, line 1 holds only the trailing node and
+        /// the items start on line 2. (Without a trailing node a child always takes an empty line.) The gap
+        /// before the trailing node applies only when line 1 holds at least one item. The line's cross extent
+        /// is the larger of its items' and the trailing node's; a Star cross stretches to it like an item.
+        /// A <see cref="FirstLineReserve"/>, if also set, is extra space between the items and the trailing
+        /// node. With <see cref="MaxLines"/> the trailing node is always kept; the items the cap cuts set
+        /// <see cref="ArrangedNode{T}.Truncated"/> and the <see cref="Ellipsis"/> room on line 1 is the item
+        /// room. A wrap with no children and a trailing node is one line holding the trailing node. The node
+        /// is arranged after line 1's items. An init-only property for the same binary-compatibility reason
+        /// as <see cref="FirstLineReserve"/>.
+        /// </para>
+        /// </remarks>
+        public Node? FirstLineTrailing { get; init; }
+
+        /// <summary>
         /// Most lines the flow may use. Children that do not fit within them are DROPPED -- not
         /// arranged, not painted, not registered. Zero (the default) means unlimited. The arranged wrap
         /// reports a cut through <see cref="ArrangedNode{T}.Truncated"/>, and <see cref="Ellipsis"/> opts

@@ -48,7 +48,7 @@ internal static class MeasurePurity
             case Node.Grid grid:
                 return AllPure(grid.Cells);
             case Node.Wrap wrap:
-                return AllPure(wrap.Children);
+                return AllPure(wrap.Children) && (wrap.FirstLineTrailing is not { } trailing || IsPure(trailing));
             case Node.Overlay overlay:
                 return IsPure(overlay.Base) && IsPure(overlay.Top);
             case Node.Anchored anchored:

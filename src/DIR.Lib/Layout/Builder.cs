@@ -713,7 +713,8 @@ public static partial class Builder
         Node.Leaf { Content: Content.TextEditor editor } => editor.FontSize,
         Node.Leaf => null,
         Node.Stack stack => FirstFontSize(stack.Children.AsSpan()),
-        Node.Wrap wrap => FirstFontSize(wrap.Children.AsSpan()),
+        Node.Wrap wrap => FirstFontSize(wrap.Children.AsSpan())
+            ?? (wrap.FirstLineTrailing is { } trailing ? FirstFontSize(trailing) : null),
         Node.Grid grid => FirstFontSize(grid.Cells.AsSpan()),
         Node.Overlay overlay => FirstFontSize(overlay.Base) ?? FirstFontSize(overlay.Top),
         Node.Split split => FirstFontSize(split.First) ?? FirstFontSize(split.Second),
