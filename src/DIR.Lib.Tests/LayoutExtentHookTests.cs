@@ -140,8 +140,7 @@ public class LayoutExtentHookTests
         Arrange(root, ctx);
         ctx.Requests.Last(r => r.Value == 40f && r.Axis == Layout.Axis.Vertical).ContentLines.ShouldBe(1);
 
-        state.Text = "a
-b";
+        state.Text = "a\nb";
         ctx.Requests.Clear();
         Arrange(root, ctx);
         ctx.Requests.Last(r => r.Value == 40f && r.Axis == Layout.Axis.Vertical).ContentLines.ShouldBe(2);
