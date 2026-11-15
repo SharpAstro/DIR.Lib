@@ -128,6 +128,81 @@ public class LayoutExtentHookTests
         w.HasFill.ShouldBeTrue();
     }
 
+    private static Layout.Node Fixed40(Layout.Content c)
+        => new Layout.Node.Leaf(c) { Height = Layout.Sizing.Fixed(40), Width = Layout.Sizing.Fixed(40) };
+
+    [Fact]
+    public void Content_editor_line_count_follows_the_state_between_arranges_of_one_tree()
+    {
+        var state = new TextEditorState { Text = "a" };
+        var root = new Layout.Node.Stack([new Layout.Node.Leaf(new Layout.Content.TextEditor(state))]) { Height = Layout.Sizing.Fixed(40) };
+        var ctx = new HookCellCtx();
+        Arrange(root, ctx);
+        ctx.Requests.Last(r => r.Value == 40f && r.Axis == Layout.Axis.Vertical).ContentLines.ShouldBe(1);
+
+        state.Text = "a
+b";
+        ctx.Requests.Clear();
+        Arrange(root, ctx);
+        ctx.Requests.Last(r => r.Value == 40f && r.Axis == Layout.Axis.Vertical).ContentLines.ShouldBe(2);
+    }
+
+    [Fact]
+    public void Painting_leaves_are_not_read_as_empty()
+    {
+        var kinds = new Layout.Content[]
+        {
+            new Layout.Content.TextInput(new TextInputState()),
+            new Layout.Content.Icon(Layout.IconKind.Grid),
+            new Layout.Content.Slider(new SliderState()),
+            new Layout.Content.Box(1, 1) { Color = Bg },
+        };
+        foreach (var c in kinds)
+        {
+            var ctx = new HookCellCtx();
+            Arrange(Fixed40(c), ctx);
+            var r = ctx.Requests.First(q => q.Value == 40f && q.Axis == Layout.Axis.Vertical);
+            (r.HasContent || r.HasFill).ShouldBeTrue(c.GetType().Name);
+        }
+
+        var empty = new HookCellCtx();
+        Arrange(Fixed40(new Layout.Content.Box(0, 0)), empty);
+        var e = empty.Requests.First(q => q.Value == 40f && q.Axis == Layout.Axis.Vertical);
+        (e.HasContent || e.HasFill).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Unpadded_nodes_ask_for_no_padding()
+    {
+        var ctx = new HookCellCtx();
+        Arrange(new Layout.Node.Stack([Text("x")]), ctx);
+        ctx.Requests.ShouldNotContain(r => r.Kind == Layout.ExtentKind.Padding);
+    }
+
+    [Fact]
+    public void Grid_column_stack_cross_wrap_and_dock_sites_go_through_the_hook()
+    {
+        bool Saw(Layout.Node n, float value, Layout.Axis axis)
+        {
+            var ctx = new HookCellCtx();
+            Arrange(n, ctx);
+            return ctx.Requests.Any(r => r.Kind == Layout.ExtentKind.Fixed && r.Value == value && r.Axis == axis);
+        }
+
+        var grid = new Layout.Node.Grid(2, [Text("a"), Text("b")]).WithColumns(Layout.Sizing.Fixed(33), Layout.Sizing.Star());
+        Saw(grid, 33f, Layout.Axis.Horizontal).ShouldBeTrue();
+
+        var cross = new Layout.Node.Stack([Text("a") with { Width = Layout.Sizing.Fixed(37) }], Layout.Axis.Vertical);
+        Saw(cross, 37f, Layout.Axis.Horizontal).ShouldBeTrue();
+
+        var wrap = new Layout.Node.Wrap([Text("a") with { Width = Layout.Sizing.Fixed(41), Height = Layout.Sizing.Fixed(43) }]);
+        Saw(wrap, 41f, Layout.Axis.Horizontal).ShouldBeTrue();
+        Saw(wrap, 43f, Layout.Axis.Vertical).ShouldBeTrue();
+
+        var dock = new Layout.Node.Dock([new Layout.DockChild(Layout.DockSide.Top, Text("t"), Layout.Sizing.Fixed(47))], Text("f"));
+        Saw(dock, 47f, Layout.Axis.Vertical).ShouldBeTrue();
+    }
+
     [Fact]
     public void Default_hook_is_the_axis_mapping()
     {
