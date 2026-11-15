@@ -1208,7 +1208,7 @@ public class LayoutDataViewsTests
         var columns = new TableColumn[]
         {
             new("name", Sizing.Star(1f, 80f, 0f)),
-            new("kind", Sizing.Star(1f, 0f, 90f)) { DropBelow = 100f },
+            new("kind", Sizing.Star()) { DropBelow = 100f },
         };
         var cells = new[]
         {
