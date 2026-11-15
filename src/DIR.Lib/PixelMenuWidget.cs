@@ -51,6 +51,24 @@ public class PixelMenuWidget<TSurface>(Renderer<TSurface> renderer, string fontP
         RenderLayout(MenuLayout.BuildTree(_model, Colors, fontSize), bounds, fontPath);
     }
 
+    /// <summary>Look and sizing of <see cref="RenderPanel"/>.</summary>
+    public MenuPanelStyle PanelStyle { get; init; } = new();
+
+    /// <summary>
+    /// Renders the menu as a modal panel (<see cref="MenuLayout.BuildPanel"/>): a scrim over the whole surface and a
+    /// content-sized card centred on it. Same model, rows and regions as <see cref="Render"/>, which is unchanged.
+    /// The surface size is passed to the builder in design units, and the card's text is measured through the
+    /// widget's own measure context.
+    /// </summary>
+    public void RenderPanel()
+    {
+        BeginFrame();
+        var ctx = MeasureContext(fontPath);
+        var unit = ctx.ToSurface(1f);
+        var tree = MenuLayout.BuildPanel(_model, Colors, PanelStyle, ctx, Renderer.Width / unit, Renderer.Height / unit);
+        RenderLayout(tree, new RectF32(0, 0, Renderer.Width, Renderer.Height), ctx);
+    }
+
     /// <summary>Widest rendered line at <paramref name="fontSize"/>: the title (1.6x, per
     /// <see cref="MenuLayout"/>), the prompt, and each item prefixed with the selection marker (the
     /// widest case). Text width scales linearly with font size, so the caller scales by a ratio.</summary>
