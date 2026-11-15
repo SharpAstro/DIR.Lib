@@ -79,4 +79,27 @@ public class PixelMenuWidget<TSurface>(Renderer<TSurface> renderer, string fontP
             _ => false,
         };
     }
+
+    /// <summary>
+    /// Everything a menu takes, for a host that has no <see cref="InputRouter"/> of its own: a press goes through a
+    /// router built for that press over this one widget (so it reaches the row's click, <see cref="MenuModel.ConfirmAt"/>,
+    /// exactly as a host router would deliver it), and everything else goes to <see cref="HandleInput"/>. True when
+    /// consumed; then <see cref="IsConfirmed"/> says whether a row was confirmed.
+    /// </summary>
+    /// <remarks>
+    /// A host that already routes its surface should list this widget on its router instead (see the remarks on
+    /// <see cref="HandleInput"/>). This is for hosts that show a menu on its own: chess passed every press to
+    /// <see cref="HandleInput"/> after 10.0 made it keys-only, so none of its five menus took a click or a tap until it
+    /// grew a helper of its own, which this replaces. A router per press keeps no hover or capture state (a row only
+    /// answers a press) and cannot hold a stale <c>Ui</c>; it walks the regions of the frame this widget last painted,
+    /// the one the user pressed on.
+    /// </remarks>
+    public bool HandleStandalone(InputEvent evt) => evt switch
+    {
+        InputEvent.MouseDown => new InputRouter(Ui, new BackgroundTaskTracker(), static () => { })
+        {
+            Widgets = () => [this],
+        }.Handle(evt),
+        _ => HandleInput(evt),
+    };
 }

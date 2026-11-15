@@ -9,6 +9,18 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.64
+
+Additive; a menu shown without a host router takes clicks and taps again.
+
+- `PixelMenuWidget.HandleStandalone(InputEvent)`: a press goes through an `InputRouter` built for that press over
+  this one widget, so it reaches the row's click (`MenuModel.ConfirmAt`) as a host router would deliver it; any other
+  event goes to `HandleInput`. Since 10.0 `HandleInput` takes keys only, and a host that showed a menu on its own and
+  passed it presses got `false` for every one: chess's five menus took no click or tap (desktop menus worked from
+  the keyboard only; the touch game's not at all, found on an iPad). Chess carried the same routing as a helper of
+  its own (`Chess.Lib/UI/MenuInput`), which this replaces. A host that routes its surface should still list the
+  widget on its router.
+
 ## 11.63
 
 Additive. `IMeasureContext<T>` gains a default interface method, `T MapExtent(in ExtentRequest request)`, and the
