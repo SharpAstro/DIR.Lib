@@ -9,6 +9,25 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.65
+
+Additive. `Node.Wrap` gains `FirstLineTrailing`, an init-only `Node?`, and `Node.WithFirstLineTrailing(Node)`
+sets it (a no-op on a node that is not a `Wrap`). The node is drawn flush at the main end of the FIRST line only,
+and its main extent is MEASURED: a Fixed size goes through `IMeasureContext<T>.MapExtent`, an Auto size is measured
+by the surface context. Line 1 holds the items in the room left after that extent and one gap; every later line
+uses the full extent. Measure and arrange honour it identically. A wrap without it lays out as before, so existing
+`WrapH` layouts and snapshots do not change.
+
+- Narrow-case rule: when the first item does not fit in the room left on line 1, line 1 holds only the trailing
+  node and the items start on line 2. The gap before the trailing node applies only when line 1 holds an item.
+- The first line's cross extent is the larger of its items' and the trailing node's.
+- `FirstLineReserve`, if also set, is extra space between the items and the trailing node.
+- `MaxLines` always keeps the trailing node; the items the cap cuts set `Truncated`, and the ellipsis room on
+  line 1 is the item room.
+- Why: pilot's top bar (SharpAstro/pilot#1062). A `Dock` or an HStack narrows every line by the corner node's
+  width, and a hand-computed `FirstLineReserve` is in design units, which is the wrong number on a cell surface.
+  Measuring the trailing node reserves what it actually takes on the surface it lands on.
+
 ## 11.63
 
 Additive. `IMeasureContext<T>` gains a default interface method, `T MapExtent(in ExtentRequest request)`, and the
