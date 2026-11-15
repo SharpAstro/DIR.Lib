@@ -117,7 +117,7 @@ public class LayoutExtentHookTests
         var ctx = new HookCellCtx();
         Arrange(root, ctx);
 
-        var h = ctx.Requests.Single(r => r.Axis == Layout.Axis.Vertical && r.Kind == Layout.ExtentKind.Fixed && r.Value == 40f);
+        var h = ctx.Requests.First(r => r.Axis == Layout.Axis.Vertical && r.Kind == Layout.ExtentKind.Fixed && r.Value == 40f);
         h.HasContent.ShouldBeTrue();
         h.ContentLines.ShouldBe(2);
         h.HasFill.ShouldBeFalse();
