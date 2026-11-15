@@ -296,13 +296,19 @@ public abstract partial record Node
     /// a wheel can be delivered to the innermost scrollable under the pointer.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The rows and the row height stay the consumer's, stated through
     /// <see cref="ListScrollController.SetExtent"/>; only the viewport moves here, because only the
-    /// engine knows it. A stack whose controller draws a bar on the stack's axis also MEASURES that bar's
-    /// column (6 design units, less any trailing padding that already covers it) on its cross extent, by the
-    /// rule the arrange reserves it by (11.66). What it removes is the "is the pointer over my rect" test every wheel handler was
+    /// engine knows it. What it removes is the "is the pointer over my rect" test every wheel handler was
     /// making for itself -- seventeen of them across eleven files in one consumer, each a second
     /// derivation of a rect the arrange pass already held.
+    /// </para>
+    /// <para>
+    /// A stack whose controller draws a bar on the stack's axis also MEASURES that bar's column (6 design
+    /// units, less any trailing padding that already covers it) on its cross extent, by the rule the arrange
+    /// reserves it by (11.66). A list that fits is measured the same way: the column is reserved by the
+    /// measure whether or not it ends up drawn, and the arrange gives the room back.
+    /// </para>
     /// </remarks>
     public ListScrollController? Scroll { get; init; }
 
