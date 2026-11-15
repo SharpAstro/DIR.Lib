@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace DIR.Lib;
 
@@ -180,6 +181,26 @@ public sealed class WindowUiSettings
         _pointerOwnerPopover = popover;
     }
 
+    /// <summary>
+    /// The modal overlay painted this cycle (<see cref="Layout.Node.Overlay.Modal"/>), or null. The topmost one
+    /// wins: a later paint replaces an earlier. <see cref="InputRouter"/> reads it to confine input.
+    /// </summary>
+    /// <remarks>
+    /// Registered by being PAINTED, like <see cref="PaintedPopovers"/>, and cleared on the same cycle boundary, so a
+    /// modal that closed simply stops painting. The layout painter makes the call; a surface that paints a modal
+    /// itself (a terminal) calls <see cref="NoteModalPainted"/> then, once per painted modal.
+    /// </remarks>
+    public ModalClaim? PaintedModal { get; private set; }
+
+    /// <summary>
+    /// Records that a modal's Top began painting in <paramref name="widget"/>. <paramref name="regionStart"/> and
+    /// <paramref name="nodeStart"/> are how many regions and painted nodes the widget held BEFORE Top painted, so
+    /// those at or after them are Top's. <paramref name="card"/> is where Top draws (a press outside it is an
+    /// outside press) and <paramref name="dismiss"/> what closes it.
+    /// </summary>
+    public ModalClaim NoteModalPainted(object widget, int regionStart, int nodeStart, RectF32 card, Action? dismiss)
+        => PaintedModal = new ModalClaim(widget, regionStart, nodeStart, card, dismiss);
+
     private readonly HashSet<object> _begunThisCycle = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
@@ -208,6 +229,7 @@ public sealed class WindowUiSettings
         _pointerOwnerPopover = null;
         PointerOwner = null;
         _paintedPopovers.Clear();
+        PaintedModal = null;
     }
 
     /// <summary>
@@ -288,4 +310,24 @@ public sealed class WindowUiSettings
     /// </para>
     /// </remarks>
     public long FrameId { get; set; }
+}
+
+/// <summary>A modal painted this cycle, as <see cref="WindowUiSettings.NoteModalPainted"/> recorded it.</summary>
+public sealed class ModalClaim(object widget, int regionStart, int nodeStart, RectF32 card, Action? dismiss)
+{
+    /// <summary>The widget whose paint held the modal; widgets painted before it lie beneath.</summary>
+    public object Widget { get; } = widget;
+
+    /// <summary>Regions the widget held before Top painted.</summary>
+    public int RegionStart { get; } = regionStart;
+
+    /// <summary>Painted nodes the widget held before Top painted.</summary>
+    public int NodeStart { get; } = nodeStart;
+
+    /// <summary>Where Top's card draws, in the surface's own coordinates. Settable because an anchored Top's card is
+    /// the node after the one that begins it.</summary>
+    public RectF32 Card { get; set; } = card;
+
+    /// <summary>What closes the modal, or null.</summary>
+    public Action? Dismiss { get; } = dismiss;
 }

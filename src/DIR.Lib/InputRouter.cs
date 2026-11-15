@@ -1,4 +1,5 @@
 ﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace DIR.Lib;
@@ -354,6 +355,83 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     private static bool IsSideButton(MouseButton button)
         => button is MouseButton.Back or MouseButton.Forward;
 
+    // ---- declared modal ---------------------------------------------------------------------
+
+    // THE modal rule, in one place. While a Node.Overlay declared Modal is painted (ui.PaintedModal), what the
+    // router can see is only what its Top painted: the widgets painted BEFORE the modal's widget contribute
+    // nothing, and the modal's own widget contributes only what it registered after Top began (the claim's
+    // RegionStart / NodeStart). Every region, node, shortcut, declared list, scroll target and drag the router
+    // reaches comes through CollectRegions / CollectNodes, so none of them can see Base, and a press outside
+    // Top's card (DispatchModalOutside) is consumed and runs the declared dismiss. A widget painted AFTER the
+    // modal is above it and unaffected. The claim is matched by reference in Widgets(); a claim whose widget is
+    // not in that list is ignored rather than blanking the window. A composite whose children paint onto their
+    // own trackers is a single widget here, so its claim counts are those of the widget that painted Top.
+    private int ModalIndex(IReadOnlyList<IPixelWidget> widgets)
+    {
+        if (ui.PaintedModal is not { } modal) return -1;
+        for (var i = widgets.Count - 1; i >= 0; i--)
+        {
+            if (ReferenceEquals(widgets[i], modal.Widget)) return i;
+        }
+
+        return -1;
+    }
+
+    private bool ModalActive(IReadOnlyList<IPixelWidget> widgets) => ModalIndex(widgets) >= 0;
+
+    private void CollectRegions(IReadOnlyList<IPixelWidget> widgets, int w, List<ClickableRegion> into)
+    {
+        var modal = ModalIndex(widgets);
+        if (modal < 0)
+        {
+            widgets[w].CollectPaintedRegions(into);
+            return;
+        }
+
+        if (w < modal) return;
+        var before = into.Count;
+        widgets[w].CollectPaintedRegions(into);
+        if (w == modal)
+        {
+            into.RemoveRange(before, Math.Min(ui.PaintedModal!.RegionStart, into.Count - before));
+        }
+    }
+
+    private void CollectNodes(IReadOnlyList<IPixelWidget> widgets, int w, List<Layout.ArrangedNode<float>> into)
+    {
+        var modal = ModalIndex(widgets);
+        if (modal < 0)
+        {
+            widgets[w].CollectPaintedNodes(into);
+            return;
+        }
+
+        if (w < modal) return;
+        var before = into.Count;
+        widgets[w].CollectPaintedNodes(into);
+        if (w == modal)
+        {
+            into.RemoveRange(before, Math.Min(ui.PaintedModal!.NodeStart, into.Count - before));
+        }
+    }
+
+    /// <summary>A press nothing in Top took, while a modal is painted: consumed, and outside the card it closes the modal.</summary>
+    private bool ConsumeModalPress(IReadOnlyList<IPixelWidget> widgets, float x, float y)
+    {
+        if (ModalIndex(widgets) < 0) return false;
+        var modal = ui.PaintedModal!;
+        var card = modal.Card;
+        var inside = x >= card.X && x < card.X + card.Width && y >= card.Y && y < card.Y + card.Height;
+        if (!inside)
+        {
+            modal.Dismiss?.Invoke();
+        }
+
+        BlurFocusedField();
+        requestRedraw();
+        return true;
+    }
+
     private bool HandleMouseDown(InputEvent.MouseDown down)
     {
         _pointer = (down.X, down.Y);
@@ -369,7 +447,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         var widgets = Widgets();
         NoteListPress(widgets, down.X, down.Y);
 
-        if (SelectionPress(widgets, down, press))
+        if (!ModalActive(widgets) && SelectionPress(widgets, down, press))
         {
             return true;
         }
@@ -378,7 +456,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         {
             var widget = widgets[w];
             _regions.Clear();
-            widget.CollectPaintedRegions(_regions);
+            CollectRegions(widgets, w, _regions);
 
             for (var i = _regions.Count - 1; i >= 0; i--)
             {
@@ -452,6 +530,11 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             }
         }
 
+        if (ConsumeModalPress(widgets, down.X, down.Y))
+        {
+            return true;
+        }
+
         // Nothing under the pointer. The press is still a press somewhere other than a field.
         if (BlurFocusedField())
         {
@@ -483,7 +566,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         for (var v = w - 1; v >= 0; v--)
         {
             _beneath.Clear();
-            widgets[v].CollectPaintedRegions(_beneath);
+            CollectRegions(widgets, v, _beneath);
             for (var i = _beneath.Count - 1; i >= 0; i--)
             {
                 if (Contains(_beneath[i], x, y))
@@ -738,7 +821,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         for (var w = widgets.Count - 1; w >= 0; w--)
         {
             _regions.Clear();
-            widgets[w].CollectPaintedRegions(_regions);
+            CollectRegions(widgets, w, _regions);
             var any = false;
             for (var i = _regions.Count - 1; i >= 0; i--)
             {
@@ -808,7 +891,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         for (var w = widgets.Count - 1; w >= 0; w--)
         {
             _regions.Clear();
-            widgets[w].CollectPaintedRegions(_regions);
+            CollectRegions(widgets, w, _regions);
             for (var i = _regions.Count - 1; i >= 0; i--)
             {
                 var r = _regions[i];
@@ -852,7 +935,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         for (var w = 0; w < widgets.Count; w++)
         {
             _regions.Clear();
-            widgets[w].CollectPaintedRegions(_regions);
+            CollectRegions(widgets, w, _regions);
             for (var i = 0; i < _regions.Count; i++)
             {
                 if (_regions[i].OnContextMenu is not null && Contains(_regions[i], x, y))
@@ -952,23 +1035,39 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         return took;
     }
 
+    private bool ScrollTargetIsTops(IReadOnlyList<IPixelWidget> widgets, int w, ListScrollController controller)
+    {
+        _regions.Clear();
+        CollectRegions(widgets, w, _regions);
+        foreach (var r in _regions)
+        {
+            if (ReferenceEquals(r.Scroll, controller)) return true;
+        }
+
+        return false;
+    }
+
     private bool HandleScroll(InputEvent.Scroll scroll)
     {
         var widgets = Widgets();
+        var modalAt = ModalIndex(widgets);
         for (var i = widgets.Count - 1; i >= 0; i--)
         {
             // The innermost scrollable under the pointer, which is the one that declared itself last.
             // A controller that declines (nothing to scroll, or the wheel landed outside its viewport)
             // leaves the wheel to whatever is behind it rather than swallowing it, which is what makes a
             // list inside a pane scroll the pane once the list is at its end.
-            if (widgets[i].ScrollTargetAt(scroll.X, scroll.Y) is { } controller && controller.HandleInput(scroll))
+            if (i < modalAt) break;
+            if (widgets[i].ScrollTargetAt(scroll.X, scroll.Y) is { } controller
+                && (i != modalAt || ScrollTargetIsTops(widgets, i, controller))
+                && controller.HandleInput(scroll))
             {
                 requestRedraw();
                 return true;
             }
         }
 
-        return Unhandled?.Invoke(scroll) ?? false;
+        return modalAt >= 0 || (Unhandled?.Invoke(scroll) ?? false);
     }
 
     // ---- keyboard ---------------------------------------------------------------------------
@@ -989,8 +1088,17 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             }
         }
 
+        // A painted modal owns the keyboard next: Escape closes it when it declared how.
+        var modalPainted = ModalActive(Widgets());
+        if (modalPainted && key is { Key: InputKey.Escape } && ui.PaintedModal!.Dismiss is { } dismissModal)
+        {
+            dismissModal();
+            requestRedraw();
+            return true;
+        }
+
         // Ctrl+C copies selected text, unless a field has the keyboard (then it is the field's).
-        if (key is { Key: InputKey.C, Modifiers: InputModifier.Ctrl } && ui.Focus.Current is null && SetClipboardText is { } copy)
+        if (key is { Key: InputKey.C, Modifiers: InputModifier.Ctrl } && ui.Focus.Current is null && !modalPainted && SetClipboardText is { } copy)
         {
             var hosts = Widgets();
             for (var i = hosts.Count - 1; i >= 0; i--)
@@ -1027,7 +1135,9 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             return true;
         }
 
-        return Unhandled?.Invoke(key) ?? false;
+        // Under a modal a key nothing in Top took is still Top's: it does not fall to the host's handler, which
+        // is where the page beneath listens.
+        return modalPainted || (Unhandled?.Invoke(key) ?? false);
     }
 
     // ---- declared lists ---------------------------------------------------------------------
@@ -1049,7 +1159,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         for (var w = 0; w < widgets.Count; w++)
         {
             _nodes.Clear();
-            widgets[w].CollectPaintedNodes(_nodes);
+            CollectNodes(widgets, w, _nodes);
             foreach (var arranged in _nodes)
             {
                 if (arranged.Node.DeclaredList is { } list)
@@ -1088,7 +1198,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         for (var w = widgets.Count - 1; w >= 0 && _pressedListId is null; w--)
         {
             _listRegions.Clear();
-            widgets[w].CollectPaintedRegions(_listRegions);
+            CollectRegions(widgets, w, _listRegions);
             for (var i = _listRegions.Count - 1; i >= 0; i--)
             {
                 var region = _listRegions[i];
@@ -1142,7 +1252,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         for (var w = widgets.Count - 1; w >= 0; w--)
         {
             _listRegions.Clear();
-            widgets[w].CollectPaintedRegions(_listRegions);
+            CollectRegions(widgets, w, _listRegions);
             foreach (var region in _listRegions)
             {
                 if (region.Result is HitResult.TextInputHit hit && ReferenceEquals(hit.Input, field)
@@ -1176,9 +1286,10 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
 
         _listRegions.Clear();
         _listClipped.Clear();
-        foreach (var widget in widgets)
+        for (var w = 0; w < widgets.Count; w++)
         {
-            widget.CollectPaintedRegions(_listRegions);
+            var widget = widgets[w];
+            CollectRegions(widgets, w, _listRegions);
             widget.CollectClippedListRows(active.ListId, _listClipped);
         }
 
@@ -1242,7 +1353,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         for (var w = widgets.Count - 1; w >= 0; w--)
         {
             _nodes.Clear();
-            widgets[w].CollectPaintedNodes(_nodes);
+            CollectNodes(widgets, w, _nodes);
 
             for (var i = _nodes.Count - 1; i >= 0; i--)
             {
@@ -1341,7 +1452,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         for (var w = 0; w < widgets.Count; w++)
         {
             _regions.Clear();
-            widgets[w].CollectPaintedRegions(_regions);
+            CollectRegions(widgets, w, _regions);
 
             for (var i = 0; i < _regions.Count; i++)
             {
@@ -1453,7 +1564,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         for (var w = widgets.Count - 1; w >= 0; w--)
         {
             _nodes.Clear();
-            widgets[w].CollectPaintedNodes(_nodes);
+            CollectNodes(widgets, w, _nodes);
 
             for (var i = _nodes.Count - 1; i >= 0; i--)
             {
@@ -1489,7 +1600,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         for (var w = widgets.Count - 1; w >= 0; w--)
         {
             _regions.Clear();
-            widgets[w].CollectPaintedRegions(_regions);
+            CollectRegions(widgets, w, _regions);
 
             for (var i = _regions.Count - 1; i >= 0; i--)
             {

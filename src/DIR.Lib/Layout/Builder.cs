@@ -166,6 +166,15 @@ public static partial class Builder
     public static Node Overlay(Node layer, Node top) => new Node.Overlay(layer, top);
 
     /// <summary>
+    /// <paramref name="top"/> over <paramref name="layer"/> as a MODAL: while it is painted, input reaches
+    /// <paramref name="top"/> only (see <see cref="Node.Overlay.Modal"/>). A press outside the card is consumed and runs
+    /// <paramref name="onDismiss"/> when there is one. A null <paramref name="top"/> is the modal closed: the result
+    /// is <paramref name="layer"/> itself, so the tree carries the open state and nothing else does.
+    /// </summary>
+    public static Node Modal(Node layer, Node? top, Action? onDismiss = null)
+        => top is null ? layer : new Node.Overlay(layer, top) { Modal = true, OnDismiss = onDismiss };
+
+    /// <summary>
     /// A floating child placed inside this node's rect at its own measured size — pinned to
     /// <paramref name="side"/>, or free when that is null. Pair with <see cref="Overlay"/> to float a panel
     /// over content. <paramref name="offsetAlong"/> is consumer-owned state a drag updates; see
