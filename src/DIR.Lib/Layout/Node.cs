@@ -154,6 +154,12 @@ public abstract partial record Node
     /// Set via <see cref="Radius"/>.</summary>
     public float CornerRadius { get; init; }
 
+    /// <summary>The border this node declares, or null (default) for none, which changes nothing about a tree
+    /// that does not set it. The engine reserves it inside this node's extent on every surface, per declared side
+    /// and outside <see cref="Padding"/>, through <see cref="ExtentKind.Border"/>, in measure and arrange alike.
+    /// Set via <see cref="Border(RGBAColor32, float, float)"/> and the per-side <c>BorderTop</c> family.</summary>
+    public BorderStyle? BorderStyle { get; init; }
+
     /// <summary>Optional click region bound to this node's arranged rect (draw == hit by construction).
     /// Lives on the node, not the content, so a whole container (a slot row, a panel) is clickable -- not
     /// just leaves. Inner nodes registered later win the hit (top-most), so a button inside a clickable row

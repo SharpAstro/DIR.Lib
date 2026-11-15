@@ -98,6 +98,9 @@ public class LayoutArrangeSnapshotTests
             new Layout.Node.Stack([Fx(Box(), 60, 20), Text("hi")])
             { Padding = 4f, Height = Layout.Sizing.Fixed(60), Width = Layout.Sizing.Fixed(100), Background = Bg },
             Star(Box())));
+        yield return ("border_all_sides", () => new Layout.Node.Stack([Text("hello"), Text("ab")]).Border(Bg, 2f));
+        yield return ("border_bottom_only", () => Star(new Layout.Node.Stack([Text("hello"), Star(Box())]).BorderBottom(Bg, 2f)));
+        yield return ("border_and_padding", () => new Layout.Node.Stack([Text("hello"), Text("ab")]) { Padding = 12f }.Border(Bg, 2f));
     }
 
     private static string Kind(Layout.Node n) => n switch

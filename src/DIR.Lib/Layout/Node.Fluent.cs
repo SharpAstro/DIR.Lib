@@ -94,6 +94,35 @@ public abstract partial record Node
     /// approximates it.</summary>
     public Node Radius(float designUnits) => this with { CornerRadius = designUnits };
 
+    /// <summary>A border on all four sides: <paramref name="width"/> design units of <paramref name="color"/> (one cell
+    /// per side on a cell surface), square or rounded by <paramref name="radius"/>. Reserved inside this node's extent,
+    /// outside its padding.</summary>
+    public Node Border(RGBAColor32 color, float width = 1f, float radius = 0f)
+        => this with { BorderStyle = new BorderStyle { Color = color, Width = width, Radius = radius } };
+
+    /// <summary>Declares <paramref name="style"/> as this node's border (null clears it).</summary>
+    public Node Border(BorderStyle? style) => this with { BorderStyle = style };
+
+    /// <summary>Adds the top side to any sides already declared.</summary>
+    public Node BorderTop(RGBAColor32 color, float width = 1f) => WithBorderSide(BorderSides.Top, color, width);
+
+    /// <summary>Adds the bottom side to any sides already declared.</summary>
+    public Node BorderBottom(RGBAColor32 color, float width = 1f) => WithBorderSide(BorderSides.Bottom, color, width);
+
+    /// <summary>Adds the left side to any sides already declared.</summary>
+    public Node BorderLeft(RGBAColor32 color, float width = 1f) => WithBorderSide(BorderSides.Left, color, width);
+
+    /// <summary>Adds the right side to any sides already declared.</summary>
+    public Node BorderRight(RGBAColor32 color, float width = 1f) => WithBorderSide(BorderSides.Right, color, width);
+
+    private Node WithBorderSide(BorderSides side, RGBAColor32 color, float width)
+        => this with
+        {
+            BorderStyle = BorderStyle is { } b
+                ? b with { Sides = b.Sides | side }
+                : new BorderStyle { Color = color, Width = width, Sides = side },
+        };
+
     /// <summary>Inset this node's children by <paramref name="designUnits"/> of inner padding.</summary>
     public Node Pad(float designUnits) => this with { Padding = designUnits };
 
