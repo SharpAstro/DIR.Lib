@@ -547,6 +547,8 @@ public static class Engine
         var gap = ToSurfaceOn(ctx, stack.Gap, axis);
         var scroll = stack.Scroll;
 
+        // The measure of such a stack includes this same bar column (MeasureUncached, 11.66), so the rows
+        // measured at the natural width are arranged at least that wide here.
         // A scrolled stack whose bar shows gives its children the controller's content area: the viewport
         // less the bar column (as the virtual list does), so a Star row or an end-aligned leaf ends left of
         // the bar rather than under it. The rows must be RESOLVED at that narrower cross extent, not only

@@ -9,6 +9,19 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.66
+
+Behaviour change. A stack declared `WithScroll` whose controller draws a bar (`Mode` is not `None`, controller
+`Axis` on the stack's axis) now MEASURES its cross extent with the bar column added (`ScrollBarBaseWidthPx`, 6
+design units at the context's scale), less any trailing padding that already covers it, by the same rule
+`ArrangeStack` reserves it by. Always, not only on overflow, since a measure cannot know the viewport's height.
+A Fixed cross size still overrides it, and `Mode = None`, an unscrolled stack and a controller on the other axis
+measure as before. Why: an Auto scrolled stack measured without the column and was then arranged with it
+reserved, so its widest row came out one bar narrower than its content (SharpAstro/tianwen#2156, the session form
+floor; DIR.Lib #232). Consumers whose sizes may move by 6 units: tianwen's Session form floor,
+PlanetaryControlPanel, and dropdown and context menus with an Auto width. (The issue says 11.64; main shipped
+11.65 and 11.64 was skipped, so this is 11.66.)
+
 ## 11.65
 
 Additive. `Node.Wrap` gains `FirstLineTrailing`, an init-only `Node?`, and `Node.WithFirstLineTrailing(Node)`
