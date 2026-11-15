@@ -1010,23 +1010,31 @@ public class LayoutDataViewsTests
     public void ResizableHeader_InACellHost_GripsCoverExactlyTheGapCells()
     {
         var bad = new List<string>();
-        for (var cells = 20; cells <= 320; cells++) Check(cells, bad);
-        bad.Count.ShouldBe(0, string.Join('\n', bad.Take(12)) + $"\n({bad.Count} mismatches)");
+        var rng = new Random(233);
+        for (var seed = 0; seed < 400; seed++)
+        {
+            var n = rng.Next(3, 11);
+            var cols = new TableColumn[n];
+            for (var i = 0; i < n; i++)
+            {
+                cols[i] = rng.Next(3) switch
+                {
+                    0 => new("c" + i, Sizing.Fixed(rng.Next(20, 121))),
+                    1 => new("c" + i, Sizing.Star(rng.Next(1, 3), rng.Next(0, 4) * 50f, 0f)),
+                    _ => new("c" + i, Sizing.Star(1f, 0f, rng.Next(40, 161))),
+                };
+            }
+
+            for (var cells = 30; cells <= 300; cells += 7) Check(cols, cells, bad);
+        }
+
+        bad.Count.ShouldBe(0, string.Join('
+', bad.Take(12)) + $"
+({bad.Count} mismatches)");
     }
 
-    private static void Check(int cells, List<string> bad)
+    private static void Check(TableColumn[] columns, int cells, List<string> bad)
     {
-        var columns = new TableColumn[]
-        {
-            new("name", Sizing.Star(1f, 200f)),
-            new("a", Sizing.Star(1f, 0f, 90f)),
-            new("b", Sizing.Fixed(60f)),
-            new("c", Sizing.Star(1f, 0f, 130f)),
-            new("d", Sizing.Star(1f, 0f, 70f)),
-            new("e", Sizing.Fixed(100f)),
-            new("f", Sizing.Star(1f, 0f, 110f)),
-            new("g", Sizing.Fixed(40f)),
-        };
         var style = Style with { Gap = 14f, PadX = 6f };
         var header = Layout.Builder.TableHeader(columns, null, _ => { }, style, new TableColumnWidths(), DesignScale.One);
         var arranged = Layout.Engine.Arrange(header, new Rect<int>(0, 0, cells, 1), new CellHostCtx());
@@ -1049,7 +1057,7 @@ public class LayoutDataViewsTests
             var left = titles[i];
             var next = titles[i + 1];
             if (grips[i] is null || grip.X != left.X + left.Width || grip.X + grip.Width != next.X)
-                bad.Add($"cells {cells} divider {i}: grip {grip}, left {left}, next {next}");
+                bad.Add($"cols [{string.Join(", ", columns.Select(c => c.Width))}] cells {cells} divider {i}: grip {grip}, left {left}, next {next}");
         }
     }
 }
