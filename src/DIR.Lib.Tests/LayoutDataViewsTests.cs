@@ -994,4 +994,59 @@ public class LayoutDataViewsTests
 
         area.ShouldBe(300.0 * 200.0, 1.0, "the cells tile the rect");
     }
+
+    // ---- Table: a divider grip in a cell host (#233) -------------------------------------------
+
+    /// <summary>A cell host: 8 design units a column, rounding as Console.Lib's pixel-authored context.</summary>
+    private sealed class CellHostCtx : Layout.IMeasureContext<int>
+    {
+        public Layout.Size<int> MeasureText(ReadOnlySpan<char> text, float fontSize) => new(text.Length, 1);
+        public int ToSurface(float designUnits) => (int)MathF.Round(designUnits);
+        public int ToSurfaceX(float designUnits) => (int)MathF.Round(designUnits / 8f);
+        public int ToSurfaceY(float designUnits) => (int)MathF.Round(designUnits / 16f);
+    }
+
+    [Theory]
+    [InlineData(250)]
+    [InlineData(200)]
+    [InlineData(173)]
+    [InlineData(120)]
+    public void ResizableHeader_InACellHost_GripsCoverExactlyTheGapCells(int cells)
+    {
+        var columns = new TableColumn[]
+        {
+            new("name", Sizing.Star(1f, 200f)),
+            new("a", Sizing.Star(1f, 0f, 90f)),
+            new("b", Sizing.Fixed(60f)),
+            new("c", Sizing.Star(1f, 0f, 130f)),
+            new("d", Sizing.Star(1f, 0f, 70f)),
+            new("e", Sizing.Fixed(100f)),
+            new("f", Sizing.Star(1f, 0f, 110f)),
+            new("g", Sizing.Fixed(40f)),
+        };
+        var style = Style with { Gap = 14f, PadX = 6f };
+        var header = Layout.Builder.TableHeader(columns, null, _ => { }, style, new TableColumnWidths(), DesignScale.One);
+        var arranged = Layout.Engine.Arrange(header, new Rect<int>(0, 0, cells, 1), new CellHostCtx());
+
+        var titles = new Rect<int>[columns.Length];
+        var grips = new Rect<int>?[columns.Length - 1];
+        foreach (var a in arranged)
+        {
+            if (a.Node.Hit is not HitResult.ButtonHit b) continue;
+            for (var i = 0; i < columns.Length; i++)
+            {
+                if (b.Action == "table-header:" + columns[i].Header) titles[i] = a.Bounds;
+                if (i < grips.Length && b.Action == $"table-header:divider:{i}") grips[i] = a.Bounds;
+            }
+        }
+
+        for (var i = 0; i < grips.Length; i++)
+        {
+            var grip = grips[i].ShouldNotBeNull($"divider {i}");
+            var left = titles[i];
+            var next = titles[i + 1];
+            grip.X.ShouldBe(left.X + left.Width, $"divider {i} starts at the left title's right edge (grip {grip}, left {left}, next {next})");
+            (grip.X + grip.Width).ShouldBe(next.X, $"divider {i} ends at the next title's x (grip {grip}, left {left}, next {next})");
+        }
+    }
 }
