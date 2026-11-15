@@ -111,7 +111,7 @@ public class LayoutWrapFirstLineTrailingTests
     {
         // 12 items, narrow trailing: line 2 would hold 8 at 667 (8*60+7*12=564, a 9th needs 636... fits), so a
         // run of 20 shows line 2 filling beyond what line 1 could.
-        var root = Items(20).WithGap(12f).WithFirstLineTrailing(Layout.Builder.Box(150f, 10f, Ink));
+        var root = Items(20).WithGap(12f).WithFirstLineTrailing(Trailing(15));
         var (items, _) = Split(Px.Arrange(root, 667, 400));
         items.Count(r => r.Y == 0).ShouldBe(7);
         // 9 * 60 + 8 * 12 = 636 <= 667 < 708.
