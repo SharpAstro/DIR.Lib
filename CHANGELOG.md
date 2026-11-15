@@ -9,6 +9,15 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.62
+
+A fix; nothing to migrate. A scrolled stack given exactly the room its content takes no longer scrolls.
+
+- The arrange counted the content in atoms rounded up and the controller counts what shows rounded down, so rows
+  that are not whole surface units (a row 0.8 of another, at any scale) in a viewport sized to them came out an
+  atom over: `MaxOffset` 1, and a decorative or interactive bar drawn beside a list showing every row. Content
+  the viewport holds now counts as the viewport's own atoms. Found on TianWen's Session tab (tianwen#2139).
+
 ## 11.61
 
 Additive; a list declares the cursor that owns its rows, every surface's router steps it, and a non-pixel
