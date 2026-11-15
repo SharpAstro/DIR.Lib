@@ -1083,9 +1083,10 @@ public class LayoutDataViewsTests
     ];
 
     private static (Dictionary<int, Rect<int>> Titles, Dictionary<int, Rect<int>> Cells, List<(string Name, Rect<int> Bounds)> Grips)
-        ArrangeTable(TableColumn[] columns, int width, Layout.IMeasureContext<int> ctx, TableStyle style)
+        ArrangeTable(TableColumn[] columns, int width, Layout.IMeasureContext<int> ctx, TableStyle style, TableColumnWidths? widths = null)
     {
-        var header = Layout.Builder.TableHeader(columns, null, _ => { }, style, new TableColumnWidths(), DesignScale.One);
+        widths ??= new TableColumnWidths();
+        var header = Layout.Builder.TableHeader(columns, null, _ => { }, style, widths, DesignScale.One);
         var titles = new Dictionary<int, Rect<int>>();
         var grips = new List<(string, Rect<int>)>();
         foreach (var a in Layout.Engine.Arrange(header, new Rect<int>(0, 0, width, 1), ctx))
@@ -1097,7 +1098,7 @@ public class LayoutDataViewsTests
         }
 
         var cellNodes = columns.Select((c, i) => Layout.Builder.Spacer().Clickable(new HitResult.ButtonHit("row:" + i), null)).ToArray();
-        var row = Layout.Builder.TableRow(columns, cellNodes, style, new TableColumnWidths());
+        var row = Layout.Builder.TableRow(columns, cellNodes, style, widths);
         var cells = new Dictionary<int, Rect<int>>();
         foreach (var a in Layout.Engine.Arrange(row, new Rect<int>(0, 0, width, 1), ctx))
             if (a.Node.Hit is HitResult.ButtonHit rb && rb.Action.StartsWith("row:", StringComparison.Ordinal))
@@ -1174,5 +1175,57 @@ public class LayoutDataViewsTests
         var (titles, _, grips) = ArrangeTable(columns, 300, new CellHostCtx(), Style with { Gap = 14f, PadX = 0f });
         grips.Select(g => g.Name).ShouldBe(["table-header:divider:1"]);
         (titles[1].X - (titles[0].X + titles[0].Width)).ShouldBe(2, "the gap is still there");
+    }
+
+    [Fact]
+    public void ARowCellsOwnCollapseBelow_StillDrops_WhenItsColumnDeclaresNoDropBelow()
+    {
+        // pilot's ListTable sets CollapseBelow on its row cells itself; TableRow must not overwrite it with 0.
+        var columns = new TableColumn[]
+        {
+            new("name", Sizing.Star(1f, 80f, 0f)),
+            new("kind", Sizing.Star(1f, 0f, 90f)),
+        };
+        var cells = new[]
+        {
+            Layout.Builder.Spacer().Clickable(new HitResult.ButtonHit("row:0"), null),
+            Layout.Builder.Spacer().Clickable(new HitResult.ButtonHit("row:1"), null).CollapseBelow(60f),
+        };
+
+        List<string> Drawn(int width) => Layout.Engine.Arrange(
+                Layout.Builder.TableRow(columns, cells, Style with { Gap = 14f, PadX = 0f }, new TableColumnWidths()),
+                new Rect<int>(0, 0, width, 1), new PixelHostCtx())
+            .Select(a => a.Node.Hit).OfType<HitResult.ButtonHit>().Select(b => b.Action).ToList();
+
+        Drawn(400).ShouldBe(["row:0", "row:1"]);
+        Drawn(130).ShouldBe(["row:0"], "the kind cell is narrower than its own CollapseBelow here");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OverTheSameWidths_TheGripsStayInsideTheGaps_OnTheNextFrame(bool cellHost)
+    {
+        // CanDrag reads the previous arrange's collapsed state, so the second frame is the one that uses it.
+        Layout.IMeasureContext<int> ctx = cellHost ? new CellHostCtx() : new PixelHostCtx();
+        var columns = DroppableMix();
+        var style = Style with { Gap = 14f, PadX = 6f };
+        var bad = new List<string>();
+        for (var width = cellHost ? 8 : 60; width <= (cellHost ? 110 : 880); width += cellHost ? 1 : 7)
+        {
+            var widths = new TableColumnWidths();
+            ArrangeTable(columns, width, ctx, style, widths);
+            var (titles, _, grips) = ArrangeTable(columns, width, ctx, style, widths);
+            var drawn = titles.OrderBy(kv => kv.Value.X).Select(kv => kv.Value).ToArray();
+            foreach (var (name, g) in grips)
+            {
+                var ok = false;
+                for (var k = 0; k + 1 < drawn.Length && !ok; k++)
+                    ok = g.X == drawn[k].X + drawn[k].Width && g.X + g.Width == drawn[k + 1].X;
+                if (!ok) bad.Add($"width {width}: {name} at {g} is not exactly one gap on the second frame");
+            }
+        }
+
+        bad.Count.ShouldBe(0, string.Join(Environment.NewLine, bad.Take(12)) + $" ({bad.Count} problems)");
     }
 }

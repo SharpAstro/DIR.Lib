@@ -233,7 +233,13 @@ public static partial class Builder
         for (var i = 0; i < columns.Length; i++)
         {
             var cell = i < cells.Length ? cells[i] : Spacer();
-            laid[i] = cell with { Width = widths?.SizingOf(i, columns[i]) ?? columns[i].Width, Height = Sizing.Star(), CollapseThreshold = columns[i].DropBelow };
+            // A column's DropBelow wins; without one the cell keeps its own CollapseBelow (pilot's ListTable sets it).
+            laid[i] = cell with
+            {
+                Width = widths?.SizingOf(i, columns[i]) ?? columns[i].Width,
+                Height = Sizing.Star(),
+                CollapseThreshold = columns[i].DropBelow > 0f ? columns[i].DropBelow : cell.CollapseThreshold,
+            };
         }
 
         return HStack(laid).WithGap(style.Gap).PadX(style.PadX);
