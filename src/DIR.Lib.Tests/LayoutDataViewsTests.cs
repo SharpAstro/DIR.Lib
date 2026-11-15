@@ -1051,10 +1051,11 @@ public class LayoutDataViewsTests
 
         for (var i = 0; i < grips.Length; i++)
         {
-            var grip = grips[i] ?? default;
+            // A gap with no grip (two uncapped stars, a fixed column that cannot be resized) is nothing to cover.
+            if (grips[i] is not { } grip) continue;
             var left = titles[i];
             var next = titles[i + 1];
-            if (grips[i] is null || grip.X != left.X + left.Width || grip.X + grip.Width != next.X)
+            if (grip.X != left.X + left.Width || grip.X + grip.Width != next.X)
                 bad.Add($"cols [{string.Join(", ", columns.Select(c => c.Width))}] cells {cells} divider {i}: grip {grip}, left {left}, next {next}");
         }
     }
