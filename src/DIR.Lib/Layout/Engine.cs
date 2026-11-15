@@ -155,6 +155,14 @@ public static class Engine
         // whole available extent and only then overridden, a wrapping child counted the lines it would take at window width.
         available = new Size<T>(NarrowTo(available.Width, node, node.Width, ctx, Axis.Horizontal), NarrowTo(available.Height, node, node.Height, ctx, Axis.Vertical));
 
+        // The border is reserved outside the padding, per side, for every node kind (a Dock or Split too: it
+        // fills what is left inside). Arrange insets by the same Extent calls, so the two agree.
+        var border = BorderInsets(ctx, node);
+        if (border.Any)
+        {
+            available = new Size<T>(T.Max(T.Zero, available.Width - border.Left - border.Right), T.Max(T.Zero, available.Height - border.Top - border.Bottom));
+        }
+
         var padded = node is not Node.Dock and not Node.Split && (node.Padding != 0f || node.PadDown != 0f);
         var padX = padded ? Extent(ctx, node, node.Padding, Axis.Horizontal, ExtentKind.Padding) : T.Zero;
         var padY = padded ? Extent(ctx, node, node.PadDown, Axis.Vertical, ExtentKind.Padding) : T.Zero;
@@ -191,6 +199,11 @@ public static class Engine
             intrinsic = new Size<T>(intrinsic.Width + padX + padX, intrinsic.Height + padY + padY);
         }
 
+        if (border.Any)
+        {
+            intrinsic = new Size<T>(intrinsic.Width + border.Left + border.Right, intrinsic.Height + border.Top + border.Bottom);
+        }
+
         // A scrolled stack whose controller draws a bar on the stack's axis measures the bar column too, less
         // the trailing padding that already covers it: ArrangeStack reserves exactly that column from the
         // rows' cross extent, so a measure without it arranged the widest row narrower than it measured.
@@ -198,7 +211,7 @@ public static class Engine
         if (node is Node.Stack { Scroll: { } barScroll } barStack && ScrollBarMeasured(barScroll, barStack.Axis))
         {
             var bar = T.CreateChecked(ScrollBarColumn(ctx));
-            var trailing = barStack.Axis == Axis.Vertical ? padX : padY;
+            var trailing = barStack.Axis == Axis.Vertical ? padX + border.Right : padY + border.Bottom;
             var extra = T.Max(T.Zero, bar - trailing);
             intrinsic = barStack.Axis == Axis.Vertical
                 ? new Size<T>(intrinsic.Width + extra, intrinsic.Height)
@@ -263,9 +276,20 @@ public static class Engine
         }
 
         var arrangePadded = node.Padding != 0f || node.PadDown != 0f;
-        var inner = arrangePadded
-            ? Inset(rect, Extent(ctx, node, node.Padding, Axis.Horizontal, ExtentKind.Padding), Extent(ctx, node, node.PadDown, Axis.Vertical, ExtentKind.Padding))
-            : rect;
+        var inner = rect;
+        var arrangeBorder = BorderInsets(ctx, node);
+        if (arrangeBorder.Any)
+        {
+            inner = new Rect<T>(inner.X + arrangeBorder.Left, inner.Y + arrangeBorder.Top,
+                Max(T.Zero, inner.Width - arrangeBorder.Left - arrangeBorder.Right),
+                Max(T.Zero, inner.Height - arrangeBorder.Top - arrangeBorder.Bottom));
+        }
+
+        if (arrangePadded)
+        {
+            inner = Inset(inner, Extent(ctx, node, node.Padding, Axis.Horizontal, ExtentKind.Padding), Extent(ctx, node, node.PadDown, Axis.Vertical, ExtentKind.Padding));
+        }
+
         var childDepth = depth + 1;
         switch (node)
         {
@@ -665,7 +689,10 @@ public static class Engine
             // end, the arrange slid the rows a padding further down than the clip, and the last half-row
             // of a padded list could never be scrolled into view.
             padStart = axis == Axis.Vertical ? inner.Y - rect.Y : inner.X - rect.X;
-            var total = rows + padStart + padStart;
+            var padEndMain = axis == Axis.Vertical
+                ? (rect.Y + rect.Height) - (inner.Y + inner.Height)
+                : (rect.X + rect.Width) - (inner.X + inner.Width);
+            var total = rows + padStart + padEndMain;
 
             // An atom is a row where the list says so (AtomDesignUnits) and one surface unit otherwise.
             atom = scroll.AtomDesignUnits > 0f
@@ -1983,6 +2010,31 @@ public static class Engine
 
     private static Size<T> Union<T>(Size<T> a, Size<T> b) where T : INumber<T>
         => new(Max(a.Width, b.Width), Max(a.Height, b.Height));
+
+    /// <summary>The surface extent reserved on each side by a node's <see cref="Node.BorderStyle"/>, through
+    /// <see cref="IMeasureContext{T}.MapExtent"/> as <see cref="ExtentKind.Border"/>. All zero without a border.</summary>
+    private readonly record struct BorderInset<T>(T Left, T Right, T Top, T Bottom) where T : INumber<T>
+    {
+        public bool Any => Left != T.Zero || Right != T.Zero || Top != T.Zero || Bottom != T.Zero;
+    }
+
+    private static BorderInset<T> BorderInsets<T>(IMeasureContext<T> ctx, Node node) where T : INumber<T>
+    {
+        if (node.BorderStyle is not { Width: > 0f } style || style.Sides == BorderSides.None)
+        {
+            return default;
+        }
+
+        var x = style.Sides.HasFlag(BorderSides.Left) || style.Sides.HasFlag(BorderSides.Right)
+            ? Extent(ctx, node, style.Width, Axis.Horizontal, ExtentKind.Border) : T.Zero;
+        var y = style.Sides.HasFlag(BorderSides.Top) || style.Sides.HasFlag(BorderSides.Bottom)
+            ? Extent(ctx, node, style.Width, Axis.Vertical, ExtentKind.Border) : T.Zero;
+        return new BorderInset<T>(
+            style.Sides.HasFlag(BorderSides.Left) ? x : T.Zero,
+            style.Sides.HasFlag(BorderSides.Right) ? x : T.Zero,
+            style.Sides.HasFlag(BorderSides.Top) ? y : T.Zero,
+            style.Sides.HasFlag(BorderSides.Bottom) ? y : T.Zero);
+    }
 
     private static Rect<T> Inset<T>(Rect<T> r, T padX, T padY) where T : INumber<T>
         => padX == T.Zero && padY == T.Zero
