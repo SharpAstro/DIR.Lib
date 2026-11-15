@@ -1201,7 +1201,8 @@ public static class Engine
     {
         var children = wrap.Children;
         var n = children.Length;
-        if (n == 0)
+        var trailing = wrap.FirstLineTrailing;
+        if (n == 0 && trailing is null)
         {
             return;
         }
@@ -1216,7 +1217,12 @@ public static class Engine
         // The first line alone stops short, so a run can flow BENEATH a corner item and still use the
         // whole extent once it has. Clamped at zero: a reserve wider than the container would otherwise
         // make the first line's limit negative and push every child onto line two.
-        var firstLineAvail = Max(T.Zero, mainAvail - ToSurfaceOn(ctx, wrap.FirstLineReserve, axis));
+        // The measured trailing node takes its main extent and the gap before it off the first line's item room.
+        var (trailMain, trailCross) = trailing is null
+            ? (T.Zero, T.Zero)
+            : ResolveWrapChild(trailing, axis, availSize, ctx);
+        var firstLineAvail = Max(T.Zero, mainAvail - ToSurfaceOn(ctx, wrap.FirstLineReserve, axis)
+            - (trailing is null ? T.Zero : trailMain + gap));
 
         // Resolve every child's main + natural cross extent up front (see ResolveWrapChild).
         var childMains = new T[n];
@@ -1226,16 +1232,47 @@ public static class Engine
             (childMains[i], childCrosses[i]) = ResolveWrapChild(children[i], axis, availSize, ctx);
         }
 
+        // Flush at the inner rect's main end, on the line's cross extent (a Star cross stretches like an item).
+        void PlaceTrailing(T lineCrossExtent, T crossPos)
+        {
+            var t = trailing!;
+            var tCrossSizing = CrossSizing(axis, t);
+            var tc = tCrossSizing.IsStar ? Clamp(lineCrossExtent, tCrossSizing, ctx, CrossAxis(axis)) : trailCross;
+            var mainPos = (axis == Axis.Horizontal ? inner.X : inner.Y) + mainAvail - trailMain;
+            var r = axis == Axis.Horizontal
+                ? new Rect<T>(mainPos, crossPos, trailMain, tc)
+                : new Rect<T>(crossPos, mainPos, tc, trailMain);
+            ArrangeNode(t, r, ctx, output, depth);
+        }
+
         // Flow line by line: a child that would overflow a non-empty line starts the next one (a child
         // wider than the whole extent gets a line of its own and overflows visibly).
         var lineStart = 0;
         var lineIndex = 0;
         var crossCursor = axis == Axis.Horizontal ? inner.Y : inner.X;
+        // Narrow rule: when the first item does not fit beside the trailing node, line 1 holds only the
+        // trailing node and the items start on line 2 (a child no longer always takes an empty line here).
+        if (trailing is not null && (n == 0 || childMains[0] > firstLineAvail))
+        {
+            PlaceTrailing(trailCross, crossCursor);
+            crossCursor += trailCross + lineGap;
+            lineIndex = 1;
+            if (wrap.MaxLines > 0 && lineIndex >= wrap.MaxLines)
+            {
+                if (n > 0)
+                {
+                    output[wrapIndex] = output[wrapIndex] with { Truncated = true };
+                }
+
+                return;
+            }
+        }
+
         while (lineStart < n)
         {
             var lineEnd = lineStart; // exclusive
             var used = T.Zero;
-            var lineCross = T.Zero;
+            var lineCross = lineIndex == 0 ? trailCross : T.Zero;
             var lineAvail = lineIndex == 0 ? firstLineAvail : mainAvail;
             while (lineEnd < n)
             {
@@ -1288,6 +1325,11 @@ public static class Engine
                 {
                     mainCursor += ToSurfaceOn(ctx, children[i + 1].LeadingGap, axis);
                 }
+            }
+
+            if (lineIndex == 0 && trailing is not null)
+            {
+                PlaceTrailing(lineCross, crossCursor);
             }
 
             crossCursor += lineCross + lineGap;
@@ -1650,7 +1692,8 @@ public static class Engine
     {
         var children = wrap.Children;
         var n = children.Length;
-        if (n == 0)
+        var trailing = wrap.FirstLineTrailing;
+        if (n == 0 && trailing is null)
         {
             return Size<T>.Zero;
         }
@@ -1659,7 +1702,18 @@ public static class Engine
         var gap = ToSurfaceOn(ctx, wrap.Gap, axis);
         var lineGap = ToSurfaceOn(ctx, wrap.LineGap, CrossAxis(axis));
         var mainAvail = MainOf(axis, available);
-        var firstLineAvail = Max(T.Zero, mainAvail - ToSurfaceOn(ctx, wrap.FirstLineReserve, axis));
+        var (trailMain, trailCross) = trailing is null
+            ? (T.Zero, T.Zero)
+            : ResolveWrapChild(trailing, axis, available, ctx);
+        var firstLineAvail = Max(T.Zero, mainAvail - ToSurfaceOn(ctx, wrap.FirstLineReserve, axis)
+            - (trailing is null ? T.Zero : trailMain + gap));
+        if (n == 0)
+        {
+            return Compose(axis, trailMain, trailCross);
+        }
+
+        // Line 1's main: its items, then the gap and the trailing node when there is one.
+        T Line1Main(T items, int count) => trailing is null ? items : items + (count > 0 ? gap : T.Zero) + trailMain;
 
         // Same line flow as ArrangeWrap: intrinsic main = the longest line, intrinsic cross = the sum of
         // line extents -- so an Auto-height wrap grows taller as its container narrows. The first line's
@@ -1671,6 +1725,18 @@ public static class Engine
         var lineCross = T.Zero;
         var itemsInLine = 0;
         var lines = 1;
+        lineCross = trailCross;
+        // Narrow rule, as in ArrangeWrap: line 1 holds only the trailing node, items start on line 2.
+        var skipFirst = trailing is not null
+            && ResolveWrapChild(children[0], axis, available, ctx).Main > firstLineAvail;
+        if (skipFirst)
+        {
+            maxLineMain = trailMain;
+            totalCross = trailCross;
+            lineCross = T.Zero;
+            lines = 2;
+        }
+
         for (var i = 0; i < n; i++)
         {
             var (main, cross) = ResolveWrapChild(children[i], axis, available, ctx);
@@ -1679,7 +1745,7 @@ public static class Engine
                 : gap + ToSurfaceOn(ctx, children[i].LeadingGap, axis) + main;
             if (itemsInLine > 0 && used + extra > (lines == 1 ? firstLineAvail : mainAvail))
             {
-                maxLineMain = Max(maxLineMain, used);
+                maxLineMain = Max(maxLineMain, lines == 1 ? Line1Main(used, itemsInLine) : used);
                 totalCross += lineCross;
                 lines++;
                 used = main;
@@ -1693,15 +1759,15 @@ public static class Engine
             itemsInLine++;
         }
 
-        maxLineMain = Max(maxLineMain, used);
+        maxLineMain = Max(maxLineMain, lines == 1 ? Line1Main(used, itemsInLine) : used);
         // A capped flow reports the box it will actually paint, not the one it would need uncapped --
         // otherwise the caller reserves a band for rows the arrange then drops.
         if (wrap.MaxLines > 0 && lines > wrap.MaxLines)
         {
             lines = wrap.MaxLines;
-            totalCross = T.Zero;
-            var counted = 0;
-            var lineTop = T.Zero;
+            totalCross = skipFirst ? trailCross : T.Zero;
+            var counted = skipFirst ? 1 : 0;
+            var lineTop = skipFirst ? T.Zero : trailCross;
             var inLine = 0;
             var usedInLine = T.Zero;
             for (var i = 0; i < n && counted < lines; i++)

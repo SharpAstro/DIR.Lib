@@ -140,7 +140,7 @@ internal sealed class ExtentFacts
     private static ImmutableArray<Node> ChildrenOf(Node node) => node switch
     {
         Node.Stack s => s.Children,
-        Node.Wrap w => w.Children,
+        Node.Wrap w => w.FirstLineTrailing is { } trailing ? w.Children.Add(trailing) : w.Children,
         Node.Grid g => g.Cells,
         Node.Overlay o => [o.Base, o.Top],
         Node.Split sp => [sp.First, sp.Second],

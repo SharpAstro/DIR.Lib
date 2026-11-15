@@ -248,6 +248,13 @@ public abstract partial record Node
         => this is Wrap wr ? wr with { FirstLineReserve = reserve } : this;
 
     /// <summary>
+    /// On a <see cref="Wrap"/>, a measured node drawn flush at the main end of the first line while later
+    /// lines use the full extent; a no-op on any other node. See <see cref="Wrap.FirstLineTrailing"/>.
+    /// </summary>
+    public Node WithFirstLineTrailing(Node trailing)
+        => this is Wrap wt ? wt with { FirstLineTrailing = trailing } : this;
+
+    /// <summary>
     /// Extra main-axis space before this child in a flow, suppressed when it starts a line. See
     /// <see cref="LeadingGap"/>.
     /// </summary>
