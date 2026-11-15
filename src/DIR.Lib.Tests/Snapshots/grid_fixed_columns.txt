@@ -1,0 +1,16 @@
+# pixel 200x160
+0 Grid 0 0 200 160
+1 Leaf:Text 0 0 40 16
+1 Leaf:Text 50 0 14 16
+1 Leaf:Text 74 0 126 16
+1 Leaf:Text 0 22 40 16
+1 Leaf:Text 50 22 14 16
+1 Leaf:Text 74 22 126 16
+# cell 25x10 (8x16)
+0 Grid 0 0 25 10
+1 Leaf:Text 0 0 5 1
+1 Leaf:Text 6 0 2 1
+1 Leaf:Text 9 0 16 1
+1 Leaf:Text 0 1 5 1
+1 Leaf:Text 6 1 2 1
+1 Leaf:Text 9 1 16 1

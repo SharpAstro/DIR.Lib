@@ -1,0 +1,10 @@
+# pixel 200x160
+0 Split 0 0 200 160
+1 Leaf:Box 0 0 200 28
+1 Leaf:Box 0 28 200 8
+1 Leaf:Box 0 36 200 124
+# cell 25x10 (8x16)
+0 Split 0 0 25 10
+1 Leaf:Box 0 0 25 2
+1 Leaf:Box 0 2 25 0
+1 Leaf:Box 0 2 25 8

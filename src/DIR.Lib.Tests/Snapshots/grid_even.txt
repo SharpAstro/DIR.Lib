@@ -1,0 +1,12 @@
+# pixel 200x160
+0 Grid 0 0 200 160
+1 Leaf:Box 0 0 94 78
+1 Leaf:Box 106 0 94 78
+1 Leaf:Box 0 82 94 78
+1 Leaf:Box 106 82 94 78
+# cell 25x10 (8x16)
+0 Grid 0 0 25 10
+1 Leaf:Box 0 0 11 5
+1 Leaf:Box 13 0 12 5
+1 Leaf:Box 0 5 11 5
+1 Leaf:Box 13 5 12 5
