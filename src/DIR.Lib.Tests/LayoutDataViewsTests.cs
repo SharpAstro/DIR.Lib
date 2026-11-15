@@ -1011,9 +1011,7 @@ public class LayoutDataViewsTests
     {
         var bad = new List<string>();
         for (var cells = 20; cells <= 320; cells++) Check(cells, bad);
-        bad.Count.ShouldBe(0, string.Join("
-", bad.Take(12)) + $"
-({bad.Count} mismatches)");
+        bad.Count.ShouldBe(0, string.Join('\n', bad.Take(12)) + $"\n({bad.Count} mismatches)");
     }
 
     private static void Check(int cells, List<string> bad)
