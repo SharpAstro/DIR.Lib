@@ -555,7 +555,26 @@ public abstract partial record Node
     }
 
     /// <summary><paramref name="Base"/> drawn first, <paramref name="Top"/> on top (modal / dropdown / popup). Both fill the same rect.</summary>
-    public sealed record Overlay(Node Base, Node Top) : Node;
+    public sealed record Overlay(Node Base, Node Top) : Node
+    {
+        /// <summary>
+        /// Declares <see cref="Top"/> modal: while it is painted, <see cref="InputRouter"/> delivers presses, keys,
+        /// scroll, drags, shortcuts and declared-list keys to <see cref="Top"/> only, and nothing reaches
+        /// <see cref="Base"/> or a widget painted beneath. Default false.
+        /// </summary>
+        /// <remarks>
+        /// Open and closed are the tree's own state: build the overlay while the modal is open and leave it out
+        /// when it is not (<see cref="Builder.Modal"/> does that for a null top). An init-only property rather
+        /// than a primary-constructor parameter, which would be a binary break.
+        /// </remarks>
+        public bool Modal { get; init; }
+
+        /// <summary>
+        /// What a press outside the modal card, or Escape, does to close it. Null: the press is still consumed,
+        /// and nothing closes. Read only when <see cref="Modal"/> is set.
+        /// </summary>
+        public System.Action? OnDismiss { get; init; }
+    }
 
     /// <summary>
     /// Two resizable panes laid out along <paramref name="Axis"/> with a draggable divider of

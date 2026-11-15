@@ -1241,6 +1241,13 @@ namespace DIR.Lib
             // region registered for it would take the presses aimed at whatever the card is sitting on.
             var scrolls = new Stack<(int Depth, ListScrollController Scroll, RectF32 Clip)>();
 
+            // A MODAL overlay being painted: the overlay's depth, and where Top's card is still to be read off
+            // the node after an Anchored Top. -1 is "not inside a modal".
+            var modalDepth = -1;
+            Layout.Node.Overlay? modalOverlay = null;
+            ModalClaim? modalClaim = null;
+            var modalCardDepth = -1;
+
             foreach (var arrangedNode in arranged)
             {
                 var (node, bounds) = arrangedNode;
@@ -1318,6 +1325,37 @@ namespace DIR.Lib
                 if (closedPopoverDepth >= 0)
                 {
                     continue;
+                }
+
+                if (modalDepth >= 0 && arrangedNode.Depth <= modalDepth)
+                {
+                    modalDepth = -1;
+                    modalOverlay = null;
+                    modalClaim = null;
+                    modalCardDepth = -1;
+                }
+
+                if (modalClaim is { } pendingCard && modalCardDepth >= 0 && arrangedNode.Depth == modalCardDepth)
+                {
+                    pendingCard.Card = new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+                    modalCardDepth = -1;
+                }
+
+                if (node is Layout.Node.Overlay { Modal: true } declaredModal)
+                {
+                    modalDepth = arrangedNode.Depth;
+                    modalOverlay = declaredModal;
+                }
+                else if (modalOverlay is not null && modalClaim is null && ReferenceEquals(node, modalOverlay.Top))
+                {
+                    // Top begins here: everything this widget registers from now on is Top's. Noted before the
+                    // node is captured or registers anything, so the counts are exactly what lay beneath.
+                    modalClaim = Ui.NoteModalPainted(this, _tracker.Regions.Length, captured.Count,
+                        new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height), modalOverlay.OnDismiss);
+                    if (node is Layout.Node.Anchored)
+                    {
+                        modalCardDepth = arrangedNode.Depth + 1;
+                    }
                 }
 
                 // Captured HERE, past the closed-popover skip, so what is retained is what was PAINTED and
