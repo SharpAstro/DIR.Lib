@@ -37,8 +37,9 @@ public readonly record struct ExtentRequest
     /// <see cref="Content.TextInput"/>, <see cref="Content.Icon"/> or <see cref="Content.Slider"/> leaf.</summary>
     public bool HasContent { get; init; }
 
-    /// <summary>The lines of that content as authored (a text input, icon or slider is one) (explicit line breaks, not wrapping): vertical stacks add their children's,
-    /// other containers take the most; 0 when <see cref="HasContent"/> is false.</summary>
+    /// <summary>The lines of that content as authored (explicit line breaks, not wrapping; a text input, icon or slider is
+    /// one line): vertical stacks add their children's, other containers take the most; 0 when <see cref="HasContent"/>
+    /// is false.</summary>
     public int ContentLines { get; init; }
 
     /// <summary>The node or a descendant carries a <see cref="Node.Background"/> (or is a <see cref="Content.Fill"/>, or a <see cref="Content.Box"/> with a visible colour),
@@ -55,15 +56,29 @@ internal sealed class ExtentFacts
     public int Lines { get; private init; }
     public bool HasFill { get; private init; }
 
-    /// <summary>Facts of <paramref name="node"/>. A subtree that reads mutable caller-owned state (see <see cref="MeasurePurity"/>:
-    /// a text editor's <c>State.Text</c>) is computed per call, so a keystroke is seen; a pure one is cached per node reference.</summary>
-    public static ExtentFacts Of(Node node) => MeasurePurity.IsPure(node) ? Cache.GetValue(node, Compute) : Compute(node);
+    /// <summary>True when the facts read mutable caller-owned state: only a text editor's <c>State.Text</c> (its line count)
+    /// does. A text input's placeholder is never read here, so a subtree holding one is still cached.</summary>
+    private bool ReadsMutable { get; init; }
+
+    /// <summary>Facts of <paramref name="node"/>. A subtree holding a text editor is computed per call, so a keystroke
+    /// is seen; any other is cached per node reference.</summary>
+    public static ExtentFacts Of(Node node)
+    {
+        if (Cache.TryGetValue(node, out var known))
+        {
+            return known;
+        }
+
+        var facts = Compute(node);
+        return facts.ReadsMutable ? facts : Cache.GetValue(node, _ => facts);
+    }
 
     private static ExtentFacts Compute(Node node)
     {
         var fill = node.Background is not null;
         var has = false;
         var lines = 0;
+        var mutable = false;
         switch (node)
         {
             case Node.Leaf { Content: Content.Text t }:
@@ -73,6 +88,7 @@ internal sealed class ExtentFacts
             case Node.Leaf { Content: Content.TextEditor e }:
                 has = true;
                 lines = CountLines(e.State.Text);
+                mutable = true;
                 break;
             case Node.Leaf { Content: Content.TextInput or Content.Icon or Content.Slider }:
                 // A single-line field, a pictogram and a slider all paint: one line of content each.
@@ -91,6 +107,7 @@ internal sealed class ExtentFacts
                 {
                     var f = Of(child);
                     fill |= f.HasFill;
+                    mutable |= f.ReadsMutable;
                     if (!f.HasContent)
                     {
                         continue;
@@ -103,7 +120,7 @@ internal sealed class ExtentFacts
                 break;
         }
 
-        return new ExtentFacts { HasContent = has, Lines = lines, HasFill = fill };
+        return new ExtentFacts { HasContent = has, Lines = lines, HasFill = fill, ReadsMutable = mutable };
     }
 
     private static int CountLines(string s)

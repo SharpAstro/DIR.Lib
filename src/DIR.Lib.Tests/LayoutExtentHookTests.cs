@@ -149,20 +149,28 @@ public class LayoutExtentHookTests
     [Fact]
     public void Painting_leaves_are_not_read_as_empty()
     {
-        var kinds = new Layout.Content[]
+        var contents = new Layout.Content[]
         {
             new Layout.Content.TextInput(new TextInputState()),
             new Layout.Content.Icon(Layout.IconKind.Grid),
             new Layout.Content.Slider(new SliderState()),
-            new Layout.Content.Box(1, 1) { Color = Bg },
         };
-        foreach (var c in kinds)
+        foreach (var c in contents)
         {
             var ctx = new HookCellCtx();
             Arrange(new Layout.Node.Stack([Fixed40(c)]), ctx);
             var r = ctx.Requests.First(q => q.Value == 40f && q.Axis == Layout.Axis.Vertical);
-            (r.HasContent || r.HasFill).ShouldBeTrue(c.GetType().Name);
+            r.HasContent.ShouldBeTrue(c.GetType().Name);
+            r.ContentLines.ShouldBe(1, c.GetType().Name);
+            r.HasFill.ShouldBeFalse(c.GetType().Name);
         }
+
+        var boxCtx = new HookCellCtx();
+        Arrange(new Layout.Node.Stack([Fixed40(new Layout.Content.Box(1, 1) { Color = Bg })]), boxCtx);
+        var box = boxCtx.Requests.First(q => q.Value == 40f && q.Axis == Layout.Axis.Vertical);
+        box.HasFill.ShouldBeTrue();
+        box.HasContent.ShouldBeFalse();
+        box.ContentLines.ShouldBe(0);
 
         var empty = new HookCellCtx();
         Arrange(new Layout.Node.Stack([Fixed40(new Layout.Content.Box(0, 0))]), empty);
@@ -191,12 +199,17 @@ public class LayoutExtentHookTests
         var grid = new Layout.Node.Grid(2, [Text("a"), Text("b")]).WithColumns(Layout.Sizing.Fixed(33), Layout.Sizing.Star());
         Saw(grid, 33f, Layout.Axis.Horizontal).ShouldBeTrue();
 
+        // The cross and wrap sites are proved by the arranged size: a context that maps 1:1 puts the authored value
+        // on the child, where the default divide-by-8 mapping (or a site that skipped the hook) would not.
+        var identity = new IdentityHookCtx();
         var cross = new Layout.Node.Stack([Text("a") with { Width = Layout.Sizing.Fixed(37) }], Layout.Axis.Vertical);
-        Saw(cross, 37f, Layout.Axis.Horizontal).ShouldBeTrue();
+        var crossArranged = Layout.Engine.Arrange(cross, new Rect<int>(0, 0, 200, 200), identity).ToArray();
+        crossArranged[1].Bounds.Width.ShouldBe(37);
 
         var wrap = new Layout.Node.Wrap([Text("a") with { Width = Layout.Sizing.Fixed(41), Height = Layout.Sizing.Fixed(43) }]);
-        Saw(wrap, 41f, Layout.Axis.Horizontal).ShouldBeTrue();
-        Saw(wrap, 43f, Layout.Axis.Vertical).ShouldBeTrue();
+        var wrapArranged = Layout.Engine.Arrange(wrap, new Rect<int>(0, 0, 200, 200), identity).ToArray();
+        wrapArranged[1].Bounds.Width.ShouldBe(41);
+        wrapArranged[1].Bounds.Height.ShouldBe(43);
 
         var dock = new Layout.Node.Dock([new Layout.DockChild(Layout.DockSide.Top, Text("t"), Layout.Sizing.Fixed(47))], Text("f"));
         Saw(dock, 47f, Layout.Axis.Vertical).ShouldBeTrue();
@@ -210,7 +223,18 @@ public class LayoutExtentHookTests
         ctx.MapExtent(new Layout.ExtentRequest { Value = 28f, Axis = Layout.Axis.Horizontal }).ShouldBe(4);
     }
 
-    private sealed class HookCellCtxDefault : Layout.IMeasureContext<int>
+    /// <summary>Cells whose hook returns the authored value unchanged, so an arranged size shows the hook was used.</summary>
+    private sealed class IdentityHookCtx : Layout.IMeasureContext<int>
+    {
+        public Layout.Size<int> MeasureText(ReadOnlySpan<char> text, float fontSize) => new(text.Length, 1);
+        public int ToSurface(float designUnits) => (int)MathF.Round(designUnits);
+        public int ToSurfaceX(float designUnits) => (int)MathF.Round(designUnits / 8f);
+        public int ToSurfaceY(float designUnits) => (int)MathF.Round(designUnits / 16f);
+        public object? MeasureKey => "identity-hook";
+        public int MapExtent(in Layout.ExtentRequest r) => (int)MathF.Round(r.Value);
+    }
+
+    private sealed class HookCellCtxDefault: Layout.IMeasureContext<int>
     {
         public Layout.Size<int> MeasureText(ReadOnlySpan<char> text, float fontSize) => new(text.Length, 1);
         public int ToSurface(float designUnits) => (int)MathF.Round(designUnits);
