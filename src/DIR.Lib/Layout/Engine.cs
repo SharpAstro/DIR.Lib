@@ -230,7 +230,10 @@ public static class Engine
             }
         }
 
-        var inner = Inset(rect, Extent(ctx, node, node.Padding, Axis.Horizontal, ExtentKind.Padding), Extent(ctx, node, node.PadDown, Axis.Vertical, ExtentKind.Padding));
+        var arrangePadded = node.Padding != 0f || node.PadDown != 0f;
+        var inner = arrangePadded
+            ? Inset(rect, Extent(ctx, node, node.Padding, Axis.Horizontal, ExtentKind.Padding), Extent(ctx, node, node.PadDown, Axis.Vertical, ExtentKind.Padding))
+            : rect;
         var childDepth = depth + 1;
         switch (node)
         {
