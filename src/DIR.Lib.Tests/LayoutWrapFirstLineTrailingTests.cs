@@ -276,7 +276,8 @@ public class LayoutWrapFirstLineTrailingTests
         boxes[7].Y.ShouldBe(0);
         trailing.X.ShouldBe(0);
         trailing.Y.ShouldBe(517);
-        Px.Measure(root, 400, 667).Height.ShouldBe(517 + 150);
+        // Measure reports the content extent of the longest line: 7 * 60 + 6 * 12 + 12 + 150.
+        Px.Measure(root, 400, 667).Height.ShouldBe(654);
     }
 
     [Fact]
