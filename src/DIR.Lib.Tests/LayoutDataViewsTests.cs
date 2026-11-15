@@ -1025,15 +1025,16 @@ public class LayoutDataViewsTests
                 };
             }
 
-            for (var cells = 30; cells <= 300; cells += 7) Check(cols, cells, bad);
+            foreach (var pad in new[] { 0f, 6f })
+                for (var cells = 30; cells <= 300; cells += 7) Check(cols, cells, pad, bad);
         }
 
         bad.Count.ShouldBe(0, string.Join(Environment.NewLine, bad.Take(12)) + $" ({bad.Count} mismatches)");
     }
 
-    private static void Check(TableColumn[] columns, int cells, List<string> bad)
+    private static void Check(TableColumn[] columns, int cells, float pad, List<string> bad)
     {
-        var style = Style with { Gap = 14f, PadX = 6f };
+        var style = Style with { Gap = 14f, PadX = pad };
         var header = Layout.Builder.TableHeader(columns, null, _ => { }, style, new TableColumnWidths(), DesignScale.One);
         var arranged = Layout.Engine.Arrange(header, new Rect<int>(0, 0, cells, 1), new CellHostCtx());
 
@@ -1056,7 +1057,7 @@ public class LayoutDataViewsTests
             var left = titles[i];
             var next = titles[i + 1];
             if (grip.X != left.X + left.Width || grip.X + grip.Width != next.X)
-                bad.Add($"cols [{string.Join(", ", columns.Select(c => c.Width))}] cells {cells} divider {i}: grip {grip}, left {left}, next {next}");
+                bad.Add($"cols [{string.Join(", ", columns.Select(c => c.Width))}] pad {pad} cells {cells} divider {i}: grip {grip}, left {left}, next {next}");
         }
     }
 }
