@@ -1,0 +1,14 @@
+# pixel 200x160
+0 Dock 0 0 200 160
+1 Leaf:Box 0 0 200 28
+1 Leaf:Box 0 28 40 132
+1 Leaf:Box 40 152 160 8
+1 Leaf:Box 180 28 20 124
+1 Leaf:Box 40 28 140 124
+# cell 25x10 (8x16)
+0 Dock 0 0 25 10
+1 Leaf:Box 0 0 25 2
+1 Leaf:Box 0 2 5 8
+1 Leaf:Box 5 10 20 0
+1 Leaf:Box 23 2 2 8
+1 Leaf:Box 5 2 18 8

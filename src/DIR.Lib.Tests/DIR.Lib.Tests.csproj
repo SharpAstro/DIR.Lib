@@ -35,6 +35,7 @@
   <ItemGroup>
     <Content Include="Fonts\**" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Baselines\**" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Snapshots\**" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
