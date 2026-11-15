@@ -522,9 +522,64 @@ public class RenderAcceptanceTests : IDisposable
         var rounded = Layout.Builder.Box(0, 0).Stretch().Border(translucent, 4f, 16f);
         var img = RenderBordered(rounded, 60, 60);
         // Every band pixel is blended once, so the straight top and left edges read the same.
-        Px(img, 30, 1).ShouldBe(Px(img, 1, 30));
+        var single = Px(img, 30, 1);
+        Px(img, 1, 30).ShouldBe(single);
+        single.ShouldNotBe(BorderBackdrop);
         Px(img, 30, 30).ShouldBe(BorderBackdrop, "the inside stays clear");
         Px(img, 0, 0).ShouldBe(BorderBackdrop, "outside the arc stays clear");
+
+        // Every pixel of the image is the backdrop or exactly one blend: a double blend in the arcs
+        // (bands overlapping at a corner) would show as a third colour.
+        for (var y = 0; y < 60; y++)
+        {
+            for (var x = 0; x < 60; x++)
+            {
+                var p = Px(img, x, y);
+                (p == BorderBackdrop || p == single).ShouldBeTrue($"pixel ({x},{y}) is {p}, neither backdrop nor the single blend {single}");
+            }
+        }
+
+        // Not vacuous: each corner arc region holds at least one border-coloured pixel.
+        foreach (var (x0, y0) in new[] { (3, 3), (51, 3), (3, 51), (51, 51) })
+        {
+            var any = false;
+            for (var y = y0; y < y0 + 6; y++)
+            {
+                for (var x = x0; x < x0 + 6; x++)
+                {
+                    any |= Px(img, x, y) == single;
+                }
+            }
+
+            any.ShouldBeTrue($"corner region at ({x0},{y0}) holds a border pixel");
+        }
+    }
+
+    [Fact]
+    public void ScrolledBorderedStackKeepsRowsAndBarInsideItsBorder()
+    {
+        var line = new RGBAColor32(240, 240, 240, 255);
+        var rowColour = new RGBAColor32(200, 30, 30, 255);
+        var scroll = new ListScrollController { Mode = ScrollBarMode.Interactive };
+        var rows = Enumerable.Range(0, 8).Select(_ => Layout.Builder.Box(0, 0).Bg(rowColour).WStar().HFixed(20f));
+        var root = Layout.Builder.VStack([.. rows]).Pad(4f).Border(line, 3f).WithScroll(scroll);
+        var renderer = new RgbaImageRenderer(60, 60);
+        var widget = new BorderWidget(renderer);
+        renderer.Surface.Clear(BorderBackdrop);
+        widget.Render(root, new RectF32(0, 0, 60, 60));
+        scroll.ScrollToEnd();
+        renderer.Surface.Clear(BorderBackdrop);
+        widget.Render(root, new RectF32(0, 0, 60, 60));
+        scroll.Offset.ShouldBeGreaterThan(0f, "the stack is scrolled");
+
+        var img = renderer.Surface;
+        for (var i = 0; i < 60; i++)
+        {
+            Px(img, i, 1).ShouldBe(line, $"top band at x={i}");
+            Px(img, i, 58).ShouldBe(line, $"bottom band at x={i}");
+            Px(img, 1, i).ShouldBe(line, $"left band at y={i}");
+            Px(img, 58, i).ShouldBe(line, $"right band at y={i}");
+        }
     }
 
     private static void CompareBaseline(RgbaImage img, string name)

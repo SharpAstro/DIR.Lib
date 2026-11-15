@@ -128,4 +128,22 @@ public class LayoutBorderTests
         var b = ChildPx(new Layout.Node.Stack([Star()]).Border(default, 3f));
         b.X.ShouldBe(3f);
     }
+
+    [Fact]
+    public void ScrolledBorderedPaddedStackMeasuresAndArrangesTheSameBarColumn()
+    {
+        var scroll = new ListScrollController { Mode = ScrollBarMode.Interactive };
+        var root = new Layout.Node.Stack([Fx(40, 20), Fx(40, 20), Fx(40, 20)]) { Padding = 4f, Scroll = scroll }.Border(Line, 3f);
+        var measured = Layout.Engine.Measure(root, new Layout.Size<float>(300, 300), new PixelCtx());
+        // Content 40, padding 4 each side, border 3 each side, and the bar's column less the trailing padding.
+        measured.Width.ShouldBe(40f + 8f + 6f + (ListScrollController.ScrollBarBaseWidthPx - 4f));
+
+        var arranged = Layout.Engine.Arrange(root, new Rect<float>(0, 0, measured.Width, 40), new PixelCtx());
+        var stack = arranged[0].Bounds;
+        var row = arranged[1].Bounds;
+        row.Width.ShouldBe(40f, "the widest row arranges as wide as it measured");
+        row.X.ShouldBe(3f + 4f, "rows start inside border and padding");
+        // The bar column sits left of the border: rows plus bar fit the viewport (the rect inside the border).
+        (row.X + row.Width + ListScrollController.ScrollBarBaseWidthPx).ShouldBeLessThanOrEqualTo(stack.Width - 3f);
+    }
 }
