@@ -1028,9 +1028,7 @@ public class LayoutDataViewsTests
             for (var cells = 30; cells <= 300; cells += 7) Check(cols, cells, bad);
         }
 
-        bad.Count.ShouldBe(0, string.Join('
-', bad.Take(12)) + $"
-({bad.Count} mismatches)");
+        bad.Count.ShouldBe(0, string.Join(Environment.NewLine, bad.Take(12)) + $" ({bad.Count} mismatches)");
     }
 
     private static void Check(TableColumn[] columns, int cells, List<string> bad)
