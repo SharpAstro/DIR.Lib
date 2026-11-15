@@ -178,6 +178,9 @@ public abstract partial record Node
     /// and slid by the controller's offset, the controller is told what it scrolls over (one surface
     /// unit per atom), and the painter clips the subtree to this rect and registers only what shows.
     /// Cap the stack's extent (<see cref="HClamp"/>) or it measures to its content and never scrolls.
+    /// When the controller draws a bar on the stack's axis the measure includes the bar's column on the
+    /// cross extent (less trailing padding that already covers it), always and not only on overflow, so
+    /// measure and arrange agree on the room the rows get (11.66).
     /// Named With* so it does not shadow the <see cref="Node.Scroll"/> property it sets.
     /// </summary>
     public Node WithScroll(ListScrollController controller) => this with { Scroll = controller };
