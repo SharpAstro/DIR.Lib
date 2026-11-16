@@ -150,6 +150,8 @@ public abstract partial record Node
     /// painter through <c>Renderer.FillRoundedRectangle</c>, a cell painter by drawing arc corners
     /// (U+256D..U+2570) since a character grid cannot round by fractions of a cell. A surface that cannot
     /// express it at all just fills square, which is why this is a hint rather than a guarantee.
+    /// A rounded all-sides <see cref="BorderStyle"/> also rounds the background on a pixel surface, to the
+    /// larger of the two radii, so fill and stroke share one outline.
     /// </para>
     /// Set via <see cref="Radius"/>.</summary>
     public float CornerRadius { get; init; }

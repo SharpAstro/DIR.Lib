@@ -9,6 +9,15 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.72
+
+A node whose border has a radius on all four sides now fills its background inside that same rounded
+outline on a pixel surface, so the square corners outside the curve show what is beneath (the menu panel's
+scrim, DIR.Lib #245). The fill radius is the larger of `CornerRadius` and the border's `Radius`. Visible
+change to any node pairing `Background` with a rounded all-sides border; a partial-side or square border
+fills as before. Consumers that paint their own cells (Console.Lib, SdlVulkan.Renderer, WebGl.Renderer) were
+not checked.
+
 ## 11.71
 
 - **Menu panel: a long row no longer runs past the card's edge** (DIR.Lib #243, found in sebgod/chess#84).
