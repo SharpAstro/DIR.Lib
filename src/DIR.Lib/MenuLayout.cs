@@ -131,7 +131,7 @@ public static class MenuLayout
             Width = Layout.Sizing.Star(),
         }.WithShortcut(InputKey.Down).Activatable(_ => model.HandleKey(InputKey.Down)));
 
-        return new Layout.Node.Stack(children.MoveToImmutable(), Layout.Axis.Vertical);
+        return new Layout.Node.Stack(children.ToImmutable(), Layout.Axis.Vertical);
     }
 
     // Row heights of the shared column in base font sizes: title 2 x 1.6, prompt 2, gap 0.5, items 2 each.
