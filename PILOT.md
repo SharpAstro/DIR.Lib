@@ -44,8 +44,9 @@ dotnet test src/DIR.Lib.Shaping.Tests -c Release --no-build
 
 - Tests are xunit.v3 with Shouldly on Microsoft.Testing.Platform, not VSTest: `--logger` and `--blame-*` fail the run.
   `--filter` keeps its VSTest syntax. A narrower check filters with `--filter "FullyQualifiedName~<Name>"`.
-- The debug inspector (`DIR.Lib.Diagnostics`) and its tests are `#if DEBUG`, so a Release run compiles them out. A leg
-  that touches the inspector checks with `-c Debug` as well. The LAN multicast test stays skipped: it needs
+- The inspector core (`DIR.Lib.Diagnostics`: `DebugInspectorCore`, `DebugInspectorRegistry`) and its tests compile in
+  Release, off unless `DIR_INSPECTOR=1` and `DIR_INSPECTOR_TOKEN` are set (`StartIfOptedIn`), so `-c Release` covers them;
+  the other `#if DEBUG` pieces still need `-c Debug`. The LAN multicast test stays skipped: it needs
   `DIR_LIB_INSPECTOR_LAN_TESTS=1` and makes Windows Firewall prompt.
 - A visual test that fails against its PNG in `Baselines/` is investigated, never regenerated as the first answer.
   A leg that changes rendering on purpose regenerates only the baselines it means to change

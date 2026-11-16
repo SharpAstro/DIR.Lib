@@ -317,9 +317,14 @@ see what a GPU pipeline draws, and it only finds what the state it is given prod
 
 ## Debug builds (`DIR.Lib.Debug`)
 
-The published `DIR.Lib` is built Release, so the `#if DEBUG` types (`DIR.Lib.Diagnostics`, the debug
-inspector) are absent from it. `DIR.Lib.Debug` is the same library at the same version, built Debug.
-Reference one or the other by configuration (Visual Studio needs a restore after switching):
+Since 11.70 the published (Release) `DIR.Lib` carries the inspector core (`DebugInspectorCore`), inert by default.
+A host calls `DebugInspectorCore.StartIfOptedIn(host)`; it starts only when the process sets `DIR_INSPECTOR=1` and
+`DIR_INSPECTOR_TOKEN` (a per-run secret every client request must carry). The opt-in without a token refuses to
+start and says why on stderr. A NativeAOT consumer pays about 1.2 MB for it (see the 11.70 changelog entry).
+
+`DIR.Lib.Debug` is the same library at the same version, built Debug, for the remaining `#if DEBUG` types; it is
+kept for now and its retirement is a follow-up. Reference one or the other by configuration (Visual Studio needs a
+restore after switching):
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">

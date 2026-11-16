@@ -86,7 +86,7 @@ passes every option to every project, so one project without `--hangdump` made t
 - **Framework:** xunit v3 + Shouldly assertions
 - **Visual regression tests** (`RenderAcceptanceTests.cs`, `MathLayoutBaselineTests.cs`, `MathStretchyTests.cs`, `DrawLineTests.cs`, `DrawPolylineTests.cs`): compare rendered output against baseline PNG files in `Baselines/`. Set `DIR_LIB_UPDATE_BASELINES=1` to regenerate.
 - **Markdown / LaTeX spike tests** (`MarkdownBlockSpikeTests.cs`, `MarkdownInlineSpikeTests.cs`, `MhchemTests.cs`): exercise the grammar visitors directly.
-- **Debug inspector tests** (`DebugInspectorSchedulingTests.cs`, `DebugInspectorDiscoveryTests.cs`) are `#if DEBUG`, like the inspector itself, so a Release run (CI) compiles them out: run them with `-c Debug`. The multicast test is skipped unless `DIR_LIB_INSPECTOR_LAN_TESTS=1`, because `dotnet test` hosts the suite in the worktree's own `DIR.Lib.Tests.exe` and binding `0.0.0.0:47892` there makes Windows Firewall prompt once per worktree; run it hosted by `dotnet.exe` (the command is in its doc comment). The registry format those tests pin is the sidecars' contract: `src/DIR.Lib/Diagnostics/inspector-registry.md`.
+- **Debug inspector tests** (`DebugInspectorSchedulingTests.cs`, `DebugInspectorDiscoveryTests.cs`, `InspectorOptInTests.cs`) run in Release too (since 11.70): the inspector core (`DebugInspectorCore`, `DebugInspectorRegistry`) is compiled into every build and inert unless the process opts in. `DebugInspectorCore.StartIfOptedIn(host)` starts it only when `DIR_INSPECTOR=1` and `DIR_INSPECTOR_TOKEN` is non-empty (a per-run secret every client request must carry as `token`); the opt-in without a token refuses to start and says why on stderr. `Start` / `Detached` are unchanged. Run the tests with `-c Release` as CI does. The multicast test is skipped unless `DIR_LIB_INSPECTOR_LAN_TESTS=1`, because `dotnet test` hosts the suite in the worktree's own `DIR.Lib.Tests.exe` and binding `0.0.0.0:47892` there makes Windows Firewall prompt once per worktree; run it hosted by `dotnet.exe` (the command is in its doc comment). The registry format those tests pin is the sidecars' contract: `src/DIR.Lib/Diagnostics/inspector-registry.md`.
 - **Test fonts** are in `src/DIR.Lib.Tests/Fonts/` — each fixture font has a specific purpose (e.g., Merida is chess-only, subset fonts test PDF embedding scenarios).
 - The tests project declares `SharpAstro.Png` directly because the visual tests emit / decode PNG artifacts — DIR.Lib itself no longer pulls codec packages transitively.
 
@@ -100,7 +100,7 @@ It covers both DIR.Lib and DIR.Lib.Shaping, because CI stamps a single `-p:Versi
 
 The same version also stamps the **DIR.Lib.Debug** twin: CI packs `src/DIR.Lib` a second time with
 `-c Debug -p:DebugTwin=true` (and `-p:GeneratePackageOnBuild=false`, so bin/Debug holds no second nupkg),
-because the Release DIR.Lib has no `#if DEBUG` types. `tools/debug-twin-check` is a consumer with no
+because the Release DIR.Lib has the other `#if DEBUG` types but, since 11.70, carries the inspector core itself; the twin stays until its retirement is decided (a follow-up). `tools/debug-twin-check` is a consumer with no
 ProjectReference that compiles against that package only (`dotnet build tools/debug-twin-check/DebugTwinCheck.csproj -c Debug`,
 after a twin pack into `artifacts/debug-twin`; CI passes `-p:DirLibDebugVersion=<stamped version>`).
 
