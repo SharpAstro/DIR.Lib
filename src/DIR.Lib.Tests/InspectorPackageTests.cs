@@ -37,6 +37,7 @@ public class InspectorPackageTests
         text.ShouldContain("$(PublishTrimmed)' == 'true'");
         text.ShouldContain("$(PublishAot)' == 'true'");
         text.ShouldContain("$(DirInspectorSupport)' == ''");
+        text.ShouldContain("$(_IsPublishing)' == 'true'");
     }
 
     /// <summary>
