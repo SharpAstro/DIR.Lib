@@ -82,7 +82,13 @@ public sealed class PrototypeTreeBuilder
     }
 
     /// <summary>Builds the screen's tree.</summary>
-    public Node Build(PrototypeScreen screen) => BuildNode(screen.Root) ?? B.Spacer();
+    public Node Build(PrototypeScreen screen)
+    {
+        // The read-only 'target' state follows the design width, written quietly so painting never raises Changed.
+        if (DesignSize is { } d)
+            _state.SetQuietly(PrototypeTargets.StateName, PrototypeTargets.ForWidth(d.Width));
+        return BuildNode(screen.Root) ?? B.Spacer();
+    }
 
     // ---- one node ----
 

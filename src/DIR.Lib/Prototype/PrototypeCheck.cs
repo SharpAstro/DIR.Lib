@@ -13,8 +13,16 @@ namespace DIR.Lib.Prototyping;
 /// <param name="Finding">What <see cref="Wireframe.Check"/> reported.</param>
 public readonly record struct PrototypeFinding(string Screen, string State, uint Width, uint Height, WireframeFinding Finding)
 {
+    /// <summary>
+    /// The name of the document target the screen was drawn at; empty from the sized <see cref="Prototype.Check"/>
+    /// overload, which draws at a size rather than a target. Init-only so the constructor and <c>Deconstruct</c> keep their shape.
+    /// </summary>
+    public string Target { get; init; } = "";
+
     /// <inheritdoc />
-    public override string ToString() => $"{Screen} [{State}] {Width}x{Height}: {Finding.Message}";
+    public override string ToString() => string.IsNullOrEmpty(Target)
+        ? $"{Screen} [{State}] {Width}x{Height}: {Finding.Message}"
+        : $"{Screen} [{State}] @{Target} {Width}x{Height}: {Finding.Message}";
 }
 
 public static partial class Prototype
@@ -82,6 +90,71 @@ public static partial class Prototype
     }
 
     /// <summary>
+    /// As the sized overload, but at each of the document's <see cref="PrototypeDocument.Targets"/>: the surface is
+    /// the target's width and height times its scale, drawn by a player at that target (so the read-only <c>target</c>
+    /// state follows its width), and every finding names the target in <see cref="PrototypeFinding.Target"/>.
+    /// </summary>
+    public static ImmutableArray<PrototypeFinding> Check(PrototypeDocument document, UiTheme? theme = null,
+        WireframeOptions? options = null, string? fontPath = null)
+    {
+        fontPath = ResolveFont(fontPath);
+        var result = ImmutableArray.CreateBuilder<PrototypeFinding>();
+        foreach (var target in document.Targets)
+        {
+            var (w, h) = SurfaceOf(target);
+            foreach (var screen in document.Screens)
+            {
+                foreach (var (label, name, value) in Variants(screen))
+                {
+                    var renderer = new WireframeRenderer(w, h);
+                    var player = new PrototypePlayer<RgbaImage>(renderer, document, theme ?? DefaultTheme, fontPath)
+                    {
+                        Target = target,
+                    };
+                    player.Goto(screen.Id);
+                    if (name is not null) player.State.Set(name, value);
+                    renderer.Begin();
+                    player.Render(new RectF32(0, 0, w, h));
+                    foreach (var f in Wireframe.Check(renderer.Frame, options))
+                        result.Add(new PrototypeFinding(screen.Id, label, w, h, f) { Target = target.Name });
+                }
+            }
+        }
+        return result.ToImmutable();
+    }
+
+    /// <summary>
+    /// Draws every screen in its entry state at each of the document's targets, at the target's width and height times
+    /// its scale, and returns one image per target and screen, targets in document order, screens in screen order.
+    /// </summary>
+    public static ImmutableArray<(string Target, string Screen, RgbaImage Image)> Render(PrototypeDocument document,
+        UiTheme? theme = null, string? fontPath = null)
+    {
+        fontPath = ResolveFont(fontPath);
+        var images = ImmutableArray.CreateBuilder<(string, string, RgbaImage)>();
+        foreach (var target in document.Targets)
+        {
+            var (w, h) = SurfaceOf(target);
+            foreach (var screen in document.Screens)
+            {
+                var renderer = new RgbaImageRenderer(w, h);
+                renderer.Surface.Clear(new RGBAColor32(0, 0, 0, 255));
+                var player = new PrototypePlayer<RgbaImage>(renderer, document, theme ?? DefaultTheme, fontPath)
+                {
+                    Target = target,
+                };
+                player.Goto(screen.Id);
+                player.Render(new RectF32(0, 0, w, h));
+                images.Add((target.Name, screen.Id, renderer.Surface));
+            }
+        }
+        return images.ToImmutable();
+    }
+
+    private static (uint Width, uint Height) SurfaceOf(PrototypeTarget t)
+        => ((uint)MathF.Round(t.Width * t.Scale), (uint)MathF.Round(t.Height * t.Scale));
+
+    /// <summary>
     /// Draws every screen in its entry (default) state at <paramref name="size"/> and returns one image per screen,
     /// in the document's screen order.
     /// </summary>
@@ -139,7 +212,8 @@ public static partial class Prototype
             if (n.When is { } when && !empty.WhenHolds(when) && seen.Add(when))
             {
                 int eq = when.IndexOf('=');
-                if (eq > 0) list.Add((when, when[..eq], when[(eq + 1)..]));
+                // 'target' comes from the surface size, never from a variant.
+                if (eq > 0 && when[..eq] != PrototypeTargets.StateName) list.Add((when, when[..eq], when[(eq + 1)..]));
             }
             foreach (var c in n.Children) Walk(c);
         }

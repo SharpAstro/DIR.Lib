@@ -9,6 +9,20 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.77
+
+Additive: a prototype is checked and rendered at its targets (DIR.Lib #250). `Prototype.Check(document, theme?,
+options?, fontPath?)` and `Prototype.Render(document, theme?, fontPath?)` iterate `document.Targets`, drawing at
+`width * scale` by `height * scale` with a player at that target; findings carry `PrototypeFinding.Target` (an
+init-only property, so the constructor and `Deconstruct` are unchanged) and renders return
+`(Target, Screen, Image)`. `Check` never sets `target` as a state variant. The sized overloads are unchanged. A
+consumer such as pilot can show one prototype as phone and as tablet.
+
+One behaviour to know: `target` is now a reserved, read-only state name for every document, with or without
+`targets`. An 11.75 document that used `target` as a state of its own (`set:target=...`, `toggle:target`, a `bind`, or a
+`when` naming a value other than compact or regular) no longer loads; the problem names the JSON path, and renaming
+the state fixes it. `scale` on a target is optional and defaults to 1.
+
 ## 11.76
 
 Additive fix: `DirInspectorSupport` is false only on an actual publish (flight DIR259, DIR.Lib #259). 11.73 keyed

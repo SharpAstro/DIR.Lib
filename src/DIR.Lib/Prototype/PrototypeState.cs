@@ -78,6 +78,9 @@ public sealed class PrototypeState
         Changed?.Invoke();
     }
 
+    /// <summary>Writes a value without raising <see cref="Changed"/>, for state the host derives while painting.</summary>
+    internal void SetQuietly(string name, string value) => _values[name] = value;
+
     /// <summary>Writes a flag.</summary>
     public void Set(string name, bool value) => Set(name, value ? "true" : "false");
 

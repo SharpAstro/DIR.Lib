@@ -72,6 +72,22 @@ public sealed record PrototypeScreen
     public required PrototypeNode Root { get; init; }
 }
 
+/// <summary>One surface a prototype is for: a name, a design size in design units and a device scale.</summary>
+public sealed record PrototypeTarget
+{
+    /// <summary>The target's name, unique in the document.</summary>
+    public string Name { get; init; } = "";
+
+    /// <summary>The design width in design units.</summary>
+    public float Width { get; init; }
+
+    /// <summary>The design height in design units.</summary>
+    public float Height { get; init; }
+
+    /// <summary>The device scale (pixels per design unit); 1 when the document gave none.</summary>
+    public float Scale { get; init; } = 1f;
+}
+
 /// <summary>A loaded prototype: a design size, an entry screen and the screens.</summary>
 public sealed record PrototypeDocument
 {
@@ -86,6 +102,12 @@ public sealed record PrototypeDocument
 
     /// <summary>The screens, in document order.</summary>
     public ImmutableArray<PrototypeScreen> Screens { get; init; } = [];
+
+    /// <summary>
+    /// The targets the prototype is for. A document with no <c>targets</c> gets one, named
+    /// <see cref="PrototypeTargets.DefaultName"/>, at the document's width and height and scale 1.
+    /// </summary>
+    public ImmutableArray<PrototypeTarget> Targets { get; init; } = [];
 }
 
 /// <summary>One thing wrong with a document, found at a JSON path.</summary>

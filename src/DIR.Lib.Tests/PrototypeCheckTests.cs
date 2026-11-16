@@ -51,6 +51,34 @@ public sealed class PrototypeCheckTests
     }
 
     [Fact]
+    public void ANodeShownOnlyOnACompactTargetIsReportedAtThatTargetByName()
+    {
+        var findings = Prototype.Check(Load("targets.json"), PrototypeKit.Theme, fontPath: FontPath);
+
+        findings.ShouldNotBeEmpty();
+        findings.ShouldAllBe(f => f.Target == "phone" && f.State == "default" && f.Width == 780 && f.Height == 1688);
+        findings.ShouldContain(f => f.Finding.Rule == WireframeRules.TextOverText);
+        findings.ShouldNotContain(f => f.Target == "desktop");
+        findings[0].ToString().ShouldContain("@phone");
+    }
+
+    [Fact]
+    public void TheSizedFormLeavesTheTargetEmpty()
+    {
+        var findings = Prototype.Check(Load("overlap.json"), [(360u, 640u)], PrototypeKit.Theme, fontPath: FontPath);
+
+        findings.ShouldAllBe(f => f.Target == "");
+    }
+
+    [Fact]
+    public void AVariantNeverSetsTheTargetState()
+    {
+        var findings = Prototype.Check(Load("targets.json"), PrototypeKit.Theme, fontPath: FontPath);
+
+        findings.ShouldNotContain(f => f.State.StartsWith("target="));
+    }
+
+    [Fact]
     public void AMissingFontFailsLoudlyRatherThanDrawingNoText()
     {
         var missing = Path.Combine(AppContext.BaseDirectory, "Fonts", "no-such-font.ttf");
