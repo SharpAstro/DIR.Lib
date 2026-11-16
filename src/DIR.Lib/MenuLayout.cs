@@ -158,7 +158,7 @@ public static class MenuLayout
         var w1 = Width(model.Title, 1.6f);
         w1 = MathF.Max(w1, Width(model.Prompt, 1f));
         foreach (var item in model.Items)
-            w1 = MathF.Max(w1, Width("▶  " + item, 1f));
+            w1 = MathF.Max(w1, Width(SelectedPrefix + item, 1f));
 
         // Horizontal padding is PadX font sizes per side, so the widest line plus padding is linear in size too.
         var perFont = w1 + 2f * style.PadX;
@@ -167,6 +167,23 @@ public static class MenuLayout
         var width = portrait ? room : MathF.Max(minW, MathF.Min(maxW, wanted));
         // A min width above the wanted one only adds room; the cap against the final width keeps the fit exact.
         font = MathF.Min(font, (width - 2f * border) / perFont);
+
+        // A renderer's advances are not linear in size (hinted, rounded per glyph), so the size-1 estimate can be
+        // short at the size the rows are drawn. Re-measure every row at the font it will use and shrink until the
+        // widest fits inside the card less border and padding; a few passes converge, so the loop is bounded.
+        for (var pass = 0; pass < 8; pass++)
+        {
+            var widest = Width(model.Title, 1.6f * font);
+            widest = MathF.Max(widest, Width(model.Prompt, font));
+            foreach (var item in model.Items)
+            {
+                widest = MathF.Max(widest, Width(SelectedPrefix + item, font));
+                widest = MathF.Max(widest, Width(UnselectedPrefix + item, font));
+            }
+            var room2 = width - 2f * border - 2f * style.PadX * font;
+            if (widest <= room2 || widest <= 0f) break;
+            font *= room2 / widest * 0.995f;
+        }
 
         var lines = TitleLines + PromptLines + GapLines + ItemLines * model.Items.Length + 2f * style.PadY;
         var height = MathF.Min(lines * font + 2f * border, MathF.Max(1f, surfaceHeight - 2f * style.SideMargin));

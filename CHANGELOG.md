@@ -9,6 +9,15 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.71
+
+- **Menu panel: a long row no longer runs past the card's edge** (DIR.Lib #243, found in sebgod/chess#84).
+  `MenuLayout.PlanPanel` measured every line once at font size 1 and scaled linearly, but a renderer's glyph
+  advances are not linear in size, so the selected row (marker included) could be wider at the drawn font than
+  predicted and was cut at the card edge. It now re-measures every row, with and without the selection marker,
+  at the font it will be drawn at and shrinks the font (at most 8 passes) until the widest fits inside the card
+  less border and `PadX`. The marker string is shared by `BuildColumn` and `PlanPanel`. No API change.
+
 ## 11.70
 
 Flight DIR242 (#242): the inspector core is available in Release builds, off unless the process opts in at run time. Additive.
