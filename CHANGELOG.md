@@ -9,6 +9,36 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.70
+
+**SVG reaches DIR.Lib: a drawing can be baked to an icon, or held and drawn in colour, and it is never read while drawing.**
+
+- **`IconBaker.Bake(VectorScene, size)`** bakes a vector drawing to the same coverage runs a glyph bakes to, so it is drawn by
+  the `DrawCoverageMask` that is already there, in whatever ink the caller picks. This complements glyph baking; it does not
+  replace it. It removes the one thing glyph baking cannot: the mark no longer has to exist in a font. A drawing's own box is
+  kept (a glyph's ink is centred), because the icons of a set are drawn on one grid and that grid is what lines them up.
+  Sizes up to `IconBaker.MaxSceneSize` (255: a run packs its coordinates into bytes).
+- **`VectorIcon`** holds a drawing ready: `VectorIcon.FromSvg(bytes)` reads the SVG ONCE and keeps the scene, `Mask(size)`
+  rasterises a size once and keeps it, `Image(width, height)` / `ImageFitting(...)` do the same in the drawing's own colours.
+  Asking again costs a dictionary lookup and allocates nothing (a test draws ten thousand frames to say so). What the reader
+  could not take from the file is on `Issues`.
+- **`VectorIcon.Load(bytes)`** takes a scene file or an SVG, told apart by the first four bytes, and
+  **`VectorIcon.ToSceneFile()`** writes one. A scene file (`SharpAstro.Vector`'s `VectorSceneFile`) is the drawing with the
+  reading done: it loads 15 to 50 times faster than the SVG is read (measured in the Codecs repo), and is not reliably
+  smaller (0.6 to 1.6 times the SVG's size). It is for drawings an app loads in colour or at sizes it cannot list.
+  **`bake-icons --scenes <dir>`** writes one a `--svg`.
+- **`bake-icons --svg Name=path.svg`**: the tool bakes SVG files next to (or instead of) font glyphs, into the same generated
+  constants. `--font` is now only needed when there is a `--glyph`. The generated file holds no SVG, so an app that uses it
+  parses and rasterises nothing at run time.
+- **New dependency: `SharpAstro.Svg`** (and through it and `SharpAstro.Fonts` 1.18, `SharpAstro.Vector`). It reads SVG into a
+  scene; `SharpAstro.Fonts`' `SceneRasterizer` draws the scene. Not a pixel codec: DIR.Lib stays codec-agnostic for those.
+- **Changed by `SharpAstro.Fonts` 1.18, visibly:** a COLR emoji whose radial gradient has circles that do not share a centre
+  was drawn mirrored; it is right now. The one baseline that shows it is the storm cloud in `color_weather_emoji.png`, whose
+  yellow glow behind the lightning bolt was missing and is now drawn, as a browser draws it from the same font.
+
+Measured on a 24-unit outline icon (two stroked paths): reading it and baking it at 20 px together take about 0.25 to 0.5 ms
+(a stopwatch over 100 runs, arm64); the SVG reader alone is 4.5 microseconds and 24 KB of allocation a read, which is the reason it is done once.
+
 ## 11.69
 
 Flight DIR239 (#239): an overlay menu panel, in three additive parts. Binary-compatible: only new members and init-only properties.
