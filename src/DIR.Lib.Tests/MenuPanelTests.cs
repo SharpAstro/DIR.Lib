@@ -337,6 +337,71 @@ public class MenuPanelTests
         Px((int)(card.X + card.Width / 2f), (int)card.Y + 30).ShouldBe(Style.CardBackground, "well inside is the card fill");
     }
 
+    // DIR.Lib #246: how the header controls look with a real font (DejaVuSans, the fixture for general UI text).
+    // Each label's ink must sit inside its control and the card's inner rect, uncut, and read against the card fill
+    // as well as the rows do. Set DIR_LIB_MENU_CAPTURES to write the four renders as PNGs under the temp dir.
+    [Theory]
+    [InlineData(true, 1200, 800)]
+    [InlineData(false, 1200, 800)]
+    [InlineData(true, 360, 640)]
+    [InlineData(false, 360, 640)]
+    public void HeaderControlLabelIsDrawnInsideTheCardWithContrast(bool isBack, int w, int h)
+    {
+        var font = System.IO.Path.Combine(AppContext.BaseDirectory, "Fonts", "DejaVuSans.ttf");
+        using var renderer = new RgbaImageRenderer((uint)w, (uint)h);
+        renderer.Surface.Clear(new RGBAColor32(20, 20, 20, 255));
+        var ctx = new PixelMeasureContext<RgbaImage>(renderer, font, 1f);
+        var model = WithActions(Medium, isBack ? () => { } : null, isBack ? null : () => { });
+        var colors = new MenuColors();
+        var tree = MenuLayout.BuildPanel(model, colors, Style, ctx, w, h);
+        new PanelWidget(renderer).Render(tree, new RectF32(0, 0, w, h), font);
+
+        var arranged = Layout.Engine.Arrange(tree, new Rect<float>(0, 0, w, h), ctx);
+        var card = arranged.First(a => a.Node.BorderStyle is not null).Bounds;
+        var id = isBack ? "MenuBack" : "MenuClose";
+        var r = arranged.First(a => a.Node.Hit is HitResult.ButtonHit { Action: var x } && x == id).Bounds;
+
+        var pixels = renderer.Surface.Pixels;
+        var fill = Style.CardBackground;
+        static int Dist(byte[] p, int at, RGBAColor32 c)
+            => Math.Max(Math.Abs(p[at] - c.Red), Math.Max(Math.Abs(p[at + 1] - c.Green), Math.Abs(p[at + 2] - c.Blue)));
+
+        int minX = int.MaxValue, minY = int.MaxValue, maxX = -1, maxY = -1, peak = 0;
+        for (var y = (int)MathF.Floor(r.Y); y < (int)MathF.Ceiling(r.Y + r.Height); y++)
+            for (var x = (int)MathF.Floor(r.X); x < (int)MathF.Ceiling(r.X + r.Width); x++)
+            {
+                var d = Dist(pixels, (y * w + x) * 4, fill);
+                if (d < 8) continue;
+                minX = Math.Min(minX, x); maxX = Math.Max(maxX, x);
+                minY = Math.Min(minY, y); maxY = Math.Max(maxY, y);
+                peak = Math.Max(peak, d);
+            }
+
+        (maxX >= 0).ShouldBeTrue($"{id} draws a label");
+        var border = Style.Border!.Width;
+        minX.ShouldBeGreaterThan((int)MathF.Floor(card.X + border), $"{id} ink clear of the left border");
+        minY.ShouldBeGreaterThan((int)MathF.Floor(card.Y + border), $"{id} ink clear of the top border");
+        maxX.ShouldBeLessThan((int)MathF.Ceiling(card.X + card.Width - border), $"{id} ink clear of the right border");
+        minX.ShouldBeGreaterThanOrEqualTo((int)MathF.Floor(r.X), "not cut on the left");
+        maxX.ShouldBeLessThan((int)MathF.Ceiling(r.X + r.Width), "not cut on the right");
+        minY.ShouldBeGreaterThanOrEqualTo((int)MathF.Floor(r.Y), "not cut on top");
+        maxY.ShouldBeLessThan((int)MathF.Ceiling(r.Y + r.Height), "not cut below");
+        // one middle: the ink is centred on the row's height, within a fraction of a line
+        ((minY + maxY) / 2f).ShouldBe(r.Y + r.Height / 2f, r.Height * 0.25f);
+
+        var rowContrast = Math.Max(Math.Abs(colors.ItemColor.Red - fill.Red),
+            Math.Max(Math.Abs(colors.ItemColor.Green - fill.Green), Math.Abs(colors.ItemColor.Blue - fill.Blue)));
+        peak.ShouldBeGreaterThanOrEqualTo((int)(rowContrast * 0.9f), "label reads against the card as the rows do");
+
+        if (Environment.GetEnvironmentVariable("DIR_LIB_MENU_CAPTURES") is { Length: > 0 })
+        {
+            var dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dirlib-menu-captures");
+            System.IO.Directory.CreateDirectory(dir);
+            System.IO.File.WriteAllBytes(System.IO.Path.Combine(dir, $"menu-{(isBack ? "back" : "close")}-{w}x{h}.png"),
+                SharpAstro.Png.PngWriter.Encode(renderer.Surface.Pixels, renderer.Surface.Width, renderer.Surface.Height));
+        }
+    }
+
     // The plan measures at size 1 and scales; a renderer's glyph advances are not linear in size, so the row
     // drawn at the plan's font must be measured at that font (DIR.Lib #243, found in sebgod/chess#84).
     [Theory]
