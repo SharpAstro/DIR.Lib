@@ -1,0 +1,16 @@
+<Project>
+  <!--
+    The DIR.Lib.Inspector.IsSupported feature switch (DIR.Lib 11.73, #251).
+    Imported after the consumer's project body, so PublishTrimmed and PublishAot are already set here.
+    DirInspectorSupport defaults to false on a trimmed or NativeAOT publish (ILC then drops the inspector's
+    socket, registry and command code) and to true everywhere else. A value the consumer set is never
+    overridden: pass -p:DirInspectorSupport=true to keep the inspector in a trimmed publish.
+  -->
+  <PropertyGroup>
+    <DirInspectorSupport Condition="'$(DirInspectorSupport)' == '' AND ('$(PublishTrimmed)' == 'true' OR '$(PublishAot)' == 'true')">false</DirInspectorSupport>
+    <DirInspectorSupport Condition="'$(DirInspectorSupport)' == ''">true</DirInspectorSupport>
+  </PropertyGroup>
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="DIR.Lib.Inspector.IsSupported" Value="$(DirInspectorSupport)" Trim="true" />
+  </ItemGroup>
+</Project>

@@ -41,6 +41,8 @@
   <ItemGroup>
     <None Include="../../LICENSE" Pack="true" PackagePath="/" />
     <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <!-- Named by $(PackageID) so the DIR.Lib.Debug twin gets a targets file NuGet imports for it too. -->
+    <None Include="buildTransitive/DIR.Lib.targets" Pack="true" PackagePath="buildTransitive/$(PackageID).targets" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>

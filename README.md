@@ -320,7 +320,13 @@ see what a GPU pipeline draws, and it only finds what the state it is given prod
 Since 11.70 the published (Release) `DIR.Lib` carries the inspector core (`DebugInspectorCore`), inert by default.
 A host calls `DebugInspectorCore.StartIfOptedIn(host)`; it starts only when the process sets `DIR_INSPECTOR=1` and
 `DIR_INSPECTOR_TOKEN` (a per-run secret every client request must carry). The opt-in without a token refuses to
-start and says why on stderr. A NativeAOT consumer pays about 1.2 MB for it (see the 11.70 changelog entry).
+start and says why on stderr.
+
+Since 11.73 `StartIfOptedIn` is behind the feature switch `DIR.Lib.Inspector.IsSupported`
+(`DebugInspectorCore.IsSupported`). The package's buildTransitive targets set it false on a trimmed or NativeAOT
+publish, so the inspector is trimmed out by default there (with `DIR_INSPECTOR=1` the app prints one stderr line
+saying so), and true for build, run and test. Set the one property `-p:DirInspectorSupport=true` to keep it in a
+publish. `Start` and `Detached` are the direct calls that root the inspector on purpose and do not consult the switch.
 
 `DIR.Lib.Debug` is the same library at the same version, built Debug, for the remaining `#if DEBUG` types; it is
 kept for now and its retirement is a follow-up. Reference one or the other by configuration (Visual Studio needs a
