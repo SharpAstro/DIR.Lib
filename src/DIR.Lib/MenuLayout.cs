@@ -139,6 +139,8 @@ public static class MenuLayout
 
     // The panel's header row (Back left, close right) is one item line tall, present only when the host set an action.
     private const float HeaderLines = 2f;
+    // U+00D7 is a small glyph in most faces (about half the x-height); drawn at 1.5 fonts it reads as a close mark.
+    private const float CloseGlyphScale = 1.5f;
     internal const string BackLabel = "< Back", CloseLabel = "×";
 
     private static bool HasHeader(MenuModel m) => m.Back is not null || m.Close is not null;
@@ -168,7 +170,7 @@ public static class MenuLayout
             Width = Layout.Sizing.Star(),
         });
         if (model.Close is { } close)
-            children.Add(HeaderControl(CloseLabel, "MenuClose", close, TextAlign.Far, CloseWidth(width, f), f, colors));
+            children.Add(HeaderControl(CloseLabel, "MenuClose", close, TextAlign.Far, CloseWidth(width, f), f, colors, CloseGlyphScale));
         return new Layout.Node.Stack(children.ToImmutable(), Layout.Axis.Horizontal)
         {
             Height = Layout.Sizing.Fixed(f * HeaderLines),
@@ -176,8 +178,8 @@ public static class MenuLayout
         };
     }
 
-    private static Layout.Node HeaderControl(string label, string id, Action action, TextAlign align, float w, float f, MenuColors colors)
-        => new Layout.Node.Leaf(new Layout.Content.Text(label, f)
+    private static Layout.Node HeaderControl(string label, string id, Action action, TextAlign align, float w, float f, MenuColors colors, float glyphScale = 1f)
+        => new Layout.Node.Leaf(new Layout.Content.Text(label, f * glyphScale)
         {
             Color = colors.ItemColor,
             HAlign = align,
