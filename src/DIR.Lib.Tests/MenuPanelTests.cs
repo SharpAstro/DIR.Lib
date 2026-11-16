@@ -101,7 +101,7 @@ public class MenuPanelTests
             var f = plan.FontSize;
             var widest = Math.Max(m.Title.Length * f * 1.6f * 0.5f, m.Prompt.Length * f * 0.5f);
             foreach (var item in m.Items)
-                widest = Math.Max(widest, ("▶  " + item).Length * f * 0.5f);
+                widest = Math.Max(widest, (MenuLayout.SelectedPrefix + item).Length * f * 0.5f);
             var inner = plan.CardWidth - 2f * Style.Border!.Width - 2f * Style.PadX * f;
             widest.ShouldBeLessThanOrEqualTo(inner + 0.01f);
         }
@@ -210,7 +210,7 @@ public class MenuPanelTests
         var rows = new[]
         {
             (model.Title, plan.FontSize * 1.6f), (model.Prompt, plan.FontSize),
-            ("▶  " + model.Items[0], plan.FontSize), ("   " + model.Items[1], plan.FontSize),
+            (MenuLayout.SelectedPrefix + model.Items[0], plan.FontSize), (MenuLayout.UnselectedPrefix + model.Items[1], plan.FontSize),
         };
         foreach (var (text, size) in rows)
             ctx.MeasureText(text.AsSpan(), size).Width.ShouldBeLessThanOrEqualTo(inner + 0.01f, text);

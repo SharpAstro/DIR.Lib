@@ -12,10 +12,10 @@ public static class MenuLayout
     /// <summary>
     /// Prefix rendered before the selected item row. Unicode right-pointing triangle + two spaces.
     /// </summary>
-    private const string SelectedPrefix = "▶  ";
+    internal const string SelectedPrefix = "▶  ";
 
     /// <summary>Three spaces: unselected item indent matching the selected prefix width.</summary>
-    private const string UnselectedPrefix = "   ";
+    internal const string UnselectedPrefix = "   ";
 
     // D1..D9 select-and-confirm row i, as MenuModel.HandleKey does; rows past the ninth have no digit.
     private static Layout.Node WithDigit(Layout.Node row, int i)
@@ -181,7 +181,9 @@ public static class MenuLayout
                 widest = MathF.Max(widest, Width(UnselectedPrefix + item, font));
             }
             var room2 = width - 2f * border - 2f * style.PadX * font;
+            // widest <= 0f: nothing measurable (empty model or a zero-width measure), so scaling cannot help.
             if (widest <= room2 || widest <= 0f) break;
+            // 0.995: aim a hair under the room so rounding in the measure cannot leave the widest row 1px over.
             font *= room2 / widest * 0.995f;
         }
 
