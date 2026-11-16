@@ -9,6 +9,22 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.74
+
+Flight DIR246, DIR.Lib #246 (additive). The menu panel can show a Back control top-left and a close control
+top-right on the card.
+
+- `MenuModel.Back` and `MenuModel.Close` (`Action?`), and the matching `PixelMenuWidget.Back` / `Close` members.
+  Back draws "< Back" top-left and is meant for later steps of a multi-step menu; close draws a multiplication
+  sign (U+00D7, at 1.5 fonts so it reads) top-right and is meant for the first step.
+- Each control is shown only when the host sets its action. Absent means no control and no header row, so a
+  panel that sets neither is laid out exactly as before.
+- Both are declared hits (`ButtonHit("MenuBack")` / `ButtonHit("MenuClose")`) that `InputRouter` routes to the
+  action, so a host draws and routes nothing itself. Pressing one does not confirm the menu.
+- No Escape shortcut is declared: the host keeps Esc and decides whether it means Back or close.
+- Sized from the panel font in design units; the header adds one two-line row to the card.
+- Not checked here: consumers, namely Console.Lib's cell layout of `BuildPanel` and sebgod chess.
+
 ## 11.73
 
 Flight DIR251, DIR.Lib #251 (additive). The inspector is now trimmed out of a published app by default,
