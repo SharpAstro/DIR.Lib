@@ -74,9 +74,9 @@ public class InspectorOptInTests
             core.ShouldNotBeNull();
             core.CommandTimeout = TimeSpan.FromSeconds(30);
 
-            var (_, none) = await core.HandleAsync("""{"id":1,"method":"ping"}""");
-            var (_, wrong) = await core.HandleAsync("""{"id":2,"method":"ping","token":"nope"}""");
-            var (_, notString) = await core.HandleAsync("""{"id":3,"method":"ping","token":5}""");
+            var (_, none) = await core.HandleAsync("""{"id":1,"method":"probe"}""");
+            var (_, wrong) = await core.HandleAsync("""{"id":2,"method":"probe","token":"nope"}""");
+            var (_, notString) = await core.HandleAsync("""{"id":3,"method":"probe","token":5}""");
             none.ShouldStartWith("!unauthorized");
             wrong.ShouldStartWith("!unauthorized");
             notString.ShouldStartWith("!unauthorized");
@@ -85,12 +85,12 @@ public class InspectorOptInTests
             host.Invoked.ShouldBeEmpty();
 
             // HandleAsync enqueues before its first await, so the pump below finds the command.
-            var pending = core.HandleAsync("""{"id":4,"method":"ping","token":"s3cret"}""");
+            var pending = core.HandleAsync("""{"id":4,"method":"probe","token":"s3cret"}""");
             core.Pump();
             var (id, ok) = await pending;
             id.ShouldBe(4);
             ok.ShouldBe("\"pong\"");
-            host.Invoked.ShouldBe(["ping"]);
+            host.Invoked.ShouldBe(["probe"]);
         }
         finally
         {
@@ -103,7 +103,7 @@ public class InspectorOptInTests
     {
         var host = new Host();
         using var core = DebugInspectorCore.Detached(host);
-        var pending = core.HandleAsync("""{"id":1,"method":"ping"}""");
+        var pending = core.HandleAsync("""{"id":1,"method":"probe"}""");
         core.Pump();
         (await pending).Response.ShouldBe("\"pong\"");
     }
