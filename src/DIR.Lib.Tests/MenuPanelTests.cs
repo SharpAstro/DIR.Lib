@@ -185,4 +185,34 @@ public class MenuPanelTests
         f.Router.Handle(new InputEvent.KeyDown(InputKey.Enter, InputModifier.None)).ShouldBeTrue();
         f.Menu.IsConfirmed.ShouldBeTrue();
     }
+
+    // The plan measures at size 1 and scales; a renderer's glyph advances are not linear in size, so the row
+    // drawn at the plan's font must be measured at that font (DIR.Lib #243, found in sebgod/chess#84).
+    [Theory]
+    [InlineData(1f, 1200, 800, "Type a name, then press Enter")]
+    [InlineData(2f, 1200, 800, "Type a name, then press Enter")]
+    [InlineData(1f, 1200, 800, "Type a name, then press Enter, then wait for the engine to answer politely and at length")]
+    [InlineData(2f, 1200, 800, "Type a name, then press Enter, then wait for the engine to answer politely and at length")]
+    [InlineData(1f, 360, 640, "Type a name, then press Enter")]
+    [InlineData(1f, 1200, 800, "Type a name, then press Enter, then wait for the engine to answer politely and at length, and then some more and more")]
+    public void EveryRowFitsTheCardAtTheDrawnFont(float scale, int w, int h, string item)
+    {
+        var font = System.IO.Path.Combine(AppContext.BaseDirectory, "Fonts", "DejaVuSans.ttf");
+        using var renderer = new RgbaImageRenderer((uint)(w * scale), (uint)(h * scale));
+        var ctx = new PixelMeasureContext<RgbaImage>(renderer, font, scale);
+        var model = Model("Name", "Who plays white?", item, "b");
+        var tree = MenuLayout.BuildPanel(model, new MenuColors(), Style, ctx, w, h);
+        var plan = MenuLayout.PlanPanel(model, Style, ctx, w, h);
+        var arranged = Layout.Engine.Arrange(tree, new Rect<float>(0, 0, w * scale, h * scale), ctx);
+        var card = arranged.First(a => a.Node.BorderStyle is not null).Bounds;
+        var border = Style.Border!.Width * scale;
+        var inner = card.Width - 2f * border - 2f * Style.PadX * plan.FontSize * scale;
+        var rows = new[]
+        {
+            (model.Title, plan.FontSize * 1.6f), (model.Prompt, plan.FontSize),
+            ("▶  " + model.Items[0], plan.FontSize), ("   " + model.Items[1], plan.FontSize),
+        };
+        foreach (var (text, size) in rows)
+            ctx.MeasureText(text.AsSpan(), size).Width.ShouldBeLessThanOrEqualTo(inner + 0.01f, text);
+    }
 }
