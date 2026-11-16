@@ -236,7 +236,22 @@ public class MenuPanelTests
         var r = ButtonBounds(WithActions(Medium, null, () => { }), "MenuClose", 1200, 800, out var card);
         (r.X + r.Width / 2f).ShouldBeGreaterThan(card.X + card.Width / 2f);
         r.Y.ShouldBeLessThan(card.Y + card.Height / 2f);
-        (r.X + r.Width).ShouldBeLessThanOrEqualTo(card.X + card.Width - Style.Border!.Width + 0.01f);
+        // the card's inner edge is where the border ends; the control may use the padding, so it ends at or before it, no further
+        var innerRight = card.X + card.Width - Style.Border!.Width;
+        (r.X + r.Width).ShouldBeLessThanOrEqualTo(innerRight + 0.01f);
+        (r.X + r.Width).ShouldBeGreaterThan(innerRight - 3f * Style.PadX * MenuLayout.PlanPanel(Medium, Style, Ctx, 1200, 800).FontSize, "flush with the inner edge, not floating");
+    }
+
+    // The header's label widths must never be what sizes the card in these tests: the content is wider, so the
+    // card with both controls is the card without them.
+    [Theory]
+    [InlineData(1200, 800)]
+    [InlineData(360, 640)]
+    public void HeaderLabelsDoNotDecideTheCardWidth(float w, float h)
+    {
+        var plain = MenuLayout.PlanPanel(Medium, Style, Ctx, w, h);
+        var both = MenuLayout.PlanPanel(WithActions(Medium, () => { }, () => { }), Style, Ctx, w, h);
+        both.CardWidth.ShouldBe(plain.CardWidth, 0.01f);
     }
 
     [Fact]
