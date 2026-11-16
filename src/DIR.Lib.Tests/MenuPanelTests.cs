@@ -186,6 +186,45 @@ public class MenuPanelTests
         f.Menu.IsConfirmed.ShouldBeTrue();
     }
 
+    private sealed class PanelWidget(Renderer<RgbaImage> renderer) : PixelWidgetBase<RgbaImage>(renderer)
+    {
+        public void Render(Layout.Node root, RectF32 bounds, string fontPath)
+        {
+            BeginFrame();
+            RenderLayout(root, bounds, fontPath, scale: DesignScale.One);
+        }
+    }
+
+    // DIR.Lib #245: the card's fill followed its square bounds, so it showed outside the rounded border.
+    [Fact]
+    public void CardFillStaysInsideItsRoundedBorder()
+    {
+        const int w = 600, h = 400;
+        var font = System.IO.Path.Combine(AppContext.BaseDirectory, "Fonts", "DejaVuSans.ttf");
+        using var renderer = new RgbaImageRenderer(w, h);
+        var backdrop = new RGBAColor32(200, 40, 40, 255);
+        renderer.Surface.Clear(backdrop);
+        var ctx = new PixelMeasureContext<RgbaImage>(renderer, font, 1f);
+        var model = Model("Name", "Pick", "a", "b");
+        var colors = new MenuColors();
+        var tree = MenuLayout.BuildPanel(model, colors, Style, ctx, w, h);
+        new PanelWidget(renderer).Render(tree, new RectF32(0, 0, w, h), font);
+        var card = Layout.Engine.Arrange(tree, new Rect<float>(0, 0, w, h), ctx).First(a => a.Node.BorderStyle is not null).Bounds;
+
+        RGBAColor32 Px(int x, int y)
+        {
+            var at = (y * w + x) * 4;
+            return new RGBAColor32(renderer.Surface.Pixels[at], renderer.Surface.Pixels[at + 1], renderer.Surface.Pixels[at + 2], renderer.Surface.Pixels[at + 3]);
+        }
+
+        var scrimOverBackdrop = Px(2, 2);
+        scrimOverBackdrop.ShouldNotBe(backdrop, "the scrim is painted");
+        scrimOverBackdrop.ShouldNotBe(Style.CardBackground);
+        Px((int)card.X + 1, (int)card.Y + 1).ShouldBe(scrimOverBackdrop, "outside the curve shows the scrim, not the card fill");
+        Px((int)(card.X + card.Width) - 2, (int)(card.Y + card.Height) - 2).ShouldBe(scrimOverBackdrop);
+        Px((int)(card.X + card.Width / 2f), (int)card.Y + 30).ShouldBe(Style.CardBackground, "well inside is the card fill");
+    }
+
     // The plan measures at size 1 and scales; a renderer's glyph advances are not linear in size, so the row
     // drawn at the plan's font must be measured at that font (DIR.Lib #243, found in sebgod/chess#84).
     [Theory]
