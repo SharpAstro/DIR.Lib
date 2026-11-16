@@ -14,10 +14,26 @@ every one the loader accepts is below. Each node maps one to one onto a `Builder
 | `width` | number | design width, greater than zero, required |
 | `height` | number | design height, greater than zero, required |
 | `entry` | string | id of the screen the prototype starts on, required |
+| `targets` | array | the surfaces the prototype is for, optional (see below) |
 | `screens` | array | the screens, at least one, required |
 
 A screen has `id` (required, unique), `title` (optional, defaults to the id) and `root` (required, a node).
 Every screen must be reachable from `entry` by a `goto` action.
+
+A target is an object with `name` (required, unique), `width` and `height` (required, design units, greater than
+zero) and `scale` (optional, greater than zero, default 1). A document with no `targets` has one, named `design`,
+at the document's `width` and `height` and scale 1.
+
+`target` is a reserved, read-only state: the player sets it before building each frame, to `compact` when the design
+width it draws at is under 600 design units and to `regular` otherwise. A `when` of `target=compact` or
+`target=regular` shows a node on one kind of target only; any other value is a problem. `set:target=...`,
+`toggle:target` and `bind: "target"` are problems too.
+
+`Prototype.Check(document, theme?, options?, fontPath?)` and `Prototype.Render(document, theme?, fontPath?)`, given
+no sizes, run at every target: the surface is `width * scale` by `height * scale` pixels, drawn by a player at that
+target, so `target` follows the target's design width. A finding names its target (`PrototypeFinding.Target`, shown
+as `@name` in its text) and a render returns `(Target, Screen, Image)`. The sized overloads draw at a size and leave
+the target name empty. `Check` never uses `target` as a state variant: it comes from the size.
 
 ## Nodes
 

@@ -19,6 +19,7 @@ public sealed class PrototypePlayer<TSurface> : PixelWidgetBase<TSurface>
 {
     private readonly PrototypeTreeBuilder _builder;
     private PrototypeScreen _screen;
+    private PrototypeTarget? _target;
 
     /// <summary>Creates a player on the document's entry screen.</summary>
     public PrototypePlayer(Renderer<TSurface> renderer, PrototypeDocument document, UiTheme theme, string fontPath)
@@ -34,6 +35,24 @@ public sealed class PrototypePlayer<TSurface> : PixelWidgetBase<TSurface>
 
     /// <summary>The document being played.</summary>
     public PrototypeDocument Document { get; }
+
+    /// <summary>
+    /// The target to draw at; null draws at the document's own width and height. Setting it makes the design size
+    /// the target's width and height, so the read-only <c>target</c> state follows it.
+    /// </summary>
+    public PrototypeTarget? Target
+    {
+        get => _target;
+        set
+        {
+            _target = value;
+            _builder.DesignSize = DesignSize;
+        }
+    }
+
+    /// <summary>The design size in use: the <see cref="Target"/>'s, else the document's.</summary>
+    public (float Width, float Height) DesignSize
+        => _target is { } t ? (t.Width, t.Height) : (Document.Width, Document.Height);
 
     /// <summary>The theme the screens are built with.</summary>
     public UiTheme Theme { get; }
@@ -63,15 +82,19 @@ public sealed class PrototypePlayer<TSurface> : PixelWidgetBase<TSurface>
     }
 
     /// <summary>Builds the current screen's tree for the current state, without painting.</summary>
-    public Node BuildTree() => _builder.Build(_screen);
+    public Node BuildTree()
+    {
+        return _builder.Build(_screen);
+    }
 
     /// <summary>The surface rect the design area occupies inside <paramref name="bounds"/>, and its scale.</summary>
     public (RectF32 Rect, DesignScale Scale) Fit(RectF32 bounds)
     {
-        var s = Math.Min(bounds.Width / Document.Width, bounds.Height / Document.Height);
+        var (dw, dh) = DesignSize;
+        var s = Math.Min(bounds.Width / dw, bounds.Height / dh);
         if (!(s > 0f)) s = 1f;
-        var w = Document.Width * s;
-        var h = Document.Height * s;
+        var w = dw * s;
+        var h = dh * s;
         return (new RectF32(bounds.X + (bounds.Width - w) / 2f, bounds.Y + (bounds.Height - h) / 2f, w, h), new DesignScale(s));
     }
 

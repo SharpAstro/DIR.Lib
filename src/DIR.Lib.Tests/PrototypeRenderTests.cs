@@ -34,6 +34,19 @@ public sealed class PrototypeRenderTests
         images.ShouldAllBe(i => i.Image.Width == 360 && i.Image.Height == 640);
     }
 
+    [Fact]
+    public void RenderAtTargetsReturnsOneNamedImageSizedByWidthTimesScalePerTargetAndScreen()
+    {
+        var doc = Prototype.Load(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "Prototype", "targets.json"))).Document!;
+        var images = Prototype.Render(doc, Prototype.DefaultTheme, FontPath);
+
+        images.Select(i => (i.Target, i.Screen)).ShouldBe([("phone", "home"), ("desktop", "home")]);
+        var phone = images.Single(i => i.Target == "phone").Image;
+        (phone.Width, phone.Height).ShouldBe((780, 1688));
+        var desktop = images.Single(i => i.Target == "desktop").Image;
+        (desktop.Width, desktop.Height).ShouldBe((1440, 900));
+    }
+
     private static void CompareBaseline(RgbaImage img, string name)
     {
         var baselinePath = Path.Combine(BaselineDir, name);

@@ -63,6 +63,8 @@ public static partial class Prototype
             var screens = ImmutableArray.CreateBuilder<PrototypeScreen>();
             var ids = new Dictionary<string, int>(StringComparer.Ordinal);
             bool hasW = false, hasH = false, hasScreens = false;
+            var targets = ImmutableArray.CreateBuilder<PrototypeTarget>();
+            bool hasTargets = false;
 
             foreach (var p in root.EnumerateObject())
             {
@@ -82,6 +84,10 @@ public static partial class Prototype
                         if (p.Value.ValueKind == JsonValueKind.String && p.Value.GetString() is { Length: > 0 } e) entry = e;
                         else Add(path, "expected a non-empty string (the id of the entry screen)");
                         break;
+                    case "targets":
+                        hasTargets = true;
+                        ReadTargets(p.Value, path, targets);
+                        break;
                     case "screens":
                         hasScreens = true;
                         if (p.Value.ValueKind != JsonValueKind.Array)
@@ -99,7 +105,7 @@ public static partial class Prototype
                         }
                         break;
                     default:
-                        Add(path, $"unknown property '{p.Name}' (a document has width, height, entry and screens)");
+                        Add(path, $"unknown property '{p.Name}' (a document has width, height, entry, targets and screens)");
                         break;
                 }
             }
@@ -151,7 +157,57 @@ public static partial class Prototype
                 Height = (float)height,
                 Entry = entry,
                 Screens = screens.ToImmutable(),
+                Targets = hasTargets
+                    ? targets.ToImmutable()
+                    : [new PrototypeTarget { Name = PrototypeTargets.DefaultName, Width = (float)width, Height = (float)height, Scale = 1f }],
             };
+        }
+
+        private void ReadTargets(JsonElement v, string path, ImmutableArray<PrototypeTarget>.Builder targets)
+        {
+            if (v.ValueKind != JsonValueKind.Array)
+            {
+                Add(path, "expected an array of targets");
+                return;
+            }
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            int i = 0;
+            foreach (var t in v.EnumerateArray())
+            {
+                var tp = $"{path}[{i++}]";
+                if (t.ValueKind != JsonValueKind.Object) { Add(tp, "expected a target object"); continue; }
+                string name = "";
+                double w = 0, h = 0, scale = 1;
+                bool hasName = false, hasW = false, hasH = false, ok = true;
+                foreach (var p in t.EnumerateObject())
+                {
+                    var pp = tp + "." + p.Name;
+                    switch (p.Name)
+                    {
+                        case "name":
+                            hasName = true;
+                            if (p.Value.ValueKind == JsonValueKind.String && p.Value.GetString() is { Length: > 0 } n)
+                            {
+                                name = n;
+                                if (!names.Add(n)) { Add(pp, $"duplicate target name '{n}'"); ok = false; }
+                            }
+                            else { Add(pp, "expected a non-empty string"); ok = false; }
+                            break;
+                        case "width": hasW = true; w = PositiveNumber(p.Value, pp); ok &= w > 0; break;
+                        case "height": hasH = true; h = PositiveNumber(p.Value, pp); ok &= h > 0; break;
+                        case "scale": scale = PositiveNumber(p.Value, pp); ok &= scale > 0; break;
+                        default:
+                            Add(pp, $"unknown property '{p.Name}' (a target has name, width, height and scale)");
+                            ok = false;
+                            break;
+                    }
+                }
+                if (!hasName) { Add(tp + ".name", "missing: the target's name"); ok = false; }
+                if (!hasW) { Add(tp + ".width", "missing: the target's design width"); ok = false; }
+                if (!hasH) { Add(tp + ".height", "missing: the target's design height"); ok = false; }
+                if (ok) targets.Add(new PrototypeTarget { Name = name, Width = (float)w, Height = (float)h, Scale = (float)scale });
+            }
+            if (i == 0) Add(path, "targets, when given, needs at least one target");
         }
 
         private double PositiveNumber(JsonElement v, string path)
@@ -354,10 +410,12 @@ public static partial class Prototype
                 var rest = a[4..];
                 int eq = rest.IndexOf('=');
                 if (eq < 0 || !IsName(rest[..eq])) Add(path, "set needs a state name and a value: set:<name>=<value>");
+                else if (rest[..eq] == PrototypeTargets.StateName) Add(path, "'target' is read-only state (the player sets it from the design width); it cannot be set");
             }
             else if (a.StartsWith("toggle:", StringComparison.Ordinal))
             {
                 if (!IsName(a[7..])) Add(path, "toggle needs a state name: toggle:<name>");
+                else if (a[7..] == PrototypeTargets.StateName) Add(path, "'target' is read-only state (the player sets it from the design width); it cannot be toggled");
             }
             else Add(path, $"unknown action '{a}': use goto:<screen>, set:<name>=<value> or toggle:<name>");
             return a;
@@ -369,6 +427,8 @@ public static partial class Prototype
             var w = v.GetString()!;
             int eq = w.IndexOf('=');
             if (eq < 0 || !IsName(w[..eq])) Add(path, "when is a state equality: <name>=<value>");
+            else if (w[..eq] == PrototypeTargets.StateName && !PrototypeTargets.IsValue(w[(eq + 1)..]))
+                Add(path, $"'target' is {PrototypeTargets.Compact} or {PrototypeTargets.Regular}, not '{w[(eq + 1)..]}'");
             return w;
         }
 
@@ -377,6 +437,7 @@ public static partial class Prototype
             if (v.ValueKind != JsonValueKind.String) { Add(path, "expected a state name"); return null; }
             var b = v.GetString()!;
             if (!IsName(b)) Add(path, "a state name is letters, digits and underscores, not starting with a digit");
+            else if (b == PrototypeTargets.StateName) Add(path, "'target' is read-only state; a node cannot bind it");
             if (kind is { SupportsBind: false }) Add(path, $"kind '{kindName}' has no bind (only textInput, checkbox, slider, buttonGroup and dropdown do)");
             return b;
         }

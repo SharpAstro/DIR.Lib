@@ -1,0 +1,22 @@
+{
+  "width": 390,
+  "height": 844,
+  "entry": "home",
+  "targets": [
+    { "name": "phone", "width": 390, "height": 844, "scale": 2 },
+    { "name": "desktop", "width": 1440, "height": 900 }
+  ],
+  "screens": [
+    {
+      "id": "home",
+      "title": "Home",
+      "root": {
+        "kind": "overlay",
+        "children": [
+          { "kind": "text", "text": "Always shown", "fontSize": 20 },
+          { "kind": "text", "text": "Compact banner", "fontSize": 20, "when": "target=compact" }
+        ]
+      }
+    }
+  ]
+}
