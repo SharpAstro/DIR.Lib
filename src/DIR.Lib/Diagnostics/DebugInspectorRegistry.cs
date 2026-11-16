@@ -1,4 +1,3 @@
-#if DEBUG
 using System;
 using System.Diagnostics;
 using System.Globalization;
@@ -389,4 +388,3 @@ internal sealed class DebugInspectorRegistration
         catch (Exception) { return null; }   // PlatformNotSupportedException and kin
     }
 }
-#endif

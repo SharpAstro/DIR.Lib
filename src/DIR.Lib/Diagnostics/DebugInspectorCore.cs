@@ -1,4 +1,3 @@
-#if DEBUG
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -176,8 +175,12 @@ public interface IDebugInspectorSteppedHost
 /// without a lock, and without the host needing to be thread-safe. Enqueueing calls
 /// <see cref="IDebugInspectorHost.Poke"/> to wake an idle loop.</para>
 ///
-/// <para><b>DEBUG only.</b> The whole file is <c>#if DEBUG</c>, so no release artifact carries a socket
-/// server. Bound to loopback regardless.</para>
+/// <para><b>Off unless opted in.</b> The core is compiled into every configuration but is inert: nothing
+/// listens until a host calls <see cref="Start(IDebugInspectorHost, bool)"/>, or <see cref="StartIfOptedIn"/>,
+/// which starts only when the process environment sets <see cref="OptInVariable"/> to <c>1</c> and
+/// <see cref="TokenVariable"/> to a per-run secret. A core started that way refuses every request whose
+/// top-level <c>token</c> string does not match, before anything reaches the host. Bound to loopback
+/// regardless.</para>
 ///
 /// <para><b>Discovery.</b> By default a started core is findable on its own machine through a per-user FILE
 /// registry (<see cref="RegistryDirectory"/>): one descriptor file per instance, written at start and deleted
@@ -274,6 +277,15 @@ public sealed class DebugInspectorCore : IDisposable
     // Host thread only, inside Pump: when the registry descriptor's extras are next read.
     private long _nextRegistryRefresh;
 
+    /// <summary>The environment variable that opts a process in: exactly <c>1</c> starts the inspector.</summary>
+    public const string OptInVariable = "DIR_INSPECTOR";
+
+    /// <summary>The environment variable holding the per-run secret every client request must carry as <c>token</c>.</summary>
+    public const string TokenVariable = "DIR_INSPECTOR_TOKEN";
+
+    // Set only by the opt-in path, before the accept loop starts. Never written anywhere.
+    private byte[]? _token;
+
     private DebugInspectorCore(IDebugInspectorHost host, TcpListener? listener, int port, DebugInspectorDiscovery discovery)
     {
         _host = host;
@@ -338,6 +350,33 @@ public sealed class DebugInspectorCore : IDisposable
         => StartExactly(host, WithEnvironment(discovery, Environment.GetEnvironmentVariable(LanDiscoveryVariable)),
             RegistryDirectory);
 
+    /// <summary>
+    /// Starts the command server only when the process opted in at run time: <see cref="OptInVariable"/> is
+    /// exactly <c>1</c> and <see cref="TokenVariable"/> is non-empty. Returns null, touching nothing, when it is
+    /// not opted in; returns null with a line on stderr when the token is missing. The token is never echoed.
+    /// </summary>
+    public static DebugInspectorCore? StartIfOptedIn(
+        IDebugInspectorHost host, DebugInspectorDiscovery discovery = DebugInspectorDiscovery.Registry)
+        => StartIfOptedIn(host, discovery,
+            Environment.GetEnvironmentVariable(OptInVariable),
+            Environment.GetEnvironmentVariable(TokenVariable),
+            RegistryDirectory);
+
+    internal static DebugInspectorCore? StartIfOptedIn(
+        IDebugInspectorHost host, DebugInspectorDiscovery discovery, string? optIn, string? token, string? registryDirectory)
+    {
+        if (optIn != "1") return null;
+        if (string.IsNullOrEmpty(token))
+        {
+            Console.Error.WriteLine($"[inspector] {OptInVariable}=1 but {TokenVariable} is not set: not starting");
+            Console.Error.Flush();
+            return null;
+        }
+        return StartExactly(host,
+            WithEnvironment(discovery, Environment.GetEnvironmentVariable(LanDiscoveryVariable)),
+            registryDirectory, token);
+    }
+
     /// <summary>What <see cref="Start(IDebugInspectorHost, bool)"/> asks for, before the environment.</summary>
     internal static DebugInspectorDiscovery Requested(bool enableDiscovery)
         => enableDiscovery ? DebugInspectorDiscovery.Registry : DebugInspectorDiscovery.None;
@@ -359,13 +398,16 @@ public sealed class DebugInspectorCore : IDisposable
     /// <paramref name="registryDirectory"/>. The seam tests use, so they never touch the real per-user registry.
     /// </summary>
     internal static DebugInspectorCore StartExactly(
-        IDebugInspectorHost host, DebugInspectorDiscovery discovery, string? registryDirectory)
+        IDebugInspectorHost host, DebugInspectorDiscovery discovery, string? registryDirectory, string? token = null)
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
 
-        var core = new DebugInspectorCore(host, listener, port, discovery);
+        var core = new DebugInspectorCore(host, listener, port, discovery)
+        {
+            _token = token is null ? null : Encoding.UTF8.GetBytes(token),
+        };
 
         // stderr, not stdout: a TUI owns stdout, and writing the banner there would corrupt the screen.
         // Everything after the port is a parenthesised suffix, so a driver grepping the port is unaffected.
@@ -929,6 +971,17 @@ public sealed class DebugInspectorCore : IDisposable
                 return (id, "!missing method");
             }
 
+            if (_token is { } expected)
+            {
+                var supplied = root.TryGetProperty("token", out var tokenEl) && tokenEl.ValueKind == JsonValueKind.String
+                    ? Encoding.UTF8.GetBytes(tokenEl.GetString()!)
+                    : [];
+                if (!System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(supplied, expected))
+                {
+                    return (id, "!unauthorized");
+                }
+            }
+
             // The params element must outlive the JsonDocument, which is disposed when this returns —
             // so clone it rather than handing the host a window into a freed buffer.
             var parameters = root.TryGetProperty("params", out var p)
@@ -990,4 +1043,3 @@ public sealed class DebugInspectorCore : IDisposable
         _stopping.Dispose();
     }
 }
-#endif
