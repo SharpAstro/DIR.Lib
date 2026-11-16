@@ -22,6 +22,12 @@ public class PixelMenuWidget<TSurface>(Renderer<TSurface> renderer, string fontP
     /// <summary>True after the user has confirmed a selection.</summary>
     public bool IsConfirmed => _model.IsConfirmed;
 
+    /// <summary>Host action for the panel's Back control (top-left); null means no control. See <see cref="MenuModel.Back"/>.</summary>
+    public Action? Back { get => _model.Back; set => _model.Back = value; }
+
+    /// <summary>Host action for the panel's close control (top-right); null means no control. See <see cref="MenuModel.Close"/>.</summary>
+    public Action? Close { get => _model.Close; set => _model.Close = value; }
+
     /// <summary>
     /// Resets the menu with new content and clears the confirmed state.
     /// <paramref name="selected"/> is clamped to the valid item range.

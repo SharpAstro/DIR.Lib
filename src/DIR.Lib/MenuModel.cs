@@ -35,6 +35,18 @@ public sealed class MenuModel
     public bool IsConfirmed { get; private set; }
 
     /// <summary>
+    /// The host's "go back" action. When set, <see cref="MenuLayout.BuildPanel"/> declares a Back control at the
+    /// card's top-left that runs it; null (the default) means no control. It does not confirm a row.
+    /// </summary>
+    public Action? Back { get; set; }
+
+    /// <summary>
+    /// The host's "close" action. When set, <see cref="MenuLayout.BuildPanel"/> declares a close control at the
+    /// card's top-right that runs it; null (the default) means no control. It does not confirm a row.
+    /// </summary>
+    public Action? Close { get; set; }
+
+    /// <summary>
     /// Resets the menu with new content and clears the confirmed state.
     /// <paramref name="selected"/> is clamped to the valid item range.
     /// </summary>

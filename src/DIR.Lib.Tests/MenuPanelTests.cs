@@ -133,10 +133,12 @@ public class MenuPanelTests
 
     private sealed class Fixture
     {
-        public Fixture()
+        public Fixture(Action? back = null, Action? close = null)
         {
             Menu = new PixelMenuWidget<RgbaImage>(new DeclarationStubRenderer(1200, 800), "stub.ttf");
             Menu.Reset("Title", "Pick", ["a", "b", "c"]);
+            Menu.Back = back;
+            Menu.Close = close;
             Router = new InputRouter(Menu.Ui, new BackgroundTaskTracker(), static () => { })
             {
                 Widgets = () => [Menu],
@@ -184,6 +186,116 @@ public class MenuPanelTests
         f.Menu.SelectedIndex.ShouldBe(1);
         f.Router.Handle(new InputEvent.KeyDown(InputKey.Enter, InputModifier.None)).ShouldBeTrue();
         f.Menu.IsConfirmed.ShouldBeTrue();
+    }
+
+    // DIR.Lib #246: Back top-left and close top-right, each present only when the host supplies its action.
+    private static MenuModel WithActions(MenuModel src, Action? back, Action? close)
+    {
+        var m = Model(src.Title, src.Prompt, [.. src.Items]);
+        m.Back = back;
+        m.Close = close;
+        return m;
+    }
+
+    private static Rect<float> ButtonBounds(MenuModel m, string id, float w, float h, out Rect<float> card)
+    {
+        var tree = MenuLayout.BuildPanel(m, new MenuColors(), Style, Ctx, w, h);
+        var arranged = Layout.Engine.Arrange(tree, new Rect<float>(0, 0, w, h), Ctx);
+        card = arranged.First(a => a.Node.BorderStyle is not null).Bounds;
+        return arranged.First(a => a.Node.Hit is HitResult.ButtonHit { Action: var x } && x == id).Bounds;
+    }
+
+    private static bool HasButtons(MenuModel m)
+    {
+        var tree = MenuLayout.BuildPanel(m, new MenuColors(), Style, Ctx, 1200, 800);
+        return Layout.Engine.Arrange(tree, new Rect<float>(0, 0, 1200, 800), Ctx).Any(a => a.Node.Hit is HitResult.ButtonHit);
+    }
+
+    [Fact]
+    public void NoActionMeansNoHeaderAndTheSameCard()
+    {
+        HasButtons(Medium).ShouldBeFalse();
+        var plain = MenuLayout.PlanPanel(Medium, Style, Ctx, 1200, 800);
+        var again = MenuLayout.PlanPanel(WithActions(Medium, null, null), Style, Ctx, 1200, 800);
+        again.ShouldBe(plain);
+    }
+
+    [Fact]
+    public void BackIsInTheTopLeftQuadrant()
+    {
+        var r = ButtonBounds(WithActions(Medium, () => { }, null), "MenuBack", 1200, 800, out var card);
+        r.X.ShouldBeLessThan(card.X + card.Width / 2f);
+        r.Y.ShouldBeLessThan(card.Y + card.Height / 2f);
+        r.X.ShouldBeGreaterThanOrEqualTo(card.X + Style.Border!.Width);
+        HasButtons(WithActions(Medium, () => { }, null)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void CloseIsInTheTopRightQuadrant()
+    {
+        var r = ButtonBounds(WithActions(Medium, null, () => { }), "MenuClose", 1200, 800, out var card);
+        (r.X + r.Width / 2f).ShouldBeGreaterThan(card.X + card.Width / 2f);
+        r.Y.ShouldBeLessThan(card.Y + card.Height / 2f);
+        (r.X + r.Width).ShouldBeLessThanOrEqualTo(card.X + card.Width - Style.Border!.Width + 0.01f);
+    }
+
+    [Fact]
+    public void BothControlsDoNotOverlap()
+    {
+        var m = WithActions(Medium, () => { }, () => { });
+        var back = ButtonBounds(m, "MenuBack", 1200, 800, out _);
+        var close = ButtonBounds(m, "MenuClose", 1200, 800, out _);
+        (back.X + back.Width).ShouldBeLessThanOrEqualTo(close.X + 0.01f);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void HeaderGrowsTheCardByExactlyOneHeaderLine(bool back, bool close)
+    {
+        var plain = MenuLayout.PlanPanel(Medium, Style, Ctx, 1200, 800);
+        var m = WithActions(Medium, back ? () => { } : null, close ? () => { } : null);
+        var plan = MenuLayout.PlanPanel(m, Style, Ctx, 1200, 800);
+        plan.FontSize.ShouldBe(plain.FontSize, 0.001f);
+        (plan.CardHeight - plain.CardHeight).ShouldBe(2f * plan.FontSize, 0.01f);
+    }
+
+    [Fact]
+    public void PortraitKeepsBothControlsInsideTheCard()
+    {
+        var m = WithActions(Long, () => { }, () => { });
+        var back = ButtonBounds(m, "MenuBack", 360, 640, out var card);
+        var close = ButtonBounds(m, "MenuClose", 360, 640, out _);
+        back.X.ShouldBeGreaterThanOrEqualTo(card.X);
+        (close.X + close.Width).ShouldBeLessThanOrEqualTo(card.X + card.Width + 0.01f);
+        (back.X + back.Width).ShouldBeLessThanOrEqualTo(close.X + 0.01f);
+    }
+
+    [Fact]
+    public void PressOnBackRunsItOnceAndConfirmsNothing()
+    {
+        var n = 0;
+        var f = new Fixture(back: () => n++);
+        var regions = new List<ClickableRegion>();
+        f.Menu.CollectPaintedRegions(regions);
+        var r = regions.First(x => x.Result is HitResult.ButtonHit { Action: "MenuBack" });
+        f.Press(r.X + 2, r.Y + 2);
+        n.ShouldBe(1);
+        f.Menu.IsConfirmed.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void PressOnCloseRunsItOnceAndConfirmsNothing()
+    {
+        var n = 0;
+        var f = new Fixture(close: () => n++);
+        var regions = new List<ClickableRegion>();
+        f.Menu.CollectPaintedRegions(regions);
+        var r = regions.First(x => x.Result is HitResult.ButtonHit { Action: "MenuClose" });
+        f.Press(r.X + 2, r.Y + 2);
+        n.ShouldBe(1);
+        f.Menu.IsConfirmed.ShouldBeFalse();
     }
 
     private sealed class PanelWidget(Renderer<RgbaImage> renderer) : PixelWidgetBase<RgbaImage>(renderer)
