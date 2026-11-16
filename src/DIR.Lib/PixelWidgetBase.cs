@@ -1414,7 +1414,7 @@ namespace DIR.Lib
                 {
                     // A rounded all-sides border strokes a curved outline, so the fill follows the same
                     // outline (the larger of the two radii) and the square corners outside it stay clear.
-                    var fillRadius = node.BorderStyle is { Radius: > 0f, Sides: BorderSides.All, Width: > 0f } rb
+                    var fillRadius = node.BorderStyle is { Radius: > 0f, Sides: Layout.BorderSides.All, Width: > 0f } rb
                         ? MathF.Max(radius, ctx.ToSurface(rb.Radius))
                         : radius;
                     FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, bg, fillRadius);
