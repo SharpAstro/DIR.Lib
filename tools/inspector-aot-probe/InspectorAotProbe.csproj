@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Manual tool (not in CI): measures what DebugInspectorCore.StartIfOptedIn costs a NativeAOT app, and proves the
+    DIR.Lib.Inspector.IsSupported feature switch (DIR.Lib #251). Restores the packed DIR.Lib only, from
+    artifacts/aot-probe, with no ProjectReference; sits outside src/ so Central Package Management does not apply.
+
+    Run (Git Bash needs the VS Installer folder on PATH first, or the link step fails MSB3073 on vswhere):
+      dotnet pack src/DIR.Lib/DIR.Lib.csproj -c Release -o artifacts/aot-probe
+      dotnet publish tools/inspector-aot-probe/InspectorAotProbe.csproj -c Release -r win-x64 -o OUT1
+      dotnet publish tools/inspector-aot-probe/InspectorAotProbe.csproj -c Release -r win-x64 -p:WithInspector=true -o OUT2
+      dotnet publish tools/inspector-aot-probe/InspectorAotProbe.csproj -c Release -r win-x64 -p:WithInspector=true -p:DirInspectorSupport=true -o OUT3
+    OUT1 has no StartIfOptedIn call (the baseline); OUT2 has the call with the switch at its publish default (off);
+    OUT3 keeps the inspector. Compare the .exe sizes, then run each with DIR_INSPECTOR=1 DIR_INSPECTOR_TOKEN=probe.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PublishAot>true</PublishAot>
+    <!-- Its own package folder, so a re-pack of the same version is never served from the global cache. -->
+    <RestorePackagesPath>$(MSBuildProjectDirectory)/obj/packages</RestorePackagesPath>
+    <DirLibVersion Condition="'$(DirLibVersion)' == ''">$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/../../src/Directory.Build.props')), '&lt;VersionMajorMinor&gt;([^&lt;]+)&lt;').Groups[1].Value).0</DirLibVersion>
+    <DefineConstants Condition="'$(WithInspector)' == 'true'">$(DefineConstants);WITH_INSPECTOR</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DIR.Lib" Version="$(DirLibVersion)" />
+  </ItemGroup>
+
+</Project>
