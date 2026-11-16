@@ -1,0 +1,258 @@
+# Prototype document format
+
+A prototype is one JSON document of screens. `Prototype.Load(json)` (namespace `DIR.Lib.Prototyping`) reads it and
+returns the document, or every problem found, each with its JSON path (`$.screens[2].root.children[0].kind`).
+
+This page is the vocabulary. The table behind the loader is `PrototypeVocabulary`, and `PrototypeFormatDocTests`
+fails when this page and that table differ: every kind and every property below is accepted by the loader, and
+every one the loader accepts is below. Each node maps one to one onto a `Builder` call of the same name.
+
+## Document
+
+| Property | Type | Notes |
+|---|---|---|
+| `width` | number | design width, greater than zero, required |
+| `height` | number | design height, greater than zero, required |
+| `entry` | string | id of the screen the prototype starts on, required |
+| `screens` | array | the screens, at least one, required |
+
+A screen has `id` (required, unique), `title` (optional, defaults to the id) and `root` (required, a node).
+Every screen must be reachable from `entry` by a `goto` action.
+
+## Nodes
+
+A node is an object with `kind` (required), the kind's properties, the common properties, and:
+
+- `children`: an array of nodes, for the kinds that take them.
+- `action`: what a click does. `goto:<screen>`, `set:<name>=<value>` or `toggle:<name>`.
+- `when`: `<name>=<value>`; the node is shown only while that state equals the value (equality only).
+- `bind`: a state name, for `textInput`, `checkbox`, `slider`, `buttonGroup` and `dropdown`.
+
+State names are letters, digits and underscores, not starting with a digit. A `key` is unique within its screen.
+
+## Common properties
+
+Accepted by every kind.
+
+| Property | Type | Notes |
+|---|---|---|
+| `padding` | number | `Pad` |
+| `background` | colour | `Bg` |
+| `border` | colour | `Border` colour |
+| `borderWidth` | number | default 1 |
+| `borderRadius` | number | default 0 |
+| `width` | size | `W`: a number, `"auto"`, `"star"` or `"star:<weight>"` |
+| `height` | size | `H`, same forms |
+| `key` | string | names the node |
+| `tooltip` | string | `WithTooltip` |
+| `side` | enum | `left`, `right`, `top`, `bottom`: pins a child of a `dock` |
+| `size` | number | extent of a docked child along its dock axis |
+
+## Colours
+
+A colour is a `UiPalette` role name or `#rgb`, `#rrggbb` or `#rrggbbaa`.
+
+Roles: `ContentBg`, `PanelBg`, `HeaderBg`, `Separator`, `SeparatorStrong`, `BodyText`, `DimText`, `HeaderText`, `Accent`, `AccentAlt`, `Selection`, `SelectionText`, `Focus`, `Info`, `Warn`, `Error`, `Success`
+
+## Kinds
+
+### `vstack`
+
+Children top to bottom (`Builder.VStack`).
+
+| Property | Type | Notes |
+|---|---|---|
+| `gap` | number | between children |
+
+### `hstack`
+
+Children left to right (`Builder.HStack`).
+
+| Property | Type | Notes |
+|---|---|---|
+| `gap` | number | between children |
+
+### `grid`
+
+| Property | Type | Notes |
+|---|---|---|
+| `columns` | integer | required |
+| `gap` | number | between cells |
+
+### `wrap`
+
+Children flow onto further lines (`WrapH`, or `WrapV` with `vertical`).
+
+| Property | Type | Notes |
+|---|---|---|
+| `gap` | number | between children |
+| `vertical` | bool | flow top to bottom |
+
+### `dock`
+
+One or more children pinned to edges (each sets `side` and `size`), and exactly one child without `side` that takes the rest.
+
+### `split`
+
+Exactly two children and a divider.
+
+| Property | Type | Notes |
+|---|---|---|
+| `axis` | enum | `horizontal` (default) or `vertical` |
+| `firstExtent` | number | the first pane's extent |
+
+### `overlay`
+
+Exactly two children: the layer, then the one drawn on top.
+
+### `modal`
+
+Exactly two children: the layer, then the modal card. `action` runs when the scrim is pressed.
+
+| Property | Type | Notes |
+|---|---|---|
+| `open` | bool | whether the card is shown (default true) |
+
+### `text`
+
+| Property | Type | Notes |
+|---|---|---|
+| `text` | string | required |
+| `fontSize` | number | default 14 |
+| `color` | colour | |
+| `align` | enum | `near`, `center`, `far` |
+
+### `markdown`
+
+| Property | Type | Notes |
+|---|---|---|
+| `source` | string | markdown source, required |
+
+### `icon`
+
+| Property | Type | Notes |
+|---|---|---|
+| `icon` | string | an `IconKind` name, required |
+| `iconSize` | number | omit to match the text beside it |
+| `color` | colour | |
+
+### `box`
+
+A fixed-size box; size it with the common `width` and `height`.
+
+| Property | Type | Notes |
+|---|---|---|
+| `color` | colour | transparent when omitted |
+
+### `fill`
+
+The escape hatch an app paints itself.
+
+| Property | Type | Notes |
+|---|---|---|
+| `minWidth` | number | |
+| `minHeight` | number | |
+
+### `spacer`
+
+An empty node that takes the space its sizing gives it.
+
+### `textInput`
+
+Takes `bind`.
+
+| Property | Type | Notes |
+|---|---|---|
+| `placeholder` | string | |
+| `fontSize` | number | |
+
+### `checkbox`
+
+Takes `bind`.
+
+| Property | Type | Notes |
+|---|---|---|
+| `label` | string | required |
+
+### `buttonGroup`
+
+Takes `bind`: the state holds the chosen option.
+
+| Property | Type | Notes |
+|---|---|---|
+| `options` | string array | required |
+
+### `dropdown`
+
+Takes `bind`: the state holds the chosen option.
+
+| Property | Type | Notes |
+|---|---|---|
+| `options` | string array | required |
+| `label` | string | |
+
+### `slider`
+
+Takes `bind`.
+
+| Property | Type | Notes |
+|---|---|---|
+| `min` | number | |
+| `max` | number | |
+| `color` | colour | fill colour |
+
+### `progress`
+
+| Property | Type | Notes |
+|---|---|---|
+| `value` | number | fraction, 0 to 1, required |
+| `label` | string | |
+| `color` | colour | fill |
+| `track` | colour | |
+
+## Example
+
+```json
+{
+  "width": 360,
+  "height": 640,
+  "entry": "home",
+  "screens": [
+    {
+      "id": "home",
+      "title": "Home",
+      "root": {
+        "kind": "vstack", "gap": 8, "padding": 12, "background": "PanelBg",
+        "children": [
+          { "kind": "text", "text": "Welcome", "fontSize": 20, "color": "HeaderText" },
+          { "kind": "text", "text": "Go to settings", "color": "Accent", "action": "goto:settings" }
+        ]
+      }
+    },
+    {
+      "id": "settings",
+      "root": {
+        "kind": "vstack", "gap": 8,
+        "children": [
+          { "kind": "checkbox", "label": "Dark mode", "bind": "dark" },
+          { "kind": "text", "text": "Dark is on", "when": "dark=true" },
+          { "kind": "text", "text": "Back", "action": "goto:home" }
+        ]
+      }
+    }
+  ]
+}
+```
+
+## Known limits
+
+What the loader and builder do on purpose, or have not tightened yet:
+
+- **Loading.** The loader walks a `JsonDocument` by hand rather than deserializing through the source-generated
+  context, because a node's properties depend on its `kind` and every problem needs its JSON path. No reflection is used, so the AOT rule holds.
+- **Modal card.** A modal card is centred by the document design size, even when the modal is nested in a smaller
+  container. Declare modals at the screen root.
+- **Negative numbers.** `padding`, `fontSize`, `width` and `height` are accepted as written and are not a load problem;
+  `Prototype.Check` reports what they draw.
+- **Dropdown state.** Dropdowns that share a `bind` share one open state, as inputs sharing a `bind` share one value.
+  Give each dropdown its own `bind`.
