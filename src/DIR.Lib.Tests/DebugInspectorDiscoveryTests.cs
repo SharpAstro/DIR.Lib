@@ -245,7 +245,7 @@ public sealed class DebugInspectorDiscoveryTests : IDisposable
         // ... but the sweep a starting core runs does not delete it; it deletes only the dead pid's.
         using var core = DebugInspectorCore.StartExactly(new Host(), DebugInspectorDiscovery.Registry, _registry);
 
-        File.Exists(mismatched).ShouldBeTrue($"pid {pid} running={DebugInspectorRegistration.IsRunning(pid)} name={Process.GetProcessById(pid).ProcessName}");
+        File.Exists(mismatched).ShouldBeTrue();
         File.Exists(dead).ShouldBeFalse();
     }
 
@@ -263,6 +263,8 @@ public sealed class DebugInspectorDiscoveryTests : IDisposable
                 if (process.Id == Environment.ProcessId) continue;
                 try
                 {
+                    // A zombie (exited, handle still held by someone) can report the oldest start time.
+                    if (process.HasExited) continue;
                     var started = process.StartTime.ToUniversalTime();
                     if (oldest is null || started < oldest.Value.StartedUtc) oldest = (process.Id, started);
                 }
