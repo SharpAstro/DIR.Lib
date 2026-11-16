@@ -45,13 +45,14 @@ public static class MenuLayout
     /// item between two edge leaves of height <paramref name="edge"/> (Star to centre a block in a surface, Fixed for
     /// a card's padding). The edge leaves carry Up and Down and the gap carries Enter, so the keys are declared once.
     /// </summary>
-    private static Layout.Node BuildColumn(MenuModel model, MenuColors colors, float fontSize, Layout.Sizing edge)
+    private static Layout.Node BuildColumn(MenuModel model, MenuColors colors, float fontSize, Layout.Sizing edge,
+        Layout.Node? header = null)
     {
         var titleSize = fontSize * 1.6f;
         var itemLineH = fontSize * 2f;
         var gapH = fontSize * 0.5f;
 
-        var children = ImmutableArray.CreateBuilder<Layout.Node>(model.Items.Length + 5);
+        var children = ImmutableArray.CreateBuilder<Layout.Node>(model.Items.Length + 6);
 
         // Top Star spacer - fills available space above the content block.
         // Carries Up: the menu's keys are declared in the tree, so InputRouter reaches them with no host fallback.
@@ -60,6 +61,9 @@ public static class MenuLayout
             Height = edge,
             Width = Layout.Sizing.Star(),
         }.WithShortcut(InputKey.Up).Activatable(_ => model.HandleKey(InputKey.Up)));
+
+        // The panel's Back / close row, between the top padding and the title; absent for BuildTree.
+        if (header is not null) children.Add(header);
 
         // Title leaf - centered horizontally, larger font.
         children.Add(new Layout.Node.Leaf(new Layout.Content.Text(model.Title, titleSize)
@@ -133,6 +137,59 @@ public static class MenuLayout
     // Row heights of the shared column in base font sizes: title 2 x 1.6, prompt 2, gap 0.5, items 2 each.
     private const float TitleLines = 3.2f, PromptLines = 2f, GapLines = 0.5f, ItemLines = 2f;
 
+    // The panel's header row (Back left, close right) is one item line tall, present only when the host set an action.
+    private const float HeaderLines = 2f;
+    internal const string BackLabel = "< Back", CloseLabel = "×";
+
+    private static bool HasHeader(MenuModel m) => m.Back is not null || m.Close is not null;
+
+    // Control widths in design units at font size f: the label plus a font of side room; the close is at least two
+    // fonts so it stays a tap target. Plan and build share these, so the header the plan reserves is the one drawn.
+    private static float BackWidth(Func<string, float, float> width, float f) => width(BackLabel, f) + f;
+    private static float CloseWidth(Func<string, float, float> width, float f) => MathF.Max(2f * f, width(CloseLabel, f) + f);
+
+    // The row's width need at font f: both controls and a font between them, or the one present.
+    private static float HeaderWidth(MenuModel m, Func<string, float, float> width, float f)
+    {
+        var w = 0f;
+        if (m.Back is not null) w += BackWidth(width, f);
+        if (m.Close is not null) w += CloseWidth(width, f);
+        return m.Back is not null && m.Close is not null ? w + f : w;
+    }
+
+    private static Layout.Node BuildHeader(MenuModel model, MenuColors colors, float f, Func<string, float, float> width)
+    {
+        var children = ImmutableArray.CreateBuilder<Layout.Node>(3);
+        if (model.Back is { } back)
+            children.Add(HeaderControl(BackLabel, "MenuBack", back, TextAlign.Near, BackWidth(width, f), f, colors));
+        children.Add(new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
+        {
+            Height = Layout.Sizing.Fixed(f * ItemLines),
+            Width = Layout.Sizing.Star(),
+        });
+        if (model.Close is { } close)
+            children.Add(HeaderControl(CloseLabel, "MenuClose", close, TextAlign.Far, CloseWidth(width, f), f, colors));
+        return new Layout.Node.Stack(children.ToImmutable(), Layout.Axis.Horizontal)
+        {
+            Height = Layout.Sizing.Fixed(f * HeaderLines),
+            Width = Layout.Sizing.Star(),
+        };
+    }
+
+    private static Layout.Node HeaderControl(string label, string id, Action action, TextAlign align, float w, float f, MenuColors colors)
+        => new Layout.Node.Leaf(new Layout.Content.Text(label, f)
+        {
+            Color = colors.ItemColor,
+            HAlign = align,
+            VAlign = TextAlign.Center,
+        })
+        {
+            Height = Layout.Sizing.Fixed(f * ItemLines),
+            Width = Layout.Sizing.Fixed(w),
+            Hit = new HitResult.ButtonHit(id),
+            OnClick = _ => action(),
+        };
+
     /// <summary>
     /// Sizes the panel card for <paramref name="model"/> on a surface of <paramref name="surfaceWidth"/> x
     /// <paramref name="surfaceHeight"/> design units, measuring text through <paramref name="ctx"/> so every surface
@@ -159,6 +216,7 @@ public static class MenuLayout
         w1 = MathF.Max(w1, Width(model.Prompt, 1f));
         foreach (var item in model.Items)
             w1 = MathF.Max(w1, Width(SelectedPrefix + item, 1f));
+        if (HasHeader(model)) w1 = MathF.Max(w1, HeaderWidth(model, Width, 1f));
 
         // Horizontal padding is PadX font sizes per side, so the widest line plus padding is linear in size too.
         var perFont = w1 + 2f * style.PadX;
@@ -180,6 +238,7 @@ public static class MenuLayout
                 widest = MathF.Max(widest, Width(SelectedPrefix + item, font));
                 widest = MathF.Max(widest, Width(UnselectedPrefix + item, font));
             }
+            if (HasHeader(model)) widest = MathF.Max(widest, HeaderWidth(model, Width, font));
             var room2 = width - 2f * border - 2f * style.PadX * font;
             // widest <= 0f: nothing measurable (empty model or a zero-width measure), so scaling cannot help.
             if (widest <= room2 || widest <= 0f) break;
@@ -187,7 +246,7 @@ public static class MenuLayout
             font *= room2 / widest * 0.995f;
         }
 
-        var lines = TitleLines + PromptLines + GapLines + ItemLines * model.Items.Length + 2f * style.PadY;
+        var lines = (HasHeader(model) ? HeaderLines : 0f) + TitleLines + PromptLines + GapLines + ItemLines * model.Items.Length + 2f * style.PadY;
         var height = MathF.Min(lines * font + 2f * border, MathF.Max(1f, surfaceHeight - 2f * style.SideMargin));
         return new MenuPanelPlan(width, height, font, portrait);
     }
@@ -203,7 +262,11 @@ public static class MenuLayout
         Layout.IMeasureContext<float> ctx, float surfaceWidth, float surfaceHeight)
     {
         var plan = PlanPanel(model, style, ctx, surfaceWidth, surfaceHeight);
-        var column = BuildColumn(model, colors, plan.FontSize, Layout.Sizing.Fixed(plan.FontSize * style.PadY));
+        var unit = ctx.ToSurface(1f);
+        if (unit <= 0f) unit = 1f;
+        float Width(string text, float size) => ctx.MeasureText(text.AsSpan(), size).Width / unit;
+        var header = HasHeader(model) ? BuildHeader(model, colors, plan.FontSize, Width) : null;
+        var column = BuildColumn(model, colors, plan.FontSize, Layout.Sizing.Fixed(plan.FontSize * style.PadY), header);
         var card = new Layout.Node.Stack([column], Layout.Axis.Vertical)
         {
             Width = Layout.Sizing.Fixed(plan.CardWidth),
