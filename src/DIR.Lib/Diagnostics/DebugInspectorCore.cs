@@ -176,7 +176,7 @@ public interface IDebugInspectorSteppedHost
 /// <see cref="IDebugInspectorHost.Poke"/> to wake an idle loop.</para>
 ///
 /// <para><b>Off unless opted in.</b> The core is compiled into every configuration but is inert: nothing
-/// listens until a host calls <see cref="Start(IDebugInspectorHost, bool)"/>, or <see cref="StartIfOptedIn"/>,
+/// listens until a host calls <see cref="Start(IDebugInspectorHost, bool)"/>, or <see cref="StartIfOptedIn(IDebugInspectorHost, DebugInspectorDiscovery)"/>,
 /// which starts only when the process environment sets <see cref="OptInVariable"/> to <c>1</c> and
 /// <see cref="TokenVariable"/> to a per-run secret. A core started that way refuses every request whose
 /// top-level <c>token</c> string does not match, before anything reaches the host. Bound to loopback
