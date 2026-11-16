@@ -245,7 +245,7 @@ public sealed class DebugInspectorDiscoveryTests : IDisposable
         // ... but the sweep a starting core runs does not delete it; it deletes only the dead pid's.
         using var core = DebugInspectorCore.StartExactly(new Host(), DebugInspectorDiscovery.Registry, _registry);
 
-        File.Exists(mismatched).ShouldBeTrue();
+        File.Exists(mismatched).ShouldBeTrue($"pid {pid} running={DebugInspectorRegistration.IsRunning(pid)} name={Process.GetProcessById(pid).ProcessName}");
         File.Exists(dead).ShouldBeFalse();
     }
 
