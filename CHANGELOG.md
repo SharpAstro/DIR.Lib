@@ -9,6 +9,16 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.70
+
+Flight DIR242 (#242): the inspector core is available in Release builds, off unless the process opts in at run time. Additive.
+
+- **Inspector core in Release.** `DebugInspectorCore`, `DebugInspectorRegistry` and their tests are no longer `#if DEBUG`, so the Release package (and a NativeAOT consumer) has them. `Start` / `Detached` behave as before.
+- **Run-time opt-in.** `DebugInspectorCore.StartIfOptedIn(host)` returns null and touches nothing unless `DIR_INSPECTOR=1`. `DIR_INSPECTOR_TOKEN` is a per-run secret: when set (non-empty) every client request must carry it as `token` (else `!unauthorized`). `DIR_INSPECTOR=1` without a token refuses to start and says why on stderr (`[inspector] DIR_INSPECTOR=1 but DIR_INSPECTOR_TOKEN is not set: not starting`); the token is never echoed.
+- **Tests in Release.** The inspector tests (scheduling, discovery, registry, `InspectorOptInTests`) now run in the `-c Release` CI run, not only with `-c Debug`.
+- **AOT cost, measured.** A minimal NativeAOT console (`dotnet publish -c Release -r win-x64`, win-x64) is 933,888 bytes without the inspector and 2,194,432 bytes with a `StartIfOptedIn` call (a trivial host, disposed): **+1,260,544 bytes (about 1.2 MB)**. That is over the 1 MB line, so it is a candidate for a feature switch; none is added here, which is the owner's call. Run check: with `DIR_INSPECTOR` unset nothing is printed to stderr; with `DIR_INSPECTOR=1` and a token it prints the `[inspector] 'aotprobe' command server on 127.0.0.1:<port> (registry)` banner.
+- The `DIR.Lib.Debug` twin and its CI steps stay; retiring it is a follow-up.
+
 ## 11.69
 
 Flight DIR239 (#239): an overlay menu panel, in three additive parts. Binary-compatible: only new members and init-only properties.
