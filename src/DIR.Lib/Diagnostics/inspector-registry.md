@@ -8,7 +8,8 @@ on. This file is the contract: the sidecars that read the registry (`SdlVulkan.R
 ## Feature switch (11.73)
 
 `StartIfOptedIn` is gated by `DIR.Lib.Inspector.IsSupported` (`DebugInspectorCore.IsSupported`, true when unset).
-The package's buildTransitive targets set it false on a trimmed or NativeAOT publish and true otherwise;
+The package's buildTransitive targets set it false only on a `dotnet publish` with `PublishTrimmed` or `PublishAot` and true otherwise (build, run and
+test keep it even when the csproj declares `PublishAot`);
 `-p:DirInspectorSupport=true` keeps the inspector in a publish. When it is off nothing here is written: no
 listener, no registry file. `Start` and `Detached` are the direct calls that root the inspector on purpose and
 do not consult the switch.

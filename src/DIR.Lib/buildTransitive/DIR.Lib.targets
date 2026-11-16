@@ -2,12 +2,15 @@
   <!--
     The DIR.Lib.Inspector.IsSupported feature switch (DIR.Lib 11.73, #251).
     Imported after the consumer's project body, so PublishTrimmed and PublishAot are already set here.
-    DirInspectorSupport defaults to false on a trimmed or NativeAOT publish (ILC then drops the inspector's
-    socket, registry and command code) and to true everywhere else. A value the consumer set is never
-    overridden: pass -p:DirInspectorSupport=true to keep the inspector in a trimmed publish.
+    DirInspectorSupport defaults to false only on a trimmed or NativeAOT publish (ILC then drops the inspector's
+    socket, registry and command code) and to true everywhere else. PublishAot in a csproj is true on EVERY
+    build, run and test of that project, so the default keys on dotnet publish, which sets _IsPublishing,
+    and a plain build keeps the inspector behind DIR_INSPECTOR=1. A bare msbuild /t:Publish does not set
+    _IsPublishing and so keeps the inspector unless -p:DirInspectorSupport=false is passed. A value the consumer
+    set is never overridden: pass -p:DirInspectorSupport=true to keep the inspector in a trimmed publish.
   -->
   <PropertyGroup>
-    <DirInspectorSupport Condition="'$(DirInspectorSupport)' == '' AND ('$(PublishTrimmed)' == 'true' OR '$(PublishAot)' == 'true')">false</DirInspectorSupport>
+    <DirInspectorSupport Condition="'$(DirInspectorSupport)' == '' AND '$(_IsPublishing)' == 'true' AND ('$(PublishTrimmed)' == 'true' OR '$(PublishAot)' == 'true')">false</DirInspectorSupport>
     <DirInspectorSupport Condition="'$(DirInspectorSupport)' == ''">true</DirInspectorSupport>
   </PropertyGroup>
   <ItemGroup>

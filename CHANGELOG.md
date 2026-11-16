@@ -9,6 +9,16 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.76
+
+Additive fix: `DirInspectorSupport` is false only on an actual publish (flight DIR259, DIR.Lib #259). 11.73 keyed
+the default on `PublishAot` or `PublishTrimmed` being true, but a csproj that declares `<PublishAot>true</PublishAot>`
+(chess's Chess.GUI) has it true on every build, run and test, so the inspector was off there even behind
+`DIR_INSPECTOR=1`. The default now also requires `_IsPublishing`, which `dotnet publish` sets, so build, run and
+test keep the inspector as on 11.72. A bare `msbuild /t:Publish` does not set `_IsPublishing` and keeps the inspector
+unless `-p:DirInspectorSupport=false` is passed. SdlVulkan.Renderer and Console.Lib (SDL182, CON88) mirror the same
+switch and want the same condition; chess can drop its workaround once it repins.
+
 ## 11.75
 
 Additive: `DIR.Lib.Prototyping`, a prototype as a JSON document of screens (DIR.Lib #249). `Prototype.Load(json)`
