@@ -1,4 +1,3 @@
-#if DEBUG
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
@@ -521,4 +520,3 @@ public class DebugInspectorSchedulingTests
     public void DiscoveryExtrasAreOptional_AndAHostWithoutThemIsUnaffected()
         => ((IDebugInspectorHost)new FakeHost()).DiscoveryExtras.ShouldBeNull();
 }
-#endif
