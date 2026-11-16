@@ -326,7 +326,7 @@ Since 11.73 `StartIfOptedIn` is behind the feature switch `DIR.Lib.Inspector.IsS
 (`DebugInspectorCore.IsSupported`). The package's buildTransitive targets set it false on a trimmed or NativeAOT
 publish, so the inspector is trimmed out by default there (with `DIR_INSPECTOR=1` the app prints one stderr line
 saying so), and true for build, run and test. Set the one property `-p:DirInspectorSupport=true` to keep it in a
-publish. `Start` and `Detached` are the direct calls that root the inspector on purpose and do not consult the switch.
+publish. Measured on a minimal win-x64 NativeAOT console, the call costs 3,072 bytes with the switch off (1,106,944 to 1,110,016 bytes) and about 1.3 MB with it on (2,433,536 bytes); `tools/inspector-aot-probe` reproduces it. `Start` and `Detached` are the direct calls that root the inspector on purpose and do not consult the switch.
 
 `DIR.Lib.Debug` is the same library at the same version, built Debug, for the remaining `#if DEBUG` types; it is
 kept for now and its retirement is a follow-up. Reference one or the other by configuration (Visual Studio needs a
