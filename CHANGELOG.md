@@ -9,6 +9,21 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.75
+
+Additive: `DIR.Lib.Prototyping`, a prototype as a JSON document of screens (DIR.Lib #249). `Prototype.Load(json)`
+reads the document (design size, entry screen, screens of node trees) and returns it or a list of problems,
+each with its JSON path; the node vocabulary is one page, `src/DIR.Lib/Prototype/prototype-format.md`, which a
+test holds to what the loader accepts. A loaded screen builds real `Layout.Node` trees, and
+`PrototypePlayer<TSurface>` holds the current screen and state, builds the tree each frame and routes clicks
+through the ordinary `ClickableRegion` path, so goto, set, toggle and bound inputs work in any host.
+`Prototype.Check(document, sizes, theme?, options?, fontPath?)` draws every screen, in its default state and once
+per `name=value` a `when` names, at each size into a `WireframeRenderer`, and returns `Wireframe.Check`
+findings tagged with screen, state and size. `Prototype.Render(document, size, theme?, fontPath?)` returns an
+`RgbaImage` per screen. With no `fontPath` both resolve the platform's default face (`Prototype.ResolveFont`)
+and throw `FileNotFoundException` when there is none, since with no font no text is measured or drawn.
+Nothing existing changed: consumers (pilot, tianwen, Console.Lib, the renderers) are unaffected unless they adopt it.
+
 ## 11.74
 
 Flight DIR246, DIR.Lib #246 (additive). The menu panel can show a Back control top-left and a close control

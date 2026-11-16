@@ -1,0 +1,18 @@
+{
+  "width": 360,
+  "height": 640,
+  "entry": "stacked",
+  "screens": [
+    {
+      "id": "stacked",
+      "title": "Stacked",
+      "root": {
+        "kind": "overlay",
+        "children": [
+          { "kind": "text", "text": "First line of text", "fontSize": 20 },
+          { "kind": "text", "text": "Second line of text", "fontSize": 20 }
+        ]
+      }
+    }
+  ]
+}
