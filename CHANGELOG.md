@@ -36,8 +36,11 @@ changed and why.
   was drawn mirrored; it is right now. The one baseline that shows it is the storm cloud in `color_weather_emoji.png`, whose
   yellow glow behind the lightning bolt was missing and is now drawn, as a browser draws it from the same font.
 
-Measured on a 24-unit outline icon (two stroked paths): reading it and baking it at 20 px together take about 0.25 to 0.5 ms
-(a stopwatch over 100 runs, arm64); the SVG reader alone is 4.5 microseconds and 24 KB of allocation a read, which is the reason it is done once.
+Measured with BenchmarkDotNet in the two libraries underneath (`--job short`, arm64): reading a 294-byte outline icon takes
+about 5 us and allocates 9.8 KB (`SvgReadBenchmarks`, Codecs), and rasterising its coverage takes 29 us at 20 px and 157 us at
+64 px (`SceneRasterizerBenchmarks`, Fonts.Lib). So an icon is ready in well under a tenth of a millisecond, once; the test in
+this repo that reads and bakes one in a loop only says that it stays far from a frame's budget. Drawing from a kept icon is a
+lookup. Captures of baked icons at six sizes and of a colour drawing are in `docs/captures/`.
 
 ## 11.69
 
