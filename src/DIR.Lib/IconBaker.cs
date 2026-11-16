@@ -1,5 +1,8 @@
 using System.Collections.Immutable;
+using System.Numerics;
 using System.Text;
+using SharpAstro.Fonts.Scenes;
+using SharpAstro.VectorGraphics;
 
 namespace DIR.Lib;
 
@@ -15,6 +18,9 @@ namespace DIR.Lib;
 /// colour and dims with the label beside it, which a COLRv1 colour glyph carrying its own palette
 /// structurally cannot. And it is identical everywhere, where the text path varies with whichever face
 /// the host happened to resolve.</para>
+/// <para><b>A drawing can be baked too.</b> <see cref="Bake(VectorScene, int, int)"/> takes a vector scene (an SVG,
+/// read by <c>SharpAstro.Svg</c>) and bakes it to the same runs, so a mark need not exist in any font. Everything
+/// below about why to bake holds for it as well.</para>
 /// <para><b>Both a build-time and a runtime API, deliberately.</b> A tool bakes a fixed set into generated
 /// constants, which is right for an app's own icons. But the same logic has to be callable at RUNTIME for
 /// the case a bake cannot serve: an app whose theme turns the whole UI one colour (a night / dark-adaptation
@@ -111,9 +117,70 @@ public static class IconBaker
         // wrong for an icon, where a row of unrelated marks has to look aligned to each other.
         var offX = (size - bmp.Width) / 2;
         var offY = (size - bmp.Height) / 2;
+        // Alpha is the silhouette whether the face is outline or colour: a COLRv1 emoji rasterises its
+        // paint tree to RGBA, and coverage is exactly what is wanted from it.
+        return new CoverageMask(size, Runs(bmp.Rgba, pixelStride: 4, alphaOffset: 3, bmp.Width, bmp.Height, offX, offY, size, alphaLevels));
+    }
+
+    /// <summary>The largest square a scene is baked into. A run packs its x, y and width into bytes.</summary>
+    public const int MaxSceneSize = 255;
+
+    /// <summary>
+    /// Bakes a vector drawing (an SVG read by <c>SharpAstro.Svg</c>, say) at one size: its coverage, whatever its
+    /// colours, as the same runs a glyph bakes to.
+    /// </summary>
+    /// <remarks>
+    /// <para>The second way into this type, and it removes the one thing glyph baking cannot: the mark no longer has
+    /// to exist in a font. It keeps what baking is for. The result is monochrome, so it takes the ink colour; it is
+    /// identical on every host; and nothing has to be installed.</para>
+    /// <para><b>The drawing's own box is kept</b>, where a glyph's ink is centred. The scene is fitted inside the
+    /// square with its proportions and centred as a WHOLE, padding included: the icons of a set are drawn on one
+    /// grid (a 24-unit viewBox with its own margins), and it is that grid which lines them up with each other.</para>
+    /// <para>This rasterises. At run time keep the result, or use <see cref="VectorIcon"/>, which does.</para>
+    /// </remarks>
+    /// <param name="scene">The drawing.</param>
+    /// <param name="size">Edge of the square mask, 1 to <see cref="MaxSceneSize"/> pixels.</param>
+    /// <param name="alphaLevels">Coverage buckets, 1..8. See <see cref="DefaultAlphaLevels"/>.</param>
+    public static CoverageMask Bake(VectorScene scene, int size, int alphaLevels = DefaultAlphaLevels)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        ArgumentOutOfRangeException.ThrowIfLessThan(size, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(size, MaxSceneSize);
+        ArgumentOutOfRangeException.ThrowIfLessThan(alphaLevels, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(alphaLevels, 8);
+        if (!(scene.Width > 0) || !(scene.Height > 0))
+        {
+            return new CoverageMask(size, ImmutableArray<CoverageRun>.Empty);
+        }
+
+        var scale = size / Math.Max(scene.Width, scene.Height);
+        var fit = Matrix3x2.CreateScale(scale)
+            * Matrix3x2.CreateTranslation((size - scene.Width * scale) / 2f, (size - scene.Height * scale) / 2f);
+        var alpha = SceneRasterizer.RasterizeCoverage(scene, size, size, fit);
+        return new CoverageMask(size, Runs(alpha, pixelStride: 1, alphaOffset: 0, size, size, 0, 0, size, alphaLevels));
+    }
+
+    /// <summary>Bakes a vector drawing at several sizes. See <see cref="Bake(VectorScene, int, int)"/>.</summary>
+    public static ImmutableArray<CoverageMask> Bake(VectorScene scene, ReadOnlySpan<int> sizes, int alphaLevels = DefaultAlphaLevels)
+    {
+        var masks = ImmutableArray.CreateBuilder<CoverageMask>(sizes.Length);
+        foreach (var size in sizes)
+        {
+            masks.Add(Bake(scene, size, alphaLevels));
+        }
+        return masks.ToImmutable();
+    }
+
+    /// <summary>
+    /// Alpha to runs: each row's spans of one coverage bucket, placed at an offset inside the size-square grid.
+    /// One loop for a glyph's RGBA bitmap and for a scene's coverage bytes.
+    /// </summary>
+    private static ImmutableArray<CoverageRun> Runs(ReadOnlySpan<byte> pixels, int pixelStride, int alphaOffset,
+        int width, int height, int offX, int offY, int size, int alphaLevels)
+    {
         var runs = ImmutableArray.CreateBuilder<CoverageRun>();
 
-        for (var row = 0; row < bmp.Height; row++)
+        for (var row = 0; row < height; row++)
         {
             // Backstop only: the fit loop leaves both offsets non-negative, so this drops nothing for a
             // face that converges. It stays because a font defeating the cap must still yield an in-bounds
@@ -129,15 +196,13 @@ public static class IconBaker
 
             // One past the width, so a run touching the right edge is closed by the same branch as any
             // other rather than needing a copy of the emit after the loop.
-            for (var col = 0; col <= bmp.Width; col++)
+            for (var col = 0; col <= width; col++)
             {
                 var level = 0;
                 var x = offX + col;
-                if (col < bmp.Width && x >= 0 && x < size)
+                if (col < width && x >= 0 && x < size)
                 {
-                    // Alpha is the silhouette whether the face is outline or colour: a COLRv1 emoji
-                    // rasterises its paint tree to RGBA, and coverage is exactly what is wanted from it.
-                    level = Quantise(bmp.Rgba[((row * bmp.Width) + col) * 4 + 3], alphaLevels);
+                    level = Quantise(pixels[((row * width) + col) * pixelStride + alphaOffset], alphaLevels);
                 }
 
                 if (level != runLevel)
@@ -153,7 +218,7 @@ public static class IconBaker
             }
         }
 
-        return new CoverageMask(size, runs.ToImmutable());
+        return runs.ToImmutable();
     }
 
     /// <summary>Bakes one glyph at several sizes.</summary>
