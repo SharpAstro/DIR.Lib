@@ -23,7 +23,7 @@ behind a feature switch.
   `DirInspectorSupport` defaults to false when `PublishTrimmed` or `PublishAot` is true and to true otherwise, so
   build, run and test are unchanged. A value the consumer sets is never overridden.
 - `Start` and `Detached` do NOT consult the switch: they are the direct calls that root the inspector on purpose.
-- The NativeAOT size saved is measured in the next leg of the flight.
+- **AOT cost, measured** against the packed 11.73 with `tools/inspector-aot-probe` (a minimal NativeAOT console, `dotnet publish -c Release -r win-x64`): 1,106,944 bytes without a `StartIfOptedIn` call; 1,110,016 bytes with the call by default (**+3,072 bytes**, the switch off, so the inspector is trimmed out); 2,433,536 bytes with the call and `-p:DirInspectorSupport=true` (+1,326,592 bytes over the baseline, about 1.3 MB; the 11.70 figure was 2,194,432 for a smaller inspector). The AOT publishes show no IL2xxx or IL3xxx warning. Run check, with `DIR_INSPECTOR=1` and `DIR_INSPECTOR_TOKEN=probe`: the default publish prints `[inspector] DIR_INSPECTOR=1 but the inspector was trimmed out of this build: publish with -p:DirInspectorSupport=true` and starts nothing; the `DirInspectorSupport=true` publish prints the `[inspector] 'aotprobe' command server on 127.0.0.1:<port> (registry)` banner and starts.
 
 ## 11.72
 
