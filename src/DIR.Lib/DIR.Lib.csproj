@@ -22,13 +22,13 @@
   <!--
     Opt-in Debug twin (-p:DebugTwin=true): the same library packed from a Debug build as DIR.Lib.Debug,
     at the same version as DIR.Lib. A published DIR.Lib is built Release, so every #if DEBUG type in it
-    (DIR.Lib.Diagnostics, the debug inspector) is absent and a Debug consumer cannot compile against it.
+    is absent and a Debug consumer cannot compile against it (the inspector core is not one of them since 11.70).
     A consumer switches with a Configuration-conditioned PackageReference: DIR.Lib when not Debug,
     DIR.Lib.Debug when Debug. Visual Studio needs a restore after switching configuration.
   -->
   <PropertyGroup Condition="'$(DebugTwin)' == 'true'">
     <PackageID>DIR.Lib.Debug</PackageID>
-    <Description>The Debug build of DIR.Lib, for Debug consumers that need the debug inspector and the #if DEBUG types (DIR.Lib.Diagnostics), which the Release DIR.Lib package does not contain. Same version as DIR.Lib. Reference DIR.Lib when the configuration is not Debug and DIR.Lib.Debug when it is, with a Configuration-conditioned PackageReference; Visual Studio needs a restore after switching configuration.</Description>
+    <Description>The Debug build of DIR.Lib, for Debug consumers that need the #if DEBUG types the Release DIR.Lib package does not contain (the inspector core itself is in the Release package since 11.70, off unless DIR_INSPECTOR=1 and DIR_INSPECTOR_TOKEN are set). Same version as DIR.Lib. Reference DIR.Lib when the configuration is not Debug and DIR.Lib.Debug when it is, with a Configuration-conditioned PackageReference; Visual Studio needs a restore after switching configuration.</Description>
   </PropertyGroup>
   <Target Name="RequireDebugForTwin" BeforeTargets="Pack;GenerateNuspec;CoreCompile" Condition="'$(DebugTwin)' == 'true' AND '$(Configuration)' != 'Debug'">
     <Error Text="DebugTwin=true packs DIR.Lib.Debug and must be built with -c Debug (Configuration is '$(Configuration)')." />
@@ -41,6 +41,8 @@
   <ItemGroup>
     <None Include="../../LICENSE" Pack="true" PackagePath="/" />
     <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <!-- Named by $(PackageID) so the DIR.Lib.Debug twin gets a targets file NuGet imports for it too. -->
+    <None Include="buildTransitive/DIR.Lib.targets" Pack="true" PackagePath="buildTransitive/$(PackageID).targets" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>

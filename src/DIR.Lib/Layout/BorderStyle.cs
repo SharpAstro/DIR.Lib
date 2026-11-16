@@ -34,7 +34,7 @@ public sealed record BorderStyle
     /// <summary>The stroke width in design units; 0 or less reserves nothing.</summary>
     public float Width { get; init; } = 1f;
 
-    /// <summary>The corner radius in design units; 0 is square. Painting only: it reserves no room.</summary>
+    /// <summary>The corner radius in design units; 0 is square. Painting only: it reserves no room. On all four sides a pixel surface also rounds the node's background to it.</summary>
     public float Radius { get; init; }
 
     /// <summary>The sides drawn and reserved. Default <see cref="BorderSides.All"/>.</summary>

@@ -1,4 +1,3 @@
-#if DEBUG
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -176,8 +175,12 @@ public interface IDebugInspectorSteppedHost
 /// without a lock, and without the host needing to be thread-safe. Enqueueing calls
 /// <see cref="IDebugInspectorHost.Poke"/> to wake an idle loop.</para>
 ///
-/// <para><b>DEBUG only.</b> The whole file is <c>#if DEBUG</c>, so no release artifact carries a socket
-/// server. Bound to loopback regardless.</para>
+/// <para><b>Off unless opted in.</b> The core is compiled into every configuration but is inert: nothing
+/// listens until a host calls <see cref="Start(IDebugInspectorHost, bool)"/>, or <see cref="StartIfOptedIn(IDebugInspectorHost, DebugInspectorDiscovery)"/>,
+/// which starts only when the process environment sets <see cref="OptInVariable"/> to <c>1</c> and
+/// <see cref="TokenVariable"/> to a per-run secret. A core started that way refuses every request whose
+/// top-level <c>token</c> string does not match, before anything reaches the host. Bound to loopback
+/// regardless.</para>
 ///
 /// <para><b>Discovery.</b> By default a started core is findable on its own machine through a per-user FILE
 /// registry (<see cref="RegistryDirectory"/>): one descriptor file per instance, written at start and deleted
@@ -274,6 +277,15 @@ public sealed class DebugInspectorCore : IDisposable
     // Host thread only, inside Pump: when the registry descriptor's extras are next read.
     private long _nextRegistryRefresh;
 
+    /// <summary>The environment variable that opts a process in: exactly <c>1</c> starts the inspector.</summary>
+    public const string OptInVariable = "DIR_INSPECTOR";
+
+    /// <summary>The environment variable holding the per-run secret every client request must carry as <c>token</c>.</summary>
+    public const string TokenVariable = "DIR_INSPECTOR_TOKEN";
+
+    // Set only by the opt-in path, before the accept loop starts. Never written anywhere.
+    private byte[]? _token;
+
     private DebugInspectorCore(IDebugInspectorHost host, TcpListener? listener, int port, DebugInspectorDiscovery discovery)
     {
         _host = host;
@@ -290,6 +302,8 @@ public sealed class DebugInspectorCore : IDisposable
     /// does is ordinary logic — one step per pump, who owns the queue, what happens when two collide — and
     /// making each of those assertions depend on port availability and joining a multicast group would tie
     /// them to something they are not about. It is also a usable in-process driver in its own right.</para>
+    ///
+    /// <para>Does not consult <see cref="IsSupported"/>: calling it roots the inspector on purpose.</para>
     /// </summary>
     public static DebugInspectorCore Detached(IDebugInspectorHost host) => new(host, null, 0, DebugInspectorDiscovery.None);
 
@@ -316,6 +330,7 @@ public sealed class DebugInspectorCore : IDisposable
     /// This overload's signature is kept exactly as it was, so already-compiled consumers keep binding to it;
     /// only what <c>true</c> means changed (see the parameter).
     /// </para>
+    /// <para>Does not consult <see cref="IsSupported"/>: calling it roots the inspector on purpose.</para>
     /// </summary>
     /// <param name="host">The surface being driven.</param>
     /// <param name="enableDiscovery">
@@ -338,6 +353,81 @@ public sealed class DebugInspectorCore : IDisposable
         => StartExactly(host, WithEnvironment(discovery, Environment.GetEnvironmentVariable(LanDiscoveryVariable)),
             RegistryDirectory);
 
+    /// <summary>The name of the AppContext feature switch behind <see cref="IsSupported"/>.</summary>
+    internal const string FeatureSwitchName = "DIR.Lib.Inspector.IsSupported";
+
+    /// <summary>
+    /// Whether this build may start the inspector through <see cref="StartIfOptedIn(IDebugInspectorHost, DebugInspectorDiscovery)"/>.
+    /// A feature switch: true when unset, so build, run and test are unchanged. The package's buildTransitive
+    /// targets set it false on a trimmed or NativeAOT publish (override with <c>-p:DirInspectorSupport=true</c>),
+    /// and ILC then substitutes false and trims the socket, registry and command code that only
+    /// <c>StartIfOptedIn</c> reaches. <see cref="Start(IDebugInspectorHost, bool)"/> and <see cref="Detached"/>
+    /// do not consult it.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.FeatureSwitchDefinition(FeatureSwitchName)]
+    public static bool IsSupported
+        => AppContext.TryGetSwitch(FeatureSwitchName, out var on) ? on : true;
+
+    /// <summary>
+    /// Starts the command server only when the process opted in at run time: <see cref="OptInVariable"/> is
+    /// exactly <c>1</c> and <see cref="TokenVariable"/> is non-empty. Returns null, touching nothing, when it is
+    /// not opted in; returns null with a line on stderr when the token is missing. The token is never echoed.
+    /// Returns null before reaching any inspector code when <see cref="IsSupported"/> is false (one stderr line
+    /// when <c>DIR_INSPECTOR=1</c> asked for it).
+    /// </summary>
+    public static DebugInspectorCore? StartIfOptedIn(
+        IDebugInspectorHost host, DebugInspectorDiscovery discovery = DebugInspectorDiscovery.Registry)
+    {
+        if (!IsSupported)
+        {
+            WarnTrimmed(Environment.GetEnvironmentVariable(OptInVariable), Console.Error);
+            return null;
+        }
+        return StartIfOptedInCore(host, discovery,
+            Environment.GetEnvironmentVariable(OptInVariable),
+            Environment.GetEnvironmentVariable(TokenVariable),
+            RegistryDirectory);
+    }
+
+    internal static DebugInspectorCore? StartIfOptedIn(
+        IDebugInspectorHost host, DebugInspectorDiscovery discovery, string? optIn, string? token, string? registryDirectory)
+        => StartIfOptedIn(host, discovery, optIn, token, registryDirectory, IsSupported, Console.Error);
+
+    /// <summary>The seam: <paramref name="supported"/> stands in for <see cref="IsSupported"/> and stderr is injected.</summary>
+    internal static DebugInspectorCore? StartIfOptedIn(
+        IDebugInspectorHost host, DebugInspectorDiscovery discovery, string? optIn, string? token, string? registryDirectory,
+        bool supported, TextWriter stderr)
+    {
+        if (!supported)
+        {
+            WarnTrimmed(optIn, stderr);
+            return null;
+        }
+        return StartIfOptedInCore(host, discovery, optIn, token, registryDirectory);
+    }
+
+    private static void WarnTrimmed(string? optIn, TextWriter stderr)
+    {
+        if (optIn != "1") return;
+        stderr.WriteLine($"[inspector] {OptInVariable}=1 but the inspector was trimmed out of this build: publish with -p:DirInspectorSupport=true");
+        stderr.Flush();
+    }
+
+    private static DebugInspectorCore? StartIfOptedInCore(
+        IDebugInspectorHost host, DebugInspectorDiscovery discovery, string? optIn, string? token, string? registryDirectory)
+    {
+        if (optIn != "1") return null;
+        if (string.IsNullOrEmpty(token))
+        {
+            Console.Error.WriteLine($"[inspector] {OptInVariable}=1 but {TokenVariable} is not set: not starting");
+            Console.Error.Flush();
+            return null;
+        }
+        return StartExactly(host,
+            WithEnvironment(discovery, Environment.GetEnvironmentVariable(LanDiscoveryVariable)),
+            registryDirectory, token);
+    }
+
     /// <summary>What <see cref="Start(IDebugInspectorHost, bool)"/> asks for, before the environment.</summary>
     internal static DebugInspectorDiscovery Requested(bool enableDiscovery)
         => enableDiscovery ? DebugInspectorDiscovery.Registry : DebugInspectorDiscovery.None;
@@ -359,13 +449,16 @@ public sealed class DebugInspectorCore : IDisposable
     /// <paramref name="registryDirectory"/>. The seam tests use, so they never touch the real per-user registry.
     /// </summary>
     internal static DebugInspectorCore StartExactly(
-        IDebugInspectorHost host, DebugInspectorDiscovery discovery, string? registryDirectory)
+        IDebugInspectorHost host, DebugInspectorDiscovery discovery, string? registryDirectory, string? token = null)
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
 
-        var core = new DebugInspectorCore(host, listener, port, discovery);
+        var core = new DebugInspectorCore(host, listener, port, discovery)
+        {
+            _token = token is null ? null : Encoding.UTF8.GetBytes(token),
+        };
 
         // stderr, not stdout: a TUI owns stdout, and writing the banner there would corrupt the screen.
         // Everything after the port is a parenthesised suffix, so a driver grepping the port is unaffected.
@@ -929,6 +1022,17 @@ public sealed class DebugInspectorCore : IDisposable
                 return (id, "!missing method");
             }
 
+            if (_token is { } expected)
+            {
+                var supplied = root.TryGetProperty("token", out var tokenEl) && tokenEl.ValueKind == JsonValueKind.String
+                    ? Encoding.UTF8.GetBytes(tokenEl.GetString()!)
+                    : [];
+                if (!System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(supplied, expected))
+                {
+                    return (id, "!unauthorized");
+                }
+            }
+
             // The params element must outlive the JsonDocument, which is disposed when this returns —
             // so clone it rather than handing the host a window into a freed buffer.
             var parameters = root.TryGetProperty("params", out var p)
@@ -990,4 +1094,3 @@ public sealed class DebugInspectorCore : IDisposable
         _stopping.Dispose();
     }
 }
-#endif

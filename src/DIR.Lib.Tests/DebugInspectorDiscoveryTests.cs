@@ -1,4 +1,3 @@
-#if DEBUG
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -264,6 +263,8 @@ public sealed class DebugInspectorDiscoveryTests : IDisposable
                 if (process.Id == Environment.ProcessId) continue;
                 try
                 {
+                    // A zombie (exited, handle still held by someone) can report the oldest start time.
+                    if (process.HasExited) continue;
                     var started = process.StartTime.ToUniversalTime();
                     if (oldest is null || started < oldest.Value.StartedUtc) oldest = (process.Id, started);
                 }
@@ -475,4 +476,3 @@ public sealed class DebugInspectorDiscoveryTests : IDisposable
         }
     }
 }
-#endif

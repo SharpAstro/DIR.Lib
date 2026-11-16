@@ -9,7 +9,7 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
-## 11.70
+## 11.78
 
 **SVG reaches DIR.Lib: a drawing can be baked to an icon, or held and drawn in colour, and it is never read while drawing.**
 
@@ -41,6 +41,104 @@ about 5 us and allocates 9.8 KB (`SvgReadBenchmarks`, Codecs), and rasterising i
 64 px (`SceneRasterizerBenchmarks`, Fonts.Lib). So an icon is ready in well under a tenth of a millisecond, once; the test in
 this repo that reads and bakes one in a loop only says that it stays far from a frame's budget. Drawing from a kept icon is a
 lookup. Captures of baked icons at six sizes and of a colour drawing are in `docs/captures/`.
+## 11.77
+
+Additive: a prototype is checked and rendered at its targets (DIR.Lib #250). `Prototype.Check(document, theme?,
+options?, fontPath?)` and `Prototype.Render(document, theme?, fontPath?)` iterate `document.Targets`, drawing at
+`width * scale` by `height * scale` with a player at that target; findings carry `PrototypeFinding.Target` (an
+init-only property, so the constructor and `Deconstruct` are unchanged) and renders return
+`(Target, Screen, Image)`. `Check` never sets `target` as a state variant. The sized overloads are unchanged. A
+consumer such as pilot can show one prototype as phone and as tablet.
+
+One behaviour to know: `target` is now a reserved, read-only state name for every document, with or without
+`targets`. An 11.75 document that used `target` as a state of its own (`set:target=...`, `toggle:target`, a `bind`, or a
+`when` naming a value other than compact or regular) no longer loads; the problem names the JSON path, and renaming
+the state fixes it. `scale` on a target is optional and defaults to 1.
+
+## 11.76
+
+Additive fix: `DirInspectorSupport` is false only on an actual publish (flight DIR259, DIR.Lib #259). 11.73 keyed
+the default on `PublishAot` or `PublishTrimmed` being true, but a csproj that declares `<PublishAot>true</PublishAot>`
+(chess's Chess.GUI) has it true on every build, run and test, so the inspector was off there even behind
+`DIR_INSPECTOR=1`. The default now also requires `_IsPublishing`, which `dotnet publish` sets, so build, run and
+test keep the inspector as on 11.72. A bare `msbuild /t:Publish` does not set `_IsPublishing` and keeps the inspector
+unless `-p:DirInspectorSupport=false` is passed. SdlVulkan.Renderer and Console.Lib (SDL182, CON88) mirror the same
+switch and want the same condition; chess can drop its workaround once it repins.
+
+## 11.75
+
+Additive: `DIR.Lib.Prototyping`, a prototype as a JSON document of screens (DIR.Lib #249). `Prototype.Load(json)`
+reads the document (design size, entry screen, screens of node trees) and returns it or a list of problems,
+each with its JSON path; the node vocabulary is one page, `src/DIR.Lib/Prototype/prototype-format.md`, which a
+test holds to what the loader accepts. A loaded screen builds real `Layout.Node` trees, and
+`PrototypePlayer<TSurface>` holds the current screen and state, builds the tree each frame and routes clicks
+through the ordinary `ClickableRegion` path, so goto, set, toggle and bound inputs work in any host.
+`Prototype.Check(document, sizes, theme?, options?, fontPath?)` draws every screen, in its default state and once
+per `name=value` a `when` names, at each size into a `WireframeRenderer`, and returns `Wireframe.Check`
+findings tagged with screen, state and size. `Prototype.Render(document, size, theme?, fontPath?)` returns an
+`RgbaImage` per screen. With no `fontPath` both resolve the platform's default face (`Prototype.ResolveFont`)
+and throw `FileNotFoundException` when there is none, since with no font no text is measured or drawn.
+Nothing existing changed: consumers (pilot, tianwen, Console.Lib, the renderers) are unaffected unless they adopt it.
+
+## 11.74
+
+Flight DIR246, DIR.Lib #246 (additive). The menu panel can show a Back control top-left and a close control
+top-right on the card.
+
+- `MenuModel.Back` and `MenuModel.Close` (`Action?`), and the matching `PixelMenuWidget.Back` / `Close` members.
+  Back draws "< Back" top-left and is meant for later steps of a multi-step menu; close draws a multiplication
+  sign (U+00D7, at 1.5 fonts so it reads) top-right and is meant for the first step.
+- Each control is shown only when the host sets its action. Absent means no control and no header row, so a
+  panel that sets neither is laid out exactly as before.
+- Both are declared hits (`ButtonHit("MenuBack")` / `ButtonHit("MenuClose")`) that `InputRouter` routes to the
+  action, so a host draws and routes nothing itself. Pressing one does not confirm the menu.
+- No Escape shortcut is declared: the host keeps Esc and decides whether it means Back or close.
+- Sized from the panel font in design units; the header adds one two-line row to the card.
+- Not checked here: consumers, namely Console.Lib's cell layout of `BuildPanel` and sebgod chess.
+
+## 11.73
+
+Flight DIR251, DIR.Lib #251 (additive). The inspector is now trimmed out of a published app by default,
+behind a feature switch.
+
+- `DebugInspectorCore.IsSupported` (`[FeatureSwitchDefinition("DIR.Lib.Inspector.IsSupported")]`, true when the
+  switch is unset). `StartIfOptedIn` checks it first and returns null before reaching any socket, registry or
+  command code, so ILC can drop them. When off and `DIR_INSPECTOR=1`, it writes one stderr line saying the
+  inspector was trimmed out of this build and to publish with `-p:DirInspectorSupport=true`; when off and not
+  opted in it is silent.
+- The package ships `buildTransitive/DIR.Lib.targets` (and `DIR.Lib.Debug.targets` in the twin). The property
+  `DirInspectorSupport` defaults to false when `PublishTrimmed` or `PublishAot` is true and to true otherwise, so
+  build, run and test are unchanged. A value the consumer sets is never overridden.
+- `Start` and `Detached` do NOT consult the switch: they are the direct calls that root the inspector on purpose.
+- **AOT cost, measured** against the packed 11.73 with `tools/inspector-aot-probe` (a minimal NativeAOT console, `dotnet publish -c Release -r win-x64`): 1,106,944 bytes without a `StartIfOptedIn` call; 1,110,016 bytes with the call by default (**+3,072 bytes**, the switch off, so the inspector is trimmed out); 2,433,536 bytes with the call and `-p:DirInspectorSupport=true` (+1,326,592 bytes over the baseline, about 1.3 MB; the 11.70 figure was 2,194,432, which is 11% less in total but not in cost: the baseline here is 1,106,944 against 933,888 then, so the inspector adds +1,326,592 against +1,260,544, within 5%). The AOT publishes show no IL2xxx or IL3xxx warning. Run check, with `DIR_INSPECTOR=1` and `DIR_INSPECTOR_TOKEN=probe`: the default publish prints `[inspector] DIR_INSPECTOR=1 but the inspector was trimmed out of this build: publish with -p:DirInspectorSupport=true` and starts nothing; the `DirInspectorSupport=true` publish prints the `[inspector] 'aotprobe' command server on 127.0.0.1:<port> (registry)` banner and starts.
+
+## 11.72
+
+A node whose border has a radius on all four sides now fills its background inside that same rounded
+outline on a pixel surface, so the square corners outside the curve show what is beneath (the menu panel's
+scrim, DIR.Lib #245). The fill radius is the larger of `CornerRadius` and the border's `Radius`. Visible
+change to any node pairing `Background` with a rounded all-sides border; a partial-side or square border
+fills as before. Consumers that paint their own cells (Console.Lib, SdlVulkan.Renderer, WebGl.Renderer) were
+not checked.
+
+## 11.71
+
+- **Menu panel: a long row no longer runs past the card's edge** (DIR.Lib #243, found in sebgod/chess#84).
+  `MenuLayout.PlanPanel` measured every line once at font size 1 and scaled linearly, but a renderer's glyph
+  advances are not linear in size, so the selected row (marker included) could be wider at the drawn font than
+  predicted and was cut at the card edge. It now re-measures every row, with and without the selection marker,
+  at the font it will be drawn at and shrinks the font (at most 8 passes) until the widest fits inside the card
+  less border and `PadX`. The marker string is shared by `BuildColumn` and `PlanPanel`. No API change.
+
+## 11.70
+
+Flight DIR242 (#242): the inspector core is available in Release builds, off unless the process opts in at run time. Additive.
+
+- **Inspector core in Release.** `DebugInspectorCore`, `DebugInspectorRegistry` and their tests are no longer `#if DEBUG`, so the Release package (and a NativeAOT consumer) has them. `Start` / `Detached` behave as before.
+- **Run-time opt-in.** `DebugInspectorCore.StartIfOptedIn(host)` returns null and touches nothing unless `DIR_INSPECTOR=1`. `DIR_INSPECTOR_TOKEN` is a per-run secret: when set (non-empty) every client request must carry it as `token` (else `!unauthorized`). `DIR_INSPECTOR=1` without a token refuses to start and says why on stderr (`[inspector] DIR_INSPECTOR=1 but DIR_INSPECTOR_TOKEN is not set: not starting`); the token is never echoed.
+- **Tests in Release.** The inspector tests (scheduling, discovery, registry, `InspectorOptInTests`) now run in the `-c Release` CI run, not only with `-c Debug`.
+- **AOT cost, measured.** A minimal NativeAOT console (`dotnet publish -c Release -r win-x64`, win-x64) is 933,888 bytes without the inspector and 2,194,432 bytes with a `StartIfOptedIn` call (a trivial host, disposed): **+1,260,544 bytes (about 1.2 MB)**. That is over the 1 MB line, so it is a candidate for a feature switch; none is added here, which is the owner's call. Run check: with `DIR_INSPECTOR` unset nothing is printed to stderr; with `DIR_INSPECTOR=1` and a token it prints the `[inspector] 'aotprobe' command server on 127.0.0.1:<port> (registry)` banner.
+- The `DIR.Lib.Debug` twin and its CI steps stay; retiring it is a follow-up.
 
 ## 11.69
 

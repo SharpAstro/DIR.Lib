@@ -1,15 +1,24 @@
 # The inspector registry
 
-How a DEBUG app with a DIR.Lib debug inspector (`DebugInspectorCore`) is found on its own machine, from DIR.Lib 11.21
+How an app with a DIR.Lib inspector (compiled into Release builds too since 11.70, and running only when the process opts in with `DIR_INSPECTOR=1` and `DIR_INSPECTOR_TOKEN`, or when the host calls `Start` directly) (`DebugInspectorCore`) is found on its own machine, from DIR.Lib 11.21
 on. This file is the contract: the sidecars that read the registry (`SdlVulkan.Renderer.Inspector`,
 `Console.Lib.Inspector`) do not reference DIR.Lib, so they implement what is written here, and the writer
 (`DebugInspectorCore.cs`, `DebugInspectorRegistry.cs`) must not drift from it.
+
+## Feature switch (11.73)
+
+`StartIfOptedIn` is gated by `DIR.Lib.Inspector.IsSupported` (`DebugInspectorCore.IsSupported`, true when unset).
+The package's buildTransitive targets set it false only on a `dotnet publish` with `PublishTrimmed` or `PublishAot` and true otherwise (build, run and
+test keep it even when the csproj declares `PublishAot`);
+`-p:DirInspectorSupport=true` keeps the inspector in a publish. When it is off nothing here is written: no
+listener, no registry file. `Start` and `Detached` are the direct calls that root the inspector on purpose and
+do not consult the switch.
 
 ## Why a folder of files
 
 The command server has always been TCP on `127.0.0.1` with an ephemeral port. What made an instance findable was
 UDP multicast discovery, which binds `0.0.0.0:47892`, and Windows Firewall prompts once per executable PATH for a
-non-loopback bind. Every DEBUG build at a new path (each git worktree) prompted again. A file needs no socket, so
+non-loopback bind. Every build at a new path (each git worktree) prompted again. A file needs no socket, so
 there is nothing to prompt for. Multicast still exists, as opt-in LAN discovery (below).
 
 ## Folder

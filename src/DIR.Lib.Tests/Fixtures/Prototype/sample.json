@@ -1,0 +1,69 @@
+{
+  "width": 360,
+  "height": 640,
+  "entry": "home",
+  "screens": [
+    {
+      "id": "home",
+      "title": "Home",
+      "root": {
+        "kind": "modal",
+        "action": "set:dialog=false",
+        "children": [
+          {
+            "kind": "vstack", "gap": 8, "padding": 12, "background": "PanelBg",
+            "children": [
+              { "kind": "text", "text": "Prototype home", "fontSize": 20, "color": "HeaderText" },
+              {
+                "kind": "hstack", "gap": 8,
+                "children": [
+                  { "kind": "text", "key": "tabSummary", "text": "Summary", "color": "Accent", "padding": 6, "action": "set:details=false" },
+                  { "kind": "text", "key": "tabDetails", "text": "Details", "color": "Accent", "padding": 6, "action": "set:details=true" }
+                ]
+              },
+              { "kind": "text", "text": "Summary content", "when": "details=false" },
+              { "kind": "text", "text": "Details content", "when": "details=true" },
+              { "kind": "text", "key": "openDialog", "text": "Open dialog", "color": "Accent", "action": "toggle:dialog" },
+              { "kind": "text", "key": "toForm", "text": "Go to form", "color": "Accent", "action": "goto:form" },
+              { "kind": "text", "key": "toAbout", "text": "Go to about", "color": "Accent", "action": "goto:about" }
+            ]
+          },
+          {
+            "kind": "vstack", "width": 240, "height": 120, "gap": 8, "padding": 16, "background": "HeaderBg",
+            "border": "Separator", "borderRadius": 6, "when": "dialog=true",
+            "children": [
+              { "kind": "text", "text": "Dialog", "fontSize": 18, "color": "HeaderText" },
+              { "kind": "text", "key": "closeDialog", "text": "Close", "color": "Accent", "action": "set:dialog=false" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "form",
+      "title": "Form",
+      "root": {
+        "kind": "vstack", "gap": 8, "padding": 12, "background": "PanelBg",
+        "children": [
+          { "kind": "text", "text": "Your name", "color": "DimText" },
+          { "kind": "textInput", "bind": "name", "placeholder": "Type a name" },
+          { "kind": "checkbox", "label": "Notify me", "bind": "notify" },
+          { "kind": "text", "text": "Notifications are on", "when": "notify=true" },
+          { "kind": "text", "key": "formBack", "text": "Back", "color": "Accent", "action": "goto:home" }
+        ]
+      }
+    },
+    {
+      "id": "about",
+      "title": "About",
+      "root": {
+        "kind": "vstack", "gap": 8, "padding": 12, "background": "PanelBg",
+        "children": [
+          { "kind": "markdown", "source": "# About\n\nA sample **prototype**." },
+          { "kind": "progress", "value": 0.4, "label": "40%" },
+          { "kind": "text", "key": "aboutBack", "text": "Back", "color": "Accent", "action": "goto:home" }
+        ]
+      }
+    }
+  ]
+}

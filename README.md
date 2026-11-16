@@ -317,9 +317,20 @@ see what a GPU pipeline draws, and it only finds what the state it is given prod
 
 ## Debug builds (`DIR.Lib.Debug`)
 
-The published `DIR.Lib` is built Release, so the `#if DEBUG` types (`DIR.Lib.Diagnostics`, the debug
-inspector) are absent from it. `DIR.Lib.Debug` is the same library at the same version, built Debug.
-Reference one or the other by configuration (Visual Studio needs a restore after switching):
+Since 11.70 the published (Release) `DIR.Lib` carries the inspector core (`DebugInspectorCore`), inert by default.
+A host calls `DebugInspectorCore.StartIfOptedIn(host)`; it starts only when the process sets `DIR_INSPECTOR=1` and
+`DIR_INSPECTOR_TOKEN` (a per-run secret every client request must carry). The opt-in without a token refuses to
+start and says why on stderr.
+
+Since 11.73 `StartIfOptedIn` is behind the feature switch `DIR.Lib.Inspector.IsSupported`
+(`DebugInspectorCore.IsSupported`). The package's buildTransitive targets set it false only on a `dotnet publish` with
+`PublishTrimmed` or `PublishAot`, so the inspector is trimmed out by default there (with `DIR_INSPECTOR=1` the app prints one stderr line
+saying so), and true for build, run and test even when the project declares `PublishAot` (a bare `msbuild /t:Publish` keeps it too unless `-p:DirInspectorSupport=false`). Set the one property `-p:DirInspectorSupport=true` to keep it in a
+publish. Measured on a minimal win-x64 NativeAOT console, the call costs 3,072 bytes with the switch off (1,106,944 to 1,110,016 bytes) and about 1.3 MB with it on (2,433,536 bytes); `tools/inspector-aot-probe` reproduces it. `Start` and `Detached` are the direct calls that root the inspector on purpose and do not consult the switch.
+
+`DIR.Lib.Debug` is the same library at the same version, built Debug, for the remaining `#if DEBUG` types; it is
+kept for now and its retirement is a follow-up. Reference one or the other by configuration (Visual Studio needs a
+restore after switching):
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">

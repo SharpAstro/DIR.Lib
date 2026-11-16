@@ -32,6 +32,11 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
   </ItemGroup>
 
+  <!-- The directory the Release build of src/DIR.Lib packs its nupkg into, baked in for InspectorPackageTests. -->
+  <ItemGroup>
+    <AssemblyMetadata Include="DirLibPackageDir" Value="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\DIR.Lib\bin\Release\'))" />
+  </ItemGroup>
+
   <ItemGroup>
     <Content Include="Fonts\**" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Baselines\**" CopyToOutputDirectory="PreserveNewest" />
