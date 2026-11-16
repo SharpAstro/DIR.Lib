@@ -5,6 +5,14 @@ on. This file is the contract: the sidecars that read the registry (`SdlVulkan.R
 `Console.Lib.Inspector`) do not reference DIR.Lib, so they implement what is written here, and the writer
 (`DebugInspectorCore.cs`, `DebugInspectorRegistry.cs`) must not drift from it.
 
+## Feature switch (11.73)
+
+`StartIfOptedIn` is gated by `DIR.Lib.Inspector.IsSupported` (`DebugInspectorCore.IsSupported`, true when unset).
+The package's buildTransitive targets set it false on a trimmed or NativeAOT publish and true otherwise;
+`-p:DirInspectorSupport=true` keeps the inspector in a publish. When it is off nothing here is written: no
+listener, no registry file. `Start` and `Detached` are the direct calls that root the inspector on purpose and
+do not consult the switch.
+
 ## Why a folder of files
 
 The command server has always been TCP on `127.0.0.1` with an ephemeral port. What made an instance findable was

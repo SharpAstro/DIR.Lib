@@ -9,6 +9,22 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.73
+
+Flight DIR251, DIR.Lib #251 (additive). The inspector is now trimmed out of a published app by default,
+behind a feature switch.
+
+- `DebugInspectorCore.IsSupported` (`[FeatureSwitchDefinition("DIR.Lib.Inspector.IsSupported")]`, true when the
+  switch is unset). `StartIfOptedIn` checks it first and returns null before reaching any socket, registry or
+  command code, so ILC can drop them. When off and `DIR_INSPECTOR=1`, it writes one stderr line saying the
+  inspector was trimmed out of this build and to publish with `-p:DirInspectorSupport=true`; when off and not
+  opted in it is silent.
+- The package ships `buildTransitive/DIR.Lib.targets` (and `DIR.Lib.Debug.targets` in the twin). The property
+  `DirInspectorSupport` defaults to false when `PublishTrimmed` or `PublishAot` is true and to true otherwise, so
+  build, run and test are unchanged. A value the consumer sets is never overridden.
+- `Start` and `Detached` do NOT consult the switch: they are the direct calls that root the inspector on purpose.
+- The NativeAOT size saved is measured in the next leg of the flight.
+
 ## 11.72
 
 A node whose border has a radius on all four sides now fills its background inside that same rounded

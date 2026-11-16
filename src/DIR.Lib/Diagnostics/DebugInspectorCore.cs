@@ -302,6 +302,8 @@ public sealed class DebugInspectorCore : IDisposable
     /// does is ordinary logic — one step per pump, who owns the queue, what happens when two collide — and
     /// making each of those assertions depend on port availability and joining a multicast group would tie
     /// them to something they are not about. It is also a usable in-process driver in its own right.</para>
+    ///
+    /// <para>Does not consult <see cref="IsSupported"/>: calling it roots the inspector on purpose.</para>
     /// </summary>
     public static DebugInspectorCore Detached(IDebugInspectorHost host) => new(host, null, 0, DebugInspectorDiscovery.None);
 
@@ -328,6 +330,7 @@ public sealed class DebugInspectorCore : IDisposable
     /// This overload's signature is kept exactly as it was, so already-compiled consumers keep binding to it;
     /// only what <c>true</c> means changed (see the parameter).
     /// </para>
+    /// <para>Does not consult <see cref="IsSupported"/>: calling it roots the inspector on purpose.</para>
     /// </summary>
     /// <param name="host">The surface being driven.</param>
     /// <param name="enableDiscovery">
@@ -350,19 +353,67 @@ public sealed class DebugInspectorCore : IDisposable
         => StartExactly(host, WithEnvironment(discovery, Environment.GetEnvironmentVariable(LanDiscoveryVariable)),
             RegistryDirectory);
 
+    /// <summary>The name of the AppContext feature switch behind <see cref="IsSupported"/>.</summary>
+    internal const string FeatureSwitchName = "DIR.Lib.Inspector.IsSupported";
+
+    /// <summary>
+    /// Whether this build may start the inspector through <see cref="StartIfOptedIn(IDebugInspectorHost, DebugInspectorDiscovery)"/>.
+    /// A feature switch: true when unset, so build, run and test are unchanged. The package's buildTransitive
+    /// targets set it false on a trimmed or NativeAOT publish (override with <c>-p:DirInspectorSupport=true</c>),
+    /// and ILC then substitutes false and trims the socket, registry and command code that only
+    /// <c>StartIfOptedIn</c> reaches. <see cref="Start(IDebugInspectorHost, bool)"/> and <see cref="Detached"/>
+    /// do not consult it.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.FeatureSwitchDefinition(FeatureSwitchName)]
+    public static bool IsSupported
+        => AppContext.TryGetSwitch(FeatureSwitchName, out var on) ? on : true;
+
     /// <summary>
     /// Starts the command server only when the process opted in at run time: <see cref="OptInVariable"/> is
     /// exactly <c>1</c> and <see cref="TokenVariable"/> is non-empty. Returns null, touching nothing, when it is
     /// not opted in; returns null with a line on stderr when the token is missing. The token is never echoed.
+    /// Returns null before reaching any inspector code when <see cref="IsSupported"/> is false (one stderr line
+    /// when <c>DIR_INSPECTOR=1</c> asked for it).
     /// </summary>
     public static DebugInspectorCore? StartIfOptedIn(
         IDebugInspectorHost host, DebugInspectorDiscovery discovery = DebugInspectorDiscovery.Registry)
-        => StartIfOptedIn(host, discovery,
+    {
+        if (!IsSupported)
+        {
+            WarnTrimmed(Environment.GetEnvironmentVariable(OptInVariable), Console.Error);
+            return null;
+        }
+        return StartIfOptedInCore(host, discovery,
             Environment.GetEnvironmentVariable(OptInVariable),
             Environment.GetEnvironmentVariable(TokenVariable),
             RegistryDirectory);
+    }
 
     internal static DebugInspectorCore? StartIfOptedIn(
+        IDebugInspectorHost host, DebugInspectorDiscovery discovery, string? optIn, string? token, string? registryDirectory)
+        => StartIfOptedIn(host, discovery, optIn, token, registryDirectory, IsSupported, Console.Error);
+
+    /// <summary>The seam: <paramref name="supported"/> stands in for <see cref="IsSupported"/> and stderr is injected.</summary>
+    internal static DebugInspectorCore? StartIfOptedIn(
+        IDebugInspectorHost host, DebugInspectorDiscovery discovery, string? optIn, string? token, string? registryDirectory,
+        bool supported, TextWriter stderr)
+    {
+        if (!supported)
+        {
+            WarnTrimmed(optIn, stderr);
+            return null;
+        }
+        return StartIfOptedInCore(host, discovery, optIn, token, registryDirectory);
+    }
+
+    private static void WarnTrimmed(string? optIn, TextWriter stderr)
+    {
+        if (optIn != "1") return;
+        stderr.WriteLine($"[inspector] {OptInVariable}=1 but the inspector was trimmed out of this build: publish with -p:DirInspectorSupport=true");
+        stderr.Flush();
+    }
+
+    private static DebugInspectorCore? StartIfOptedInCore(
         IDebugInspectorHost host, DebugInspectorDiscovery discovery, string? optIn, string? token, string? registryDirectory)
     {
         if (optIn != "1") return null;
