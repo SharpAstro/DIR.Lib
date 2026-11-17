@@ -46,9 +46,24 @@ public sealed class MenuModel
     /// </summary>
     public Action? Close { get; set; }
 
+    private MenuFocus _focus;
+
+    /// <summary>
+    /// Where the keyboard is: the rows (the default), or the <see cref="Back"/> or <see cref="Close"/> control.
+    /// Tab and Shift+Tab move it (see <see cref="HandleKey(InputKey, InputModifier)"/>); arrows act on the rows, as
+    /// in dialog/whiptail and the Windows guidelines, so a header control is a Tab stop, never an extra row. A
+    /// control the host has since removed reads as <see cref="MenuFocus.Rows"/>.
+    /// </summary>
+    public MenuFocus Focus => _focus switch
+    {
+        MenuFocus.Back when Back is null => MenuFocus.Rows,
+        MenuFocus.Close when Close is null => MenuFocus.Rows,
+        var f => f,
+    };
+
     /// <summary>
     /// Resets the menu with new content and clears the confirmed state.
-    /// <paramref name="selected"/> is clamped to the valid item range.
+    /// <paramref name="selected"/> is clamped to the valid item range. Focus returns to the rows.
     /// </summary>
     public void Reset(string title, string prompt, ImmutableArray<string> items, int selected = 0)
     {
@@ -56,7 +71,31 @@ public sealed class MenuModel
         _prompt = prompt ?? throw new ArgumentNullException(nameof(prompt));
         _items = items;
         _selectedIndex = items.Length == 0 ? 0 : Math.Clamp(selected, 0, items.Length - 1);
+        _focus = MenuFocus.Rows;
         IsConfirmed = false;
+    }
+
+    /// <summary>
+    /// Moves <see cref="Focus"/> one Tab stop on (<paramref name="backwards"/> false) or back, over the stops present
+    /// in reading order: the rows, then Back, then Close, wrapping. Returns false, and changes nothing, when the menu
+    /// has no header control, so a host's own Tab handling still gets the key.
+    /// </summary>
+    public bool MoveFocus(bool backwards)
+    {
+        if (Back is null && Close is null)
+        {
+            return false;
+        }
+
+        Span<MenuFocus> stops = stackalloc MenuFocus[3];
+        var n = 0;
+        stops[n++] = MenuFocus.Rows;
+        if (Back is not null) stops[n++] = MenuFocus.Back;
+        if (Close is not null) stops[n++] = MenuFocus.Close;
+
+        var at = stops[..n].IndexOf(Focus);
+        _focus = stops[(at + (backwards ? n - 1 : 1)) % n];
+        return true;
     }
 
 
@@ -111,9 +150,32 @@ public sealed class MenuModel
     /// and D1..D9 direct-select-and-confirm. Returns true when the key was consumed.
     /// Returns false immediately when already confirmed or when there are no items.
     /// </summary>
-    public bool HandleKey(InputKey key)
+    public bool HandleKey(InputKey key) => HandleKey(key, InputModifier.None);
+
+    /// <summary>
+    /// <see cref="HandleKey(InputKey)"/> with the modifiers, which Tab needs: Tab moves <see cref="Focus"/> on and
+    /// Shift+Tab moves it back (both unconsumed when the menu has no Back or Close control). Enter on a focused
+    /// control runs it and confirms no row. Up and Down return focus to the rows and move the selection there.
+    /// </summary>
+    public bool HandleKey(InputKey key, InputModifier modifiers)
     {
-        if (IsConfirmed || _items.Length == 0)
+        if (IsConfirmed)
+        {
+            return false;
+        }
+
+        if (key == InputKey.Tab)
+        {
+            return MoveFocus(backwards: (modifiers & InputModifier.Shift) != 0);
+        }
+
+        if (key == InputKey.Enter && Focus is MenuFocus.Back or MenuFocus.Close)
+        {
+            (Focus == MenuFocus.Back ? Back : Close)!.Invoke();
+            return true;
+        }
+
+        if (_items.Length == 0)
         {
             return false;
         }
@@ -121,9 +183,11 @@ public sealed class MenuModel
         switch (key)
         {
             case InputKey.Up:
+                _focus = MenuFocus.Rows;
                 MoveUp();
                 return true;
             case InputKey.Down:
+                _focus = MenuFocus.Rows;
                 MoveDown();
                 return true;
             case InputKey.Enter:
@@ -153,4 +217,15 @@ public sealed class MenuModel
                 return false;
         }
     }
+}
+
+/// <summary>Where a <see cref="MenuModel"/>'s keyboard focus is. See <see cref="MenuModel.Focus"/>.</summary>
+public enum MenuFocus
+{
+    /// <summary>The rows: arrows move the selection, Enter confirms it.</summary>
+    Rows,
+    /// <summary>The Back control: Enter runs <see cref="MenuModel.Back"/>.</summary>
+    Back,
+    /// <summary>The close control: Enter runs <see cref="MenuModel.Close"/>.</summary>
+    Close,
 }
