@@ -66,7 +66,9 @@ public static class MenuLayout
         if (header is not null) children.Add(header);
 
         // Title leaf - centered horizontally, larger font.
-        children.Add(new Layout.Node.Leaf(new Layout.Content.Text(model.Title, titleSize)
+        // Carries Tab when the menu has a header control: Tab is how the keyboard reaches Back and close, which
+        // are Tab stops and not rows. With no control, Tab is left to the host.
+        var title = new Layout.Node.Leaf(new Layout.Content.Text(model.Title, titleSize)
         {
             Color = colors.TitleColor,
             HAlign = TextAlign.Center,
@@ -75,10 +77,14 @@ public static class MenuLayout
         {
             Height = Layout.Sizing.Fixed(titleSize * 2f),
             Width = Layout.Sizing.Star(),
-        });
+        };
+        children.Add(HasHeader(model)
+            ? title.WithShortcut(InputKey.Tab).Activatable(_ => model.HandleKey(InputKey.Tab, InputModifier.None))
+            : title);
 
         // Prompt leaf - centered, base font size.
-        children.Add(new Layout.Node.Leaf(new Layout.Content.Text(model.Prompt, fontSize)
+        // Carries Shift+Tab, under the same condition as the title's Tab.
+        var prompt = new Layout.Node.Leaf(new Layout.Content.Text(model.Prompt, fontSize)
         {
             Color = colors.PromptColor,
             HAlign = TextAlign.Center,
@@ -87,7 +93,10 @@ public static class MenuLayout
         {
             Height = Layout.Sizing.Fixed(itemLineH),
             Width = Layout.Sizing.Star(),
-        });
+        };
+        children.Add(HasHeader(model)
+            ? prompt.WithShortcut(InputKey.Tab, InputModifier.Shift).Activatable(_ => model.HandleKey(InputKey.Tab, InputModifier.Shift))
+            : prompt);
 
         // Small gap between prompt and items.
         // Carries Enter.
@@ -100,7 +109,8 @@ public static class MenuLayout
         // One leaf per item.
         for (var i = 0; i < model.Items.Length; i++)
         {
-            var isSelected = i == model.SelectedIndex;
+            // The selection shows only while the rows have focus; with Back or close focused, that control is lit.
+            var isSelected = i == model.SelectedIndex && model.Focus == MenuFocus.Rows;
             var prefix = isSelected ? SelectedPrefix : UnselectedPrefix;
             var label = prefix + model.Items[i];
             var fgColor = isSelected ? colors.SelectedForeground : colors.ItemColor;
@@ -163,14 +173,16 @@ public static class MenuLayout
     {
         var children = ImmutableArray.CreateBuilder<Layout.Node>(3);
         if (model.Back is { } back)
-            children.Add(HeaderControl(BackLabel, "MenuBack", back, TextAlign.Near, BackWidth(width, f), f, colors));
+            children.Add(HeaderControl(BackLabel, "MenuBack", back, TextAlign.Near, BackWidth(width, f), f, colors,
+                focused: model.Focus == MenuFocus.Back));
         children.Add(new Layout.Node.Leaf(new Layout.Content.Box(0, 0))
         {
             Height = Layout.Sizing.Fixed(f * ItemLines),
             Width = Layout.Sizing.Star(),
         });
         if (model.Close is { } close)
-            children.Add(HeaderControl(CloseLabel, "MenuClose", close, TextAlign.Far, CloseWidth(width, f), f, colors, CloseGlyphScale));
+            children.Add(HeaderControl(CloseLabel, "MenuClose", close, TextAlign.Far, CloseWidth(width, f), f, colors,
+                focused: model.Focus == MenuFocus.Close, glyphScale: CloseGlyphScale));
         return new Layout.Node.Stack(children.ToImmutable(), Layout.Axis.Horizontal)
         {
             Height = Layout.Sizing.Fixed(f * HeaderLines),
@@ -178,16 +190,20 @@ public static class MenuLayout
         };
     }
 
-    private static Layout.Node HeaderControl(string label, string id, Action action, TextAlign align, float w, float f, MenuColors colors, float glyphScale = 1f)
+    // A focused control (Tab reached it, see MenuModel.Focus) wears the selected row's colours, so the one lit thing
+    // on the card is always what Enter will do.
+    private static Layout.Node HeaderControl(string label, string id, Action action, TextAlign align, float w, float f, MenuColors colors,
+        bool focused, float glyphScale = 1f)
         => new Layout.Node.Leaf(new Layout.Content.Text(label, f * glyphScale)
         {
-            Color = colors.ItemColor,
+            Color = focused ? colors.SelectedForeground : colors.ItemColor,
             HAlign = align,
             VAlign = TextAlign.Center,
         })
         {
             Height = Layout.Sizing.Fixed(f * ItemLines),
             Width = Layout.Sizing.Fixed(w),
+            Background = focused ? colors.SelectedBackground : null,
             Hit = new HitResult.ButtonHit(id),
             OnClick = _ => action(),
         };

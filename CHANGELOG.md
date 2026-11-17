@@ -9,6 +9,23 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.79
+
+**A menu panel's Back and close controls are reachable by keyboard: Tab and Shift+Tab, as in dialog/whiptail.** (additive)
+
+- **`MenuModel.Focus`** (`MenuFocus.Rows` / `Back` / `Close`): where the keyboard is. Tab moves it on and Shift+Tab back
+  over the stops the menu has, in reading order (rows, Back, close), wrapping. Arrows stay on the rows: a header control is
+  a Tab stop, never an extra row, which is what the Windows keyboard guidelines and dialog/whiptail do. Up or Down from a
+  focused control returns to the rows and moves there.
+- **`MenuModel.HandleKey(InputKey, InputModifier)`**: the new overload that takes the modifiers Shift+Tab needs. Enter on a
+  focused control runs it and confirms no row. With no Back or close, Tab is not consumed, so a host's own Tab still gets
+  it. The one-argument `HandleKey(InputKey)` is unchanged and forwards with no modifiers.
+- **`MenuModel.MoveFocus(bool backwards)`** for a host that drives focus itself.
+- **`MenuLayout`** lights the focused control in the selected row's colours and shows the row's selection only while the
+  rows have focus, so one thing on the card is lit: what Enter will do. The panel declares Tab and Shift+Tab as shortcuts
+  (on the title and prompt rows) only when it has a header control.
+- **`PixelMenuWidget.HandleInput`** passes the key's modifiers through.
+
 ## 11.78
 
 **SVG reaches DIR.Lib: a drawing can be baked to an icon, or held and drawn in colour, and it is never read while drawing.**
