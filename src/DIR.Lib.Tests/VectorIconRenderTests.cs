@@ -1,4 +1,7 @@
+using System.Diagnostics.CodeAnalysis;
 using DIR.Lib;
+using SharpAstro.Codecs.Abstractions;
+using SharpAstro.Fonts.Scenes;
 using SharpAstro.Png;
 using Shouldly;
 using Xunit;
@@ -119,6 +122,55 @@ public sealed class VectorIconRenderTests
         "<rect x=\"84\" y=\"6\" width=\"30\" height=\"22\" fill=\"url(#dots)\" stroke=\"#333\"/>" +
         $"<image x=\"84\" y=\"34\" width=\"20\" height=\"20\" href=\"{EmbeddedPicture()}\"/>" +
         "<path d=\"M6 54 H70\" fill=\"none\" stroke=\"#333\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></svg>";
+
+    /// <summary>
+    /// A file decoder in the shape of <c>ImageCodecs.TryDecode</c> (the <c>SharpAstro.Codecs</c> facade, which an app
+    /// passes and this test project does not reference), for a format made up here: "RAW", a width, a height, RGB bytes.
+    /// </summary>
+    private static bool TryDecodeRaw(ReadOnlySpan<byte> data, [NotNullWhen(true)] out IDecodedImage? image)
+    {
+        image = null;
+        if (data.Length < 5 || !data[..3].SequenceEqual("RAW"u8)) return false;
+        image = new RasterImage(data[3], data[4], 3, SampleFormat.UInt8, data[5..].ToArray());
+        return true;
+    }
+
+    [Fact]
+    public void AnEmbeddedPictureThatIsNotAPng_IsDrawnOnceTheIconIsGivenADecoder()
+    {
+        // 2 x 1, a red pixel and a green one, in a format only the decoder given knows; beside it, a PNG.
+        string raw = "data:image/x-raw;base64," + Convert.ToBase64String([(byte)'R', (byte)'A', (byte)'W', 2, 1, 255, 0, 0, 0, 255, 0]);
+        string svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"20\">" +
+            $"<image width=\"20\" height=\"20\" preserveAspectRatio=\"none\" href=\"{raw}\"/>" +
+            $"<image x=\"20\" width=\"20\" height=\"20\" href=\"{EmbeddedPicture()}\"/></svg>";
+
+        // Without a decoder: the PNG, and nothing where the other picture is.
+        VectorIcon plain = VectorIcon.FromSvg(svg);
+        plain.Issues.ShouldBeEmpty();
+        At(plain.Image(40, 20), 5, 10).A.ShouldBe((byte)0);
+        At(plain.Image(40, 20), 22, 2).ShouldBe(((byte)220, (byte)50, (byte)50, (byte)255));
+        // How many pixels a mask covers: the picture adds its 20 x 20 to the PNG's.
+        static int Covered(IconBaker.CoverageMask mask) => mask.Runs.Sum(run => run.Width);
+        int without = Covered(plain.Mask(40));
+
+        // With one, passed as the method it is: both pictures, in colour and as coverage.
+        foreach (VectorIcon icon in (VectorIcon[])[
+            VectorIcon.FromSvg(svg, TryDecodeRaw),
+            VectorIcon.FromSvg(System.Text.Encoding.UTF8.GetBytes(svg), TryDecodeRaw),
+            VectorIcon.Load(plain.ToSceneFile(), TryDecodeRaw),
+            new VectorIcon(plain.Scene, TryDecodeRaw)])
+        {
+            RgbaImage image = icon.Image(40, 20);
+            At(image, 2, 10).ShouldBe(((byte)255, (byte)0, (byte)0, (byte)255));
+            At(image, 17, 10).ShouldBe(((byte)0, (byte)255, (byte)0, (byte)255));
+            At(image, 22, 2).ShouldBe(((byte)220, (byte)50, (byte)50, (byte)255));
+            Covered(icon.Mask(40)).ShouldBe(without + 400);
+        }
+
+        // The baker takes the same decoder directly.
+        Covered(IconBaker.Bake(plain.Scene, 40, IconBaker.DefaultAlphaLevels, SceneRasterizer.DecodeWith(TryDecodeRaw)))
+            .ShouldBe(Covered(IconBaker.Bake(plain.Scene, 40)) + 400);
+    }
 
     [Fact]
     public void AnSvgWithAClipAMaskAPatternMarkersAndAPicture_IsDrawnWithAllOfThem()

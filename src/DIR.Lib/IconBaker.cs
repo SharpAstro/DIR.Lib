@@ -141,7 +141,21 @@ public static class IconBaker
     /// <param name="scene">The drawing.</param>
     /// <param name="size">Edge of the square mask, 1 to <see cref="MaxSceneSize"/> pixels.</param>
     /// <param name="alphaLevels">Coverage buckets, 1..8. See <see cref="DefaultAlphaLevels"/>.</param>
-    public static CoverageMask Bake(VectorScene scene, int size, int alphaLevels = DefaultAlphaLevels)
+    public static CoverageMask Bake(VectorScene scene, int size, int alphaLevels = DefaultAlphaLevels) =>
+        Bake(scene, size, alphaLevels, null);
+
+    /// <summary>
+    /// Bakes a vector drawing at one size, as <see cref="Bake(VectorScene, int, int)"/> does, with the pictures the
+    /// drawing carries decoded by <paramref name="decodeImage"/>. A picture counts towards the coverage by its alpha.
+    /// </summary>
+    /// <param name="scene">The drawing.</param>
+    /// <param name="size">Edge of the square mask, 1 to <see cref="MaxSceneSize"/> pixels.</param>
+    /// <param name="alphaLevels">Coverage buckets, 1..8. See <see cref="DefaultAlphaLevels"/>.</param>
+    /// <param name="decodeImage">
+    /// Decodes the scene's pictures; null for an embedded PNG only. <c>SceneRasterizer.DecodeWith(ImageCodecs.TryDecode)</c>
+    /// reads every format the <c>SharpAstro.Codecs</c> facade does.
+    /// </param>
+    public static CoverageMask Bake(VectorScene scene, int size, int alphaLevels, SceneImageDecoder? decodeImage)
     {
         ArgumentNullException.ThrowIfNull(scene);
         ArgumentOutOfRangeException.ThrowIfLessThan(size, 1);
@@ -156,7 +170,7 @@ public static class IconBaker
         var scale = size / Math.Max(scene.Width, scene.Height);
         var fit = Matrix3x2.CreateScale(scale)
             * Matrix3x2.CreateTranslation((size - scene.Width * scale) / 2f, (size - scene.Height * scale) / 2f);
-        var alpha = SceneRasterizer.RasterizeCoverage(scene, size, size, fit);
+        var alpha = SceneRasterizer.RasterizeCoverage(scene, size, size, fit, decodeImage);
         return new CoverageMask(size, Runs(alpha, pixelStride: 1, alphaOffset: 0, size, size, 0, 0, size, alphaLevels));
     }
 

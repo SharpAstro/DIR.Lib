@@ -10,11 +10,15 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 
 SVG icons and images with clips, masks, markers, patterns and embedded pictures.
   * **Pins**: `SharpAstro.Svg` 3.37 (reads `clipPath`, `mask`, markers, `paint-order`, `image` and `pattern`) and
-    `SharpAstro.Fonts` 1.19 (draws them). No DIR.Lib code changed: `VectorIcon`, `IconBaker.Bake(VectorScene, ...)`
-    and `bake-icons --svg` get them through the two packages.
-  * **An embedded PNG is drawn** (an `image` with a `data:` URI). A picture in another format, or one the document
-    only names by an address, is left out: nothing is fetched, and `VectorIcon.Issues` does not list it, because the
-    reader carried it faithfully and only the drawing skipped it.
+    `SharpAstro.Fonts` 1.19 (draws them). `VectorIcon`, `IconBaker.Bake(VectorScene, ...)` and `bake-icons --svg`
+    get them through the two packages.
+  * **An embedded PNG is drawn** (an `image` with a `data:` URI). A picture in another format is drawn once the icon
+    is given a decoder: `VectorIcon.FromSvg(svg, ImageCodecs.TryDecode)` (also `Load` and the constructor) takes the
+    `SharpAstro.Codecs` facade's method as it is, and `IconBaker.Bake(scene, size, alphaLevels, decodeImage)` takes
+    `SceneRasterizer.DecodeWith(ImageCodecs.TryDecode)`. DIR.Lib does not reference the facade, so an app that
+    draws no such pictures does not carry every codec. Without a decoder such a picture is left out, and
+    `VectorIcon.Issues` does not list it, because the reader carried it faithfully and only the drawing skipped it.
+    A picture the document only names by an address is never drawn: nothing is fetched.
   * A scene file written by `VectorIcon.ToSceneFile` is now version 2 of the layout; files written by 11.78 still load.
   * Tests: `VectorIconRenderTests` draws one SVG that uses a clip, a mask, a pattern, markers and an embedded PNG, as
     a colour image and as a mask through a widget, and keeps a baseline capture (`Baselines/svg_rung3_features.png`).
