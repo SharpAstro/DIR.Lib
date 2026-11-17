@@ -6,6 +6,19 @@ The version NUMBER is not here: it lives in `src/Directory.Build.props` (`Versio
 build job reads that property back rather than restating it, so a package can never declare a version
 this file disagrees with. Bump it there and add the entry here, in the same commit.
 
+## 11.79
+
+SVG icons and images with clips, masks, markers, patterns and embedded pictures.
+  * **Pins**: `SharpAstro.Svg` 3.37 (reads `clipPath`, `mask`, markers, `paint-order`, `image` and `pattern`) and
+    `SharpAstro.Fonts` 1.19 (draws them). No DIR.Lib code changed: `VectorIcon`, `IconBaker.Bake(VectorScene, ...)`
+    and `bake-icons --svg` get them through the two packages.
+  * **An embedded PNG is drawn** (an `image` with a `data:` URI). A picture in another format, or one the document
+    only names by an address, is left out: nothing is fetched, and `VectorIcon.Issues` does not list it, because the
+    reader carried it faithfully and only the drawing skipped it.
+  * A scene file written by `VectorIcon.ToSceneFile` is now version 2 of the layout; files written by 11.78 still load.
+  * Tests: `VectorIconRenderTests` draws one SVG that uses a clip, a mask, a pattern, markers and an embedded PNG, as
+    a colour image and as a mask through a widget, and keeps a baseline capture (`Baselines/svg_rung3_features.png`).
+
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 

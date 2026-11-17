@@ -94,6 +94,78 @@ public sealed class VectorIconRenderTests
         At(renderer.Surface, 5, 5).ShouldBe(((byte)255, (byte)255, (byte)255, (byte)255));
     }
 
+    /// <summary>A 4 x 4 PNG, as an SVG would embed it: four flat quarters, the last half transparent.</summary>
+    private static string EmbeddedPicture()
+    {
+        ReadOnlySpan<byte> quarters = [220, 50, 50, 255, 40, 140, 220, 255, 250, 200, 40, 255, 30, 30, 30, 128];
+        byte[] rgba = new byte[4 * 4 * 4];
+        for (int y = 0; y < 4; y++)
+        {
+            for (int x = 0; x < 4; x++) quarters.Slice((y / 2 * 2 + x / 2) * 4, 4).CopyTo(rgba.AsSpan((y * 4 + x) * 4));
+        }
+        return "data:image/png;base64," + Convert.ToBase64String(PngWriter.Encode(rgba, 4, 4));
+    }
+
+    /// <summary>One drawing that uses everything SharpAstro.Svg 3.37 added: a clip, a mask, a pattern, markers and an embedded picture.</summary>
+    private static string Rung3Drawing() =>
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 60\">" +
+        "<defs><clipPath id=\"round\"><circle cx=\"20\" cy=\"30\" r=\"16\"/></clipPath>" +
+        "<linearGradient id=\"fade\"><stop offset=\"0\" stop-color=\"#fff\"/><stop offset=\"1\" stop-color=\"#000\"/></linearGradient>" +
+        "<mask id=\"soft\"><rect x=\"42\" y=\"12\" width=\"36\" height=\"36\" fill=\"url(#fade)\"/></mask>" +
+        "<pattern id=\"dots\" patternUnits=\"userSpaceOnUse\" width=\"6\" height=\"6\"><circle cx=\"3\" cy=\"3\" r=\"2\" fill=\"#0a7\"/></pattern>" +
+        "<marker id=\"arrow\" markerWidth=\"4\" markerHeight=\"4\" refX=\"3\" refY=\"2\" orient=\"auto\"><path d=\"M0 0 L4 2 L0 4 Z\" fill=\"#c22\"/></marker></defs>" +
+        "<rect x=\"2\" y=\"12\" width=\"36\" height=\"36\" fill=\"#36c\" clip-path=\"url(#round)\"/>" +
+        "<rect x=\"42\" y=\"12\" width=\"36\" height=\"36\" fill=\"#c60\" mask=\"url(#soft)\"/>" +
+        "<rect x=\"84\" y=\"6\" width=\"30\" height=\"22\" fill=\"url(#dots)\" stroke=\"#333\"/>" +
+        $"<image x=\"84\" y=\"34\" width=\"20\" height=\"20\" href=\"{EmbeddedPicture()}\"/>" +
+        "<path d=\"M6 54 H70\" fill=\"none\" stroke=\"#333\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></svg>";
+
+    [Fact]
+    public void AnSvgWithAClipAMaskAPatternMarkersAndAPicture_IsDrawnWithAllOfThem()
+    {
+        VectorIcon icon = VectorIcon.FromSvg(Rung3Drawing());
+        icon.Issues.ShouldBeEmpty();
+        RgbaImage image = icon.Image(240, 120);
+
+        // The clip: the blue square shows only inside the circle (centre 20,30 radius 16 in the drawing, doubled here).
+        At(image, 40, 60).ShouldBe(((byte)0x33, (byte)0x66, (byte)0xcc, (byte)255));
+        At(image, 8, 28).A.ShouldBe((byte)0);
+        // The mask: the orange square fades from left (white in the mask) to right (black).
+        ((int)At(image, 88, 60).A).ShouldBeGreaterThan(230);
+        ((int)At(image, 150, 60).A).ShouldBeLessThan(25);
+        // The pattern: a dot's centre is green, between dots there is nothing.
+        At(image, 174, 18).ShouldBe(((byte)0x00, (byte)0xaa, (byte)0x77, (byte)255));
+        At(image, 180, 24).A.ShouldBe((byte)0);
+        // The picture: its top-left quarter is red, its bottom-right one half transparent.
+        At(image, 172, 72).ShouldBe(((byte)220, (byte)50, (byte)50, (byte)255));
+        ((int)At(image, 203, 103).A).ShouldBeInRange(126, 130);
+        // The marker: the arrowhead at the end of the line.
+        At(image, 136, 108).ShouldBe(((byte)0xcc, (byte)0x22, (byte)0x22, (byte)255));
+
+        // As a single-colour mark through a widget: the same shapes, as coverage.
+        using var renderer = new RgbaImageRenderer(100, 60);
+        renderer.FillRectangle(new RectInt(new PointInt(100, 60), new PointInt(0, 0)), new RGBAColor32(0xf4, 0xf5, 0xf7, 255));
+        new IconWidget(renderer).Draw(icon, 2, 2, 56, new RGBAColor32(0x1f, 0x29, 0x37, 255));
+        IconBaker.CoverageMask mask = icon.Mask(56);
+        mask.Runs.Length.ShouldBeGreaterThan(0);
+
+        // The capture a person looks at; DIR_LIB_UPDATE_BASELINES=1 rewrites it.
+        string baseline = Path.Combine(AppContext.BaseDirectory, "Baselines", "svg_rung3_features.png");
+        string source = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "Baselines", "svg_rung3_features.png"));
+        if (Environment.GetEnvironmentVariable("DIR_LIB_UPDATE_BASELINES") == "1")
+        {
+            PngWriter.Save(source, image.Pixels, image.Width, image.Height);
+            PngWriter.Save(baseline, image.Pixels, image.Width, image.Height);
+            return;
+        }
+        File.Exists(baseline).ShouldBeTrue($"No baseline at {baseline}. Run once with DIR_LIB_UPDATE_BASELINES=1 and look at the picture.");
+        PngImageDecoder.TryDecodeRgba8(File.ReadAllBytes(baseline), out byte[]? expected, out int w, out int h).ShouldBeTrue();
+        (w, h).ShouldBe((image.Width, image.Height));
+        int worst = 0;
+        for (int i = 0; i < expected!.Length; i++) worst = Math.Max(worst, Math.Abs(expected[i] - image.Pixels[i]));
+        worst.ShouldBeLessThanOrEqualTo(2);
+    }
+
     /// <summary>
     /// A row of SVG icons drawn by a widget at three DPI scales, on a dark and a light panel, compared with a
     /// committed baseline. It is the capture a person looks at (set <c>DIR_LIB_UPDATE_BASELINES=1</c> to rewrite it),
