@@ -142,7 +142,7 @@ public static class IconBaker
     /// <param name="size">Edge of the square mask, 1 to <see cref="MaxSceneSize"/> pixels.</param>
     /// <param name="alphaLevels">Coverage buckets, 1..8. See <see cref="DefaultAlphaLevels"/>.</param>
     public static CoverageMask Bake(VectorScene scene, int size, int alphaLevels = DefaultAlphaLevels) =>
-        Bake(scene, size, alphaLevels, null);
+        Bake(scene, size, alphaLevels, new SceneRenderOptions());
 
     /// <summary>
     /// Bakes a vector drawing at one size, as <see cref="Bake(VectorScene, int, int)"/> does, with the pictures the
@@ -155,9 +155,27 @@ public static class IconBaker
     /// Decodes the scene's pictures; null for an embedded PNG only. <c>SceneRasterizer.DecodeWith(ImageCodecs.TryDecode)</c>
     /// reads every format the <c>SharpAstro.Codecs</c> facade does.
     /// </param>
-    public static CoverageMask Bake(VectorScene scene, int size, int alphaLevels, SceneImageDecoder? decodeImage)
+    public static CoverageMask Bake(VectorScene scene, int size, int alphaLevels, SceneImageDecoder? decodeImage) =>
+        Bake(scene, size, alphaLevels, new SceneRenderOptions { DecodeImage = decodeImage });
+
+    /// <summary>
+    /// Bakes a vector drawing at one size, as <see cref="Bake(VectorScene, int, int)"/> does, with what
+    /// <paramref name="render"/> gives: a decoder for its pictures, a shaper (and so the fonts) for its text. Text
+    /// counts towards the coverage like any shape.
+    /// </summary>
+    /// <param name="scene">The drawing.</param>
+    /// <param name="size">Edge of the square mask, 1 to <see cref="MaxSceneSize"/> pixels.</param>
+    /// <param name="alphaLevels">Coverage buckets, 1..8. See <see cref="DefaultAlphaLevels"/>.</param>
+    /// <param name="render">
+    /// What is not given is the default: an embedded PNG is decoded, and text is shaped with the fonts installed on
+    /// this machine (<see cref="SceneFonts.Installed"/>). A mask baked at build time for every machine wants
+    /// <see cref="SceneFonts.From"/> and a face that is in the repository.
+    /// </param>
+    public static CoverageMask Bake(VectorScene scene, int size, int alphaLevels, SceneRenderOptions render)
     {
         ArgumentNullException.ThrowIfNull(scene);
+        ArgumentNullException.ThrowIfNull(render);
+        if (render.ShapeText is null) render = render with { ShapeText = SceneFonts.Installed };
         ArgumentOutOfRangeException.ThrowIfLessThan(size, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(size, MaxSceneSize);
         ArgumentOutOfRangeException.ThrowIfLessThan(alphaLevels, 1);
@@ -170,7 +188,7 @@ public static class IconBaker
         var scale = size / Math.Max(scene.Width, scene.Height);
         var fit = Matrix3x2.CreateScale(scale)
             * Matrix3x2.CreateTranslation((size - scene.Width * scale) / 2f, (size - scene.Height * scale) / 2f);
-        var alpha = SceneRasterizer.RasterizeCoverage(scene, size, size, fit, decodeImage);
+        var alpha = SceneRasterizer.RasterizeCoverage(scene, size, size, fit, render);
         return new CoverageMask(size, Runs(alpha, pixelStride: 1, alphaOffset: 0, size, size, 0, 0, size, alphaLevels));
     }
 

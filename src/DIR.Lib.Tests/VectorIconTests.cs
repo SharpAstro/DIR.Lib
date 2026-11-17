@@ -182,8 +182,8 @@ public sealed class VectorIconTests
     [Fact]
     public void WhatTheReaderLeftOut_IsOnTheIcon_AndABadFileIsRefused()
     {
-        VectorIcon icon = VectorIcon.FromSvg(Svg("<rect width=\"24\" height=\"24\"/><text>label</text>"));
-        icon.Issues.ShouldHaveSingleItem().What.ShouldBe("<text> element");
+        VectorIcon icon = VectorIcon.FromSvg(Svg("<rect width=\"24\" height=\"24\"/><switch><g/></switch>"));
+        icon.Issues.ShouldHaveSingleItem().What.ShouldBe("<switch> element");
         icon.Mask(16).IsEmpty.ShouldBeFalse();
 
         Should.Throw<InvalidDataException>(() => VectorIcon.FromSvg("<html/>"));
