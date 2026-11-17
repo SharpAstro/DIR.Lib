@@ -218,6 +218,80 @@ public sealed class VectorIconRenderTests
         worst.ShouldBeLessThanOrEqualTo(2);
     }
 
+    /// <summary>A badge with text in it: a label in two sizes and colours, underlined, and a word set along a curve.</summary>
+    private const string Badge =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"90\">" +
+        "<rect x=\"2\" y=\"2\" width=\"196\" height=\"86\" rx=\"10\" fill=\"#1f2937\"/>" +
+        "<text x=\"100\" y=\"40\" text-anchor=\"middle\" font-family=\"Whatever, sans-serif\" font-size=\"26\" fill=\"#f4f5f7\">" +
+        "HI <tspan fill=\"#ffb020\" font-size=\"18\" text-decoration=\"underline\">there</tspan></text>" +
+        "<path id=\"arc\" d=\"M 30 78 Q 100 50 170 78\" fill=\"none\"/>" +
+        "<text font-family=\"sans-serif\" font-size=\"13\" fill=\"#9ad0ff\"><textPath href=\"#arc\" startOffset=\"50%\" text-anchor=\"middle\">along a curve</textPath></text></svg>";
+
+    [Fact]
+    public void AnSvgWithText_IsDrawnWithTheFontsTheIconIsGiven_AndItsTextCountsAsCoverage()
+    {
+        // One face that is in the repository, whatever families the drawing names: the same picture on every machine.
+        string font = Path.Combine(AppContext.BaseDirectory, "Fonts", "DejaVuSans.ttf");
+        var render = new SceneRenderOptions { ShapeText = SceneFonts.From(font) };
+        VectorIcon icon = VectorIcon.FromSvg(Badge, render);
+        icon.Issues.ShouldBeEmpty();
+        RgbaImage image = icon.Image(200, 90);
+
+        // The badge without its text, to tell the text's pixels from the panel's.
+        VectorIcon bare = VectorIcon.FromSvg(Badge, new SceneRenderOptions { ShapeText = SceneFonts.From() });
+        RgbaImage panel = bare.Image(200, 90);
+        At(panel, 100, 30).ShouldBe(((byte)0x1f, (byte)0x29, (byte)0x37, (byte)255));
+        int textPixels = 0, light = 0, amber = 0, blue = 0;
+        for (int y = 0; y < 90; y++)
+        {
+            for (int x = 0; x < 200; x++)
+            {
+                (byte r, byte g, byte b, byte a) = At(image, x, y);
+                if ((r, g, b, a) == At(panel, x, y)) continue;
+                textPixels++;
+                if ((r, g, b) == (0xf4, 0xf5, 0xf7)) light++;
+                if ((r, g, b) == (0xff, 0xb0, 0x20)) amber++;
+                if ((r, g, b) == (0x9a, 0xd0, 0xff)) blue++;
+            }
+        }
+        // Each of the three paints is there, solid somewhere, and nothing is drawn far from where text is.
+        textPixels.ShouldBeGreaterThan(600);
+        light.ShouldBeGreaterThan(100);
+        amber.ShouldBeGreaterThan(60);
+        blue.ShouldBeGreaterThan(10);               // a 13 px font has few pixels that are all ink
+        At(image, 10, 10).ShouldBe(At(panel, 10, 10));
+
+        // As a single-colour mark text is coverage like any shape: a drawing of nothing but a letter has a mask, with
+        // the fonts it is given and none without any.
+        const string letter = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"40\"><text x=\"8\" y=\"32\" font-size=\"32\">H</text></svg>";
+        IconBaker.CoverageMask mask = VectorIcon.FromSvg(letter, render).Mask(40);
+        mask.Runs.Length.ShouldBeGreaterThan(10);
+        VectorIcon.FromSvg(letter, new SceneRenderOptions { ShapeText = SceneFonts.From() }).Mask(40).IsEmpty.ShouldBeTrue();
+        IconBaker.Bake(VectorIcon.FromSvg(letter).Scene, 40, IconBaker.DefaultAlphaLevels, render).Runs.ShouldBe(mask.Runs);
+
+        // A scene file carries the text as the SVG did, and draws the same once it is given the same fonts.
+        VectorIcon.Load(icon.ToSceneFile(), render).Image(200, 90).Pixels.ShouldBe(image.Pixels);
+        new VectorIcon(icon.Scene, render).Image(200, 90).Pixels.ShouldBe(image.Pixels);
+        // With no fonts named the machine's are used: whatever they are, the drawing does not fail.
+        Should.NotThrow(() => VectorIcon.FromSvg(Badge.Replace("Whatever, ", "")).Image(200, 90));
+
+        // The capture a person looks at; DIR_LIB_UPDATE_BASELINES=1 rewrites it.
+        string baseline = Path.Combine(AppContext.BaseDirectory, "Baselines", "svg_text_badge.png");
+        string source = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "Baselines", "svg_text_badge.png"));
+        if (Environment.GetEnvironmentVariable("DIR_LIB_UPDATE_BASELINES") == "1")
+        {
+            PngWriter.Save(source, image.Pixels, image.Width, image.Height);
+            PngWriter.Save(baseline, image.Pixels, image.Width, image.Height);
+            return;
+        }
+        File.Exists(baseline).ShouldBeTrue($"No baseline at {baseline}. Run once with DIR_LIB_UPDATE_BASELINES=1 and look at the picture.");
+        PngImageDecoder.TryDecodeRgba8(File.ReadAllBytes(baseline), out byte[]? expected, out int w, out int h).ShouldBeTrue();
+        (w, h).ShouldBe((image.Width, image.Height));
+        int worst = 0;
+        for (int i = 0; i < expected!.Length; i++) worst = Math.Max(worst, Math.Abs(expected[i] - image.Pixels[i]));
+        worst.ShouldBeLessThanOrEqualTo(2);
+    }
+
     /// <summary>
     /// A row of SVG icons drawn by a widget at three DPI scales, on a dark and a light panel, compared with a
     /// committed baseline. It is the capture a person looks at (set <c>DIR_LIB_UPDATE_BASELINES=1</c> to rewrite it),
