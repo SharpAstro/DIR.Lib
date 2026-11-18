@@ -107,7 +107,7 @@ public class NotificationsRenderTests
     {
         var renderer = new RgbaImageRenderer((uint)W, (uint)H);
         renderer.Surface.Clear(Theme.Palette.ContentBg);
-        new Widget(renderer).Render(tree, new RectF32(0, 0, W, H));
+        new Widget(renderer) { FontPath = NotificationsRenderTests.FontPath }.Render(tree, new RectF32(0, 0, W, H));
         return renderer.Surface;
     }
 
