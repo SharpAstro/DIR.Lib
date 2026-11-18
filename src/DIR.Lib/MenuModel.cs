@@ -79,23 +79,23 @@ public sealed class MenuModel
             var header = Back is not null || Close is not null;
             if (_items.Length > 0)
             {
-                lines.Add(new("↑ ↓", "Move the selection"));
-                lines.Add(new("Enter", header ? "Choose what is highlighted" : "Choose the highlighted row"));
+                lines.Add(new("↑ ↓", "Move"));
+                lines.Add(new("Enter", "Choose"));
                 var digits = Math.Min(9, _items.Length);
-                lines.Add(new(digits == 1 ? "1" : $"1–{digits}", digits == 1 ? "Choose the row" : "Choose a row by its number"));
+                lines.Add(new(digits == 1 ? "1" : $"1–{digits}", digits == 1 ? "Choose" : "Choose by number"));
             }
             else if (header)
             {
-                lines.Add(new("Enter", "Choose what is highlighted"));
+                lines.Add(new("Enter", "Choose"));
             }
 
             if (header)
             {
                 var reach = (Back, Close) switch
                 {
-                    (not null, not null) => "Reach Back and Close",
-                    (not null, null) => "Reach Back",
-                    _ => "Reach Close",
+                    (not null, not null) => "To Back, Close",
+                    (not null, null) => "To Back",
+                    _ => "To Close",
                 };
                 lines.Add(new("Tab, Shift+Tab", reach));
             }
@@ -300,7 +300,7 @@ public sealed class MenuModel
 
 /// <summary>One line of a <see cref="MenuModel"/>'s key list: the key or keys, and what they do.</summary>
 /// <param name="Keys">The keys as a reader types them, e.g. "Esc" or "Tab, Shift+Tab".</param>
-/// <param name="Action">What they do, as a short imperative, e.g. "Go back a step".</param>
+/// <param name="Action">What they do, as a short imperative, e.g. "Go back".</param>
 public readonly record struct MenuHelpLine(string Keys, string Action);
 
 /// <summary>Where a <see cref="MenuModel"/>'s keyboard focus is. See <see cref="MenuModel.Focus"/>.</summary>
