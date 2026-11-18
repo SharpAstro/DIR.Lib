@@ -73,17 +73,17 @@ public class MenuHelpTests
         Model(rows: 1).HelpLines.ShouldContain(l => l.Keys == "1");
 
         var both = Model(back: () => { }, close: () => { }).HelpLines;
-        both.ShouldContain(new MenuHelpLine("Tab, Shift+Tab", "Reach Back and Close"));
-        Model(back: () => { }).HelpLines.ShouldContain(new MenuHelpLine("Tab, Shift+Tab", "Reach Back"));
-        Model(close: () => { }).HelpLines.ShouldContain(new MenuHelpLine("Tab, Shift+Tab", "Reach Close"));
+        both.ShouldContain(new MenuHelpLine("Tab, Shift+Tab", "To Back, Close"));
+        Model(back: () => { }).HelpLines.ShouldContain(new MenuHelpLine("Tab, Shift+Tab", "To Back"));
+        Model(close: () => { }).HelpLines.ShouldContain(new MenuHelpLine("Tab, Shift+Tab", "To Close"));
     }
 
     [Fact]
     public void HostLinesComeAfterTheMenusOwn()
     {
         var m = Model(back: () => { });
-        m.HostHelp = [new("Esc, Backspace", "Go back a step")];
-        m.HelpLines[^1].ShouldBe(new MenuHelpLine("Esc, Backspace", "Go back a step"));
+        m.HostHelp = [new("Esc, Backspace", "Go back")];
+        m.HelpLines[^1].ShouldBe(new MenuHelpLine("Esc, Backspace", "Go back"));
     }
 
     /// <summary>Half the font size per character, as <see cref="DeclarationStubRenderer"/> measures.</summary>
@@ -100,7 +100,7 @@ public class MenuHelpTests
     {
         var ctx = new HalfEmCtx();
         var m = Model(back: () => { }, close: () => { });
-        m.HostHelp = [new("Esc", "Go back a step"), new("Backspace", "Go back a step")];
+        m.HostHelp = [new("Esc", "Go back"), new("Backspace", "Go back")];
         m.HandleKey(InputKey.F1);
 
         var arranged = Layout.Engine.Arrange(MenuLayout.BuildPanel(m, new MenuColors(), new MenuPanelStyle(), ctx, w, h),
@@ -131,7 +131,7 @@ public class MenuHelpTests
 
         texts.ShouldContain(MenuModel.HelpTitle);
         texts.ShouldContain(MenuModel.HelpPrompt);
-        texts.ShouldContain("↑ ↓   Move the selection");
+        texts.ShouldContain("↑ ↓   Move");
         texts.ShouldNotContain(t => t.Contains("row 1"), "the rows are not shown under the list");
     }
 
