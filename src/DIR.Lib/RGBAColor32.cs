@@ -39,4 +39,16 @@ public readonly record struct RGBAColor32(byte Red, byte Green, byte Blue, byte 
     /// </summary>
     public RGBAColor32 WithAlpha(byte maskAlpha) =>
         new(Red, Green, Blue, (byte)((Alpha * maskAlpha + 127) / 255));
+
+    /// <summary>
+    /// The same colour as the vector scene's and the font stack's <see cref="SharpAstro.VectorGraphics.Rgba32"/>
+    /// (sRGB, 8 bits a channel, alpha not premultiplied: the two differ in nothing but their names). Implicit both
+    /// ways, so a colour of the UI can be handed to what reads or draws a scene as it is, a palette colour as
+    /// <c>SvgReadOptions.CurrentColor</c> for one, and a colour that comes out of a scene or a font's palette can be
+    /// used as a colour of the UI.
+    /// </summary>
+    public static implicit operator SharpAstro.VectorGraphics.Rgba32(RGBAColor32 color) => new(color.Red, color.Green, color.Blue, color.Alpha);
+
+    /// <inheritdoc cref="op_Implicit(RGBAColor32)"/>
+    public static implicit operator RGBAColor32(SharpAstro.VectorGraphics.Rgba32 color) => new(color.R, color.G, color.B, color.A);
 }

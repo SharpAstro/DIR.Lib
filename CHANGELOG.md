@@ -9,6 +9,26 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.82
+
+SVG blend modes and filters, and one colour between the UI and a drawing. (additive)
+  * **Pins**: `SharpAstro.Svg` 3.40 and `SharpAstro.Fonts` 2.0. They move together: Fonts 2.0 draws what Svg 3.40 reads.
+    Fonts is a major number because its own `Rgba32` is gone (it uses `SharpAstro.VectorGraphics.Rgba32`); nothing in
+    DIR.Lib named that type, and no code here changed for it.
+  * **Drop shadows, glows, blurs and blend modes in an SVG are drawn.** `VectorIcon`, `IconBaker.Bake(VectorScene, ...)`
+    and `bake-icons --svg` draw `filter` (blur, offset, flood, composite, merge, colour matrix, blend, component
+    transfer, drop shadow) and `mix-blend-mode` / `isolation`; 11.80 listed them in `VectorIcon.Issues` and drew the
+    element plainly. The filter steps that are still not read are listed there as before.
+  * **A filtered drawing costs more to rasterise** (a buffer and a pass for every step), once a size, as before: a
+    `VectorIcon` keeps what it rasterised.
+  * **`RGBAColor32` converts to and from `SharpAstro.VectorGraphics.Rgba32`**, implicitly, both ways. They are the same
+    colour under two names (sRGB, 8 bits a channel, alpha not premultiplied). A palette colour can be handed to a
+    drawing as it is: `VectorIcon.FromSvg(svg, new SvgReadOptions { CurrentColor = palette.Accent })`.
+  * A scene file written by `VectorIcon.ToSceneFile` is now version 4 of the layout; files written by 11.78 to 11.80
+    still load. A file written by this version is not read by 11.80 or earlier.
+  * Tests: `VectorIconRenderTests` draws a card with a drop shadow, a light with a glow, a tint laid on with `screen`
+    and a blurred, desaturated corner, and keeps a baseline capture (`Baselines/svg_effects_card.png`).
+
 ## 11.81
 
 **F1 shows a menu's keys on its card, in place of the rows.** (additive)
