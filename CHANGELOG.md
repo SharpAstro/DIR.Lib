@@ -9,6 +9,25 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.81
+
+**F1 shows a menu's keys on its card, in place of the rows.** (additive)
+
+- **`MenuModel.ShowingHelp`**: F1 opens the key list; while it is open F1 or Esc closes it and every other key is consumed
+  unchanged, so nothing behind the list can be chosen blind. `Reset` leaves it open, so a host that refreshes its rows
+  meanwhile (a lobby's peer list) does not close it under the reader. `ToggleHelp()` for a host that opens it some other way.
+- **`MenuModel.HelpLines`**: the keys this menu answers to now, as `MenuHelpLine(Keys, Action)` pairs: arrows, Enter and
+  1-N for its rows, Tab and Shift+Tab only when it has a Back or close control. **`MenuModel.HostHelp`** appends the keys
+  the host handles itself (Esc or Backspace going back, say); the model cannot know those.
+- **`MenuLayout.BuildPanel`** shows the list on the same card: title "Keys", prompt "F1 or Esc to return", then one row per
+  key in two measured columns, the descriptions lined up. No header controls while it is open. `BuildTree`, which cannot
+  measure and fills its surface, shows each key as one centred line instead.
+- **Keys:** the column declares F1 and, while the list is open, the title declares Esc, so `InputRouter` reaches the model
+  through the modal panel. A host that takes Esc or Backspace before the router (to go back a step) should not while
+  `ShowingHelp` is true, or Esc goes back instead of closing the list.
+- **`PixelMenuWidget.ShowingHelp`** and **`HostHelp`** pass through to the model.
+- No footer hint is drawn: the key list is the only place the keys are spelled out.
+
 ## 11.80
 
 SVG text, the glyphs of OpenType `SVG ` fonts, and SVG icons and images with clips, masks, markers, patterns and
