@@ -9,6 +9,52 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.80
+
+SVG text, the glyphs of OpenType `SVG ` fonts, and SVG icons and images with clips, masks, markers, patterns and
+embedded pictures. (The second half below was written as 11.79 and is released here: 11.79 went out with the menu
+change alone.)
+  * **Pins**: `SharpAstro.Svg` 3.39 and `SharpAstro.Fonts` 1.21. They move together: Fonts 1.21 needs Svg 3.39.
+  * **Text in an SVG is drawn.** `VectorIcon`, `IconBaker.Bake(VectorScene, ...)` and `bake-icons --svg` draw `text`,
+    `tspan` and `textPath` (11.78 listed them in `VectorIcon.Issues` and left them out). As a mask, text is coverage
+    like any shape.
+  * **`SceneFonts`**: where the fonts for that text come from. `SceneFonts.Installed` is the fonts on this machine:
+    each family a span names in turn, the generic ones (`serif`, `sans-serif`, `monospace`) as the usual faces of each
+    kind, bold and italic by the family's own faces, then a sans-serif face, then the platform's faces for other
+    scripts and its emoji face for a character none of those has. `SceneFonts.From(faces)` is the faces an app names
+    and no others, for a drawing that must read the same on every machine.
+  * **By default text is drawn with the machine's fonts.** To say otherwise hand over render options:
+    `VectorIcon.FromSvg(svg, new SceneRenderOptions { ShapeText = SceneFonts.From(path) })`, and the same on `Load`,
+    the constructor and `IconBaker.Bake(scene, size, alphaLevels, render)`. The options also carry the picture
+    decoder the overloads below take.
+  * **A drawing with text now depends on the machine unless it is given its fonts.** That includes masks baked at
+    build time by `bake-icons --svg`: bake those with a face that is in the repository, or without text.
+  * **First use can be slow.** A family that is not one of the standard ones is found by reading the name of every
+    installed font, once (tens of milliseconds warm, seconds on a cold disk). A `VectorIcon` rasterises when first
+    drawn, so ask for such a drawing's sizes before the first frame if that would show.
+  * Shaping is plain: one glyph a character and pair kerning. Give `SceneRenderOptions.ShapeText` a shaper of your own
+    for text that needs more.
+  * **Colour glyphs from an OpenType `SVG ` table** are drawn wherever a colour glyph is (`ManagedFontRasterizer`
+    asks the font, and Fonts 1.20 answers for such fonts), in black for `currentColor` and with the font's first
+    palette, since a glyph atlas does not know the text's colour. Nothing changed here for it.
+  * Tests: `VectorIconRenderTests` draws a badge with a label in two sizes and colours, an underline and a word set
+    along a curve, with a bundled face, and keeps a baseline capture (`Baselines/svg_text_badge.png`).
+
+Clips, masks, markers, patterns and embedded pictures:
+  * **What the pins bring**: `SharpAstro.Svg` reads `clipPath`, `mask`, markers, `paint-order`, `image` and `pattern`
+    (since 3.37) and `SharpAstro.Fonts` draws them (since 1.19). `VectorIcon`, `IconBaker.Bake(VectorScene, ...)` and `bake-icons --svg`
+    get them through the two packages.
+  * **An embedded PNG is drawn** (an `image` with a `data:` URI). A picture in another format is drawn once the icon
+    is given a decoder: `VectorIcon.FromSvg(svg, ImageCodecs.TryDecode)` (also `Load` and the constructor) takes the
+    `SharpAstro.Codecs` facade's method as it is, and `IconBaker.Bake(scene, size, alphaLevels, decodeImage)` takes
+    `SceneRasterizer.DecodeWith(ImageCodecs.TryDecode)`. DIR.Lib does not reference the facade, so an app that
+    draws no such pictures does not carry every codec. Without a decoder such a picture is left out, and
+    `VectorIcon.Issues` does not list it, because the reader carried it faithfully and only the drawing skipped it.
+    A picture the document only names by an address is never drawn: nothing is fetched.
+  * A scene file written by `VectorIcon.ToSceneFile` is now version 3 of the layout; files written by 11.78 still load.
+  * Tests: `VectorIconRenderTests` draws one SVG that uses a clip, a mask, a pattern, markers and an embedded PNG, as
+    a colour image and as a mask through a widget, and keeps a baseline capture (`Baselines/svg_rung3_features.png`).
+
 ## 11.79
 
 **A menu panel's Back and close controls are reachable by keyboard: Tab and Shift+Tab, as in dialog/whiptail.** (additive)
