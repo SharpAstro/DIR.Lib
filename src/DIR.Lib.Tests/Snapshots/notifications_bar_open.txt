@@ -1,0 +1,95 @@
+# cell 100x30 (8x16)
+0 Dock 0 0 100 30
+1 Stack [Bell] 94 0 6 30
+2 Icon Bell 96 0 2 1
+2 Text "2" 97 1 1 1
+1 Overlay 0 0 94 30
+2 Leaf:Box 0 0 94 30
+2 Stack 0 0 94 30
+3 Leaf:Box 0 0 49 30
+3 Stack 49 0 45 30
+4 Stack 51 0 42 1
+5 Text "Notifications" 51 0 34 1
+5 Stack [Clear] 86 0 7 1
+6 Text "Clear" 87 0 5 1
+4 Stack 51 1 42 29
+5 Text "Needs you (2)" 51 1 42 1
+5 Stack 51 2 42 6
+6 Stack 53 2 39 5
+7 Stack 53 2 39 1
+8 Text "Dome shutter will not close" 53 2 33 1
+8 Text "12:02" 87 2 5 1
+7 Wrap 53 3 39 3
+8 Text "Rain " 53 3 5 1
+8 Text "sensor " 58 3 7 1
+8 Text "reports " 65 3 8 1
+8 Text "wet; " 73 3 5 1
+8 Text "the " 78 3 4 1
+8 Text "shutter " 82 3 8 1
+8 Text "has " 53 4 4 1
+8 Text "not " 57 4 4 1
+8 Text "moved " 61 4 6 1
+8 Text "for " 67 4 4 1
+8 Text "90 " 71 4 3 1
+8 Text "seconds " 74 4 8 1
+8 Text "and " 82 4 4 1
+8 Text "needs " 86 4 6 1
+8 Text "a " 53 5 2 1
+8 Text "hand." 55 5 5 1
+7 Text "dome" 53 6 39 1
+6 Stack 53 7 39 1
+7 Leaf:Box 53 7 21 0
+7 Stack [Action#4] 75 7 7 1
+8 Text "Retry" 76 7 5 1
+7 Stack [Dismiss#4] 83 7 9 1
+8 Text "Dismiss" 84 7 7 1
+5 Stack 51 8 42 4
+6 Stack 53 8 39 3
+7 Stack 53 8 39 1
+8 Text "Camera disconnected" 53 8 33 1
+8 Text "12:02" 87 8 5 1
+7 Wrap 53 9 39 1
+8 Text "USB " 53 9 4 1
+8 Text "link " 57 9 5 1
+8 Text "lost." 62 9 5 1
+7 Text "camera" 53 10 39 1
+6 Stack 53 11 39 1
+7 Leaf:Box 53 11 17 0
+7 Stack [Action#3] 71 11 11 1
+8 Text "Reconnect" 72 11 9 1
+7 Stack [Dismiss#3] 83 11 9 1
+8 Text "Dismiss" 84 11 7 1
+5 Text "History (2)" 51 12 42 1
+5 Stack 51 13 42 4
+6 Stack 53 13 39 4
+7 Stack 53 13 39 1
+8 Text "Focus drifted" 53 13 33 1
+8 Text "12:00" 87 13 5 1
+7 Wrap 53 14 39 2
+8 Text "HFR " 53 14 4 1
+8 Text "rose " 57 14 5 1
+8 Text "from " 62 14 5 1
+8 Text "2.1 " 67 14 4 1
+8 Text "to " 71 14 3 1
+8 Text "3.4 " 74 14 4 1
+8 Text "px; " 78 14 4 1
+8 Text "refocus " 82 14 8 1
+8 Text "before " 53 15 7 1
+8 Text "the " 60 15 4 1
+8 Text "next " 64 15 5 1
+8 Text "filter " 69 15 7 1
+8 Text "change." 76 15 7 1
+7 Text "focuser" 53 16 39 1
+5 Stack 51 17 42 3
+6 Stack 53 17 39 3
+7 Stack 53 17 39 1
+8 Text "Meridian flip done" 53 17 33 1
+8 Text "12:00" 87 17 5 1
+7 Wrap 53 18 39 1
+8 Text "Resumed " 53 18 8 1
+8 Text "on " 61 18 3 1
+8 Text "frame " 64 18 6 1
+8 Text "41 " 70 18 3 1
+8 Text "of " 73 18 3 1
+8 Text "120." 76 18 4 1
+7 Text "mount" 53 19 39 1
