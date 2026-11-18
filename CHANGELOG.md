@@ -9,6 +9,26 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.83
+
+**A notifications component: a bell, a side bar, toasts and the list, as one declaration.** (additive)
+
+- **`DIR.Lib.Notifications`**: `NotificationFeed` is the surface-neutral model a host fills (`Post`, `Advance`,
+  `PointerOver`, `Dismiss`, `Handle`, `Clear`; `Toasts`, `NeedsYou`, `History`, `BellCount`, `WorstSeverity`). The clock
+  is passed in, so there are no timers and no wall-clock reads and a test steps time.
+- **`NotificationsLayout.Build(page, feed, state, colors, style, pointer, contentRect)`** returns one `Layout.Node`
+  tree, arranged alike by a pixel (float) and a cell (int) measure context. Collapsed, a narrow strip at the right edge
+  holds the bell (worst severity colour, count under it) and up to three toasts overlay the page, fading ones with a
+  countdown bar and staying ones with their buttons. Open, the bar covers the right of the page as an overlay, with
+  Needs you first, then History, and a Clear button. The page's rect is the same open or collapsed.
+- **Toasts dodge the pointer**: top right, or bottom right while the pointer is over where the top-right stack
+  would sit (`NotificationsLayout.PlaceToasts`, pure). Long text wraps to `MaxTextLines` with an ellipsis and the whole
+  text on hover. `NotificationsState` holds open or collapsed and the list's scroll; Ctrl+N toggles it.
+- **`IconKind.Bell`** is a new icon kind, drawn by the pixel painter. A cell surface needs its own rune for it
+  (Console.Lib).
+- Tests: `NotificationFeedTests`, `NotificationsLayoutTests` and `NotificationsRenderTests`, which keeps three pixel
+  baselines (`Baselines/notifications_*.png`) and three cell snapshots (`Snapshots/notifications_*.txt`).
+
 ## 11.82
 
 SVG blend modes and filters, and one colour between the UI and a drawing. (additive)
