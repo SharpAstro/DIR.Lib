@@ -320,13 +320,13 @@ namespace DIR.Lib
                 {
                     // Knob on top, a dome that widens in steps, a rim across the foot, a clapper under it:
                     // ink reaches all four edges of the square. Rows of rectangles, never triangles.
-                    var bx = rect.X + (rect.Width - side) / 2f;
-                    var by = rect.Y + (rect.Height - side) / 2f;
-                    var cx = bx + side / 2f;
+                    var bellX = rect.X + (rect.Width - side) / 2f;
+                    var bellY = rect.Y + (rect.Height - side) / 2f;
+                    var bellCx = bellX + side / 2f;
                     void Band(float topFrac, float heightFrac, float widthFrac)
                     {
                         var w = side * widthFrac;
-                        FillRect(cx - w / 2f, by + side * topFrac, w, MathF.Max(1f, side * heightFrac), ink);
+                        FillRect(bellCx - w / 2f, bellY + side * topFrac, w, MathF.Max(1f, side * heightFrac), ink);
                     }
 
                     Band(0f, 0.10f, 0.14f);      // knob
