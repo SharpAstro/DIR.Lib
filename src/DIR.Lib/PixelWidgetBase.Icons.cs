@@ -316,6 +316,28 @@ namespace DIR.Lib
                     }
                 }
 
+                case Layout.IconKind.Bell:
+                {
+                    // Knob on top, a dome that widens in steps, a rim across the foot, a clapper under it:
+                    // ink reaches all four edges of the square. Rows of rectangles, never triangles.
+                    var bx = rect.X + (rect.Width - side) / 2f;
+                    var by = rect.Y + (rect.Height - side) / 2f;
+                    var cx = bx + side / 2f;
+                    void Band(float topFrac, float heightFrac, float widthFrac)
+                    {
+                        var w = side * widthFrac;
+                        FillRect(cx - w / 2f, by + side * topFrac, w, MathF.Max(1f, side * heightFrac), ink);
+                    }
+
+                    Band(0f, 0.10f, 0.14f);      // knob
+                    Band(0.10f, 0.14f, 0.40f);   // shoulder
+                    Band(0.24f, 0.18f, 0.60f);   // dome
+                    Band(0.42f, 0.22f, 0.74f);   // waist
+                    Band(0.64f, 0.14f, 1.00f);   // rim, full width
+                    Band(0.88f, 0.12f, 0.24f);   // clapper
+                    break;
+                }
+
                 case Layout.IconKind.Search:
                 {
                     // A ring up-left, a handle running out of it to the bottom-right corner. Both extremes

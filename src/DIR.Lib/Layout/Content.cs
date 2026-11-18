@@ -490,4 +490,11 @@ public enum IconKind
     /// </para>
     /// </summary>
     Check,
+
+    /// <summary>
+    /// A bell: "notifications". A dome on a flared rim with a clapper beneath, drawn from rectangles so it
+    /// takes the ink it is given. Added last so no existing member changes its value; a cell surface needs
+    /// its own rune for it (U+1F514, with U+2407 as the narrow fallback).
+    /// </summary>
+    Bell,
 }
