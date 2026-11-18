@@ -97,7 +97,7 @@ namespace DIR.Lib.Notifications
         /// <summary>Width of the open bar.</summary>
         public float BarWidth { get; init; } = 360f;
         public float ToastWidth { get; init; } = 320f;
-        /// <summary>Most toasts at once.</summary>
+        /// <summary>Most toasts drawn at once; separate from <c>NotificationFeed.MaxToasts</c> (the model's cap), same default.</summary>
         public int MaxToasts { get; init; } = 3;
         public float FontSize { get; init; } = 14f;
         public float BellSize { get; init; } = 20f;
