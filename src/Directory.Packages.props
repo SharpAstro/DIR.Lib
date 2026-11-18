@@ -34,16 +34,18 @@
          does, and the resulting .NET stack overflow cannot be caught, so nothing above
          this could ever have defended against it. Such a glyph now falls back to its
          unhinted outline, which is what FreeType does with the same input. -->
-    <PackageVersion Include="SharpAstro.Fonts" Version="1.21.*" />
+    <PackageVersion Include="SharpAstro.Fonts" Version="2.0.*" />
     <!-- The SVG reader behind VectorIcon and the bake tool's svg option. 3.36 is the first release with
          gradients, use and style sheets, and with the scene types in the SharpAstro.VectorGraphics namespace
          that SharpAstro.Fonts 1.18 draws. 3.37 adds clips, masks, markers, paint-order, images and patterns,
-         which SharpAstro.Fonts 1.19 draws; the two move together. -->
-    <PackageVersion Include="SharpAstro.Svg" Version="3.39.*" />
+         which SharpAstro.Fonts 1.19 draws; the two move together. 3.40 adds blend modes and filters, which
+         SharpAstro.Fonts 2.0 draws; 2.0 is a major number because its own Rgba32 is gone (the colour type is
+         SharpAstro.Vector's, which RGBAColor32 converts to and from), not because anything here had to change. -->
+    <PackageVersion Include="SharpAstro.Svg" Version="3.40.*" />
     <!-- The pure-managed shaping engine, consumed by the DIR.Lib.Shaping satellite (the
          ITextShaper adapter). Same Fonts.Lib CI cadence as SharpAstro.Fonts — one
          -p:Version covers the whole repo, so the two always ship the same number. -->
-    <PackageVersion Include="SharpAstro.Fonts.Shaping" Version="1.21.*" />
+    <PackageVersion Include="SharpAstro.Fonts.Shaping" Version="2.0.*" />
     <!-- LALR.CC drives the markdown + LaTeX grammars baked into the
          DIR.Lib.Markdown subsystem. Source generator runs build-time;
          the runtime LALR.CC assembly is referenced for the Parser /

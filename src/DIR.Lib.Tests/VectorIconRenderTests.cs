@@ -293,6 +293,87 @@ public sealed class VectorIconRenderTests
     }
 
     /// <summary>
+    /// A card with a drop shadow, a light with a glow, a tint laid on with a blend mode and a blurred, desaturated
+    /// corner: what SharpAstro.Svg 3.40 reads and SharpAstro.Fonts 2.0 draws. The mark takes its colour from a colour
+    /// of the UI, handed over as it is.
+    /// </summary>
+    private const string Card =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"120\">" +
+        "<defs><filter id=\"lift\" x=\"-0.2\" y=\"-0.2\" width=\"1.4\" height=\"1.5\"><feDropShadow dx=\"0\" dy=\"6\" stdDeviation=\"5\" flood-color=\"#000814\" flood-opacity=\"0.55\"/></filter>" +
+        "<filter id=\"glow\" x=\"-1\" y=\"-1\" width=\"3\" height=\"3\"><feGaussianBlur stdDeviation=\"5\" result=\"soft\"/><feMerge><feMergeNode in=\"soft\"/><feMergeNode in=\"soft\"/><feMergeNode in=\"SourceGraphic\"/></feMerge></filter>" +
+        "<filter id=\"dim\" x=\"0\" y=\"0\" width=\"1\" height=\"1\"><feGaussianBlur stdDeviation=\"1.5\"/><feColorMatrix type=\"saturate\" values=\"0.15\"/></filter>" +
+        "<linearGradient id=\"face\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#31486b\"/><stop offset=\"1\" stop-color=\"#1b2a44\"/></linearGradient>" +
+        "<clipPath id=\"inside\"><rect x=\"24\" y=\"18\" width=\"152\" height=\"76\" rx=\"12\"/></clipPath></defs>" +
+        "<rect width=\"200\" height=\"120\" fill=\"#e9edf3\"/>" +
+        "<rect x=\"24\" y=\"18\" width=\"152\" height=\"76\" rx=\"12\" fill=\"url(#face)\" filter=\"url(#lift)\"/>" +
+        // The corner is clipped as a group; the tint is clipped as itself, so that it is still mixed with the card below
+        // it (a group around it would keep the mixing to what is in the group).
+        "<g clip-path=\"url(#inside)\"><g filter=\"url(#dim)\"><rect x=\"120\" y=\"18\" width=\"56\" height=\"76\" fill=\"#f2a33a\"/><circle cx=\"150\" cy=\"40\" r=\"14\" fill=\"#2fb4e9\"/></g></g>" +
+        "<path d=\"M24 70 L176 30 L176 94 L24 94 Z\" fill=\"#7a5cff\" fill-opacity=\"0.8\" clip-path=\"url(#inside)\" style=\"mix-blend-mode: screen\"/>" +
+        "<circle cx=\"58\" cy=\"46\" r=\"9\" fill=\"currentColor\" filter=\"url(#glow)\"/>" +
+        "</svg>";
+
+    [Fact]
+    public void ADrawingWithShadowsGlowsAndBlendModes_IsDrawn_AndMatchesItsBaseline()
+    {
+        // A colour of the UI as the drawing's currentColor: the two colour types are one colour, converted without a word.
+        var accent = new RGBAColor32(0xff, 0xd8, 0x4a, 0xff);
+        SharpAstro.VectorGraphics.Rgba32 asScene = accent;
+        asScene.ShouldBe(new SharpAstro.VectorGraphics.Rgba32(0xff, 0xd8, 0x4a, 0xff));
+        ((RGBAColor32)asScene).ShouldBe(accent);
+
+        VectorIcon icon = VectorIcon.FromSvg(Card, new SharpAstro.Svg.SvgReadOptions { CurrentColor = accent });
+        icon.Issues.ShouldBeEmpty();
+        RgbaImage image = icon.Image(200, 120);
+
+        // The capture a person looks at; DIR_LIB_UPDATE_BASELINES=1 rewrites it.
+        string baseline = Path.Combine(AppContext.BaseDirectory, "Baselines", "svg_effects_card.png");
+        string source = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "Baselines", "svg_effects_card.png"));
+        if (Environment.GetEnvironmentVariable("DIR_LIB_UPDATE_BASELINES") == "1")
+        {
+            PngWriter.Save(source, image.Pixels, image.Width, image.Height);
+            PngWriter.Save(baseline, image.Pixels, image.Width, image.Height);
+            return;
+        }
+
+        // The page, away from everything.
+        At(image, 4, 4).ShouldBe(((byte)0xe9, (byte)0xed, (byte)0xf3, (byte)255));
+        // The shadow: below the card the page is darker than beside it, where the shadow (moved down) barely reaches.
+        (byte below, _, _, _) = At(image, 100, 100);
+        (byte beside, _, _, _) = At(image, 20, 40);
+        ((int)below).ShouldBeLessThan(0xe9 - 40);
+        ((int)beside).ShouldBeGreaterThan(below + 25);
+        // The light: its own colour in the middle, and a glow of it over the card beside it that fades with distance.
+        At(image, 58, 46).ShouldBe(((byte)0xff, (byte)0xd8, (byte)0x4a, (byte)255));
+        (byte near, _, _, _) = At(image, 72, 46);
+        (byte far, _, _, _) = At(image, 90, 46);
+        ((int)near).ShouldBeGreaterThan(far + 20);
+        At(image, 90, 46).ShouldBe(At(image, 100, 46));     // and ends: further out the card is as it is everywhere on that row
+        // The tint, screened: where it lies over the card the card is lighter than above it, and never darker.
+        (byte plainR, byte plainG, byte plainB, _) = At(image, 40, 30);
+        (byte tintR, byte tintG, byte tintB, _) = At(image, 40, 84);
+        ((int)tintR).ShouldBeGreaterThan(plainR + 40);
+        ((int)tintB).ShouldBeGreaterThan(plainB + 60);
+        ((int)tintG).ShouldBeGreaterThanOrEqualTo(plainG - 12);        // the card's own gradient darkens a little downwards
+        // The dimmed corner: the orange panel has lost most of its colour (red and blue are close), where the same panel unfiltered would not have.
+        (byte dimR, _, byte dimB, _) = At(image, 135, 24);
+        Math.Abs(dimR - dimB).ShouldBeLessThan(60);
+
+        // A scene file carries filters and blend modes as the SVG did.
+        VectorIcon.Load(icon.ToSceneFile()).Image(200, 120).Pixels.ShouldBe(image.Pixels);
+        // And at another size the same drawing, not the same pixels stretched: the blur is of the size's own pixels.
+        RgbaImage doubled = icon.Image(400, 240);
+        At(doubled, 116, 92).ShouldBe(((byte)0xff, (byte)0xd8, (byte)0x4a, (byte)255));
+
+        File.Exists(baseline).ShouldBeTrue($"No baseline at {baseline}. Run once with DIR_LIB_UPDATE_BASELINES=1 and look at the picture.");
+        PngImageDecoder.TryDecodeRgba8(File.ReadAllBytes(baseline), out byte[]? expected, out int w, out int h).ShouldBeTrue();
+        (w, h).ShouldBe((image.Width, image.Height));
+        int worst = 0;
+        for (int i = 0; i < expected!.Length; i++) worst = Math.Max(worst, Math.Abs(expected[i] - image.Pixels[i]));
+        worst.ShouldBeLessThanOrEqualTo(2);
+    }
+
+    /// <summary>
     /// A row of SVG icons drawn by a widget at three DPI scales, on a dark and a light panel, compared with a
     /// committed baseline. It is the capture a person looks at (set <c>DIR_LIB_UPDATE_BASELINES=1</c> to rewrite it),
     /// and the guard that what a toolbar would show does not change unnoticed.
