@@ -29,7 +29,10 @@ namespace DIR.Lib.Notifications
         private TimeSpan _fadeAfter = TimeSpan.FromSeconds(5);
         private TimeSpan _keepFor = TimeSpan.FromHours(24);
 
-        /// <summary>Most toasts shown at once.</summary>
+        /// <summary>
+        /// Most toasts the MODEL reports as open at once. <c>NotificationsStyle.MaxToasts</c> is the separate cap on
+        /// how many a layout draws; they default alike (3) and a host that changes one changes the other.
+        /// </summary>
         public int MaxToasts { get; init; } = 3;
 
         /// <summary>How long a fading toast stays while the pointer is not over it.</summary>
@@ -69,7 +72,10 @@ namespace DIR.Lib.Notifications
             return stored;
         }
 
-        /// <summary>Moves the clock to <paramref name="now"/>: runs the fade of visible, un-hovered toasts and prunes the history.</summary>
+        /// <summary>
+        /// Moves the clock to <paramref name="now"/>: runs the fade of visible, un-hovered toasts and prunes the history.
+        /// The first call only sets the clock (there is no earlier time to measure from), so nothing fades on it.
+        /// </summary>
         public void Advance(DateTimeOffset now)
         {
             if (!_hasNow)
