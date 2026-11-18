@@ -48,6 +48,31 @@ public class NotificationsLayoutTests
         public int ToSurface(float designUnits) => (int)MathF.Round(designUnits);
         public int ToSurfaceX(float designUnits) => (int)MathF.Round(designUnits / 8f);
         public int ToSurfaceY(float designUnits) => (int)MathF.Round(designUnits / 16f);
+        public object? MeasureKey => "notifications-cell";
+
+        // The cell rule of LayoutExtentHookTests.HookCellCtx, as a terminal surface answers it: a one-line row is one
+        // row tall, and an extent that paints a fill never rounds away (a 3-unit countdown bar is one row, not none).
+        public int MapExtent(in Layout.ExtentRequest r)
+        {
+            var unit = r.Axis == Layout.Axis.Horizontal ? 8f : 16f;
+            if (r.Kind == Layout.ExtentKind.Padding)
+            {
+                return !r.HasContent && !r.HasFill ? 0 : (int)MathF.Floor(r.Value / unit);
+            }
+
+            if (r.Axis == Layout.Axis.Vertical && r.HasContent && r.ContentLines == 1)
+            {
+                return 1;
+            }
+
+            var rounded = (int)MathF.Round(r.Value / unit);
+            if (!r.HasContent && !r.HasFill)
+            {
+                return 0;
+            }
+
+            return r.HasFill && r.Value > 0f ? Math.Max(1, rounded) : rounded;
+        }
     }
 
     /// <summary>One arranged node with its rect in design units.</summary>
