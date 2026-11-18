@@ -6,12 +6,17 @@ The version NUMBER is not here: it lives in `src/Directory.Build.props` (`Versio
 build job reads that property back rather than restating it, so a package can never declare a version
 this file disagrees with. Bump it there and add the entry here, in the same commit.
 
+Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
+changed and why.
+
 ## 11.80
 
-SVG text, and the glyphs of OpenType `SVG ` fonts.
+SVG text, the glyphs of OpenType `SVG ` fonts, and SVG icons and images with clips, masks, markers, patterns and
+embedded pictures. (The second half below was written as 11.79 and is released here: 11.79 went out with the menu
+change alone.)
   * **Pins**: `SharpAstro.Svg` 3.39 and `SharpAstro.Fonts` 1.21. They move together: Fonts 1.21 needs Svg 3.39.
   * **Text in an SVG is drawn.** `VectorIcon`, `IconBaker.Bake(VectorScene, ...)` and `bake-icons --svg` draw `text`,
-    `tspan` and `textPath` (11.79 listed them in `VectorIcon.Issues` and left them out). As a mask, text is coverage
+    `tspan` and `textPath` (11.78 listed them in `VectorIcon.Issues` and left them out). As a mask, text is coverage
     like any shape.
   * **`SceneFonts`**: where the fonts for that text come from. `SceneFonts.Installed` is the fonts on this machine:
     each family a span names in turn, the generic ones (`serif`, `sans-serif`, `monospace`) as the usual faces of each
@@ -21,7 +26,7 @@ SVG text, and the glyphs of OpenType `SVG ` fonts.
   * **By default text is drawn with the machine's fonts.** To say otherwise hand over render options:
     `VectorIcon.FromSvg(svg, new SceneRenderOptions { ShapeText = SceneFonts.From(path) })`, and the same on `Load`,
     the constructor and `IconBaker.Bake(scene, size, alphaLevels, render)`. The options also carry the picture
-    decoder the 11.79 overloads take, which stay.
+    decoder the overloads below take.
   * **A drawing with text now depends on the machine unless it is given its fonts.** That includes masks baked at
     build time by `bake-icons --svg`: bake those with a face that is in the repository, or without text.
   * **First use can be slow.** A family that is not one of the standard ones is found by reading the name of every
@@ -35,11 +40,9 @@ SVG text, and the glyphs of OpenType `SVG ` fonts.
   * Tests: `VectorIconRenderTests` draws a badge with a label in two sizes and colours, an underline and a word set
     along a curve, with a bundled face, and keeps a baseline capture (`Baselines/svg_text_badge.png`).
 
-## 11.79
-
-SVG icons and images with clips, masks, markers, patterns and embedded pictures.
-  * **Pins**: `SharpAstro.Svg` 3.37 (reads `clipPath`, `mask`, markers, `paint-order`, `image` and `pattern`) and
-    `SharpAstro.Fonts` 1.19 (draws them). `VectorIcon`, `IconBaker.Bake(VectorScene, ...)` and `bake-icons --svg`
+Clips, masks, markers, patterns and embedded pictures:
+  * **What the pins bring**: `SharpAstro.Svg` reads `clipPath`, `mask`, markers, `paint-order`, `image` and `pattern`
+    (since 3.37) and `SharpAstro.Fonts` draws them (since 1.19). `VectorIcon`, `IconBaker.Bake(VectorScene, ...)` and `bake-icons --svg`
     get them through the two packages.
   * **An embedded PNG is drawn** (an `image` with a `data:` URI). A picture in another format is drawn once the icon
     is given a decoder: `VectorIcon.FromSvg(svg, ImageCodecs.TryDecode)` (also `Load` and the constructor) takes the
@@ -48,12 +51,26 @@ SVG icons and images with clips, masks, markers, patterns and embedded pictures.
     draws no such pictures does not carry every codec. Without a decoder such a picture is left out, and
     `VectorIcon.Issues` does not list it, because the reader carried it faithfully and only the drawing skipped it.
     A picture the document only names by an address is never drawn: nothing is fetched.
-  * A scene file written by `VectorIcon.ToSceneFile` is now version 2 of the layout; files written by 11.78 still load.
+  * A scene file written by `VectorIcon.ToSceneFile` is now version 3 of the layout; files written by 11.78 still load.
   * Tests: `VectorIconRenderTests` draws one SVG that uses a clip, a mask, a pattern, markers and an embedded PNG, as
     a colour image and as a mask through a widget, and keeps a baseline capture (`Baselines/svg_rung3_features.png`).
 
-Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
-changed and why.
+## 11.79
+
+**A menu panel's Back and close controls are reachable by keyboard: Tab and Shift+Tab, as in dialog/whiptail.** (additive)
+
+- **`MenuModel.Focus`** (`MenuFocus.Rows` / `Back` / `Close`): where the keyboard is. Tab moves it on and Shift+Tab back
+  over the stops the menu has, in reading order (rows, Back, close), wrapping. Arrows stay on the rows: a header control is
+  a Tab stop, never an extra row, which is what the Windows keyboard guidelines and dialog/whiptail do. Up or Down from a
+  focused control returns to the rows and moves there.
+- **`MenuModel.HandleKey(InputKey, InputModifier)`**: the new overload that takes the modifiers Shift+Tab needs. Enter on a
+  focused control runs it and confirms no row. With no Back or close, Tab is not consumed, so a host's own Tab still gets
+  it. The one-argument `HandleKey(InputKey)` is unchanged and forwards with no modifiers.
+- **`MenuModel.MoveFocus(bool backwards)`** for a host that drives focus itself.
+- **`MenuLayout`** lights the focused control in the selected row's colours and shows the row's selection only while the
+  rows have focus, so one thing on the card is lit: what Enter will do. The panel declares Tab and Shift+Tab as shortcuts
+  (on the title and prompt rows) only when it has a header control.
+- **`PixelMenuWidget.HandleInput`** passes the key's modifiers through.
 
 ## 11.78
 

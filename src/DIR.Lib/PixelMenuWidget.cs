@@ -103,7 +103,8 @@ public class PixelMenuWidget<TSurface>(Renderer<TSurface> renderer, string fontP
     {
         return evt switch
         {
-            InputEvent.KeyDown(var key, _) => _model.HandleKey(key),
+            // The modifiers go through: Shift+Tab moves focus back (MenuModel.Focus).
+            InputEvent.KeyDown(var key, var mods) => _model.HandleKey(key, mods),
             _ => false,
         };
     }
