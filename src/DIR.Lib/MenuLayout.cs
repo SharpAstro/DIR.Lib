@@ -46,13 +46,14 @@ public static class MenuLayout
     /// a card's padding). The edge leaves carry Up and Down and the gap carries Enter, so the keys are declared once.
     /// </summary>
     private static Layout.Node BuildColumn(MenuModel model, MenuColors colors, float fontSize, Layout.Sizing edge,
-        Layout.Node? header = null)
+        Layout.Node? header = null, Func<string, float, float>? measure = null)
     {
         var titleSize = fontSize * 1.6f;
         var itemLineH = fontSize * 2f;
         var gapH = fontSize * 0.5f;
 
-        var children = ImmutableArray.CreateBuilder<Layout.Node>(model.Items.Length + 6);
+        var help = model.ShowingHelp ? model.HelpLines : [];
+        var children = ImmutableArray.CreateBuilder<Layout.Node>(model.Items.Length + help.Length + 6);
 
         // Top Star spacer - fills available space above the content block.
         // Carries Up: the menu's keys are declared in the tree, so InputRouter reaches them with no host fallback.
@@ -68,7 +69,7 @@ public static class MenuLayout
         // Title leaf - centered horizontally, larger font.
         // Carries Tab when the menu has a header control: Tab is how the keyboard reaches Back and close, which
         // are Tab stops and not rows. With no control, Tab is left to the host.
-        var title = new Layout.Node.Leaf(new Layout.Content.Text(model.Title, titleSize)
+        var title = new Layout.Node.Leaf(new Layout.Content.Text(ShownTitle(model), titleSize)
         {
             Color = colors.TitleColor,
             HAlign = TextAlign.Center,
@@ -78,13 +79,16 @@ public static class MenuLayout
             Height = Layout.Sizing.Fixed(titleSize * 2f),
             Width = Layout.Sizing.Star(),
         };
-        children.Add(HasHeader(model)
+        // While the key list is open it carries Esc instead, which closes the list (MenuModel.HandleKey).
+        children.Add(model.ShowingHelp
+            ? title.WithShortcut(InputKey.Escape).Activatable(_ => model.HandleKey(InputKey.Escape))
+            : HasHeader(model)
             ? title.WithShortcut(InputKey.Tab).Activatable(_ => model.HandleKey(InputKey.Tab, InputModifier.None))
             : title);
 
         // Prompt leaf - centered, base font size.
         // Carries Shift+Tab, under the same condition as the title's Tab.
-        var prompt = new Layout.Node.Leaf(new Layout.Content.Text(model.Prompt, fontSize)
+        var prompt = new Layout.Node.Leaf(new Layout.Content.Text(ShownPrompt(model), fontSize)
         {
             Color = colors.PromptColor,
             HAlign = TextAlign.Center,
@@ -106,8 +110,29 @@ public static class MenuLayout
             Width = Layout.Sizing.Star(),
         }.WithShortcut(InputKey.Enter).Activatable(_ => model.HandleKey(InputKey.Enter)));
 
+        // The key list (F1) in place of the rows: one two-column row per key, keys left, what they do beside them.
+        // On the panel (a measure given) two columns of the measured widths, keys left and the descriptions lined up
+        // beside them. BuildTree has no measure and fills the surface, where any split would stretch across the whole
+        // window, so there each line is one centred row like the menu's own.
+        var columns = measure is null ? default : HelpColumns(help, measure, fontSize);
+        foreach (var line in help)
+        {
+            children.Add(measure is null
+                ? new Layout.Node.Leaf(new Layout.Content.Text($"{line.Keys}   {line.Action}", fontSize)
+                {
+                    Color = colors.ItemColor,
+                    HAlign = TextAlign.Center,
+                    VAlign = TextAlign.Center,
+                })
+                {
+                    Height = Layout.Sizing.Fixed(itemLineH),
+                    Width = Layout.Sizing.Star(),
+                }
+                : HelpRow(line, columns, fontSize, itemLineH, colors));
+        }
+
         // One leaf per item.
-        for (var i = 0; i < model.Items.Length; i++)
+        for (var i = 0; i < model.Items.Length && !model.ShowingHelp; i++)
         {
             // The selection shows only while the rows have focus; with Back or close focused, that control is lit.
             var isSelected = i == model.SelectedIndex && model.Focus == MenuFocus.Rows;
@@ -141,7 +166,57 @@ public static class MenuLayout
             Width = Layout.Sizing.Star(),
         }.WithShortcut(InputKey.Down).Activatable(_ => model.HandleKey(InputKey.Down)));
 
-        return new Layout.Node.Stack(children.ToImmutable(), Layout.Axis.Vertical);
+        // The column carries F1, which opens and closes the key list; no leaf of its own needed for it.
+        return new Layout.Node.Stack(children.ToImmutable(), Layout.Axis.Vertical)
+            .WithShortcut(InputKey.F1).Activatable(_ => model.HandleKey(InputKey.F1));
+    }
+
+    private static string ShownTitle(MenuModel m) => m.ShowingHelp ? MenuModel.HelpTitle : m.Title;
+    private static string ShownPrompt(MenuModel m) => m.ShowingHelp ? MenuModel.HelpPrompt : m.Prompt;
+
+    // The gap between the key list's two columns, in font sizes.
+    private const float HelpGapFonts = 1f;
+
+    // The key list's measured columns at font f: the widest key plus the gap, and the widest description.
+    private static (float Keys, float Actions) HelpColumns(ImmutableArray<MenuHelpLine> help, Func<string, float, float> width, float f)
+    {
+        float keys = 0f, actions = 0f;
+        foreach (var line in help)
+        {
+            keys = MathF.Max(keys, width(line.Keys, f));
+            actions = MathF.Max(actions, width(line.Action, f));
+        }
+
+        return (keys + HelpGapFonts * f, actions);
+    }
+
+    private static Layout.Node HelpRow(MenuHelpLine line, (float Keys, float Actions) columns, float fontSize, float lineH,
+        MenuColors colors)
+    {
+        Layout.Node Cell(string text, RGBAColor32 color, float w) => new Layout.Node.Leaf(new Layout.Content.Text(text, fontSize)
+        {
+            Color = color,
+            HAlign = TextAlign.Near,
+            VAlign = TextAlign.Center,
+        })
+        {
+            Height = Layout.Sizing.Fixed(lineH),
+            Width = Layout.Sizing.Fixed(w),
+        };
+
+        return new Layout.Node.Stack([Cell(line.Keys, colors.TitleColor, columns.Keys), Cell(line.Action, colors.ItemColor, columns.Actions)],
+            Layout.Axis.Horizontal)
+        {
+            Height = Layout.Sizing.Fixed(lineH),
+            Width = Layout.Sizing.Star(),
+        };
+    }
+
+    // The width the key list needs at font f on the panel: its two measured columns side by side.
+    private static float HelpWidth(ImmutableArray<MenuHelpLine> help, Func<string, float, float> width, float f)
+    {
+        var (keys, actions) = HelpColumns(help, width, f);
+        return keys + actions;
     }
 
     // Row heights of the shared column in base font sizes: title 2 x 1.6, prompt 2, gap 0.5, items 2 each.
@@ -153,7 +228,8 @@ public static class MenuLayout
     private const float CloseGlyphScale = 1.5f;
     internal const string BackLabel = "< Back", CloseLabel = "×";
 
-    private static bool HasHeader(MenuModel m) => m.Back is not null || m.Close is not null;
+    // The key list hides the header: while it is open the only keys are F1 and Esc, so a Tab stop would lead nowhere.
+    private static bool HasHeader(MenuModel m) => !m.ShowingHelp && (m.Back is not null || m.Close is not null);
 
     // Control widths in design units at font size f: the label plus a font of side room; the close is at least two
     // fonts so it stays a tap target. Plan and build share these, so the header the plan reserves is the one drawn.
@@ -230,9 +306,12 @@ public static class MenuLayout
         var border = style.Border is { Width: > 0f } b ? b.Width : 0f;
 
         // Widest line per unit of font size; text width is linear in size, so one measurement at 1 is enough.
-        var w1 = Width(model.Title, 1.6f);
-        w1 = MathF.Max(w1, Width(model.Prompt, 1f));
-        foreach (var item in model.Items)
+        var help = model.ShowingHelp ? model.HelpLines : [];
+        var rows = model.ShowingHelp ? help.Length : model.Items.Length;
+        var w1 = Width(ShownTitle(model), 1.6f);
+        w1 = MathF.Max(w1, Width(ShownPrompt(model), 1f));
+        if (model.ShowingHelp) w1 = MathF.Max(w1, HelpWidth(help, Width, 1f));
+        else foreach (var item in model.Items)
             w1 = MathF.Max(w1, Width(SelectedPrefix + item, 1f));
         if (HasHeader(model)) w1 = MathF.Max(w1, HeaderWidth(model, Width, 1f));
 
@@ -249,9 +328,10 @@ public static class MenuLayout
         // widest fits inside the card less border and padding; a few passes converge, so the loop is bounded.
         for (var pass = 0; pass < 8; pass++)
         {
-            var widest = Width(model.Title, 1.6f * font);
-            widest = MathF.Max(widest, Width(model.Prompt, font));
-            foreach (var item in model.Items)
+            var widest = Width(ShownTitle(model), 1.6f * font);
+            widest = MathF.Max(widest, Width(ShownPrompt(model), font));
+            if (model.ShowingHelp) widest = MathF.Max(widest, HelpWidth(help, Width, font));
+            else foreach (var item in model.Items)
             {
                 widest = MathF.Max(widest, Width(SelectedPrefix + item, font));
                 widest = MathF.Max(widest, Width(UnselectedPrefix + item, font));
@@ -264,7 +344,7 @@ public static class MenuLayout
             font *= room2 / widest * 0.995f;
         }
 
-        var lines = (HasHeader(model) ? HeaderLines : 0f) + TitleLines + PromptLines + GapLines + ItemLines * model.Items.Length + 2f * style.PadY;
+        var lines = (HasHeader(model) ? HeaderLines : 0f) + TitleLines + PromptLines + GapLines + ItemLines * rows + 2f * style.PadY;
         var height = MathF.Min(lines * font + 2f * border, MathF.Max(1f, surfaceHeight - 2f * style.SideMargin));
         return new MenuPanelPlan(width, height, font, portrait);
     }
@@ -284,7 +364,7 @@ public static class MenuLayout
         if (unit <= 0f) unit = 1f;
         float Width(string text, float size) => ctx.MeasureText(text.AsSpan(), size).Width / unit;
         var header = HasHeader(model) ? BuildHeader(model, colors, plan.FontSize, Width) : null;
-        var column = BuildColumn(model, colors, plan.FontSize, Layout.Sizing.Fixed(plan.FontSize * style.PadY), header);
+        var column = BuildColumn(model, colors, plan.FontSize, Layout.Sizing.Fixed(plan.FontSize * style.PadY), header, Width);
         var card = new Layout.Node.Stack([column], Layout.Axis.Vertical)
         {
             Width = Layout.Sizing.Fixed(plan.CardWidth),

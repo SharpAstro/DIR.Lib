@@ -28,6 +28,12 @@ public class PixelMenuWidget<TSurface>(Renderer<TSurface> renderer, string fontP
     /// <summary>Host action for the panel's close control (top-right); null means no control. See <see cref="MenuModel.Close"/>.</summary>
     public Action? Close { get => _model.Close; set => _model.Close = value; }
 
+    /// <summary>Whether the card shows the key list (F1). See <see cref="MenuModel.ShowingHelp"/>.</summary>
+    public bool ShowingHelp => _model.ShowingHelp;
+
+    /// <summary>Keys the host handles itself, listed in the key list after the menu's own. See <see cref="MenuModel.HostHelp"/>.</summary>
+    public System.Collections.Immutable.ImmutableArray<MenuHelpLine> HostHelp { get => _model.HostHelp; set => _model.HostHelp = value; }
+
     /// <summary>
     /// Resets the menu with new content and clears the confirmed state.
     /// <paramref name="selected"/> is clamped to the valid item range.
