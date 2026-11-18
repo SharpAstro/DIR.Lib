@@ -46,6 +46,68 @@ public sealed class MenuModel
     /// </summary>
     public Action? Close { get; set; }
 
+    /// <summary>
+    /// Whether the card shows the key list (<see cref="HelpLines"/>) in place of the rows. F1 opens it; while it is
+    /// open F1 or Esc closes it and every other key is swallowed, so nothing behind the list can be chosen blind.
+    /// <see cref="Reset"/> leaves it alone: a host that refreshes the rows while it is open (a lobby's peer list)
+    /// would otherwise close it under the reader.
+    /// </summary>
+    public bool ShowingHelp { get; private set; }
+
+    /// <summary>
+    /// Keys the HOST handles for this menu, outside the model (Esc or Backspace going back, say), listed after the
+    /// model's own in <see cref="HelpLines"/>. Empty by default.
+    /// </summary>
+    public ImmutableArray<MenuHelpLine> HostHelp { get; set; } = [];
+
+    /// <summary>Title of the key list.</summary>
+    public const string HelpTitle = "Keys";
+
+    /// <summary>Prompt of the key list: how to leave it.</summary>
+    public const string HelpPrompt = "F1 or Esc to return";
+
+    /// <summary>
+    /// The keys this menu answers to now, one line each: only what can be used (no Tab without a Back or close control,
+    /// no digits past the row count), then <see cref="HostHelp"/>. F1 itself is not listed: <see cref="HelpPrompt"/>
+    /// says how to leave, and a reader who opened the list knows how they got there.
+    /// </summary>
+    public ImmutableArray<MenuHelpLine> HelpLines
+    {
+        get
+        {
+            var lines = ImmutableArray.CreateBuilder<MenuHelpLine>(5 + HostHelp.Length);
+            var header = Back is not null || Close is not null;
+            if (_items.Length > 0)
+            {
+                lines.Add(new("↑ ↓", "Move"));
+                lines.Add(new("Enter", "Choose"));
+                var digits = Math.Min(9, _items.Length);
+                lines.Add(new(digits == 1 ? "1" : $"1–{digits}", digits == 1 ? "Choose" : "Choose by number"));
+            }
+            else if (header)
+            {
+                lines.Add(new("Enter", "Choose"));
+            }
+
+            if (header)
+            {
+                var reach = (Back, Close) switch
+                {
+                    (not null, not null) => "To Back, Close",
+                    (not null, null) => "To Back",
+                    _ => "To Close",
+                };
+                lines.Add(new("Tab, Shift+Tab", reach));
+            }
+
+            lines.AddRange(HostHelp);
+            return lines.ToImmutable();
+        }
+    }
+
+    /// <summary>Opens or closes the key list; see <see cref="ShowingHelp"/>.</summary>
+    public void ToggleHelp() => ShowingHelp = !ShowingHelp;
+
     private MenuFocus _focus;
 
     /// <summary>
@@ -164,6 +226,23 @@ public sealed class MenuModel
             return false;
         }
 
+        // The key list (F1) is modal over the menu: F1 or Esc closes it, and every other key is consumed unchanged.
+        if (ShowingHelp)
+        {
+            if (key is InputKey.F1 or InputKey.Escape)
+            {
+                ShowingHelp = false;
+            }
+
+            return true;
+        }
+
+        if (key == InputKey.F1)
+        {
+            ShowingHelp = true;
+            return true;
+        }
+
         if (key == InputKey.Tab)
         {
             return MoveFocus(backwards: (modifiers & InputModifier.Shift) != 0);
@@ -218,6 +297,11 @@ public sealed class MenuModel
         }
     }
 }
+
+/// <summary>One line of a <see cref="MenuModel"/>'s key list: the key or keys, and what they do.</summary>
+/// <param name="Keys">The keys as a reader types them, e.g. "Esc" or "Tab, Shift+Tab".</param>
+/// <param name="Action">What they do, as a short imperative, e.g. "Go back".</param>
+public readonly record struct MenuHelpLine(string Keys, string Action);
 
 /// <summary>Where a <see cref="MenuModel"/>'s keyboard focus is. See <see cref="MenuModel.Focus"/>.</summary>
 public enum MenuFocus
