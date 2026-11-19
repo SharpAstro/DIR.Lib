@@ -1498,6 +1498,7 @@ namespace DIR.Lib
                         OnActivate = disabled ? null : node.OnActivate,
                         OnDoubleClick = disabled ? null : node.OnDoubleClick,
                         OnContextMenu = disabled ? null : node.OnContextMenu,
+                        OnPressWithin = disabled ? null : node.OnPressWithin,
                         Tooltip = tooltip,
                         TooltipSide = node.TooltipSide,
                         IsDisabled = disabled,
@@ -1508,7 +1509,7 @@ namespace DIR.Lib
                         Dismisses = node.DismissesPopover,
                     });
                 }
-                else if (cursor is not null || tooltip is not null || node.Scroll is not null)
+                else if (cursor is not null || tooltip is not null || node.Scroll is not null || (node.OnPressWithin is not null && !disabled))
                 {
                     // A cursor, a tooltip or a scroll target with no hit still needs a region, or the
                     // statement has nowhere to live. Inert to presses (ChromeHit, no handler), which is
@@ -1521,6 +1522,7 @@ namespace DIR.Lib
                         TooltipSide = node.TooltipSide,
                         IsDisabled = disabled,
                         Scroll = node.Scroll,
+                        OnPressWithin = disabled ? null : node.OnPressWithin,
                     });
                 }
 

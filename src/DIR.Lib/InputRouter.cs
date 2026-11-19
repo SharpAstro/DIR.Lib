@@ -482,6 +482,10 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                     region = owning;
                 }
 
+                // A container that declared OnPressWithin (a floating window) hears the press first, then the topmost
+                // region acts as ever.
+                var preActed = NotePressWithin(i, press);
+
                 bool acted;
                 var hadKeyboard = ui.Focus.Current;
 
@@ -521,7 +525,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                     acted |= BlurFocusedField();
                 }
 
-                if (acted)
+                if (acted || preActed)
                 {
                     requestRedraw();
                 }
@@ -542,6 +546,28 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         }
 
         return Unhandled?.Invoke(down) ?? false;
+    }
+
+    /// <summary>
+    /// Runs <see cref="ClickableRegion.OnPressWithin"/> of the topmost region at or below <paramref name="top"/> in
+    /// the widget whose regions are in <c>_regions</c> that contains the press, for a left press. A popover backdrop
+    /// ends the search. Returns whether one ran.
+    /// </summary>
+    private bool NotePressWithin(int top, in PointerPress press)
+    {
+        if (press.Button != MouseButton.Left) return false;
+        for (var j = top; j >= 0; j--)
+        {
+            var r = _regions[j];
+            if (!Contains(r, press.X, press.Y)) continue;
+            if (r.Dismisses is not null) return false;
+            if (r.OnPressWithin is { } within)
+            {
+                within(press);
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>

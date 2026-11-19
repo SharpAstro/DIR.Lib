@@ -58,6 +58,12 @@ public readonly record struct ClickableRegion(
     public Action<PointerPress>? OnContextMenu { get; init; }
 
     /// <summary>
+    /// Told of a left press anywhere inside this region before the topmost region acts, bound from
+    /// <see cref="Layout.Node.OnPressWithin"/>. Null on nearly every region.
+    /// </summary>
+    public Action<PointerPress>? OnPressWithin { get; init; }
+
+    /// <summary>
     /// The hover text for this region, from <see cref="Layout.Node.Tooltip"/> -- or, for a disabled one,
     /// the reason it is disabled, since the answer to "why can't I press this" belongs where the press
     /// was refused rather than in a panel the reader only reaches by making the choice that just failed.

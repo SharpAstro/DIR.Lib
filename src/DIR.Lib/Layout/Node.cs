@@ -187,6 +187,23 @@ public abstract partial record Node
     public Func<PointerPress, DragCapture?>? OnPress { get; init; }
 
     /// <summary>
+    /// Told of every left press that lands inside this node's arranged rect, set via <see cref="WithPressWithin"/>,
+    /// BEFORE the topmost region under the point acts. The press is not consumed by it: the topmost region (a
+    /// button, a field, this node's own body) still gets it exactly as before.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Why: a floating child window must come to the front and become active on a press anywhere on it, content
+    /// controls included, and a control that takes the press is the topmost region, so a window beneath it never
+    /// heard. Only the INNERMOST-LAST (topmost painted) node declaring this under the point is told, within the
+    /// widget that owns the topmost region, so two overlapping windows never both activate. A popover backdrop
+    /// ends the search. A disabled node's rule is dropped, like its other handlers.
+    /// </para>
+    /// <para>An init-only property, so no constructor changes shape.</para>
+    /// </remarks>
+    public Action<PointerPress>? OnPressWithin { get; init; }
+
+    /// <summary>
     /// What Enter does on this node when it differs from a click, set via <see cref="Activatable"/>.
     /// Null (the default) means the two are the same thing and Enter runs <see cref="OnClick"/>.
     /// </summary>
@@ -729,6 +746,16 @@ public abstract partial record Node
         /// a consumer could compute when it builds the tree.
         /// </remarks>
         public bool CenterAlong { get; init; }
+
+        /// <summary>
+        /// Map <see cref="OffsetAlong"/> and <see cref="OffsetAcross"/> on the axis each runs along
+        /// (<see cref="IMeasureContext{T}.ToSurfaceX"/> across the surface, <see cref="IMeasureContext{T}.ToSurfaceY"/>
+        /// down it) instead of the axis-less <see cref="IMeasureContext{T}.ToSurface"/>. On a square-unit surface the two
+        /// agree; on a terminal, where a cell is 8x16 design units, a free child authored at (280, 180) lands at column 35,
+        /// row 11 rather than column 280, row 180. Off by default, so a tree written before it arranges exactly as it did.
+        /// </summary>
+        /// <remarks>An init-only property, not a positional parameter, for the reason <see cref="CenterAlong"/> is one.</remarks>
+        public bool OffsetsPerAxis { get; init; }
 
         /// <summary>
         /// The widest the child is measured and arranged at, in design units; 0 means no cap beyond the room it floats in.

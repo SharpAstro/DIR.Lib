@@ -9,6 +9,47 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.85
+
+**Floating child windows inside one host window, as a model and one declaration.** (additive)
+
+- **`DIR.Lib.ChildWindows.ChildWindowSet`** is the surface-neutral model: front-to-back order, the one active child,
+  `BringToFront`, `Move`, `Resize` (never below `MinWidth` x `MinHeight`), `Close`, and the `Cascade`, `Tile` and
+  `ShowAsTabs` commands. A move or resize in an arranged set frees every child where it stands first; `ShowFree`
+  restores. `ShowAsTabs(host)` takes the host rect, as `Cascade` and `Tile` do. `Version` and `Changed` work as on
+  `NotificationFeed`. Everything is design units against a host rect, with no surface read.
+- **The keep-reachable rule**: a strip of each title bar (`KeepReachableStrip`, 48 units) always stays inside the host
+  on every edge, and the title bar never leaves the top or bottom, so a window cannot be dragged or left (by a
+  shrinking host) where it cannot be grabbed. `NoteHost` re-clamps free windows and refits tiles and tabs.
+- **`ChildWindowsLayout.Build(content, set, windowContent, colors, style, scale, onChanged)`** declares the set as one
+  `Layout.Node` tree: each child an `Anchored` free node in its own `Overlay` layer, back to front, with a title bar
+  (active marker, ellipsised title with the whole title on hover, close button), a drag to move, resize handles and a
+  body that swallows presses. The active child says so in words (`ChildWindowStyle.ActiveLabel`, "active") beside
+  its marker, as well as in colour. Tabs use `TabStripTree`; the strip's empty part is a `ChildWindowPart.Strip` hit
+  that swallows a press so it never reaches the host content behind it. Every gesture is declared, so `InputRouter`
+  routes it and a host writes no pointer code.
+- **The handles** are one layer laid out by the engine (fixed thin rows and columns, stretched along each edge, each a
+  `Content.Fill` keyed `ChildWindowsLayout.HandleFillKey`, which a host's drawFill skips), so they keep a cell on a
+  cell surface. None covers the close button: the top edge stops short of it and the right edge starts below the
+  title row, so there is no top-right corner handle. The other corners show the new diagonal cursors.
+- **Minimised and maximised**: a maximised child is drawn over the whole host with no handles and no drag; a minimised
+  one is left out, for the host to show where it can be restored.
+- **Tab labels** are measured by `ChildWindowStyle.MeasureLabel` when the host gives one, else estimated at
+  `TabCharEm` (now 0.75 em), so a short title such as "Camera" is not ellipsised while the strip has room.
+  `ChildWindowStyle.TabRule` (default 1) is the strip's rule and accent thickness; a cell host passes 0, since each
+  is a fill a cell surface keeps at one cell, and in a one-row strip the rule took the labels' row.
+- **`Layout.Node.Anchored.OffsetsPerAxis`** (init-only, off by default): the engine maps the offsets with
+  `ToSurfaceX` / `ToSurfaceY` by axis instead of the axis-less `ToSurface`, so an anchored node lands on the right
+  cell. Off, every existing arrangement is unchanged.
+- **`CursorKind.ResizeNWSE` and `ResizeNESW`**, appended so every earlier value keeps its number. A host that does not
+  map them yet falls back to its default cursor.
+- **`Layout.Node.OnPressWithin`** (init-only, `WithPressWithin`): the router tells the topmost declaring container at
+  or below the region that takes a press, before the control acts, so a press on a content control still raises its
+  window. No constructor changed. Console.Lib, SdlVulkan.Renderer and WebGl.Renderer hosts that run their own
+  dispatch instead of `InputRouter` do not get it.
+- Tests: `ChildWindowSetTests`, `ChildWindowsLayoutTests` and `ChildWindowsRenderTests`, which keeps five pixel
+  baselines (`Baselines/childwindows_*.png`) and five cell snapshots (`Snapshots/childwindows_*.txt`).
+
 ## 11.84
 
 Additive. `WindowUiSettings.CaretPhase` holds the caret blink phase once per window, beside `CaretRect`:

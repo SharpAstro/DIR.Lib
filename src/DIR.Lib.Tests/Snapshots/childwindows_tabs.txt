@@ -1,0 +1,28 @@
+# cell 100x30 (8x16)
+0 Overlay 0 0 100 30
+1 Leaf:Box 0 0 100 30
+1 Anchored 0 0 100 30
+2 Stack 0 0 100 30
+3 Stack [Strip#3] 0 0 100 1
+4 Stack 0 0 100 1
+5 Stack 0 0 10 1
+6 Leaf:Box 0 0 0 1
+6 Text "Camera" 0 0 8 1
+6 Leaf:Box 8 0 0 1
+6 Text "×" 8 0 2 1
+6 Leaf:Box 10 0 0 1
+5 Stack 10 0 9 1
+6 Leaf:Box 10 0 0 1
+6 Text "Mount" 10 0 7 1
+6 Leaf:Box 17 0 0 1
+6 Text "×" 17 0 2 1
+6 Leaf:Box 19 0 0 1
+5 Stack 19 0 22 1
+6 Leaf:Box 19 0 0 1
+6 Text "Guiding graph: RMS over the last forty minutes of the second imaging session" 19 0 20 1
+6 Leaf:Box 39 0 0 1
+6 Text "×" 39 0 2 1
+6 Leaf:Box 41 0 0 1
+5 Leaf:Box 41 0 59 1
+3 Stack [Body#3] 0 1 100 29
+4 Text "Content of Guiding graph: RMS over the last forty minutes of the second imaging session" 0 1 100 29

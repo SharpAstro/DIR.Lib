@@ -368,8 +368,12 @@ public static class Engine
         // Never larger than the space it floats in, less its margins: a menu of long entries on a small window is cut to
         // the window, its text trimmed, rather than laid out past an edge the clamp below could not then bring it back from.
         size = new Size<T>(Min(size.Width, maxWidth), Min(size.Height, Max(T.Zero, inner.Height - two * margin)));
-        var along = ctx.ToSurface(anchored.OffsetAlong);
-        var across = ctx.ToSurface(anchored.OffsetAcross);
+        // With OffsetsPerAxis each offset maps on the axis it runs along, so a free child authored in design units lands
+        // where it should on a surface whose unit is not square (a terminal cell). Without it both stay on the axis-less
+        // ToSurface, as before, so an existing tree arranges unchanged.
+        var alongAxis = anchored.Side is DockSide.Left or DockSide.Right ? Axis.Vertical : Axis.Horizontal;
+        var along = anchored.OffsetsPerAxis ? ToSurfaceOn(ctx, anchored.OffsetAlong, alongAxis) : ctx.ToSurface(anchored.OffsetAlong);
+        var across = anchored.OffsetsPerAxis ? ToSurfaceOn(ctx, anchored.OffsetAcross, Axis.Vertical) : ctx.ToSurface(anchored.OffsetAcross);
 
         // A pinned side fixes one coordinate at the margin and keeps the offset on the other; free keeps
         // both. Left/Right pin X and run the offset down; Top/Bottom pin Y and run it across.
