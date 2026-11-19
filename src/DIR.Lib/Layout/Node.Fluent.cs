@@ -170,6 +170,9 @@ public abstract partial record Node
     /// </summary>
     public Node DoubleClickable(Action<InputModifier> onDoubleClick) => this with { OnDoubleClick = onDoubleClick };
 
+    /// <summary>Tells <paramref name="onPress"/> of every left press inside this node before the topmost region acts. See <see cref="Node.OnPressWithin"/>.</summary>
+    public Node WithPressWithin(Action<PointerPress> onPress) => this with { OnPressWithin = onPress };
+
     /// <summary>
     /// State what a right press does on this node -- typically open a menu at the press's position. It
     /// runs in place of the click for that press. Needs a <see cref="Node.Hit"/>, like any press.

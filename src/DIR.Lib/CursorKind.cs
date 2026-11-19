@@ -41,4 +41,11 @@ public enum CursorKind
 
     /// <summary>The gesture in progress cannot end here.</summary>
     NotAllowed,
+
+    /// <summary>Diagonal resize from the top-left to the bottom-right, for a top-left or bottom-right corner.
+    /// Added after the others so every earlier value keeps its number; a host that does not map it yet falls back to its default.</summary>
+    ResizeNWSE,
+
+    /// <summary>Diagonal resize from the top-right to the bottom-left, for a top-right or bottom-left corner.</summary>
+    ResizeNESW,
 }

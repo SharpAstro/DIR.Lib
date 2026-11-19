@@ -1349,4 +1349,47 @@ public class InputRouterTests
         harness.UnhandledEvents.OfType<InputEvent.Scroll>().ShouldHaveSingleItem("a box that fits has nothing to scroll");
         short_.ScrollOffsetY.ShouldBe(0f);
     }
+
+    // ---- OnPressWithin ------------------------------------------------------------------------
+
+    [Fact]
+    public void AContainerDeclaringPressWithinHearsAPressAndTheControlInsideItStillGetsItsOwn()
+    {
+        var harness = new Harness();
+        var heard = new List<(float X, float Y)>();
+        var clicks = 0;
+        var button = Layout.Builder.Text("go", 14f).WFixed(40f).HFixed(20f)
+            .Clickable(new HitResult.ButtonHit("go"), _ => clicks++);
+        var container = Layout.Builder.VStack(button).WFixed(100f).HFixed(100f)
+            .Bg(Lit).WithPressWithin(p => heard.Add((p.X, p.Y)));
+        harness.Paint(front: Layout.Builder.Anchored(container, null, 0f, 0f, 0f, clamp: false));
+
+        harness.Press(5f, 5f).ShouldBeTrue();
+        heard.ShouldHaveSingleItem();
+        clicks.ShouldBe(1, "the control is still the topmost region and acts as before");
+
+        harness.Press(80f, 80f);
+        heard.Count.ShouldBe(2, "a press on the container's empty part is heard too");
+        clicks.ShouldBe(1);
+
+        harness.Press(150f, 150f);
+        heard.Count.ShouldBe(2, "a press outside the container is not heard");
+    }
+
+    [Fact]
+    public void OnlyTheTopmostContainerUnderThePointIsTold()
+    {
+        var harness = new Harness();
+        var heard = new List<string>();
+        Layout.Node Box(string name, float x)
+            => Layout.Builder.Anchored(
+                Layout.Builder.Spacer().WFixed(100f).HFixed(100f).Bg(Lit)
+                    .Clickable(new HitResult.ButtonHit(name))
+                    .WithPressWithin(_ => heard.Add(name)),
+                null, x, 0f, 0f, clamp: false);
+        harness.Paint(front: Layout.Builder.Overlay(Box("back", 0f), Box("front", 50f)));
+
+        harness.Press(75f, 10f);
+        heard.ShouldBe(["front"], "two overlapping containers: the one painted last takes the press");
+    }
 }

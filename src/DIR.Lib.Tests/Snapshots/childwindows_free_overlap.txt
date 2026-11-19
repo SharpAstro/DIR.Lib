@@ -1,0 +1,119 @@
+# cell 100x30 (8x16)
+0 Overlay 0 0 100 30
+1 Overlay 0 0 100 30
+2 Overlay 0 0 100 30
+3 Overlay 0 0 100 30
+4 Leaf:Box 0 0 100 30
+4 Anchored 0 0 100 30
+5 Overlay 3 2 35 11
+6 Stack 3 2 35 11
+7 Stack [Title#1] 4 3 33 1
+8 Text "○" 4 3 2 1
+8 Text "Camera" 6 3 28 1
+8 Text "✕" [Close#1] 34 3 3 1
+7 Stack [Body#1] 4 4 33 8
+8 Text "Content of Camera" 4 4 33 8
+6 Stack 3 2 35 11
+7 Stack 3 2 35 1
+8 Leaf:Fill [Handle#1:Left, Top] 3 2 2 1
+8 Leaf:Fill [Handle#1:Top] 5 2 29 1
+8 Leaf:Fill 34 2 4 1
+7 Stack 3 3 35 9
+8 Stack 3 3 1 9
+9 Leaf:Fill [Handle#1:Left, Top] 3 3 1 1
+9 Leaf:Fill [Handle#1:Left] 3 4 1 7
+9 Leaf:Fill [Handle#1:Left, Bottom] 3 11 1 1
+8 Leaf:Box 4 3 33 9
+8 Stack 37 3 1 9
+9 Leaf:Fill 37 3 1 2
+9 Leaf:Fill [Handle#1:Right] 37 5 1 6
+9 Leaf:Fill [Handle#1:Right, Bottom] 37 11 1 1
+7 Stack 3 12 35 1
+8 Leaf:Fill [Handle#1:Left, Bottom] 3 12 2 1
+8 Leaf:Fill [Handle#1:Bottom] 5 12 31 1
+8 Leaf:Fill [Handle#1:Right, Bottom] 36 12 2 1
+3 Anchored 0 0 100 30
+4 Overlay 33 9 35 11
+5 Stack 33 9 35 11
+6 Stack [Title#3] 34 10 33 1
+7 Text "○" 34 10 2 1
+7 Text "Guiding graph: RMS over the last forty minutes of the second imaging session" 36 10 28 1
+7 Text "✕" [Close#3] 64 10 3 1
+6 Stack [Body#3] 34 11 33 8
+7 Text "Content of Guiding graph: RMS over the last forty minutes of the second imaging session" 34 11 33 8
+5 Stack 33 9 35 11
+6 Stack 33 9 35 1
+7 Leaf:Fill [Handle#3:Left, Top] 33 9 2 1
+7 Leaf:Fill [Handle#3:Top] 35 9 29 1
+7 Leaf:Fill 64 9 4 1
+6 Stack 33 10 35 9
+7 Stack 33 10 1 9
+8 Leaf:Fill [Handle#3:Left, Top] 33 10 1 1
+8 Leaf:Fill [Handle#3:Left] 33 11 1 7
+8 Leaf:Fill [Handle#3:Left, Bottom] 33 18 1 1
+7 Leaf:Box 34 10 33 9
+7 Stack 67 10 1 9
+8 Leaf:Fill 67 10 1 2
+8 Leaf:Fill [Handle#3:Right] 67 12 1 6
+8 Leaf:Fill [Handle#3:Right, Bottom] 67 18 1 1
+6 Stack 33 19 35 1
+7 Leaf:Fill [Handle#3:Left, Bottom] 33 19 2 1
+7 Leaf:Fill [Handle#3:Bottom] 35 19 31 1
+7 Leaf:Fill [Handle#3:Right, Bottom] 66 19 2 1
+2 Anchored 0 0 100 30
+3 Overlay 48 13 35 11
+4 Stack 48 13 35 11
+5 Stack [Title#4] 49 14 33 1
+6 Text "○" 49 14 2 1
+6 Text "Focuser" 51 14 28 1
+6 Text "✕" [Close#4] 79 14 3 1
+5 Stack [Body#4] 49 15 33 8
+6 Text "Content of Focuser" 49 15 33 8
+4 Stack 48 13 35 11
+5 Stack 48 13 35 1
+6 Leaf:Fill [Handle#4:Left, Top] 48 13 2 1
+6 Leaf:Fill [Handle#4:Top] 50 13 29 1
+6 Leaf:Fill 79 13 4 1
+5 Stack 48 14 35 9
+6 Stack 48 14 1 9
+7 Leaf:Fill [Handle#4:Left, Top] 48 14 1 1
+7 Leaf:Fill [Handle#4:Left] 48 15 1 7
+7 Leaf:Fill [Handle#4:Left, Bottom] 48 22 1 1
+6 Leaf:Box 49 14 33 9
+6 Stack 82 14 1 9
+7 Leaf:Fill 82 14 1 2
+7 Leaf:Fill [Handle#4:Right] 82 16 1 6
+7 Leaf:Fill [Handle#4:Right, Bottom] 82 22 1 1
+5 Stack 48 23 35 1
+6 Leaf:Fill [Handle#4:Left, Bottom] 48 23 2 1
+6 Leaf:Fill [Handle#4:Bottom] 50 23 31 1
+6 Leaf:Fill [Handle#4:Right, Bottom] 81 23 2 1
+1 Anchored 0 0 100 30
+2 Overlay 18 5 35 11
+3 Stack 18 5 35 11
+4 Stack [Title#2] 19 6 33 1
+5 Text "●" 19 6 2 1
+5 Text "Mount" 21 6 22 1
+5 Text "active" 43 6 6 1
+5 Text "✕" [Close#2] 49 6 3 1
+4 Stack [Body#2] 19 7 33 8
+5 Text "Content of Mount" 19 7 33 8
+3 Stack 18 5 35 11
+4 Stack 18 5 35 1
+5 Leaf:Fill [Handle#2:Left, Top] 18 5 2 1
+5 Leaf:Fill [Handle#2:Top] 20 5 29 1
+5 Leaf:Fill 49 5 4 1
+4 Stack 18 6 35 9
+5 Stack 18 6 1 9
+6 Leaf:Fill [Handle#2:Left, Top] 18 6 1 1
+6 Leaf:Fill [Handle#2:Left] 18 7 1 7
+6 Leaf:Fill [Handle#2:Left, Bottom] 18 14 1 1
+5 Leaf:Box 19 6 33 9
+5 Stack 52 6 1 9
+6 Leaf:Fill 52 6 1 2
+6 Leaf:Fill [Handle#2:Right] 52 8 1 6
+6 Leaf:Fill [Handle#2:Right, Bottom] 52 14 1 1
+4 Stack 18 15 35 1
+5 Leaf:Fill [Handle#2:Left, Bottom] 18 15 2 1
+5 Leaf:Fill [Handle#2:Bottom] 20 15 31 1
+5 Leaf:Fill [Handle#2:Right, Bottom] 51 15 2 1
