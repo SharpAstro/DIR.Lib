@@ -287,6 +287,14 @@ public sealed class WindowUiSettings
     public RectInt CaretRect { get; set; }
 
     /// <summary>
+    /// The caret's blink phase for the frame being painted. One phase per window, for the same reason there
+    /// is one caret: the loop that owns the frames sets it once per frame from
+    /// <see cref="CaretBlink.PhaseAt(TimeProvider)"/>, and every widget sharing this object draws its text
+    /// inputs in that phase, so no host sets it per widget.
+    /// </summary>
+    public long CaretPhase { get; set; }
+
+    /// <summary>
     /// Which frame the window is on. A host bumps it once per frame, before anything draws; every widget
     /// sharing these settings then agrees on what "this frame" means.
     /// </summary>
