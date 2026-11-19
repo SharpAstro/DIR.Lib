@@ -108,19 +108,17 @@ public class CaretBlinkTests
         child.Paint(state);
         Pixel(childSurface, x, y).ShouldBe(TextInputRenderer.Colors.Cursor, "a widget sharing the Ui sees the same phase");
 
+        // Flip the window's phase and repaint the SAME widgets over cleared surfaces.
         clock.Milliseconds = CaretBlink.PhaseMilliseconds;
         parent.Ui.CaretPhase = CaretBlink.PhaseAt(clock);
-        var parentOff = new MetricsRenderer(120, 30);
-        var parent2 = new FieldWidget(parentOff);
-        var childOff = new MetricsRenderer(120, 30);
-        var child2 = new FieldWidget(childOff);
-        parent2.ShareWith(child2);
-        parent2.Ui.CaretPhase = CaretBlink.PhaseAt(clock);
-        parent2.Paint(state);
-        child2.Paint(state);
-        Pixel(parentOff, x, y).ShouldNotBe(TextInputRenderer.Colors.Cursor, "the next phase draws no caret");
-        Pixel(childOff, x, y).ShouldNotBe(TextInputRenderer.Colors.Cursor, "nor in the sharing widget");
-        child2.CaretPhase.ShouldBe(1L, "the widget property forwards to the window");
+        var clear = new RectInt(new PointInt(120, 30), new PointInt(0, 0));
+        parentSurface.FillRectangle(clear, new RGBAColor32(0, 0, 0, 255));
+        childSurface.FillRectangle(clear, new RGBAColor32(0, 0, 0, 255));
+        parent.Paint(state);
+        child.Paint(state);
+        Pixel(parentSurface, x, y).ShouldNotBe(TextInputRenderer.Colors.Cursor, "the next phase draws no caret");
+        Pixel(childSurface, x, y).ShouldNotBe(TextInputRenderer.Colors.Cursor, "nor in the sharing widget");
+        child.CaretPhase.ShouldBe(1L, "the widget property forwards to the window");
     }
 
     private static RGBAColor32 Pixel(RgbaImageRenderer r, int x, int y)
