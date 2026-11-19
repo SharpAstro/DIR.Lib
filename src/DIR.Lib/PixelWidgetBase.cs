@@ -209,8 +209,17 @@ namespace DIR.Lib
         /// The caret's blink phase for the frame being painted (<see cref="CaretBlink.PhaseAt(TimeProvider)"/>),
         /// set by the host once per frame. It replaces a frame counter that blinked every 30 frames, which
         /// made a focused field a reason to render continuously; see <see cref="CaretBlink"/>.
+        /// <para>
+        /// Forwards to <see cref="WindowUiSettings.CaretPhase"/> on <see cref="Ui"/>, where the phase now
+        /// lives once per window; set that instead. A child given its parent's <see cref="Ui"/> shares the
+        /// parent's phase. This forwarder goes in the next major.
+        /// </para>
         /// </summary>
-        public long CaretPhase { get; set; }
+        public long CaretPhase
+        {
+            get => Ui.CaretPhase;
+            set => Ui.CaretPhase = value;
+        }
 
         /// <summary>
         /// The window's DPI scale (device pixels per design unit), owned per widget instance -- a widget
@@ -720,7 +729,7 @@ namespace DIR.Lib
             // Nothing else reaches inside a field: the layout painter splits TEXT LEAVES per coverage run,
             // and a field's content is not a leaf.
             var caret = TextInputRenderer.Render(Renderer, state, x, y, width, height, fontPath, fontSize,
-                CaretBlink.IsVisible(CaretPhase), colors, FontFallback, leadingRoom);
+                CaretBlink.IsVisible(Ui.CaretPhase), colors, FontFallback, leadingRoom);
             if (state.IsActive)
             {
                 Ui.CaretRect = caret;
@@ -746,7 +755,7 @@ namespace DIR.Lib
             float fontSize, float lineHeight, DesignScale scale, TextInputColors? colors = null, bool focusOnOpen = false)
         {
             var caret = TextEditorRenderer.Render(Renderer, state, x, y, width, height, fontPath, fontSize, lineHeight,
-                CaretBlink.IsVisible(CaretPhase), colors, FontFallback);
+                CaretBlink.IsVisible(Ui.CaretPhase), colors, FontFallback);
             if (state.IsActive)
             {
                 Ui.CaretRect = caret;

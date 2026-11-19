@@ -9,6 +9,14 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.84
+
+Additive. `WindowUiSettings.CaretPhase` holds the caret blink phase once per window, beside `CaretRect`:
+the loop that owns the frames sets it once per frame from `CaretBlink.PhaseAt(TimeProvider)`, and
+`PixelWidgetBase` draws its text inputs and editors from it. `PixelWidgetBase.CaretPhase` stays and
+forwards get and set to it (not obsolete, so warnings-as-errors consumers keep building; it goes in the
+next major). A child given its parent's `Ui` now shares the parent's phase.
+
 ## 11.83
 
 **A notifications component: a bell, a side bar, toasts and the list, as one declaration.** (additive)

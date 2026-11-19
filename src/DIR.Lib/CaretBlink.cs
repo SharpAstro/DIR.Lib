@@ -4,7 +4,7 @@ namespace DIR.Lib;
 
 /// <summary>
 /// The text caret's blink, on the clock. A host takes one <see cref="PhaseAt(TimeProvider)"/> per frame,
-/// hands it to its widgets (<see cref="PixelWidgetBase{TSurface}.CaretPhase"/>), and asks for a frame
+/// stores it once per window in <see cref="WindowUiSettings.CaretPhase"/>, and asks for a frame
 /// only when the phase differs from the one it last painted -- two frames a second while a field has the
 /// keyboard, rather than every frame.
 /// </summary>
