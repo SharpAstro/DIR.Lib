@@ -155,6 +155,73 @@ public class LayoutScrolledListCursorTests
         widget.ListCursor.Index.ShouldBe(4, "straight past the row of the disabled group, and no further: row 4 is not in it");
     }
 
+    // A scrolled stack arranges only the rows within a viewport's extent of the viewport (Engine.ArrangeStack), which
+    // is what lets the arrows step onto the next row out of view. A run of disabled rows taller than that margin holds
+    // no row the cursor can take, and the rows after it are not in the frame at all.
+    private static Layout.Node CardWithDisabledRun(ListScrollController scroll, int from, int to)
+    {
+        var children = new Layout.Node[Rows + 1];
+        children[0] = Layout.Builder.Spacer().RowH(13f);
+        for (var i = 0; i < Rows; i++)
+        {
+            var row = Layout.Builder.Spacer().RowH(RowH).Clickable(new HitResult.ListItemHit("rows", i), _ => { });
+            children[i + 1] = i >= from && i <= to ? row.Disabled("not now") : row;
+        }
+
+        return Layout.Builder.VStack(
+                Layout.Builder.VStack(children).WStar().HClamp(0f, ViewportH).Pad(Pad).WithScroll(scroll),
+                Layout.Builder.Spacer().RowH(30f))
+            .Stretch();
+    }
+
+    // Walks the cursor with the arrows, repainting after every press as a host does. The run may take more than one
+    // press to cross, since the rows beyond it are not laid out until the list has scrolled towards them, but every
+    // press must be taken and the cursor must arrive.
+    private static void Walk(DeclarationWidget widget, ListScrollController scroll, int from, int to, int delta, int lands)
+    {
+        var presses = 0;
+        while (widget.ListCursor.Index != lands && presses < 6)
+        {
+            widget.MoveListCursor(delta).ShouldBeTrue($"press {presses + 1}: the list goes on in that direction, so the key is not the end of it");
+            widget.Render(CardWithDisabledRun(scroll, from, to), Bounds);
+            presses++;
+        }
+
+        widget.ListCursor.Index.ShouldBe(lands);
+        ShouldShowWhole(widget, lands);
+    }
+
+    [Fact]
+    public void TheArrowsGetPastARunOfDisabledRowsTallerThanTheViewport_BothWays()
+    {
+        // Rows 3 to 7 are disabled: 100 units of them against a 50 unit viewport.
+        var (widget, scroll) = Fixture();
+        widget.ListCursor.Open("rows", 2);
+        widget.Render(CardWithDisabledRun(scroll, 3, 7), Bounds);
+
+        Walk(widget, scroll, 3, 7, delta: 1, lands: 8);
+        Walk(widget, scroll, 3, 7, delta: -1, lands: 2);
+    }
+
+    [Fact]
+    public void AtTheRealEndOfTheListTheArrowIsStillRefused()
+    {
+        // Rows 7 to 9 are disabled and the list ends with them: once they are in view there is nothing further.
+        var (widget, scroll) = Fixture();
+        widget.ListCursor.Open("rows", 6);
+        widget.Render(CardWithDisabledRun(scroll, 7, 9), Bounds);
+
+        var taken = 0;
+        while (taken < 6 && widget.MoveListCursor(1))
+        {
+            widget.Render(CardWithDisabledRun(scroll, 7, 9), Bounds);
+            taken++;
+        }
+
+        taken.ShouldBeLessThan(6, "the scroll reaches the end and the key is then refused, not taken for ever");
+        widget.ListCursor.Index.ShouldBe(6, "no row after 6 can take the cursor");
+    }
+
     [Fact]
     public void AClippedRowStillAnswersNoPress()
     {
