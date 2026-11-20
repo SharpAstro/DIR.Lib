@@ -35,7 +35,6 @@ public class InputRouterSurfaceTests
     /// <summary>The row's handlers, counted.</summary>
     private sealed class Row
     {
-        public int Clicks;
         public int DoubleClicks;
         public int Presses;
         public int Releases;
