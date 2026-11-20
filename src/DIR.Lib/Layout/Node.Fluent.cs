@@ -94,6 +94,34 @@ public abstract partial record Node
     /// approximates it.</summary>
     public Node Radius(float designUnits) => this with { CornerRadius = designUnits };
 
+    /// <summary>A drop shadow under this node: offset, blur and colour in design units. Chrome only (takes no space);
+    /// a cell surface draws none. See <see cref="Node.ShadowStyle"/>.</summary>
+    public Node Shadow(float offsetX, float offsetY, float blur, RGBAColor32 color)
+        => this with { ShadowStyle = new ShadowStyle { OffsetX = offsetX, OffsetY = offsetY, Blur = blur, Color = color } };
+
+    /// <summary>Declares <paramref name="style"/> as this node's shadow (null clears it).</summary>
+    public Node Shadow(ShadowStyle? style) => this with { ShadowStyle = style };
+
+    /// <summary>A shadow from a fixed elevation table, black, in design units (offsetY, blur, alpha):
+    /// 1 = (1, 2, 30%), 2 = (2, 4, 35%), 3 = (4, 8, 40%), 4 = (8, 16, 45%). 0 or less clears the shadow;
+    /// above 4 is 4. Never moves sideways.</summary>
+    public Node Elevated(int level)
+    {
+        if (level <= 0)
+        {
+            return this with { ShadowStyle = null };
+        }
+
+        var (dy, blur, alpha) = Math.Min(level, 4) switch
+        {
+            1 => (1f, 2f, 77),
+            2 => (2f, 4f, 89),
+            3 => (4f, 8f, 102),
+            _ => (8f, 16f, 115),
+        };
+        return Shadow(0f, dy, blur, new RGBAColor32(0, 0, 0, (byte)alpha));
+    }
+
     /// <summary>A border on all four sides: <paramref name="width"/> design units of <paramref name="color"/> (one cell
     /// per side on a cell surface), square or rounded by <paramref name="radius"/>. Reserved inside this node's extent,
     /// outside its padding.</summary>

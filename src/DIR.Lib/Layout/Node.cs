@@ -162,6 +162,12 @@ public abstract partial record Node
     /// Set via <see cref="Border(RGBAColor32, float, float)"/> and the per-side <c>BorderTop</c> family.</summary>
     public BorderStyle? BorderStyle { get; init; }
 
+    /// <summary>The drop shadow this node declares, or null (default) for none. Chrome only: arrange never sees it,
+    /// so a shadowed node occupies the rect an unshadowed one would. A pixel surface paints it under the background
+    /// (following its corner radius); a cell surface paints nothing. Init-only, never a constructor parameter.
+    /// Set via <see cref="Shadow(float, float, float, RGBAColor32)"/> or <see cref="Elevated"/>.</summary>
+    public ShadowStyle? ShadowStyle { get; init; }
+
     /// <summary>Optional click region bound to this node's arranged rect (draw == hit by construction).
     /// Lives on the node, not the content, so a whole container (a slot row, a panel) is clickable -- not
     /// just leaves. Inner nodes registered later win the hit (top-most), so a button inside a clickable row

@@ -64,6 +64,25 @@ namespace DIR.Lib
             /// constructor keeps its arity (a new positional parameter would be a binary break). An unbordered
             /// node leaves it null, so its signature is what it was before borders existed.</summary>
             public Layout.BorderStyle? Border { get; init; }
+
+            /// <summary>The node's shadow, or null. Init-only for the same reason as <see cref="Border"/>.
+            /// <see cref="Bounds"/> stays the node's rect; the damage a signature reports grows by this shadow's
+            /// extent (see <see cref="LayoutDamage.DamageRect"/>).</summary>
+            public Layout.ShadowStyle? Shadow { get; init; }
+        }
+
+        /// <summary>The rect a signature repaints: its bounds, grown on every side by its shadow's extent.</summary>
+        public static Rect<float> DamageRect(in PaintSignature sig)
+        {
+            if (sig.Shadow is not { Color.Alpha: > 0 } s)
+            {
+                return sig.Bounds;
+            }
+
+            // One pixel more than the extent: the default shadow reaches n + 1 pixels out, and rounding of the offset.
+            var g = MathF.Ceiling(s.Extent) + 1f;
+            var b = sig.Bounds;
+            return new Rect<float>(b.X - g, b.Y - g, b.Width + 2f * g, b.Height + 2f * g);
         }
 
         /// <summary>Which kind of content a signature describes.</summary>
@@ -107,7 +126,12 @@ namespace DIR.Lib
                 ? SignatureOfContent(content, bounds, background, n.CornerRadius)
                 : new PaintSignature(bounds, background, n.CornerRadius, ContentShape.Container,
                     null, null, 0f, default, 0, 0, 0);
-            return n.BorderStyle is { } border ? signature with { Border = border } : signature;
+            if (n.BorderStyle is { } border)
+            {
+                signature = signature with { Border = border };
+            }
+
+            return n.ShadowStyle is { } shadow ? signature with { Shadow = shadow } : signature;
         }
 
         private static PaintSignature SignatureOfContent(Layout.Content content, in Rect<float> bounds,
@@ -205,18 +229,18 @@ namespace DIR.Lib
             // Present now but not before: appeared, moved here, or repainted differently.
             foreach (var sig in after)
             {
-                if (!before.Contains(sig) && seen.Add(sig.Bounds))
+                if (!before.Contains(sig) && DamageRect(sig) is var rect && seen.Add(rect))
                 {
-                    damage.Add(sig.Bounds);
+                    damage.Add(rect);
                 }
             }
 
             // Present before but not now: vanished, or moved away. The tooltip case.
             foreach (var sig in before)
             {
-                if (!after.Contains(sig) && seen.Add(sig.Bounds))
+                if (!after.Contains(sig) && DamageRect(sig) is var rect && seen.Add(rect))
                 {
-                    damage.Add(sig.Bounds);
+                    damage.Add(rect);
                 }
             }
 
