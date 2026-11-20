@@ -1,0 +1,90 @@
+# cell 100x30 (8x16)
+0 Dock 0 0 100 30
+1 Stack [Bell] 94 0 6 30
+2 Icon Bell 96 0 2 1
+2 Text "1" 97 1 1 1
+1 Overlay 0 0 94 30
+2 Leaf:Box 0 0 94 30
+2 Stack 0 0 94 30
+3 Leaf:Box 1 0 0 9
+3 Stack 1 9 92 21
+4 Leaf:Box 1 9 52 0
+4 Stack 53 9 40 21
+5 Overlay 53 9 40 8
+6 Stack [Toast#3] 53 9 40 8
+7 Icon Warning 55 10 2 1
+7 Stack 58 10 32 6
+8 Stack 58 10 32 5
+9 Stack 58 10 32 1
+10 Text "Guiding RMS above 1.5 arcsec" 58 10 32 1
+9 Wrap 58 11 32 3
+10 Text "Wind " 58 11 5 1
+10 Text "gusts " 63 11 6 1
+10 Text "are " 69 11 4 1
+10 Text "shaking " 73 11 8 1
+10 Text "the " 81 11 4 1
+10 Text "mount; " 58 12 7 1
+10 Text "the " 65 12 4 1
+10 Text "subframes " 69 12 10 1
+10 Text "since " 79 12 6 1
+10 Text "21:04 " 58 13 6 1
+10 Text "may " 64 13 4 1
+10 Text "be " 68 13 3 1
+10 Text "soft." 71 13 5 1
+9 Text "guider" 58 14 32 1
+8 Overlay 58 15 32 1
+9 Leaf:Box 58 15 32 1
+9 Stack 58 15 32 1
+10 Leaf:Box 58 15 19 1
+10 Leaf:Box 77 15 13 1
+7 Leaf:Box 91 10 0 0
+6 Stack 53 9 40 8
+7 Stack 54 9 38 1
+8 Leaf:Box 54 9 36 0
+8 Stack [Close#3] 90 9 2 1
+9 Icon Close 90 9 2 1
+5 Overlay 53 17 40 6
+6 Stack [Toast#4] 53 17 40 6
+7 Icon Error 55 18 2 1
+7 Stack 58 18 32 4
+8 Stack 58 18 32 3
+9 Stack 58 18 32 1
+10 Text "Focuser lost its connection during the autofocus run on the luminance filter" 58 18 32 1
+9 Wrap 58 19 32 1
+10 Text "USB " 58 19 4 1
+10 Text "link " 62 19 5 1
+10 Text "lost." 67 19 5 1
+9 Text "focuser" 58 20 32 1
+8 Overlay 58 21 32 1
+9 Leaf:Box 58 21 32 1
+9 Stack 58 21 32 1
+10 Leaf:Box 58 21 19 1
+10 Leaf:Box 77 21 13 1
+7 Leaf:Box 91 18 0 0
+6 Stack 53 17 40 6
+7 Stack 54 17 38 1
+8 Leaf:Box 54 17 36 0
+8 Stack [Close#4] 90 17 2 1
+9 Icon Close 90 17 2 1
+5 Stack 53 23 40 7
+6 Icon Error 55 24 2 1
+6 Stack 58 24 33 5
+7 Stack 58 24 33 4
+8 Stack 58 24 33 1
+9 Text "Camera disconnected while the long exposure sequence was still running" 58 24 33 1
+8 Wrap 58 25 33 2
+9 Text "Reconnect " 58 25 10 1
+9 Text "to " 68 25 3 1
+9 Text "resume " 71 25 7 1
+9 Text "at " 78 25 3 1
+9 Text "frame " 81 25 6 1
+9 Text "41 " 87 25 3 1
+9 Text "of " 58 26 3 1
+9 Text "120." 61 26 4 1
+8 Text "camera" 58 27 33 1
+7 Stack 58 28 33 1
+8 Leaf:Box 58 28 11 0
+8 Stack [Action#5] 70 28 11 1
+9 Text "Reconnect" 71 28 9 1
+8 Stack [Dismiss#5] 82 28 9 1
+9 Text "Dismiss" 83 28 7 1
