@@ -9,6 +9,46 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.87
+
+**The points DIR.Lib's reviews left for later, worked through: one layout fix, one loader rule, one test that never ran.**
+(additive, with one tightening in the prototype loader; issues #214 to #285 titled "Follow-up of")
+
+- **The menu panel's content fills its card.** `MenuLayout.BuildPanel`'s column was as wide as its widest row and sat at
+  the card's left edge. It showed whenever the card is wider than its content, which is a short menu clamped up to
+  `MenuPanelStyle.MinWidth` and every portrait card at full width: the title off-centre (in the test's measure its
+  middle was at 84 on a 360 wide surface, where the card's is 180), the close control short of the corner, and Back
+  touching close when the header is the widest row. The column is now `Star` wide. `PlanPanel` is unchanged, so a card
+  keeps its size and font. Found by the test #256 asked for, a case where the header decides the fit.
+  `MenuPanelRenderTests` pins the look with a wide and a narrow baseline.
+- **A prototype number that measures something drawn may not be negative.** `padding`, `borderWidth`, `borderRadius`,
+  `size`, `gap`, `firstExtent`, `fontSize`, `iconSize`, `minWidth` and `minHeight` below zero are a load problem at their
+  path ("expected a number that is not negative"); a negative `width` or `height` already was, and its message now says
+  why. Zero loads; a slider's `min` and `max` and a progress `value` may be any number. `PrototypeProperty.NonNegative`
+  (init-only) marks them, and `prototype-format.md` has a Numbers section a test holds to the vocabulary. **A document
+  with such a value loaded before and reports a problem now** (#257).
+- **A player's `target` follows the player's design size.** `PrototypePlayer.BuildTree` gives its builder the player's
+  `DesignSize` before every build, so a size written on the public `TreeBuilder` no longer leaves `target` and the modal
+  centring on one size while `Fit` scales by another. `PrototypeTreeBuilder.DesignSize`'s doc says that it sets `target`,
+  and that a builder used on its own with no size leaves `target` unset (#262, #263).
+- **The Debug twin's targets file is checked at last.** `DebugTwinNupkg_CarriesItsOwnNamedTargets` looked for the twin
+  one folder above the repository, and CI ran it before the twin was packed, so it skipped on every machine and nothing
+  had ever opened a twin. It looks in the repository, CI runs it again after the twin pack, and there
+  `DIR_LIB_REQUIRE_DEBUG_TWIN=1` makes a missing twin a failure. The twin does carry
+  `buildTransitive/DIR.Lib.Debug.targets` (#253).
+- **`--filter` works on this runner.** `CLAUDE.md` and `PILOT.md` said VSTest's `--filter` fails as an unknown option.
+  It does not: `--filter "FullyQualifiedName~MenuPanelTests"` runs that class's 42 tests on the 10.0.404 and 11.0.100
+  SDKs, and an expression that matches nothing exits 8. `--logger` and `--blame-*` do fail (exit 5), as the pages say.
+  The 11.1 entry's "`--filter` is unchanged" was right all along (#285).
+- **Tests that pin what they claim.** The table header tests find a column's grip cell by what it is and fail by name
+  when the row stops holding one cell per column (#214). A press on a child window's border strip is asserted to raise
+  that window, with a second window active first (#281). New tests pin that building a prototype tree never raises
+  `PrototypeState.Changed`, that a bare builder sets `target` only once it has a size, and that a `default`
+  `PrototypeFinding` prints (#262, #263).
+- **Comments.** `PixelWidgetBase`'s private `RevealListCursor` says why it is apart from `RevealListRow` (#223); the
+  summaries of `ExtentFacts` and `Engine.Extent` say the cache does not hold under a text editor (#227); a test comment
+  that asked a question states the arithmetic (#231).
+
 ## 11.86
 
 **What is painted over something takes the pointer from it, and toasts sit at the bottom right.** (additive; #282)
