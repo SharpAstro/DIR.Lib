@@ -111,6 +111,8 @@ namespace DIR.Lib.ChildWindows
     /// <para><b>Handles.</b> The edge and corner handles are laid out over the window by the engine (thin rows and columns,
     /// stretched along each edge), so they keep their place and extent on a cell surface. None covers the close button:
     /// the top edge stops short of it and the right edge starts below the title row, so the top-right has no corner handle.</para>
+    /// <para><b>A window is a surface</b> (<see cref="Node.IsSurface"/>, 11.86): within its rect nothing painted before it,
+    /// the host's content or a window behind it, lights, explains itself, sets the cursor, takes a press or the wheel.</para>
     /// <para><b>Free layout.</b> Each window is fixed-size at the model's bounds, so a change in one window's content
     /// moves no other window. Handles and the drag use totals from the press, not increments, so a clamped window
     /// follows the pointer back as soon as it returns.</para>
@@ -220,7 +222,10 @@ namespace DIR.Lib.ChildWindows
                 .Border(active ? colors.ActiveBorder : colors.IdleBorder);
 
             var node = framed ? Layout.Builder.Overlay(column, Handles(set, id, style, s, onChanged)) : column;
-            return node.WithPressWithin(Activate(set, id, onChanged));
+
+            // A surface (Node.IsSurface): nothing painted before the window, the host's content or a window behind it,
+            // gets the pointer within its rect, the border included, where no title, body or handle region lies.
+            return node.WithPressWithin(Activate(set, id, onChanged)).AsSurface();
         }
 
         // ---- drag ----
@@ -357,7 +362,8 @@ namespace DIR.Lib.ChildWindows
 
             var box = Layout.Builder.VStack(stripLayer, body)
                 .WFixed(host.Width).HFixed(host.Height)
-                .WithPressWithin(Activate(set, active.Id, onChanged));
+                .WithPressWithin(Activate(set, active.Id, onChanged))
+                .AsSurface();
 
             return Layout.Builder.Overlay(content, new Node.Anchored(box, null, 0f, 0f, 0f, false) { OffsetsPerAxis = true });
         }

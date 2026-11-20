@@ -329,6 +329,22 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
 
         for (var i = widgets.Count - 1; i >= 0; i--)
         {
+            // Under a surface, only what was registered from the surface up has a say, and the surface's silence is
+            // the host's default rather than the cursor of a row beneath it (Layout.Node.IsSurface). Read off the
+            // regions, so a composite whose surface is one child's and whose row is another's agrees.
+            if (SurfaceIndexAt(widgets, i, x, y) is var top and >= 0)
+            {
+                for (var j = _regions.Count - 1; j >= top; j--)
+                {
+                    if (_regions[j].Cursor is { } stated && Contains(_regions[j], x, y))
+                    {
+                        return stated;
+                    }
+                }
+
+                return null;
+            }
+
             if (widgets[i].HitTestCursor(x, y) is { } cursor)
             {
                 return cursor;
@@ -566,6 +582,9 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                 within(press);
                 return true;
             }
+
+            // A window beneath a toast is not raised by a press on the toast (Layout.Node.IsSurface).
+            if (r.IsSurface) return false;
         }
         return false;
     }
@@ -622,6 +641,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             if (!Contains(r, x, y)) continue;
             if (r.Dismisses is not null) return null;
             if (r.OnContextMenu is not null) return r;
+            if (r.IsSurface) return null;    // nothing beneath a surface hears the press
         }
         return null;
     }
@@ -925,9 +945,10 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                 {
                     // Not IsInertChrome: this asks whether the press is the text selection's, so a disabled region (its handlers
                     // stripped) and one with only a click or a menu still let the selection take it, and a field that focuses on open does not.
+                    // Nor a surface: a press on a toast's body is the toast's, never the start of a selection in the text beneath it.
                     return r is { Result: HitResult.ChromeHit }
                         and not ({ OnPress: not null } or { OnActivate: not null } or { OnDoubleClick: not null } or { Opens: not null }
-                            or { Dismisses: not null } or { FocusOnOpen: true });
+                            or { Dismisses: not null } or { FocusOnOpen: true } or { IsSurface: true });
                 }
             }
         }
@@ -937,8 +958,9 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
 
     // Plain chrome: a region that only shows a tooltip or a cursor, with nothing to do on a press and not disabled. The one rule for
     // looking past chrome to the region beneath, at a press (FirstBeneath) and at a click under a selection (ClickableBeneath).
+    // A surface is never plain chrome: the look past it ends there, so the press is the surface's (Layout.Node.IsSurface).
     private static bool IsInertChrome(in ClickableRegion r) =>
-        r is { Result: HitResult.ChromeHit, IsDisabled: false, OnClick: null, OnPress: null, OnActivate: null, OnDoubleClick: null, Opens: null, Dismisses: null, OnContextMenu: null };
+        r is { Result: HitResult.ChromeHit, IsDisabled: false, IsSurface: false, OnClick: null, OnPress: null, OnActivate: null, OnDoubleClick: null, Opens: null, Dismisses: null, OnContextMenu: null };
 
     // In the widget whose regions are in _regions, the first region under the point below index above that is not plain chrome; null
     // when there is none, and the press stays with the chrome (and does nothing), as it did.
@@ -956,17 +978,28 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         return null;
     }
 
+    // Top-most first, so a menu beneath a surface does not count: nothing painted before a surface hears the right press.
     private bool AnyRegionOffersMenu(IReadOnlyList<IPixelWidget> widgets, float x, float y)
     {
-        for (var w = 0; w < widgets.Count; w++)
+        for (var w = widgets.Count - 1; w >= 0; w--)
         {
             _regions.Clear();
             CollectRegions(widgets, w, _regions);
-            for (var i = 0; i < _regions.Count; i++)
+            for (var i = _regions.Count - 1; i >= 0; i--)
             {
-                if (_regions[i].OnContextMenu is not null && Contains(_regions[i], x, y))
+                if (!Contains(_regions[i], x, y))
+                {
+                    continue;
+                }
+
+                if (_regions[i].OnContextMenu is not null)
                 {
                     return true;
+                }
+
+                if (_regions[i].IsSurface)
+                {
+                    return false;
                 }
             }
         }
@@ -1073,6 +1106,20 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         return false;
     }
 
+    // The innermost scroll target among the regions in _regions from index `from` up, under the point.
+    private ListScrollController? ScrollTargetAbove(int from, float x, float y)
+    {
+        for (var j = _regions.Count - 1; j >= from; j--)
+        {
+            if (_regions[j].Scroll is { } scroll && Contains(_regions[j], x, y))
+            {
+                return scroll;
+            }
+        }
+
+        return null;
+    }
+
     private bool HandleScroll(InputEvent.Scroll scroll)
     {
         var widgets = Widgets();
@@ -1084,11 +1131,21 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             // leaves the wheel to whatever is behind it rather than swallowing it, which is what makes a
             // list inside a pane scroll the pane once the list is at its end.
             if (i < modalAt) break;
-            if (widgets[i].ScrollTargetAt(scroll.X, scroll.Y) is { } controller
+
+            // Under a surface, only a list registered from the surface up may take the wheel, and nothing beneath it
+            // does, the host's own routing included (Layout.Node.IsSurface).
+            var top = SurfaceIndexAt(widgets, i, scroll.X, scroll.Y);
+            var target = top >= 0 ? ScrollTargetAbove(top, scroll.X, scroll.Y) : widgets[i].ScrollTargetAt(scroll.X, scroll.Y);
+            if (target is { } controller
                 && (i != modalAt || ScrollTargetIsTops(widgets, i, controller))
                 && controller.HandleInput(scroll))
             {
                 requestRedraw();
+                return true;
+            }
+
+            if (top >= 0)
+            {
                 return true;
             }
         }
@@ -1173,6 +1230,8 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     private string? _pressedListId;
     private readonly List<DeclaredList> _declaredLists = [];
     private readonly List<RectF32> _declaredBounds = [];
+    private readonly List<int> _declaredOrders = [];
+    private readonly List<(int Order, RectF32 Bounds)> _surfaceNodes = [];
     private readonly List<ClickableRegion> _listRegions = [];
     private readonly List<ListCursor.PaintedRow> _listClipped = [];
     private readonly List<ListCursor.PaintedRow> _listScratch = [];
@@ -1182,19 +1241,44 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     {
         _declaredLists.Clear();
         _declaredBounds.Clear();
+        _declaredOrders.Clear();
+        _surfaceNodes.Clear();
+        var order = 0;
         for (var w = 0; w < widgets.Count; w++)
         {
             _nodes.Clear();
             CollectNodes(widgets, w, _nodes);
             foreach (var arranged in _nodes)
             {
+                var bounds = new RectF32(arranged.Bounds.X, arranged.Bounds.Y, arranged.Bounds.Width, arranged.Bounds.Height);
                 if (arranged.Node.DeclaredList is { } list)
                 {
                     _declaredLists.Add(list);
-                    _declaredBounds.Add(new RectF32(arranged.Bounds.X, arranged.Bounds.Y, arranged.Bounds.Width, arranged.Bounds.Height));
+                    _declaredBounds.Add(bounds);
+                    _declaredOrders.Add(order);
                 }
+
+                if (arranged.Node.IsSurface)
+                {
+                    _surfaceNodes.Add((order, bounds));
+                }
+
+                order++;
             }
         }
+    }
+
+    // The paint order (in CollectDeclaredLists' walk) of the topmost surface node over the point, or -1: a declared list
+    // painted before it lies under it and is not chosen by a press there.
+    private int TopSurfaceOrderAt(float x, float y)
+    {
+        for (var i = _surfaceNodes.Count - 1; i >= 0; i--)
+        {
+            var b = _surfaceNodes[i].Bounds;
+            if (x >= b.X && x < b.X + b.Width && y >= b.Y && y < b.Y + b.Height) return _surfaceNodes[i].Order;
+        }
+
+        return -1;
     }
 
     private int InnermostDeclaredAt(float x, float y)
@@ -1220,8 +1304,10 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         var previous = _pressedListId;
         _pressedListId = null;
 
-        // A press on one of a declared list's rows: the cursor follows the click into that list.
-        for (var w = widgets.Count - 1; w >= 0 && _pressedListId is null; w--)
+        // A press on one of a declared list's rows: the cursor follows the click into that list. A surface ends the
+        // walk: a press on a toast does not choose the list beneath it (Layout.Node.IsSurface).
+        var covered = false;
+        for (var w = widgets.Count - 1; w >= 0 && _pressedListId is null && !covered; w--)
         {
             _listRegions.Clear();
             CollectRegions(widgets, w, _listRegions);
@@ -1245,12 +1331,14 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                     }
                 }
 
+                covered = region.IsSurface;
                 break; // only the topmost region under the point
             }
         }
 
         if (_pressedListId is null && InnermostDeclaredAt(x, y) is var at and >= 0
-            && (!claimed || DeclaredInsideOwner(_declaredLists[at])))
+            && (!claimed || DeclaredInsideOwner(_declaredLists[at]))
+            && _declaredOrders[at] > TopSurfaceOrderAt(x, y))
         {
             _pressedListId = _declaredLists[at].ListId;
         }
@@ -1595,11 +1683,20 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             for (var i = _nodes.Count - 1; i >= 0; i--)
             {
                 var (node, bounds) = _nodes[i];
-                if (node.HoverBackground is not null
-                    && x >= bounds.X && x < bounds.X + bounds.Width
-                    && y >= bounds.Y && y < bounds.Y + bounds.Height)
+                if (!(x >= bounds.X && x < bounds.X + bounds.Width && y >= bounds.Y && y < bounds.Y + bounds.Height))
+                {
+                    continue;
+                }
+
+                if (node.HoverBackground is not null)
                 {
                     return node;
+                }
+
+                // Nothing painted before a surface lights under it, the painter's rule (Layout.Node.IsSurface).
+                if (node.IsSurface)
+                {
+                    return null;
                 }
             }
         }
@@ -1610,7 +1707,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     /// <summary>
     /// The topmost region under the point that states a tooltip. Regions with nothing to say are
     /// transparent to this, the same rule the cursor lookup follows, so a row inside a card with a tooltip
-    /// shows the card's.
+    /// shows the card's. A surface is not (<see cref="ClickableRegion.IsSurface"/>): the walk ends there.
     /// </summary>
     private TooltipRequest? ResolveTooltip(float x, float y)
     {
@@ -1631,12 +1728,23 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             for (var i = _regions.Count - 1; i >= 0; i--)
             {
                 var region = _regions[i];
-                if (region.Tooltip is { } text && Contains(region, x, y))
+                if (!Contains(region, x, y))
+                {
+                    continue;
+                }
+
+                if (region.Tooltip is { } text)
                 {
                     return new TooltipRequest(text, new RectF32(region.X, region.Y, region.Width, region.Height))
                     {
                         Side = region.TooltipSide ?? Layout.DockSide.Bottom,
                     };
+                }
+
+                // A surface with nothing to say is not transparent: a toast's body shows no tooltip of the row beneath.
+                if (region.IsSurface)
+                {
+                    return null;
                 }
             }
         }
@@ -1655,6 +1763,26 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
 
         ui.Focus.Blur();
         return true;
+    }
+
+    /// <summary>
+    /// Fills <c>_regions</c> with widget <paramref name="w"/>'s regions and returns the index of the topmost SURFACE
+    /// region over the point (<see cref="ClickableRegion.IsSurface"/>), or -1 when none is. What lies below that index,
+    /// and in every widget painted before this one, does not get the pointer there.
+    /// </summary>
+    private int SurfaceIndexAt(IReadOnlyList<IPixelWidget> widgets, int w, float x, float y)
+    {
+        _regions.Clear();
+        CollectRegions(widgets, w, _regions);
+        for (var j = _regions.Count - 1; j >= 0; j--)
+        {
+            if (_regions[j].IsSurface && Contains(_regions[j], x, y))
+            {
+                return j;
+            }
+        }
+
+        return -1;
     }
 
     /// <summary>Top and left inclusive, bottom and right exclusive, so two regions sharing an edge never

@@ -12,7 +12,8 @@ namespace DIR.Lib.Notifications
     {
         /// <summary>The bell in the strip: toggles the bar.</summary>
         Bell,
-        /// <summary>A toast's card. A fading toast declares it as its hover region.</summary>
+        /// <summary>A toast's card. A fading toast declares it as its hover region. Every card is a surface (11.86): a
+        /// staying card's body takes a press and does nothing with it.</summary>
         Toast,
         /// <summary>A row in the list.</summary>
         Row,
@@ -273,10 +274,14 @@ namespace DIR.Lib.Notifications
 
             var card = Builder.VStack([.. parts]).WithGap(s.Gap).Pad(s.Padding)
                 .Bg(c.Card).BorderLeft(c.Of(n.Severity), 3f).WStar();
-            // A fading toast declares the hover region; a staying one is plain chrome around its own buttons.
-            return n.Kind == NotificationKind.Fading
+            // Every card is a surface (Node.IsSurface): what it covers in the page gets neither the hover, the tooltip, the
+            // cursor, a press nor the wheel. A fading toast's region keeps its NotificationHit (the host pauses the
+            // countdown under the pointer and clicks it through that hit); a staying card's body takes the press and does
+            // nothing with it, while its own buttons, painted over it, act as ever.
+            var hit = n.Kind == NotificationKind.Fading
                 ? card.Clickable(new NotificationHit(NotificationPart.Toast, n.Id))
                 : card;
+            return hit.AsSurface();
         }
 
         private static Node Buttons(Notification n, NotificationFeed feed, NotificationsColors c, NotificationsStyle s)
@@ -344,6 +349,7 @@ namespace DIR.Lib.Notifications
             var bar = Builder.VStack(header, list)
                 .WithGap(s.Gap).Pad(s.Padding).Bg(c.Surface).BorderLeft(c.Separator)
                 .WithCursor(CursorKind.Default)
+                .AsSurface()   // over the page's right: nothing of the page beneath it gets the pointer
                 .WFixed(s.BarWidth).HStar();
             return Builder.HStack(Builder.Spacer().WStar().HStar(), bar).Stretch();
         }

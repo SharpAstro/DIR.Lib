@@ -163,7 +163,76 @@ public sealed class WindowUiSettings
     /// before the popover was confined to a different rect than the popover then claimed. False the frame a
     /// popover opens, moves or closes; <see cref="InputRouter.AfterPaint"/> asks for another frame then.
     /// </summary>
-    public bool PointerClaimSettled => PointerOwner == _carriedPointerOwner;
+    public bool PointerClaimSettled => PointerOwner == _carriedPointerOwner && SurfacesSettled;
+
+    // ---- surfaces (Layout.Node.IsSurface) -------------------------------------------------------------------------
+    //
+    // The same claim, made by a node painted OVER something rather than by an open popover: within the surface's rect,
+    // nothing painted before it may answer the pointer. It rides the popover claim's machinery whole: made by being
+    // painted, cleared once per paint cycle (NoteFrameBegin), carried into the next cycle so a node painted BEFORE the
+    // surface is confined too, and folded into PointerClaimSettled, so the frame a surface appears, moves or goes asks
+    // the router for one more. Where they differ is only what is confined: a popover confines everything outside its own
+    // content, a surface only what lies under it and was painted before it.
+
+    private int _paintOrder;
+    private readonly List<PaintedSurface> _surfaces = [];
+    private PaintedSurface[] _carriedSurfaces = [];
+
+    /// <summary>A surface painted this cycle: its rect, and the paint order of its node (<see cref="NotePaintedNode"/>).</summary>
+    public readonly record struct PaintedSurface(RectF32 Rect, int Order);
+
+    /// <summary>
+    /// The paint order of the next node: how many nodes every widget sharing these settings has painted this cycle. Hand-
+    /// painted chrome is confined at this order (it lies over what was painted before it and under what follows).
+    /// </summary>
+    public int PaintOrder => _paintOrder;
+
+    /// <summary>Takes the next paint order, for a node being painted. Called by the layout painter once per painted node,
+    /// and by a non-pixel surface that paints declared nodes itself and wants <see cref="IsCoveredBySurface"/> to hold.</summary>
+    public int NotePaintedNode() => _paintOrder++;
+
+    /// <summary>The surfaces painted this cycle so far, in paint order.</summary>
+    public IReadOnlyList<PaintedSurface> PaintedSurfaces => _surfaces;
+
+    /// <summary>
+    /// Records that a surface (<see cref="Layout.Node.IsSurface"/>) painted at <paramref name="rect"/>, as the node of paint
+    /// order <paramref name="order"/>. Called by the layout painter; a non-pixel surface that paints one itself calls it too.
+    /// </summary>
+    public void NoteSurfacePainted(RectF32 rect, int order) => _surfaces.Add(new PaintedSurface(rect, order));
+
+    /// <summary>
+    /// Whether the point lies under a surface painted after the node of paint order <paramref name="order"/>, by what the
+    /// last cycle painted (a surface painted later in THIS cycle is not known yet when an earlier node paints; the carry
+    /// is the popover claim's, and so is the extra frame when it changes). Hover consults it, so a row under a toast stops
+    /// lighting.
+    /// </summary>
+    public bool IsCoveredBySurface(float x, float y, int order)
+    {
+        foreach (var s in _carriedSurfaces)
+        {
+            var r = s.Rect;
+            if (s.Order > order && x >= r.X && x < r.X + r.Width && y >= r.Y && y < r.Y + r.Height)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool SurfacesSettled
+    {
+        get
+        {
+            if (_surfaces.Count != _carriedSurfaces.Length) return false;
+            for (var i = 0; i < _surfaces.Count; i++)
+            {
+                if (_surfaces[i] != _carriedSurfaces[i]) return false;
+            }
+
+            return true;
+        }
+    }
 
     // The popover whose content set PointerOwner, so the next cycle can tell whether the claim still stands,
     // and the claim carried into this cycle from the last one.
@@ -228,6 +297,10 @@ public sealed class WindowUiSettings
         _carriedPointerOwner = PointerOwner is { } owner && _pointerOwnerPopover is { IsOpen: true } ? owner : null;
         _pointerOwnerPopover = null;
         PointerOwner = null;
+        // Surfaces are carried whole: one that is no longer painted is simply absent from the next cycle's list.
+        _carriedSurfaces = _surfaces.Count == 0 ? [] : [.. _surfaces];
+        _surfaces.Clear();
+        _paintOrder = 0;
         _paintedPopovers.Clear();
         PaintedModal = null;
     }

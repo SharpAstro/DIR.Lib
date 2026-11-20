@@ -429,6 +429,22 @@ public abstract partial record Node
     /// adds nothing to any record's constructor.</summary>
     public bool Separator { get; init; }
 
+    /// <summary>
+    /// This node is a surface: what is painted over something takes the pointer from it. Within the node's arranged rect,
+    /// nothing painted BEFORE it, earlier in the same tree or in a widget painted beneath, gets the hover highlight, the
+    /// tooltip, the cursor, a press, a release click, a double click or the wheel. What the node itself contains (its
+    /// buttons, its own hover rows) works as ever, being painted after it. Set with <see cref="AsSurface"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>The painter registers a region for the whole rect (the node's own <see cref="Hit"/> when it has one, else a
+    /// <see cref="HitResult.ChromeHit"/>) marked <see cref="ClickableRegion.IsSurface"/>, which is where the router stops,
+    /// and notes the rect on <see cref="WindowUiSettings"/> beside a popover's pointer claim, which is how a node painted
+    /// before it in the next frame knows not to light (<see cref="WindowUiSettings.PointerClaimSettled"/>).</para>
+    /// <para>Declared, not inferred from an opaque <see cref="Background"/>: a card a host draws with a background over
+    /// nothing costs nothing, and no existing tree changes behaviour until it says so. Init-only (11.86).</para>
+    /// </remarks>
+    public bool IsSurface { get; init; }
+
     /// <summary>Children laid out sequentially along <paramref name="Axis"/>, separated by <paramref name="Gap"/> design units.</summary>
     public sealed record Stack(ImmutableArray<Node> Children, Axis Axis = Axis.Vertical, float Gap = 0f) : Node;
 
