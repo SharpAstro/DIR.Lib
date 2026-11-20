@@ -128,12 +128,12 @@ public class NodeShadowTests
             return new Layout.Node.Stack([shadow ? card.Elevated(4) : card, Layout.Builder.Text("Next")]) { Padding = 8f };
         }
 
-        var without = Layout.Engine.Arrange(Tree(false), new Rect<int>(0, 0, 40, 10), new CellCtx());
-        var with = Layout.Engine.Arrange(Tree(true), new Rect<int>(0, 0, 40, 10), new CellCtx());
-        with.Count.ShouldBe(without.Count);
-        for (var i = 0; i < with.Count; i++)
+        var plain = Layout.Engine.Arrange(Tree(false), new Rect<int>(0, 0, 40, 10), new CellCtx());
+        var shadowed = Layout.Engine.Arrange(Tree(true), new Rect<int>(0, 0, 40, 10), new CellCtx());
+        shadowed.Count.ShouldBe(plain.Count);
+        for (var i = 0; i < shadowed.Count; i++)
         {
-            with[i].Bounds.ShouldBe(without[i].Bounds);
+            shadowed[i].Bounds.ShouldBe(plain[i].Bounds);
         }
     }
 
