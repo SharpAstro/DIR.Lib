@@ -22,6 +22,18 @@ public class LayoutDataViewsTests
     private static ClickableRegion Named(DeclarationWidget widget, string name)
         => Regions(widget).Single(r => r.Result is HitResult.ButtonHit b && b.Action == name);
 
+    /// <summary>
+    /// Where <paramref name="column"/>'s cell sits in a table header's grip row. The row's column cells are its
+    /// children that are not separators, in column order, so the cell is found by what it is and a row that stops
+    /// holding one cell per column fails here by name, where an index would silently pick a divider.
+    /// </summary>
+    private static int GripCell(Layout.Node[] gripRow, int column, int columns)
+    {
+        var cells = Enumerable.Range(0, gripRow.Length).Where(i => !gripRow[i].Separator).ToArray();
+        cells.Length.ShouldBe(columns, "the grip row holds one cell per column, with the dividers between them marked as separators");
+        return cells[column];
+    }
+
     // ---- VirtualList -------------------------------------------------------------------------
 
     private static Layout.Node List(ListScrollController scroll, int count, List<int> built)
@@ -661,7 +673,8 @@ public class LayoutDataViewsTests
             var overlay = (Layout.Node.Overlay)header;
             var grips = (Layout.Node.Stack)overlay.Top;
             var kids = grips.Children.ToArray();
-            kids[2] = Layout.Builder.HStack(kids[2]).WFixed(80f).HStar().CollapseBelow(10000f);
+            var cell = GripCell(kids, column: 1, columns.Length);
+            kids[cell] = Layout.Builder.HStack(kids[cell]).WFixed(80f).HStar().CollapseBelow(10000f);
             widget.Render(Layout.Builder.Overlay(overlay.Base, grips with { Children = [.. kids] }).RowH(24f),
                 new RectF32(0, 0, width, 24f));
         }
@@ -696,7 +709,8 @@ public class LayoutDataViewsTests
             var overlay = (Layout.Node.Overlay)header;
             var grips = (Layout.Node.Stack)overlay.Top;
             var kids = grips.Children.ToArray();
-            kids[2] = Layout.Builder.HStack(kids[2]).WStar().HStar().CollapseBelow(50f);
+            var cell = GripCell(kids, column: 1, columns.Length);
+            kids[cell] = Layout.Builder.HStack(kids[cell]).WStar().HStar().CollapseBelow(50f);
             widget.Render(Layout.Builder.Overlay(overlay.Base, grips with { Children = [.. kids] }).RowH(24f),
                 new RectF32(0, 0, width, 24f));
         }
