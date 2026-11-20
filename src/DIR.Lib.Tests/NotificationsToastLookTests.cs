@@ -139,8 +139,8 @@ public class NotificationsToastLookTests
         close.Y.ShouldBeLessThan(card.Y + card.Height / 2f, "and at the top");
 
         // Over the card's body the host still reads the toast (it pauses the countdown through it) and nothing dismisses.
-        NotificationsLayout.ToastIdOf(h.HitTest(card.X + 40f, card.Y + card.Height / 2f)).ShouldBe(n.Id);
-        h.Click(card.X + 40f, card.Y + card.Height / 2f);
+        NotificationsLayout.ToastIdOf(h.HitTest(card.X + 6f, card.Y + card.Height / 2f)).ShouldBe(n.Id);
+        h.Click(card.X + 6f, card.Y + card.Height / 2f);
         h.Feed.Toasts.Count.ShouldBe(1);
 
         // Over the cross the hit is the Close part, not the card's.
