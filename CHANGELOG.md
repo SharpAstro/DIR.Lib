@@ -21,6 +21,11 @@ changed and why.
   touching close when the header is the widest row. The column is now `Star` wide. `PlanPanel` is unchanged, so a card
   keeps its size and font. Found by the test #256 asked for, a case where the header decides the fit.
   `MenuPanelRenderTests` pins the look with a wide and a narrow baseline.
+- **Fix: the arrows could stop on, and Enter could run, a row of a disabled group scrolled out of view.**
+  `PixelWidgetBase` read a node's disabled state only for nodes it painted, so rows under a disabled container that a
+  scrolled node clipped away were noted enabled for the keyboard. A disabled node now disables what it holds whether or
+  not it is on screen (a disabled ROW out of view was already handled). Found while making the same fix in Console.Lib's
+  cell surface (Console.Lib #52), where the review note that pointed at it said it "mirrors `PixelWidgetBase`".
 - **A prototype number that measures something drawn may not be negative.** `padding`, `borderWidth`, `borderRadius`,
   `size`, `gap`, `firstExtent`, `fontSize`, `iconSize`, `minWidth` and `minHeight` below zero are a load problem at their
   path ("expected a number that is not negative"); a negative `width` or `height` already was, and its message now says

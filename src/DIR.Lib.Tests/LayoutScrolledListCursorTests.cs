@@ -132,6 +132,29 @@ public class LayoutScrolledListCursorTests
         widget.ListCursor.Index.ShouldBe(4, "straight past the row Enter would refuse");
     }
 
+    // A disabled GROUP out of view disables its rows as a disabled row out of view disables itself. The group's
+    // state used to be read only for nodes that are painted, so rows under one scrolled out of view were noted
+    // enabled: the arrows stopped on them and Enter ran their handlers (found in Console.Lib #52, same shape here).
+    [Fact]
+    public void ARowInADisabledGroupOutOfViewIsSteppedOverToo()
+    {
+        var (widget, scroll) = Fixture();
+        Layout.Node Row(int i) => Layout.Builder.Spacer().RowH(RowH).Clickable(new HitResult.ListItemHit("rows", i), _ => { });
+        var locked = Layout.Builder.VStack(Row(3)).Disabled("locked");
+        var card = Layout.Builder.VStack(
+                Layout.Builder.VStack(Layout.Builder.Spacer().RowH(13f), Row(0), Row(1), Row(2), locked, Row(4), Row(5))
+                    .WStar().HClamp(0f, ViewportH).Pad(Pad).WithScroll(scroll),
+                Layout.Builder.Spacer().RowH(30f))
+            .Stretch();
+        widget.ListCursor.Open("rows", 2);
+        widget.Render(card, Bounds);
+        Region(widget, 3).ShouldBeNull("the group starts below the viewport");
+
+        widget.MoveListCursor(1).ShouldBeTrue();
+
+        widget.ListCursor.Index.ShouldBe(4, "straight past the row of the disabled group, and no further: row 4 is not in it");
+    }
+
     [Fact]
     public void AClippedRowStillAnswersNoPress()
     {

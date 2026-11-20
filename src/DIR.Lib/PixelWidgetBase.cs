@@ -1305,6 +1305,21 @@ namespace DIR.Lib
                     // A list row is still a row of its list, though, and is noted for the keyboard (see
                     // MoveListCursor), unless it sits in a closed popover, which lists nothing. The depth
                     // markers are read as "an ancestor's", since this skip comes before they are retired.
+                    //
+                    // A disabled node that is off screen still disables what it holds, so its marker is set here as
+                    // it is for a painted node further down (after retiring one an earlier subtree left). Until 11.87
+                    // only a painted node set it, and rows under a disabled group scrolled out of view were noted
+                    // enabled: the arrows stopped on them and Enter ran their handlers.
+                    if (disabledDepth >= 0 && arrangedNode.Depth <= disabledDepth)
+                    {
+                        disabledDepth = -1;
+                    }
+
+                    if (node.IsDisabled && disabledDepth < 0)
+                    {
+                        disabledDepth = arrangedNode.Depth;
+                    }
+
                     if (node.Hit is HitResult.ListItemHit clipped
                         && !(closedPopoverDepth >= 0 && closedPopoverDepth < arrangedNode.Depth))
                     {
