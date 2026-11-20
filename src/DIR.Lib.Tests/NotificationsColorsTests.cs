@@ -115,7 +115,7 @@ public sealed class NotificationsColorsTests
     public void AMultiHueEdgeThatMissesThreeToOneAgainstThePageIsMovedTowardText()
     {
         var c = NotificationsColors.From(NightRed()) with { OneHue = false };
-        var yellow = c with { Page = c.Warn };
+        var yellow = c with { Page = c.Warn, Text = new RGBAColor32(0, 0, 0, 255) };
         RGBAColor32.ContrastRatio(yellow.Warn, yellow.Page).ShouldBeLessThan(3f);
         var edge = yellow.TintedEdge(NotificationSeverity.Warn);
         edge.ShouldNotBe(yellow.Warn);
