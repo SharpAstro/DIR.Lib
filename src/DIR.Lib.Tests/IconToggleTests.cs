@@ -149,7 +149,7 @@ public class IconToggleTests
 
         public bool Pressed()
         {
-            return Arrange(Widget.Tree, 200f)[0].Node.Background == Dark.Palette.Accent;
+            return Arrange(Widget.Tree, 200f).First(n => n.Node.Hit is HitResult.ButtonHit).Node.Background == Dark.Palette.Accent;
         }
     }
 
