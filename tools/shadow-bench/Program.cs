@@ -26,7 +26,7 @@ Layout.Node Build(int count, float height, bool shadow)
         items.Add(shadow ? box.Elevated(3) : box);
     }
 
-    return new Layout.Node.Stack(items, Layout.Axis.Vertical, count == 3 ? 60f : 6f) { Padding = 30f }.Bg(new RGBAColor32(24, 25, 28, 255));
+    return new Layout.Node.Stack(System.Collections.Immutable.ImmutableArray.CreateRange(items), Layout.Axis.Vertical, count == 3 ? 60f : 6f) { Padding = 30f }.Bg(new RGBAColor32(24, 25, 28, 255));
 }
 
 double MeanMs(Layout.Node tree)
