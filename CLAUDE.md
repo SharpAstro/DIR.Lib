@@ -27,17 +27,17 @@ DIR_LIB_UPDATE_BASELINES=1 dotnet test --project src/DIR.Lib.Tests --filter-clas
 
 `--filter-class` matches the full class name (`DIR.Lib.Tests.FooTests`) or a wildcard (`*FooTests`); a bare class name
 matches nothing, MTP exits 8 ("Zero tests ran") and a leg check fails with no failing test named (issue #283).
-`--minimum-expected-tests 1` makes a filter that matched nothing explicit.
+A filter that matched nothing already exits 8; `--minimum-expected-tests N` also fails a run that ran fewer than N tests.
 
 CI runs tests in Release config after building, before publishing NuGet packages.
 
 **Tests run on Microsoft.Testing.Platform (MTP), not VSTest** (since 11.1). The runner is declared in
 the root `global.json`, which pins no SDK; each test project is an `Exe` on xunit.v3 4.x, with no
-`Microsoft.NET.Test.Sdk` or `xunit.runner.visualstudio`. VSTest's `--filter` is refused by pilot's node here; use
+`Microsoft.NET.Test.Sdk` or `xunit.runner.visualstudio`. VSTest's `--filter` is an unknown option to MTP and fails the run; use
 `--filter-class` / `--filter-method` / `--filter-namespace`. Other VSTest options are
 not either: use `--output Detailed` for `--logger "console;verbosity=detailed"`, `--report-trx
 --report-trx-filename x.trx` for a TRX logger, `--crashdump` / `--hangdump --hangdump-timeout 5min` for
-`--blame-*`, and `--minimum-expected-tests N` to fail a filter that matched nothing. A stale VSTest
+`--blame-*`, and `--minimum-expected-tests N` to fail a run that ran fewer than N tests. A stale VSTest
 option fails the run as unknown rather than collecting less. **Both test projects reference the same
 three extensions (TRX, crash dump, hang dump), and must go on doing so**: a solution-wide `dotnet test`
 passes every option to every project, so one project without `--hangdump` made the whole run exit 5 with

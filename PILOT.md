@@ -43,8 +43,9 @@ dotnet test --project src/DIR.Lib.Shaping.Tests -c Release --no-build --filter-c
 ```
 
 - Tests are xunit.v3 with Shouldly on Microsoft.Testing.Platform, not VSTest: `--logger`, `--blame-*` and `--filter`
-  fail the run (the node refuses `--filter` here). Narrow with `--filter-class`, `--filter-method` or
-  `--filter-namespace`, and add `--minimum-expected-tests 1` so a filter that matched nothing fails explicitly.
+  fail the run as unknown options. Narrow with `--filter-class`, `--filter-method` or `--filter-namespace`.
+  A filter that matches nothing already exits 8; `--minimum-expected-tests N` additionally fails a run that ran fewer
+  than N tests.
 - `--filter-class` matches the full class name (`DIR.Lib.Tests.FooTests`) or a wildcard (`*FooTests`). A bare class name
   matches nothing: MTP exits 8 ("Zero tests ran") and the leg check fails with no failing test named (issue #283).
 - The inspector core (`DIR.Lib.Diagnostics`: `DebugInspectorCore`, `DebugInspectorRegistry`) and its tests compile in
