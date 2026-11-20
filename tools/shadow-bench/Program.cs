@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using DIR.Lib;
+using Layout = DIR.Lib.Layout;
 
 // Mean frame time of a 1280x800 software paint with node shadows off and on, at 3 cards and at 30 rows.
 // Each case does a few warm-up frames, then a fixed number of timed ones. Nothing waits: every frame is a paint.
