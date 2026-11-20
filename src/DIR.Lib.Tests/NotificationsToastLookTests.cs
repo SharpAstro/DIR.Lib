@@ -158,7 +158,7 @@ public class NotificationsToastLookTests
         h.Paint();
 
         var regions = h.Regions();
-        regions.ShouldNotContain(r => r.Result is NotificationHit { Part: NotificationPart.Close });
+        regions.Any(r => r.Result is NotificationHit { Part: NotificationPart.Close }).ShouldBeFalse();
         var action = regions.Single(r => r.Result is NotificationHit { Part: NotificationPart.Action });
         var dismiss = regions.Single(r => r.Result is NotificationHit { Part: NotificationPart.Dismiss });
         action.X.ShouldBeLessThan(dismiss.X);
