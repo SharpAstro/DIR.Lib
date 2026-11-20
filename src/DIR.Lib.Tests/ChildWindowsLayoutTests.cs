@@ -336,10 +336,16 @@ public class ChildWindowsLayoutTests
         }
 
         // The window's top-right corner point itself (on the border, beside the close button) is not a resize either.
+        // A second window, inside A's body and clear of that corner, is the active one, so the press has something to change.
+        var other = t.Add("Other", 60, 120, 100, 50);
+        t.Set.Active!.Id.ShouldBe(other.Id);
         t.Paint();
-        // That 1-unit border strip is still inside the window: the press is handled (it does not fall through to the host) and closes nothing.
+        // That 1-unit border strip is still inside the window: the press is handled (it does not fall through to the host),
+        // raises the window it is on, and closes nothing.
         t.Press(a.Bounds.Right - 0.5f, a.Bounds.Y + 0.5f).ShouldBeTrue();
+        t.Set.Active!.Id.ShouldBe(a.Id, "a press on a window's border is a press on that window, so it comes to the front");
         t.Set.Find(a.Id).ShouldNotBeNull();
+        t.Set.Find(other.Id).ShouldNotBeNull();
         t.Move(a.Bounds.Right + 20f, a.Bounds.Y - 20f);
         t.Release(a.Bounds.Right + 20f, a.Bounds.Y - 20f);
         a.Bounds.Width.ShouldBe(200f, 0.01f);

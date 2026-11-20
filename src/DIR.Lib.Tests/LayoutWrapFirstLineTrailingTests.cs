@@ -153,7 +153,7 @@ public class LayoutWrapFirstLineTrailingTests
         // Items start on line 2, below the trailing node's cross extent.
         items[0].Y.ShouldBe(20);
         items[0].X.ShouldBe(0);
-        // 100 wide: one 60 item per line? 60 + 12 + 60 = 132 > 100, so one per line.
+        // 100 wide holds one 60 item per line: two with their gap are 60 + 12 + 60 = 132, more than 100.
         items.Select(r => r.Y).ToArray().ShouldBe([20, 30, 40]);
     }
 

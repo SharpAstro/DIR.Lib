@@ -566,6 +566,10 @@ namespace DIR.Lib
         /// </summary>
         public virtual void RevealListRow(ListCursor cursor) => RevealListCursor(cursor);
 
+        /// <summary>
+        /// The scroll behind <see cref="RevealListRow"/>. The widget's own cursor step and its Enter call this
+        /// directly, so an override of the public method changes what the router's call does and not theirs.
+        /// </summary>
         private void RevealListCursor(ListCursor cursor)
         {
             foreach (var row in _scrolledListRows)

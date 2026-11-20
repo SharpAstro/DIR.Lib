@@ -2085,7 +2085,8 @@ public static class Engine
     }
 
     /// <summary>One Fixed extent or padding of <paramref name="node"/>, through <see cref="IMeasureContext{T}.MapExtent"/>.
-    /// Measure and arrange both come here, so they cannot disagree. The node's facts are cached per node reference.</summary>
+    /// Measure and arrange both come here, so they cannot disagree. The node's facts are cached per node reference,
+    /// except under a text editor, whose line count follows its state (<see cref="ExtentFacts.Of"/>).</summary>
     private static T Extent<T>(IMeasureContext<T> ctx, Node node, float value, Axis axis, ExtentKind kind)
         where T : INumber<T>
     {

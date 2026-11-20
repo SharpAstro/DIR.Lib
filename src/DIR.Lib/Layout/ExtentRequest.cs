@@ -51,7 +51,8 @@ public readonly record struct ExtentRequest
     public bool HasFill { get; init; }
 }
 
-/// <summary>Per-node answers behind <see cref="ExtentRequest"/>, computed once per node reference.</summary>
+/// <summary>Per-node answers behind <see cref="ExtentRequest"/>, computed once per node reference, except for a
+/// subtree that holds a text editor, which is computed on every call (see <see cref="ExtentFacts.Of"/>).</summary>
 internal sealed class ExtentFacts
 {
     private static readonly ConditionalWeakTable<Node, ExtentFacts> Cache = new();

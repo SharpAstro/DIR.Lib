@@ -234,7 +234,7 @@ public class LayoutExtentHookTests
         public int MapExtent(in Layout.ExtentRequest r) => (int)MathF.Round(r.Value);
     }
 
-    private sealed class HookCellCtxDefault: Layout.IMeasureContext<int>
+    private sealed class HookCellCtxDefault : Layout.IMeasureContext<int>
     {
         public Layout.Size<int> MeasureText(ReadOnlySpan<char> text, float fontSize) => new(text.Length, 1);
         public int ToSurface(float designUnits) => (int)MathF.Round(designUnits);
