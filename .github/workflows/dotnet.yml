@@ -122,6 +122,12 @@ jobs:
     # part of the package's identity and the check restores exactly that version.
     - name: Check DIR.Lib.Debug twin
       run: dotnet build tools/debug-twin-check/DebugTwinCheck.csproj -c Debug -p:DirLibDebugVersion=${VERSION_PREFIX}${VERSION_REV}${VERSION_SUFFIX}
+    # The Test step runs before the twin exists, so the test that opens the twin skipped there. Run it again
+    # now that artifacts/debug-twin holds one; with the variable set, finding no twin fails instead of skipping.
+    - name: Test the DIR.Lib.Debug twin's targets file
+      env:
+        DIR_LIB_REQUIRE_DEBUG_TWIN: 1
+      run: dotnet test --project src/DIR.Lib.Tests -c $BUILD_CONF --no-build --filter-method "*DebugTwinNupkg_CarriesItsOwnNamedTargets" --minimum-expected-tests 1
     - name: Upload NuGet package
       uses: actions/upload-artifact@v7
       with:
