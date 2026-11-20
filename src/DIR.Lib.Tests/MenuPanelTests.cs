@@ -254,6 +254,56 @@ public class MenuPanelTests
         both.CardWidth.ShouldBe(plain.CardWidth, 0.01f);
     }
 
+    // The other side of the rule above: content narrower than the header row. With the default style the card is
+    // never under 20 fonts wide and the row needs 9, so the header's term in PlanPanel's widest-line fit cannot win;
+    // a style with a large starting font makes it the widest line, and it then has to cap the font as a row would.
+    [Fact]
+    public void AHeaderWiderThanTheContentCapsTheFont_AndBothControlsFit()
+    {
+        var big = new MenuPanelStyle { FontToCard = 1f / 6f };
+        var plain = MenuLayout.PlanPanel(Short, big, Ctx, 1200, 800);
+        var m = WithActions(Short, () => { }, () => { });
+        var plan = MenuLayout.PlanPanel(m, big, Ctx, 1200, 800);
+        plan.FontSize.ShouldBeLessThan(plain.FontSize, "the header row is the widest line here, so it caps the font");
+
+        var tree = MenuLayout.BuildPanel(m, new MenuColors(), big, Ctx, 1200, 800);
+        var arranged = Layout.Engine.Arrange(tree, new Rect<float>(0, 0, 1200, 800), Ctx);
+        var card = arranged.First(a => a.Node.BorderStyle is not null).Bounds;
+        Rect<float> Button(string id) => arranged.First(a => a.Node.Hit is HitResult.ButtonHit { Action: var x } && x == id).Bounds;
+        var (back, close) = (Button("MenuBack"), Button("MenuClose"));
+
+        var inset = big.Border!.Width + big.PadX * plan.FontSize;
+        back.X.ShouldBeGreaterThanOrEqualTo(card.X + inset - 0.01f);
+        (close.X + close.Width).ShouldBeLessThanOrEqualTo(card.X + card.Width - inset + 0.01f);
+        (close.X - (back.X + back.Width)).ShouldBeGreaterThanOrEqualTo(plan.FontSize - 0.01f, "a font of room is kept between Back and close");
+        // The controls keep the width the plan reserved for them: nothing was squeezed to make the row fit.
+        back.Width.ShouldBe(MenuLayout.BackLabel.Length * 0.5f * plan.FontSize + plan.FontSize, 0.01f);
+        close.Width.ShouldBe(2f * plan.FontSize, 0.01f);
+    }
+
+    // A card wider than its content (clamped up to MinWidth, or a portrait card at full width): the column fills the
+    // card, so the title is centred in the card and the controls sit at its two inner edges, not at the content's.
+    [Theory]
+    [InlineData(1200, 800)]
+    [InlineData(360, 640)]
+    public void ContentNarrowerThanTheCardIsCentredInIt_AndTheControlsSitAtItsEdges(float w, float h)
+    {
+        var m = WithActions(Short, () => { }, () => { });
+        var plan = MenuLayout.PlanPanel(m, Style, Ctx, w, h);
+        var tree = MenuLayout.BuildPanel(m, new MenuColors(), Style, Ctx, w, h);
+        var arranged = Layout.Engine.Arrange(tree, new Rect<float>(0, 0, w, h), Ctx);
+        var card = arranged.First(a => a.Node.BorderStyle is not null).Bounds;
+        var title = arranged.First(a => a.Node is Layout.Node.Leaf { Content: Layout.Content.Text { Value: "Hi" } }).Bounds;
+        Rect<float> Button(string id) => arranged.First(a => a.Node.Hit is HitResult.ButtonHit { Action: var x } && x == id).Bounds;
+
+        var inset = Style.Border!.Width + Style.PadX * plan.FontSize;
+        (card.Width - 2f * inset).ShouldBeGreaterThan(title.Width / 2f, "the case under test: a card wider than what it holds");
+        (title.X + title.Width / 2f).ShouldBe(card.X + card.Width / 2f, 0.01f);
+        Button("MenuBack").X.ShouldBe(card.X + inset, 0.01f);
+        var close = Button("MenuClose");
+        (close.X + close.Width).ShouldBe(card.X + card.Width - inset, 0.01f);
+    }
+
     [Fact]
     public void BothControlsDoNotOverlap()
     {

@@ -364,7 +364,12 @@ public static class MenuLayout
         if (unit <= 0f) unit = 1f;
         float Width(string text, float size) => ctx.MeasureText(text.AsSpan(), size).Width / unit;
         var header = HasHeader(model) ? BuildHeader(model, colors, plan.FontSize, Width) : null;
-        var column = BuildColumn(model, colors, plan.FontSize, Layout.Sizing.Fixed(plan.FontSize * style.PadY), header, Width);
+        // The column fills the card. Left to size itself it is only as wide as its widest row and sits at the card's
+        // left edge, which shows whenever the card is wider than its content (clamped up to MinWidth, or portrait at
+        // full width): the title off-centre, the close short of the corner, and no room between Back and close when
+        // the header is the widest row. BuildTree's column is the root, which the engine stretches anyway.
+        var column = BuildColumn(model, colors, plan.FontSize, Layout.Sizing.Fixed(plan.FontSize * style.PadY), header, Width)
+            with { Width = Layout.Sizing.Star() };
         var card = new Layout.Node.Stack([column], Layout.Axis.Vertical)
         {
             Width = Layout.Sizing.Fixed(plan.CardWidth),
