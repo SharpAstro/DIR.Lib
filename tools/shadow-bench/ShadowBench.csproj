@@ -3,7 +3,7 @@
   <!--
     Console benchmark for node shadows, not a test and not part of DIR.Lib.sln. Paints 3 shadowed rounded cards and
     30 shadowed rows at 1280x800 through RgbaImageRenderer, shadows off then on, and prints the mean frame time.
-    Run:  dotnet run --project tools/shadow-bench -c Release
+    Run with dotnet run, project tools/shadow-bench, configuration Release.
     Sits outside src/ so Central Package Management does not apply.
   -->
   <PropertyGroup>
