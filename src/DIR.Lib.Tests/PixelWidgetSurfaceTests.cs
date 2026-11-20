@@ -91,6 +91,88 @@ public class PixelWidgetSurfaceTests
     }
 
     [Fact]
+    public void ARowPaintedByAnEarlierWidgetWithItsOwnSettingsDoesNotLightUnderALaterWidgetsSurface()
+    {
+        // The two widgets share NO settings, as a host paints its toasts in a widget it never shares with the page: the
+        // router, which knows the paint order of both, carries the front's surfaces onto the back's settings.
+        var backRenderer = new DeclarationStubRenderer(200, 200);
+        var back = new DeclarationWidget(backRenderer);
+        var front = new DeclarationWidget(new DeclarationStubRenderer(200, 200));
+        back.Ui.ShouldNotBeSameAs(front.Ui);
+        var redraws = 0;
+        var router = new InputRouter(back.Ui, new BackgroundTaskTracker(), () => redraws++) { Widgets = () => [back, front] };
+        router.Handle(new InputEvent.MouseMove(10f, 10f, MouseButton.None));
+
+        void Frame()
+        {
+            back.Render(Page(), Window);
+            front.Render(Layer(surface: true), Window);
+            router.AfterPaint();
+        }
+
+        // The frame the surface appears in has nothing carried: the row lit, and the router asks for one more frame.
+        redraws = 0;
+        Frame();
+        redraws.ShouldBeGreaterThan(0, "a surface appeared in a widget with settings of its own");
+
+        redraws = 0;
+        Frame();
+        At(backRenderer, 10, 10).ShouldBe(Rest, "the card covers the row here, though the two widgets share no settings");
+        redraws.ShouldBe(0, "a settled surface asks for nothing more");
+
+        // A move within the covered part changes nothing the frame shows.
+        router.Handle(new InputEvent.MouseMove(20f, 10f, MouseButton.None));
+        redraws.ShouldBe(0, "nothing under the card lights, so a move there asks for no frame");
+
+        Frame();
+        At(backRenderer, 20, 10).ShouldBe(Rest);
+        redraws.ShouldBe(0);
+
+        // The row in the open lights as ever.
+        router.Handle(new InputEvent.MouseMove(150f, 10f, MouseButton.None));
+        Frame();
+        At(backRenderer, 150, 10).ShouldBe(Hot);
+
+        // The card goes: the cycle it went in carries nothing across, so the router asks for the frame that lights the row.
+        router.Handle(new InputEvent.MouseMove(10f, 10f, MouseButton.None));
+        redraws = 0;
+        back.Render(Page(), Window);
+        front.Render(Layout.Builder.Spacer(), Window);
+        router.AfterPaint();
+        redraws.ShouldBeGreaterThan(0, "the surface went");
+        back.Render(Page(), Window);
+        front.Render(Layout.Builder.Spacer(), Window);
+        router.AfterPaint();
+        At(backRenderer, 10, 10).ShouldBe(Hot);
+    }
+
+    [Fact]
+    public void AWidgetSharingThePagesSettingsButPaintedAfterTheSurfaceStillLights()
+    {
+        // The page and a panel share settings; the toasts are a widget of their own between them (pilot's order: page,
+        // toasts, cards panel). The toast covers the page's row but lies UNDER the panel's, so only the page's stays dark.
+        var pageRenderer = new DeclarationStubRenderer(200, 200);
+        var panelRenderer = new DeclarationStubRenderer(200, 200);
+        var page = new DeclarationWidget(pageRenderer);
+        var toasts = new DeclarationWidget(new DeclarationStubRenderer(200, 200));
+        var panel = new DeclarationWidget(panelRenderer);
+        page.ShareWith(panel);
+        var router = new InputRouter(page.Ui, new BackgroundTaskTracker(), () => { }) { Widgets = () => [page, toasts, panel] };
+        router.Handle(new InputEvent.MouseMove(10f, 10f, MouseButton.None));
+
+        for (var i = 0; i < 3; i++)
+        {
+            page.Render(Page(), Window);
+            toasts.Render(Layer(surface: true), Window);
+            panel.Render(Page(), Window);
+            router.AfterPaint();
+        }
+
+        At(pageRenderer, 10, 10).ShouldBe(Rest, "the page's row is under the toast");
+        At(panelRenderer, 10, 10).ShouldBe(Hot, "the panel's row is painted over the toast, so it lights");
+    }
+
+    [Fact]
     public void ARowPaintedEarlierInTheSameTreeDoesNotLightUnderTheSurface_TheSurfacesOwnRowDoes()
     {
         var renderer = new DeclarationStubRenderer(200, 200);

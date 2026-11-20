@@ -11,7 +11,10 @@ namespace DIR.Lib.Tests;
 /// first, a surface painted over part of it: within the surface's rect the row gets no tooltip, no cursor, no press, no
 /// release, no double click, no context menu and no wheel. Each case runs twice, the surface painted by a LATER widget and
 /// painted LATER in the same tree, because the router reaches the two through different walks (the next widget, the next
-/// region of one widget) and either could leak alone. The surface's own button and tooltip act as ever.
+/// region of one widget) and either could leak alone. The later widget runs twice more, sharing the earlier widget's
+/// settings and with settings of its own (a host that paints its toasts in a widget it never shares with the page, as pilot
+/// does), because the painter's hover reads the surfaces off the settings it paints with. The surface's own button and
+/// tooltip act as ever.
 /// </summary>
 public class InputRouterSurfaceTests
 {
@@ -21,7 +24,22 @@ public class InputRouterSurfaceTests
     private static readonly (float X, float Y) Open = (150f, 10f);
     private static readonly (float X, float Y) OnButton = (30f, 50f);
 
-    public static TheoryData<bool> Placements => new() { true, false };
+    /// <summary>Where the surface is painted, relative to the row.</summary>
+    public enum Placement
+    {
+        /// <summary>Later in the same tree: the row, then an overlay layer with the surface.</summary>
+        SameTree,
+
+        /// <summary>By a later widget that shares the row's widget's settings.</summary>
+        LaterWidget,
+
+        /// <summary>By a later widget with settings of its own.</summary>
+        LaterWidgetOwnSettings,
+    }
+
+    public static TheoryData<Placement> Placements => new() { Placement.SameTree, Placement.LaterWidget, Placement.LaterWidgetOwnSettings };
+
+    private static readonly RGBAColor32 RowHot = new(40, 40, 60, 255);
 
     private sealed class ManualClock : TimeProvider
     {
@@ -50,7 +68,7 @@ public class InputRouterSurfaceTests
 
         /// <summary>A full-width row at the top: hover, tooltip, cursor, click, double click, drag, menu and wheel.</summary>
         public Layout.Node Node() => Layout.Builder.Spacer().WStar().RowH(20f)
-            .BgHover(new RGBAColor32(40, 40, 60, 255))
+            .BgHover(RowHot)
             .WithTooltip("row")
             .WithScroll(Scroll)
             .WithContextMenu(_ => Menus++)
@@ -65,12 +83,17 @@ public class InputRouterSurfaceTests
 
     private sealed class Harness
     {
-        public Harness()
+        public Harness(Placement placement)
         {
-            var renderer = new DeclarationStubRenderer(200, 200);
-            Back = new DeclarationWidget(renderer);
-            Front = new DeclarationWidget(renderer);
-            Back.ShareWith(Front);
+            _placement = placement;
+            Renderer = new DeclarationStubRenderer(200, 200);
+            Back = new DeclarationWidget(Renderer);
+            Front = new DeclarationWidget(Renderer);
+            if (placement is not Placement.LaterWidgetOwnSettings)
+            {
+                Back.ShareWith(Front);
+            }
+
             Router = new InputRouter(Back.Ui, new BackgroundTaskTracker(), () => Redraws++)
             {
                 Widgets = () => [Back, Front],
@@ -83,6 +106,9 @@ public class InputRouterSurfaceTests
             };
         }
 
+        private readonly Placement _placement;
+
+        public DeclarationStubRenderer Renderer { get; }
         public DeclarationWidget Back { get; }
         public DeclarationWidget Front { get; }
         public InputRouter Router { get; }
@@ -108,13 +134,13 @@ public class InputRouterSurfaceTests
         /// <summary>A card at the top left of a layer that is otherwise empty (it registers nothing).</summary>
         private Layout.Node Layer(bool surface) => Layout.Builder.HStack(Surface(surface), Layout.Builder.Spacer().WStar());
 
-        /// <summary>Paints one frame. <paramref name="laterWidget"/>: the row in Back, the surface in Front; otherwise both in
+        /// <summary>Paints one frame. Placed in a later widget: the row in Back, the surface in Front; otherwise both in
         /// Back's one tree (the row, then an overlay layer with the surface) and Front paints nothing.</summary>
-        public void Paint(bool laterWidget, bool surface = true)
+        public void Paint(bool surface = true)
         {
             var bounds = new RectF32(0, 0, 200, 200);
             var page = Layout.Builder.VStack(Row.Node()).Stretch();
-            if (laterWidget)
+            if (_placement is not Placement.SameTree)
             {
                 Back.Render(page, bounds);
                 Front.Render(Layer(surface), bounds);
@@ -135,6 +161,14 @@ public class InputRouterSurfaceTests
 
         public bool Move((float X, float Y) at) => Router.Handle(new InputEvent.MouseMove(at.X, at.Y, MouseButton.None));
 
+        /// <summary>The pixel at <paramref name="at"/> of the frame last painted.</summary>
+        public RGBAColor32 PixelAt((float X, float Y) at)
+        {
+            var img = Renderer.Surface;
+            var i = (((int)at.Y * img.Width) + (int)at.X) * 4;
+            return new RGBAColor32(img.Pixels[i], img.Pixels[i + 1], img.Pixels[i + 2], img.Pixels[i + 3]);
+        }
+
         public TooltipRequest? TooltipAfterRest((float X, float Y) at)
         {
             Move(at);
@@ -145,10 +179,10 @@ public class InputRouterSurfaceTests
 
     [Theory]
     [MemberData(nameof(Placements))]
-    public void TheRowUnderASurfaceShowsNoTooltip_TheRowInTheOpenAndTheSurfacesButtonDo(bool laterWidget)
+    public void TheRowUnderASurfaceShowsNoTooltip_TheRowInTheOpenAndTheSurfacesButtonDo(Placement placement)
     {
-        var h = new Harness();
-        h.Paint(laterWidget);
+        var h = new Harness(placement);
+        h.Paint();
 
         h.TooltipAfterRest(Covered).ShouldBeNull("the card's body has nothing to say, and the row beneath must not say it for it");
         h.TooltipAfterRest(Open).ShouldNotBeNull().Text.ShouldBe("row");
@@ -157,20 +191,20 @@ public class InputRouterSurfaceTests
 
     [Theory]
     [MemberData(nameof(Placements))]
-    public void WithoutTheSurfaceTheRowsTooltipShowsThrough_WhichIsTheBugThisPins(bool laterWidget)
+    public void WithoutTheSurfaceTheRowsTooltipShowsThrough_WhichIsTheBugThisPins(Placement placement)
     {
-        var h = new Harness();
-        h.Paint(laterWidget, surface: false);
+        var h = new Harness(placement);
+        h.Paint(surface: false);
 
         h.TooltipAfterRest(Covered).ShouldNotBeNull().Text.ShouldBe("row");
     }
 
     [Theory]
     [MemberData(nameof(Placements))]
-    public void TheRowUnderASurfaceSetsNoCursor(bool laterWidget)
+    public void TheRowUnderASurfaceSetsNoCursor(Placement placement)
     {
-        var h = new Harness();
-        h.Paint(laterWidget);
+        var h = new Harness(placement);
+        h.Paint();
 
         h.Router.CursorAt(Covered.X, Covered.Y).ShouldBeNull("the host's default over the card, not the row's hand");
         h.Router.CursorAt(Open.X, Open.Y).ShouldBe(CursorKind.Pointer);
@@ -179,10 +213,10 @@ public class InputRouterSurfaceTests
 
     [Theory]
     [MemberData(nameof(Placements))]
-    public void APressAndReleaseOnASurfaceNeverReachTheRow_AndAreNotTheHostsEither(bool laterWidget)
+    public void APressAndReleaseOnASurfaceNeverReachTheRow_AndAreNotTheHostsEither(Placement placement)
     {
-        var h = new Harness();
-        h.Paint(laterWidget);
+        var h = new Harness(placement);
+        h.Paint();
 
         h.Press(Covered).ShouldBeTrue("the surface takes the press");
         h.Release(Covered);
@@ -199,10 +233,10 @@ public class InputRouterSurfaceTests
 
     [Theory]
     [MemberData(nameof(Placements))]
-    public void ADoubleClickOnASurfaceDoesNotOpenTheRow(bool laterWidget)
+    public void ADoubleClickOnASurfaceDoesNotOpenTheRow(Placement placement)
     {
-        var h = new Harness();
-        h.Paint(laterWidget);
+        var h = new Harness(placement);
+        h.Paint();
 
         h.Press(Covered, clicks: 1);
         h.Release(Covered);
@@ -220,10 +254,10 @@ public class InputRouterSurfaceTests
 
     [Theory]
     [MemberData(nameof(Placements))]
-    public void ARightPressOnASurfaceOpensNotTheRowsMenu(bool laterWidget)
+    public void ARightPressOnASurfaceOpensNotTheRowsMenu(Placement placement)
     {
-        var h = new Harness();
-        h.Paint(laterWidget);
+        var h = new Harness(placement);
+        h.Paint();
 
         h.Press(Covered, button: MouseButton.Right);
         h.Row.Menus.ShouldBe(0);
@@ -234,10 +268,10 @@ public class InputRouterSurfaceTests
 
     [Theory]
     [MemberData(nameof(Placements))]
-    public void TheWheelOverASurfaceScrollsNothingBeneath_NorReachesTheHost(bool laterWidget)
+    public void TheWheelOverASurfaceScrollsNothingBeneath_NorReachesTheHost(Placement placement)
     {
-        var h = new Harness();
-        h.Paint(laterWidget);
+        var h = new Harness(placement);
+        h.Paint();
 
         h.Router.Handle(new InputEvent.Scroll(-3f, Covered.X, Covered.Y)).ShouldBeTrue("the surface takes the wheel");
         h.Row.Scroll.Offset.ShouldBe(0f);
@@ -249,10 +283,10 @@ public class InputRouterSurfaceTests
 
     [Theory]
     [MemberData(nameof(Placements))]
-    public void TheSurfacesOwnButtonStillActs(bool laterWidget)
+    public void TheSurfacesOwnButtonStillActs(Placement placement)
     {
-        var h = new Harness();
-        h.Paint(laterWidget);
+        var h = new Harness(placement);
+        h.Paint();
 
         h.Press(OnButton).ShouldBeTrue();
 
@@ -262,10 +296,10 @@ public class InputRouterSurfaceTests
 
     [Theory]
     [MemberData(nameof(Placements))]
-    public void AMoveOntoTheSurfaceFromTheOpenRowUnlightsIt_AndAMoveWithinTheCoveredPartAsksForNothing(bool laterWidget)
+    public void AMoveOntoTheSurfaceFromTheOpenRowUnlightsIt_AndAMoveWithinTheCoveredPartAsksForNothing(Placement placement)
     {
-        var h = new Harness();
-        h.Paint(laterWidget);
+        var h = new Harness(placement);
+        h.Paint();
         h.Move(Open);
         h.Clock.Advance(TimeSpan.FromSeconds(1));
         h.Router.AfterPaint();
@@ -277,5 +311,24 @@ public class InputRouterSurfaceTests
         h.Redraws = 0;
         h.Move((Covered.X + 5f, Covered.Y));
         h.Redraws.ShouldBe(0, "nothing under the card lights, so a move there changes nothing");
+    }
+
+    [Theory]
+    [MemberData(nameof(Placements))]
+    public void TheRowUnderASurfaceDoesNotLight_ByTheFrameAfterTheSurfaceAppears(Placement placement)
+    {
+        var h = new Harness(placement);
+        h.Move(Covered);
+
+        // The frame the surface appears in carries nothing yet, so the router asks for one more; that one is dark.
+        h.Paint();
+        h.Redraws = 0;
+        h.Paint();
+        h.PixelAt(Covered).ShouldNotBe(RowHot, "the row lies under the card here, however the two widgets hold their settings");
+        h.Redraws.ShouldBe(0, "a settled surface asks for no further frame");
+
+        h.Move(Open);
+        h.Paint();
+        h.PixelAt(Open).ShouldBe(RowHot, "the row in the open lights as ever");
     }
 }
