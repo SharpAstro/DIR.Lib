@@ -100,13 +100,83 @@ public class NotificationsRenderTests
         }
     }
 
-    private static RgbaImage Draw(Layout.Node tree, float width = W)
+    private static RgbaImage Draw(Layout.Node tree, float width = W, float height = H, RGBAColor32? clear = null)
     {
-        var renderer = new RgbaImageRenderer((uint)width, (uint)H);
-        renderer.Surface.Clear(Theme.Palette.ContentBg);
-        new Widget(renderer) { FontPath = NotificationsRenderTests.FontPath }.Render(tree, new RectF32(0, 0, width, H));
+        var renderer = new RgbaImageRenderer((uint)width, (uint)height);
+        renderer.Surface.Clear(clear ?? Theme.Palette.ContentBg);
+        new Widget(renderer) { FontPath = NotificationsRenderTests.FontPath }.Render(tree, new RectF32(0, 0, width, height));
         return renderer.Surface;
     }
+
+    // ---- toast look B: tinted by severity, icon, Close, shadow; dark, light and one-hue palettes ----
+
+    internal static readonly UiPalette Light = new()
+    {
+        ContentBg = new(246, 247, 249, 255),
+        PanelBg = new(255, 255, 255, 255),
+        HeaderBg = new(236, 238, 242, 255),
+        Separator = new(208, 212, 220, 255),
+        BodyText = new(30, 32, 38, 255),
+        DimText = new(92, 98, 110, 255),
+        Accent = new(20, 90, 200, 255),
+        Selection = new(200, 218, 245, 255),
+        HeaderText = new(20, 22, 28, 255),
+        SelectionText = new(0, 0, 0, 255),
+        Info = new(20, 100, 210, 255),
+        Warn = new(170, 100, 0, 255),
+        Error = new(200, 30, 40, 255),
+        Success = new(20, 130, 60, 255),
+    };
+
+    /// <summary>Red on black, as pilot's night palette: every colour is one hue, so severity is not tinted.</summary>
+    internal static readonly UiPalette OneHue = new()
+    {
+        ContentBg = new(0, 0, 0, 255),
+        PanelBg = new(20, 0, 0, 255),
+        HeaderBg = new(32, 0, 0, 255),
+        Separator = new(90, 0, 0, 255),
+        BodyText = new(255, 70, 70, 255),
+        DimText = new(190, 50, 50, 255),
+        Accent = new(255, 40, 40, 255),
+        Selection = new(90, 0, 0, 255),
+        HeaderText = new(255, 90, 90, 255),
+        SelectionText = new(255, 120, 120, 255),
+        Info = new(255, 60, 60, 255),
+        Warn = new(255, 80, 40, 255),
+        Error = new(255, 30, 30, 255),
+        Success = new(230, 60, 60, 255),
+    };
+
+    private const float LookH = 720f;
+    private static readonly NotificationsStyle LookStyle = new() { MaxToasts = 5 };
+
+    /// <summary>One toast of each severity (fading) and a staying card with two buttons and a long title.</summary>
+    internal static NotificationFeed LookFeed()
+    {
+        var feed = new NotificationFeed();
+        feed.Post(new Notification { Title = "Frame saved", Text = "IMG_0412.fits, 120 s, gain 120.", Severity = NotificationSeverity.Success, Kind = NotificationKind.Fading, Source = "camera" }, At(0));
+        feed.Post(new Notification { Title = "Plate solve finished", Text = "Centre moved 4.2 arcmin from target.", Severity = NotificationSeverity.Info, Kind = NotificationKind.Fading, Source = "solver" }, At(0));
+        feed.Post(new Notification { Title = "Guiding RMS above 1.5 arcsec", Text = "Wind gusts are shaking the mount; the subframes since 21:04 may be soft.", Severity = NotificationSeverity.Warn, Kind = NotificationKind.Fading, Source = "guider" }, At(0));
+        feed.Post(new Notification { Title = "Focuser lost its connection during the autofocus run on the luminance filter", Text = "USB link lost.", Severity = NotificationSeverity.Error, Kind = NotificationKind.Fading, Source = "focuser" }, At(0));
+        feed.Post(new Notification { Title = "Camera disconnected while the long exposure sequence was still running", Text = "Reconnect to resume at frame 41 of 120.", Severity = NotificationSeverity.Error, Kind = NotificationKind.Staying, ActionLabel = "Reconnect", Action = () => { }, Source = "camera" }, At(0));
+        feed.Advance(At(0));
+        feed.Advance(At(2));
+        return feed;
+    }
+
+    private static RgbaImage DrawLook(UiPalette palette, float width, NotificationFeed? feed = null)
+    {
+        var tree = NotificationsLayout.Build(Layout.Builder.Box(0, 0).Stretch().Bg(palette.ContentBg), feed ?? LookFeed(),
+            new NotificationsState(), NotificationsColors.From(palette), LookStyle);
+        return Draw(tree, width, LookH, palette.ContentBg);
+    }
+
+    [Fact] public void ToastLookDarkWide() => CompareBaseline(DrawLook(Theme.Palette, W), "notifications_toast_look_dark.png");
+    [Fact] public void ToastLookDarkNarrow() => CompareBaseline(DrawLook(Theme.Palette, NarrowW), "notifications_toast_look_dark_narrow.png");
+    [Fact] public void ToastLookLightWide() => CompareBaseline(DrawLook(Light, W), "notifications_toast_look_light.png");
+    [Fact] public void ToastLookLightNarrow() => CompareBaseline(DrawLook(Light, NarrowW), "notifications_toast_look_light_narrow.png");
+    [Fact] public void ToastLookOneHueWide() => CompareBaseline(DrawLook(OneHue, W), "notifications_toast_look_onehue.png");
+    [Fact] public void ToastLookOneHueNarrow() => CompareBaseline(DrawLook(OneHue, NarrowW), "notifications_toast_look_onehue_narrow.png");
 
     private static readonly NotificationsStyle TopRight = new() { Corner = ToastCorner.TopRight };
 
@@ -203,6 +273,13 @@ public class NotificationsRenderTests
     [Fact]
     public void CellsBarOpenOverThePageWithNeedsYouAndHistory()
         => CompareSnapshot(Cells(Tree(ListFeed(), new NotificationsState { Open = true })), "notifications_bar_open.txt");
+
+    [Fact]
+    public void CellsToastLookHasNoShadowAndOneCharacterPerIcon()
+    {
+        var tree = NotificationsLayout.Build(Page(), LookFeed(), new NotificationsState(), Colors, LookStyle);
+        CompareSnapshot(Cells(tree), "notifications_toast_look.txt");
+    }
 
     private static string ThisFile([CallerFilePath] string? file = null) => file!;
 
