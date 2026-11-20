@@ -95,7 +95,7 @@ public class InputRouterSurfaceTests
         /// <summary>The surface: a 100x100 card holding a button with a tooltip of its own.</summary>
         public Layout.Node Surface(bool surface = true)
         {
-            var button = Layout.Builder.Spacer().WFixed(40f).RowH(20f)
+            var button = Layout.Builder.Spacer().WFixed(40f).HFixed(20f)
                 .WithTooltip("button")
                 .Clickable(new HitResult.ButtonHit("button"), _ => ButtonClicks++, CursorKind.Pointer);
             var card = Layout.Builder.VStack(
