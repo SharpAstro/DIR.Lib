@@ -108,6 +108,29 @@ public class DeclaredListRoutingTests
         }
     }
 
+    /// <summary>A composed frame with nothing of its own on it: the scrolled list is painted by its child, so what
+    /// the router asks of the composite reaches the list only if the composite passes it on.</summary>
+    private sealed class ComposedFrame : CompositeWidget<RgbaImage>
+    {
+        private readonly ScrollWidget _child;
+        private readonly PixelWidgetBase<RgbaImage>[] _children;
+
+        public ComposedFrame(Renderer<RgbaImage> renderer, ScrollWidget child) : base(renderer)
+        {
+            _child = child;
+            _children = [child];
+            ShareUiContext(child);
+        }
+
+        protected override IReadOnlyList<PixelWidgetBase<RgbaImage>> Children => _children;
+
+        public void Render(Layout.Node root, RectF32 bounds)
+        {
+            BeginFrame();
+            _child.Render(root, bounds);
+        }
+    }
+
     [Fact]
     public void A_declared_list_under_WithScroll_routed_by_InputRouter_scrolls_to_the_row_Down_lands_on()
     {
@@ -185,6 +208,49 @@ public class DeclaredListRoutingTests
         {
             router.Handle(new InputEvent.KeyDown(InputKey.Down, InputModifier.None)).ShouldBeTrue($"press {presses + 1} is taken: the list goes on");
             widget.Render(Card(), bounds);
+            presses++;
+        }
+
+        cursor.Index.ShouldBe(7, "the first row after the five disabled ones");
+    }
+
+    // The same list painted by a CHILD of a composite, which is how a real frame is built. The router asks the
+    // top-level widget only, and the rows a scroll noted are the child's own, so the composite has to pass the
+    // question on as it passes CollectClippedListRows and RevealListRow (pilot's review of #291).
+    [Fact]
+    public void A_scrolled_list_painted_by_a_child_of_a_composite_gets_past_the_same_run_of_disabled_rows()
+    {
+        var renderer = new StubRenderer(200, 200);
+        var frame = new ComposedFrame(renderer, new ScrollWidget(renderer));
+        var scroll = new ListScrollController { Mode = ScrollBarMode.None };
+        var cursor = new ListCursor();
+        const float rowH = 20f, viewportH = 50f;
+        Layout.Node Card()
+        {
+            var rows = new Layout.Node[10];
+            for (var i = 0; i < rows.Length; i++)
+            {
+                var row = Layout.Builder.Spacer().RowH(rowH).Clickable(new HitResult.ListItemHit("rows", i), _ => { });
+                rows[i] = i is >= 2 and <= 6 ? row.Disabled("not now") : row;
+            }
+
+            return Layout.Builder.VStack(
+                    Layout.Builder.VStack(rows).WStar().HClamp(0f, viewportH).WithScroll(scroll).ListOf(cursor, "rows"),
+                    Layout.Builder.Spacer().RowH(30f))
+                .Stretch();
+        }
+
+        var bounds = new RectF32(0, 0, 200, 200);
+        frame.Render(Card(), bounds);
+        var router = new InputRouter(frame.Ui, new BackgroundTaskTracker(), static () => { }) { Widgets = () => [frame] };
+        router.Handle(new InputEvent.MouseDown(10f, 25f, MouseButton.Left, InputModifier.None, 1)).ShouldBeTrue(); // row 1
+        cursor.Index.ShouldBe(1);
+
+        var presses = 0;
+        while (cursor.Index != 7 && presses < 6)
+        {
+            router.Handle(new InputEvent.KeyDown(InputKey.Down, InputModifier.None)).ShouldBeTrue($"press {presses + 1} is taken: the list goes on");
+            frame.Render(Card(), bounds);
             presses++;
         }
 

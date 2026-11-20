@@ -23,8 +23,11 @@ changed and why.
   moved, the key is taken: the next paint lays out the rows after it and the next press continues, so a long run
   scrolls by under repeated presses and the cursor lands on the first enabled row beyond it. If it did not move, that
   row was already in view and the key is refused, as at any end of a list.
-- `PixelWidgetBase` implements it from the scrolled rows the last paint noted. Console.Lib's cell surface shares the
-  engine and so the defect; it gets the same method in its next release.
+- `PixelWidgetBase` implements it from the scrolled rows the last paint noted, and `CompositeWidget` passes the question
+  to its children as it passes `CollectClippedListRows` and `RevealListRow`, so a list painted by a child of a composed
+  frame is reached too. Console.Lib's cell surface shares the engine and so the defect; it gets the same method in its
+  next release.
+
 ## 11.89
 
 **A segmented control and an icon toggle button, with words that drop when the row is narrow.**
