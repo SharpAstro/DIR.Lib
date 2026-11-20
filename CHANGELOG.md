@@ -9,6 +9,27 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.89
+
+**A segmented control and an icon toggle button, with words that drop when the row is narrow.**
+(additive; issue #290)
+
+- **`Node.NarrowForm`** (`OrWhenNarrow(node)`): a node declares the form it takes when its full form does not fit the room
+  it is given. The engine MEASURES the full form and swaps in the narrow one whole, identically in measure and arrange,
+  for float and int (cell) measure contexts.
+- **`Builder.Segmented`**: a themed one-of-few control built from `UiTheme` only. Each segment is icon and word, and every
+  word drops at once when the control does not fit. Left/Right move the choice when it has the keyboard, segments take
+  shortcuts, and a disabled segment says why. The chosen segment's ink comes from the new `UiPalette.InkOn(fill)`.
+- **`Builder.IconToggle` and `Builder.IconAction`**: a square icon button from the SVG set. Pressed, a toggle fills with the
+  accent and takes the filled form of its icon; its words are its tooltip, and an optional word beside the icon drops by
+  the same narrow-form rule. `IconAction` is the same button with no pressed state (OpenInPage).
+- **Horizontal declared list**: `DeclaredList.Horizontal` and `SelectOnStep` (init-only), and a `Node.ListOf(cursor, id,
+  horizontal, selectOnStep)` overload. `InputRouter` steps a horizontal list with Left/Right, and with `SelectOnStep` acts
+  on the row each step lands on.
+- **`IconSet.FilledForm(kind)`**: Pin maps to PinFilled; a kind with no filled drawing maps to itself.
+
+Console.Lib needs a follow-up for the cell look of these controls. No existing public member changed shape.
+
 ## 11.88
 
 **Toasts look like toasts: tinted by severity, with an edge, a key shadow and a severity icon.**
