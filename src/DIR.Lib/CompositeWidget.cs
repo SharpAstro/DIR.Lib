@@ -163,6 +163,23 @@
             }
         }
 
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Every child is asked, with no stop at the first that moved: the rows a scroll noted are the painting
+        /// widget's own, two children may each hold a scrolled part of the list, and <see cref="InputRouter"/> sums
+        /// its top-level widgets' answers the same way.
+        /// </remarks>
+        public override bool RevealListEdge(ListCursor cursor, int delta)
+        {
+            var moved = base.RevealListEdge(cursor, delta);
+            foreach (var child in Children)
+            {
+                moved |= child.RevealListEdge(cursor, delta);
+            }
+
+            return moved;
+        }
+
         private void CollectOwnRegions(List<ClickableRegion> into) => base.CollectPaintedRegions(into);
 
         private void CollectOwnNodes(List<Layout.ArrangedNode<float>> into) => base.CollectPaintedNodes(into);

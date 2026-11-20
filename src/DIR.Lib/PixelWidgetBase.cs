@@ -114,7 +114,8 @@ namespace DIR.Lib
         /// its viewport (<c>Engine.ArrangeStack</c>), so a run of disabled rows taller than that holds nothing to
         /// step to although the list goes on. The surface brings the farthest row it holds in that direction into
         /// view and answers whether the list moved: the next paint then lays out the rows after it, and the next
-        /// press continues. False is the end of the list. A default interface method (11.88): the default answers
+        /// press continues. False is the end of the list: a list that ends in disabled rows takes the presses that
+        /// bring them into view and refuses the next. A default interface method (11.90): the default answers
         /// false, which is right for a surface whose lists do not scroll.
         /// </summary>
         bool RevealListEdge(ListCursor cursor, int delta) => false;
