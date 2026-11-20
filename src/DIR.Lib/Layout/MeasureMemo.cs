@@ -37,6 +37,12 @@ internal static class MeasurePurity
 
     private static bool Compute(Node node)
     {
+        // The narrow form can be the one measured, so it must be as pure as the node for the result to be kept.
+        if (node.NarrowForm is { } narrowForm && !IsPure(narrowForm))
+        {
+            return false;
+        }
+
         switch (node)
         {
             case Node.Leaf { Content: Content.TextEditor or Content.TextInput }:

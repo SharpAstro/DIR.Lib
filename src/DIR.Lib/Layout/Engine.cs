@@ -117,7 +117,8 @@ public static class Engine
         {
             // A leaf other than a text editor measures from its content alone, so the room it is offered is not part of
             // its identity: the same text in nested stacks is offered a different room at each level.
-            var at = node is Node.Leaf { Content: not Content.TextEditor } ? default : available;
+            // (Unless it declares a narrow form: which form it takes depends on the room.)
+            var at = node is Node.Leaf { Content: not Content.TextEditor, NarrowForm: null } ? default : available;
             if (MeasureMemo<T>.TryGet(node, at, ctx, out var known, out var key))
             {
                 return known;
@@ -145,7 +146,36 @@ public static class Engine
         return scale.ToSurface(ListScrollController.ScrollBarBaseWidthPx);
     }
 
+    /// <summary>
+    /// The one place <see cref="Node.NarrowForm"/> is decided, for Measure and Arrange alike: true (and the narrow
+    /// node) when the node's full form, measured with no limit on the width, is wider than <paramref name="width"/>.
+    /// </summary>
+    private static bool TryNarrow<T>(Node node, T width, T height, IMeasureContext<T> ctx, out Node narrow)
+        where T : INumber<T>
+    {
+        narrow = node;
+        if (node.NarrowForm is not { } form)
+        {
+            return false;
+        }
+
+        var natural = MeasureBody(node, new Size<T>(T.CreateSaturating(1_000_000), height), ctx).Width;
+        if (natural <= width)
+        {
+            return false;
+        }
+
+        narrow = form;
+        return true;
+    }
+
     private static Size<T> MeasureUncached<T>(Node node, Size<T> available, IMeasureContext<T> ctx)
+        where T : INumber<T>
+        => TryNarrow(node, available.Width, available.Height, ctx, out var narrow)
+            ? MeasureBody(narrow, available, ctx)
+            : MeasureBody(node, available, ctx);
+
+    private static Size<T> MeasureBody<T>(Node node, Size<T> available, IMeasureContext<T> ctx)
         where T : INumber<T>
     {
         // Inner padding is measured as arrange lays it out: the children get the room inside it. They were measured
@@ -261,6 +291,11 @@ public static class Engine
     private static void ArrangeNode<T>(Node node, Rect<T> rect, IMeasureContext<T> ctx,
         ImmutableArray<ArrangedNode<T>>.Builder output, int depth) where T : INumber<T>
     {
+        if (TryNarrow(node, rect.Width, rect.Height, ctx, out var narrowForm))
+        {
+            node = narrowForm;
+        }
+
         output.Add(new ArrangedNode<T>(node, rect) { Depth = depth });
 
         if (node.OnArranged is { } arranged)
