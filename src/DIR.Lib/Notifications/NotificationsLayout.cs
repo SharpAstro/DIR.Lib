@@ -23,6 +23,9 @@ namespace DIR.Lib.Notifications
         Dismiss,
         /// <summary>The list's Clear button.</summary>
         Clear,
+        /// <summary>The cross at the top right of a fading toast: dismisses it. Painted over the card, so its click
+        /// does not reach the card's <see cref="Toast"/> region.</summary>
+        Close,
     }
 
     /// <summary>What a region of the notifications UI is, so a host can tell hover and clicks apart. <see cref="Id"/> is zero for the parts that name no notification.</summary>
@@ -61,6 +64,11 @@ namespace DIR.Lib.Notifications
         public required RGBAColor32 Card { get; init; }
         public required RGBAColor32 Text { get; init; }
         public required RGBAColor32 Dim { get; init; }
+        private readonly RGBAColor32? _body;
+
+        /// <summary>Ink of a toast's or row's message, below the title. Defaults to <see cref="Text"/>; never <see cref="Dim"/>.</summary>
+        public RGBAColor32 Body { get => _body ?? Text; init => _body = value; }
+
         public required RGBAColor32 Separator { get; init; }
         /// <summary>The bar of a fading toast's countdown.</summary>
         public required RGBAColor32 Track { get; init; }
@@ -311,53 +319,123 @@ namespace DIR.Lib.Notifications
                 : Builder.VStack(Builder.Spacer().HStar(), right).Pad(s.Margin).Stretch();
         }
 
+        /// <summary>Size of a toast's severity icon, in design units.</summary>
+        public const float ToastIconSize = 18f;
+
+        /// <summary>Size of the Close cross's click box, in design units; the cross is drawn inside it.</summary>
+        public const float CloseBoxSize = 18f;
+
+        private static IconKind IconOf(NotificationSeverity s) => s switch
+        {
+            NotificationSeverity.Error => IconKind.Error,
+            NotificationSeverity.Warn => IconKind.Warning,
+            NotificationSeverity.Success => IconKind.Success,
+            _ => IconKind.Info,
+        };
+
         private static Node Toast(ToastView view, NotificationFeed feed, NotificationsColors c, NotificationsStyle s)
         {
             var n = view.Notification;
+            var fading = n.Kind == NotificationKind.Fading;
             var parts = new List<Node> { n.Row?.Invoke() ?? DefaultBody(n, c, s, showTime: false) };
-            if (n.Kind == NotificationKind.Staying)
+            if (!fading)
             {
                 parts.Add(Buttons(n, feed, c, s));
             }
             else
             {
+                // The countdown sits inside the card's padding, so it stays clear of the corner arcs.
                 parts.Add(Builder.Progress((float)view.RemainingFraction, c.Track, c.Of(n.Severity))
                     .RowH(s.CountdownHeight));
             }
 
-            var card = Builder.VStack([.. parts]).WithGap(s.Gap).Pad(s.Padding)
-                .Bg(c.Card).BorderLeft(c.Of(n.Severity), 3f).WStar();
+            var body = Builder.VStack([.. parts]).WithGap(s.Gap).WStar();
+            var icon = Builder.Icon(IconOf(n.Severity), ToastIconSize, c.Of(n.Severity));
+            var row = fading
+                // Space under the Close cross, so a long title ellipsises before it rather than running under it.
+                ? Builder.HStack(icon, body, Builder.Spacer().WFixed(CloseBoxSize))
+                : Builder.HStack(icon, body);
+            var card = row.WithGap(s.Gap).Pad(s.Padding)
+                .Bg(c.TintedFill(n.Severity))
+                .Border(c.TintedEdge(n.Severity), 1f, c.CornerRadius)
+                .Radius(c.CornerRadius)
+                .Shadow(c.ToastShadow)
+                .WStar();
             // Every card is a surface (Node.IsSurface): what it covers in the page gets neither the hover, the tooltip, the
             // cursor, a press nor the wheel. A fading toast's region keeps its NotificationHit (the host pauses the
             // countdown under the pointer and clicks it through that hit); a staying card's body takes the press and does
             // nothing with it, while its own buttons, painted over it, act as ever.
-            var hit = n.Kind == NotificationKind.Fading
-                ? card.Clickable(new NotificationHit(NotificationPart.Toast, n.Id))
-                : card;
-            return hit.AsSurface();
+            if (!fading)
+            {
+                return card.AsSurface();
+            }
+
+            // The Close cross is its own region painted over the card, so a click on it dismisses and does not reach the card's.
+            var close = Builder.HStack(Builder.Icon(IconKind.Close, 12f, c.Text))
+                .Pad((CloseBoxSize - 12f) / 2f)
+                .CrossCenter()
+                .Clickable(new NotificationHit(NotificationPart.Close, n.Id), _ => feed.Dismiss(n.Id), CursorKind.Pointer)
+                .WithTooltip("Dismiss")
+                .WAuto();
+            var closeLayer = Builder.VStack(Builder.HStack(Builder.Spacer().WStar(), close).WStar())
+                .Pad(s.Padding)
+                .Stretch();
+            return Builder.Overlay(card.Clickable(new NotificationHit(NotificationPart.Toast, n.Id)).AsSurface(), closeLayer);
         }
 
         private static Node Buttons(Notification n, NotificationFeed feed, NotificationsColors c, NotificationsStyle s)
         {
+            // The first button (the action, else Dismiss) is filled in the severity colour; the rest are plain.
             var buttons = new List<Node> { Builder.Spacer().WStar() };
             if (n.Action is not null && !string.IsNullOrEmpty(n.ActionLabel))
             {
-                buttons.Add(Button(n.ActionLabel!, c.Of(n.Severity), c, s,
+                buttons.Add(PrimaryButton(n.ActionLabel!, n.Severity, c, s,
                     new NotificationHit(NotificationPart.Action, n.Id), () => feed.Handle(n.Id)));
+                buttons.Add(PlainButton("Dismiss", c, s,
+                    new NotificationHit(NotificationPart.Dismiss, n.Id), () => feed.Dismiss(n.Id)));
+            }
+            else
+            {
+                buttons.Add(PrimaryButton("Dismiss", n.Severity, c, s,
+                    new NotificationHit(NotificationPart.Dismiss, n.Id), () => feed.Dismiss(n.Id)));
             }
 
-            buttons.Add(Button("Dismiss", c.Dim, c, s,
-                new NotificationHit(NotificationPart.Dismiss, n.Id), () => feed.Dismiss(n.Id)));
             return Builder.HStack([.. buttons]).WithGap(s.Gap).CrossCenter().WStar();
         }
 
-        private static Node Button(string label, RGBAColor32 ink, NotificationsColors c, NotificationsStyle s,
-            HitResult hit, Action run)
-            => Builder.HStack(Builder.Text(label, s.FontSize, ink, TextAlign.Center).WAuto())
-                .Pad(s.Padding, 2f)
-                .Bg(c.Surface)
+        /// <summary>Vertical padding of a toast button, in design units; primary and plain share it, so a row of them has one height.</summary>
+        public const float ButtonPadY = 4f;
+
+        /// <summary>
+        /// A button filled in <paramref name="severity"/>'s colour with <see cref="NotificationsColors.InkOn"/> ink: the
+        /// first button of a staying card. A host's own row builds the same button by calling this.
+        /// </summary>
+        public static Node PrimaryButton(string label, NotificationSeverity severity, NotificationsColors colors,
+            NotificationsStyle style, HitResult hit, Action run)
+        {
+            ArgumentNullException.ThrowIfNull(colors);
+            ArgumentNullException.ThrowIfNull(style);
+            ArgumentNullException.ThrowIfNull(run);
+            return Builder.HStack(Builder.Text(label, style.FontSize, colors.InkOn(severity), TextAlign.Center).WAuto())
+                .Pad(style.Padding, ButtonPadY)
+                .Bg(colors.Of(severity))
+                .Radius(Math.Max(0f, colors.CornerRadius - 2f))
                 .Clickable(hit, _ => run(), CursorKind.Pointer)
                 .WAuto();
+        }
+
+        /// <summary>A button with no fill, in <see cref="NotificationsColors.Text"/>: every button of a staying card after the first.</summary>
+        public static Node PlainButton(string label, NotificationsColors colors, NotificationsStyle style,
+            HitResult hit, Action run)
+        {
+            ArgumentNullException.ThrowIfNull(colors);
+            ArgumentNullException.ThrowIfNull(style);
+            ArgumentNullException.ThrowIfNull(run);
+            return Builder.HStack(Builder.Text(label, style.FontSize, colors.Text, TextAlign.Center).WAuto())
+                .Pad(style.Padding, ButtonPadY)
+                .Clickable(hit, _ => run(), CursorKind.Pointer)
+                .WAuto();
+        }
 
         // ---- the bar ----
 
@@ -440,7 +518,7 @@ namespace DIR.Lib.Notifications
             var parts = new List<Node> { Builder.HStack([.. head]).WithGap(s.Gap).CrossCenter().WStar() };
             if (n.Text.Length > 0)
             {
-                parts.Add(Wrapped(n.Text, s.FontSize, c.Text, s.MaxTextLines));
+                parts.Add(Wrapped(n.Text, s.FontSize, c.Body, s.MaxTextLines));
             }
 
             if (!string.IsNullOrEmpty(n.Source))
