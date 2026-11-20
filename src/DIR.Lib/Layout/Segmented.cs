@@ -8,6 +8,12 @@ public static partial class Builder
     /// <summary>Space between the segments of a <see cref="Segmented{T}"/>, and between its edge and them, design units.</summary>
     internal const float SegmentedInset = 2f;
 
+    /// <summary>Corner radius of one segment inside a <see cref="Segmented{T}"/>, design units.</summary>
+    internal const float SegmentRadius = 4f;
+
+    /// <summary>Gap between an icon and its word in a segment or an icon toggle, design units.</summary>
+    internal const float IconWordGap = 6f;
+
     /// <summary>
     /// A themed segmented control: one of <paramref name="options"/> is <paramref name="selected"/>; each segment shows its
     /// icon AND its word, and a press on another hands its value to <paramref name="onSelect"/>.
@@ -56,7 +62,8 @@ public static partial class Builder
             if (comparer.Equals(options[i].Value, selected)) { selectedIndex = i; break; }
         }
 
-        if (onSelect is not null)
+        // An option with its own Hit is not on the arrow walk, so the cursor is not synced to its index.
+        if (onSelect is not null && selectedIndex >= 0 && options[selectedIndex].Hit is null)
         {
             cursor.Open(listId, selectedIndex);
         }
@@ -92,7 +99,7 @@ public static partial class Builder
             {
                 var mark = Icon(icon, fontSize, ink);
                 face = withWord && option.Label is { Length: > 0 } word
-                    ? HStack(mark, Text(word, fontSize, ink, TextAlign.Near, TextAlign.Center)).WithGap(6f)
+                    ? HStack(mark, Text(word, fontSize, ink, TextAlign.Near, TextAlign.Center)).WithGap(IconWordGap)
                     : mark;
             }
             else
@@ -100,7 +107,7 @@ public static partial class Builder
                 face = Text(option.Label ?? string.Empty, fontSize, ink, TextAlign.Center, TextAlign.Center);
             }
 
-            var cell = face.Pad(withWord ? 10f : 8f, 0f).HStar().Radius(4f);
+            var cell = face.Pad(withWord ? 10f : 8f, 0f).HStar().Radius(SegmentRadius);
             if (isSelected)
             {
                 cell = cell.Bg(palette.Accent);

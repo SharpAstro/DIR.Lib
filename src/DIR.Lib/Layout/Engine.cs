@@ -149,6 +149,8 @@ public static class Engine
     /// <summary>
     /// The one place <see cref="Node.NarrowForm"/> is decided, for Measure and Arrange alike: true (and the narrow
     /// node) when the node's full form, measured with no limit on the width, is wider than <paramref name="width"/>.
+    /// Note: the full form is measured on every Measure and Arrange of such a node (cached by the measure memo, so
+    /// about twice per pass); fine at today's sizes, worth revisiting if segmented controls grow large.
     /// </summary>
     private static bool TryNarrow<T>(Node node, T width, T height, IMeasureContext<T> ctx, out Node narrow)
         where T : INumber<T>
