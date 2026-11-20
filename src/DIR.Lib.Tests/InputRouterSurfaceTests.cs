@@ -41,6 +41,9 @@ public class InputRouterSurfaceTests
 
     private static readonly RGBAColor32 RowHot = new(40, 40, 60, 255);
 
+    // The row's own background, so each frame repaints the pixel (the stub renderer does not clear between frames).
+    private static readonly RGBAColor32 RowRest = new(20, 30, 50, 255);
+
     private sealed class ManualClock : TimeProvider
     {
         private DateTimeOffset _now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -68,6 +71,7 @@ public class InputRouterSurfaceTests
 
         /// <summary>A full-width row at the top: hover, tooltip, cursor, click, double click, drag, menu and wheel.</summary>
         public Layout.Node Node() => Layout.Builder.Spacer().WStar().RowH(20f)
+            .Bg(RowRest)
             .BgHover(RowHot)
             .WithTooltip("row")
             .WithScroll(Scroll)
@@ -324,7 +328,7 @@ public class InputRouterSurfaceTests
         h.Paint();
         h.Redraws = 0;
         h.Paint();
-        h.PixelAt(Covered).ShouldNotBe(RowHot, "the row lies under the card here, however the two widgets hold their settings");
+        h.PixelAt(Covered).ShouldBe(RowRest, "the row lies under the card here, however the two widgets hold their settings");
         h.Redraws.ShouldBe(0, "a settled surface asks for no further frame");
 
         h.Move(Open);
