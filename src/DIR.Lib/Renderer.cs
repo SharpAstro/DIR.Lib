@@ -852,6 +852,63 @@ public abstract class Renderer<TSurface>(TSurface surface) : IDisposable
     }
 
     /// <summary>
+    /// Draws a soft drop shadow for a box occupying <paramref name="rect"/> (the node's own rect, not yet offset).
+    /// <paramref name="shadow"/> is in SURFACE units (pixels or cells), already scaled by the caller.
+    /// <para>
+    /// The default stacks <c>n + 1</c> rounded rects, outermost first, where <c>n</c> is the blur in whole pixels
+    /// capped at 16. Layer <c>d</c> is the offset rect grown by <c>d</c> pixels (radius grown with it); the layers'
+    /// alphas are chosen so the COMPOSITED alpha falls from the colour's alpha at the rect's edge to zero at
+    /// <c>n + 1</c> pixels out along a smoothstep curve. Cost is <c>n + 1</c> rounded fills (each one
+    /// <see cref="FillRectangle"/> per scanline), so about <c>(n + 1) * height</c> rect calls: a blur of 2 is three
+    /// fills; blur 16 is seventeen, which a card affords and a long list of rows should avoid. The shadow is
+    /// painted under the node, so an opaque node hides its inner part; a translucent node shows it through.
+    /// </para>
+    /// <para>
+    /// Virtual, not abstract, so every renderer compiles unchanged; a GPU renderer should override it with one
+    /// rounded-box SDF quad, which is cheaper and antialiased. A transparent colour draws nothing.
+    /// </para>
+    /// </summary>
+    public virtual void DrawShadow(in RectInt rect, float cornerRadius, Layout.ShadowStyle shadow)
+    {
+        ArgumentNullException.ThrowIfNull(shadow);
+        if (shadow.Color.Alpha == 0)
+        {
+            return;
+        }
+
+        var left = Math.Min(rect.UpperLeft.X, rect.LowerRight.X) + (int)MathF.Round(shadow.OffsetX);
+        var right = Math.Max(rect.UpperLeft.X, rect.LowerRight.X) + (int)MathF.Round(shadow.OffsetX);
+        var top = Math.Min(rect.UpperLeft.Y, rect.LowerRight.Y) + (int)MathF.Round(shadow.OffsetY);
+        var bottom = Math.Max(rect.UpperLeft.Y, rect.LowerRight.Y) + (int)MathF.Round(shadow.OffsetY);
+        var n = Math.Min((int)MathF.Round(MathF.Max(shadow.Blur, 0f)), 16);
+        var peak = shadow.Color.Alpha / 255f;
+
+        // Composited alpha at distance d from the edge (d = n + 1 is zero, d = 0 is the full colour).
+        float Cumulative(int d)
+        {
+            var t = 1f - d / (float)(n + 1);
+            return peak * t * t * (3f - 2f * t);
+        }
+
+        var below = 0f;
+        for (var d = n; d >= 0; d--)
+        {
+            var target = Cumulative(d);
+            // Over-compositing: 1 - target = (1 - below) * (1 - a), so a = 1 - (1 - target) / (1 - below).
+            var a = below >= 1f ? 0f : 1f - (1f - target) / (1f - below);
+            below = target;
+            var alpha = (byte)Math.Clamp((int)MathF.Round(a * 255f), 0, 255);
+            if (alpha == 0)
+            {
+                continue;
+            }
+
+            FillRoundedRectangle(new RectInt((right + d, bottom + d), (left - d, top - d)),
+                shadow.Color with { Alpha = alpha }, cornerRadius + d);
+        }
+    }
+
+    /// <summary>
     /// Strokes a node's border inside <paramref name="rect"/>: <paramref name="width"/> pixels on each of
     /// <paramref name="sides"/>, with the corners rounded to <paramref name="radius"/> pixels when all four sides
     /// are drawn.

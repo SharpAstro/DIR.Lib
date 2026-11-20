@@ -1461,13 +1461,28 @@ namespace DIR.Lib
                     // against a rect -- the row already says which list and index it is.
                     : node.FocusBackground is { } focus && CursorIsOn(node.Hit) ? focus
                     : node.Background;
+                // A rounded all-sides border strokes a curved outline, so the fill follows the same
+                // outline (the larger of the two radii) and the square corners outside it stay clear.
+                var fillRadius = node.BorderStyle is { Radius: > 0f, Sides: Layout.BorderSides.All, Width: > 0f } rb
+                    ? MathF.Max(radius, ctx.ToSurface(rb.Radius))
+                    : radius;
+
+                // The shadow goes under the background and takes the background's outline. Its design-unit
+                // fields scale through the same axis-free mapping as CornerRadius.
+                if (node.ShadowStyle is { Color.Alpha: > 0 } shadow && bounds.Width > 0 && bounds.Height > 0)
+                {
+                    var scaled = shadow with
+                    {
+                        OffsetX = ctx.ToSurface(shadow.OffsetX),
+                        OffsetY = ctx.ToSurface(shadow.OffsetY),
+                        Blur = ctx.ToSurface(shadow.Blur),
+                    };
+                    Renderer.DrawShadow(new RectInt(new PointInt((int)(bounds.X + bounds.Width), (int)(bounds.Y + bounds.Height)),
+                        new PointInt((int)bounds.X, (int)bounds.Y)), fillRadius, scaled);
+                }
+
                 if (nodeFill is { } bg)
                 {
-                    // A rounded all-sides border strokes a curved outline, so the fill follows the same
-                    // outline (the larger of the two radii) and the square corners outside it stay clear.
-                    var fillRadius = node.BorderStyle is { Radius: > 0f, Sides: Layout.BorderSides.All, Width: > 0f } rb
-                        ? MathF.Max(radius, ctx.ToSurface(rb.Radius))
-                        : radius;
                     FillRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, bg, fillRadius);
                     backgrounds.Push((arrangedNode.Depth, bg));
                 }
