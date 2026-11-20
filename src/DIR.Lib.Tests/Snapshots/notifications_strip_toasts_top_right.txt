@@ -58,10 +58,10 @@
 10 Leaf:Box 83 12 7 1
 7 Leaf:Box 91 7 0 0
 6 Stack 53 6 40 8
-7 Stack 54 6 38 1
-8 Leaf:Box 54 6 36 0
-8 Stack [Close#2] 90 6 2 1
-9 Icon Close 90 6 2 1
+7 Stack 54 7 38 1
+8 Leaf:Box 54 7 36 0
+8 Stack [Close#2] 90 7 2 1
+9 Icon Close 90 7 2 1
 5 Overlay 53 14 40 7
 6 Stack [Toast#1] 53 14 40 7
 7 Icon Info 55 15 2 1
@@ -84,7 +84,7 @@
 10 Leaf:Box 83 19 7 1
 7 Leaf:Box 91 15 0 0
 6 Stack 53 14 40 7
-7 Stack 54 14 38 1
-8 Leaf:Box 54 14 36 0
-8 Stack [Close#1] 90 14 2 1
-9 Icon Close 90 14 2 1
+7 Stack 54 15 38 1
+8 Leaf:Box 54 15 36 0
+8 Stack [Close#1] 90 15 2 1
+9 Icon Close 90 15 2 1
