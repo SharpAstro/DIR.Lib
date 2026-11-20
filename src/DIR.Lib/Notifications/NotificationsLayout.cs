@@ -27,7 +27,7 @@ namespace DIR.Lib.Notifications
     /// <summary>What a region of the notifications UI is, so a host can tell hover and clicks apart. <see cref="Id"/> is zero for the parts that name no notification.</summary>
     public sealed record NotificationHit(NotificationPart Part, long Id = 0) : HitResult;
 
-    /// <summary>Where the toast stack sits in the content rect.</summary>
+    /// <summary>Which corner of the page the toast stack sits in.</summary>
     public enum ToastCorner
     {
         TopRight,
@@ -105,7 +105,13 @@ namespace DIR.Lib.Notifications
         public float Gap { get; init; } = 6f;
         /// <summary>Distance of the toast stack from the content rect's edges.</summary>
         public float Margin { get; init; } = 12f;
-        /// <summary>Height of one toast as the placement rule assumes it (the real height follows the content).</summary>
+        /// <summary>
+        /// Where the toast stack sits in the page. Bottom right by default, as most apps do. The stack never changes
+        /// corner with the pointer (nothing moves under the pointer): the corner is this setting alone.
+        /// </summary>
+        public ToastCorner Corner { get; init; } = ToastCorner.BottomRight;
+        /// <summary>Height of one toast as the old placement rule assumed it (the real height follows the content).</summary>
+        [Obsolete("Only the pointer-dodging placement rule used it, and that is gone: the stack sits at NotificationsStyle.Corner.")]
         public float ToastHeightEstimate { get; init; } = 72f;
         /// <summary>Lines of text a toast or a row shows before an ellipsis (the whole text is on hover).</summary>
         public int MaxTextLines { get; init; } = 3;
@@ -124,17 +130,17 @@ namespace DIR.Lib.Notifications
         /// <summary>
         /// Builds the page docked beside the fixed strip. Open, the bar is an overlay over the right of the page (it
         /// never resizes it); collapsed, the toasts are an overlay over the page. Either way the page is arranged
-        /// into the same rect, so the content does not move when the bar opens.
+        /// into the same rect, so the content does not move when the bar opens. The toast stack sits at
+        /// <see cref="NotificationsStyle.Corner"/> and nowhere else.
         /// </summary>
         /// <param name="page">The application's content.</param>
-        /// <param name="pointer">Where the pointer is, in the space the tree is arranged in; null when unknown.</param>
-        /// <param name="contentRect">The page's rect as last arranged (the placement rule needs it); empty puts the toasts top right.</param>
         public static Node Build(Node page, NotificationFeed feed, NotificationsState state,
-            NotificationsColors colors, NotificationsStyle style, Vector2? pointer = null, RectF32 contentRect = default)
+            NotificationsColors colors, NotificationsStyle style)
         {
             ArgumentNullException.ThrowIfNull(page);
             ArgumentNullException.ThrowIfNull(feed);
             ArgumentNullException.ThrowIfNull(state);
+            ArgumentNullException.ThrowIfNull(style);
 
             Node fill;
             if (state.Open)
@@ -146,18 +152,26 @@ namespace DIR.Lib.Notifications
                 var toasts = ToastsOf(feed, style);
                 fill = toasts.Count == 0
                     ? page
-                    : Builder.Overlay(page, ToastLayer(toasts, feed, colors, style,
-                        PlaceToasts(contentRect, toasts.Count, style, pointer)));
+                    : Builder.Overlay(page, ToastLayer(toasts, feed, colors, style, style.Corner));
             }
 
             return Builder.Dock(fill, Builder.Right(Strip(feed, state, colors, style), style.StripWidth));
         }
 
         /// <summary>
-        /// Top right, else bottom right when the pointer is over where the top-right stack of
-        /// <paramref name="count"/> toasts would sit. Pure, so a test calls it directly. An unknown pointer or an empty
-        /// content rect keeps the top right.
+        /// Kept, with no [Obsolete] so a caller that passes both compiles unchanged: <paramref name="pointer"/> and
+        /// <paramref name="contentRect"/> no longer mean anything (the stack never follows the pointer) and are ignored; the
+        /// stack sits at <see cref="NotificationsStyle.Corner"/>. Prefer the overload without them.
         /// </summary>
+        public static Node Build(Node page, NotificationFeed feed, NotificationsState state,
+            NotificationsColors colors, NotificationsStyle style, Vector2? pointer, RectF32 contentRect)
+            => Build(page, feed, state, colors, style);
+
+        /// <summary>
+        /// Top right, else bottom right when the pointer is over where the top-right stack of
+        /// <paramref name="count"/> toasts would sit. Kept as it was for binary compatibility; nothing in the library calls it.
+        /// </summary>
+        [Obsolete("The stack no longer moves with the pointer; set NotificationsStyle.Corner instead.")]
         public static ToastCorner PlaceToasts(RectF32 content, int count, NotificationsStyle style, Vector2? pointer)
         {
             if (pointer is not { } p || count <= 0 || content.Width <= 0f || content.Height <= 0f)
@@ -165,13 +179,18 @@ namespace DIR.Lib.Notifications
                 return ToastCorner.TopRight;
             }
 
+#pragma warning disable CS0618
             return TopRightRegion(content, count, style).Contains(p) ? ToastCorner.BottomRight : ToastCorner.TopRight;
+#pragma warning restore CS0618
         }
 
-        /// <summary>The rect the top-right stack of <paramref name="count"/> toasts is assumed to cover.</summary>
+        /// <summary>The rect the top-right stack of <paramref name="count"/> toasts was assumed to cover.</summary>
+        [Obsolete("The stack no longer moves with the pointer; set NotificationsStyle.Corner instead.")]
         public static RectF32 TopRightRegion(RectF32 content, int count, NotificationsStyle style)
         {
+#pragma warning disable CS0618
             var height = count * style.ToastHeightEstimate + Math.Max(0, count - 1) * style.Gap;
+#pragma warning restore CS0618
             return new RectF32(content.Right - style.Margin - style.ToastWidth, content.Y + style.Margin,
                 style.ToastWidth, height);
         }
@@ -223,8 +242,10 @@ namespace DIR.Lib.Notifications
         private static Node ToastLayer(IReadOnlyList<ToastView> toasts, NotificationFeed feed, NotificationsColors c,
             NotificationsStyle s, ToastCorner corner)
         {
+            // toasts is newest first. A new toast lands at the corner and does not push older toasts away from it
+            // (or under the pointer): at the bottom the newest is the bottom card, at the top it is the top card.
             var cards = new List<Node>(toasts.Count);
-            foreach (var t in toasts)
+            foreach (var t in corner == ToastCorner.BottomRight ? toasts.Reverse() : toasts)
             {
                 cards.Add(Toast(t, feed, c, s));
             }

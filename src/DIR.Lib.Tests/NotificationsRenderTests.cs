@@ -16,8 +16,7 @@ namespace DIR.Lib.Tests;
 /// <summary>
 /// The notifications declaration drawn in pixels (<see cref="RgbaImageRenderer"/>, DejaVu Sans, the UI text face) and
 /// arranged in cells (the int context, 8x16 design units a cell), for three states of one feed stepped by a fake
-/// clock: the collapsed strip with three toasts at the top right, the same with the pointer where those toasts sit (so
-/// they go to the bottom right), and the bar open over the page. Pixel baselines live in <c>Baselines/</c>, cell
+/// clock: the collapsed strip with three toasts at the bottom right (the default) and at the top right (asked for), and the bar open over the page. Pixel baselines live in <c>Baselines/</c>, cell
 /// snapshots in <c>Snapshots/</c>. <c>DIR_LIB_UPDATE_BASELINES=1</c> / <c>DIR_LIB_UPDATE_SNAPSHOTS=1</c> with a filter on
 /// this class write them; read each capture before keeping it.
 /// </summary>
@@ -57,7 +56,7 @@ public class NotificationsRenderTests
 
     private static readonly NotificationsColors Colors = NotificationsColors.From(Theme.Palette);
     private static readonly NotificationsStyle Style = new();
-    private static readonly RectF32 Content = new(0, 0, W - Style.StripWidth, H);
+    private const float NarrowW = 400f;
 
     private static Layout.Node Page() => Layout.Builder.Box(0, 0).Stretch().Bg(Theme.Palette.ContentBg);
 
@@ -87,10 +86,8 @@ public class NotificationsRenderTests
         return feed;
     }
 
-    private static Layout.Node Tree(NotificationFeed feed, NotificationsState state, Vector2? pointer)
-        => NotificationsLayout.Build(Page(), feed, state, Colors, Style, pointer, Content);
-
-    private static Vector2 OverTopRightToasts() => NotificationsLayout.TopRightRegion(Content, 3, Style).Center;
+    private static Layout.Node Tree(NotificationFeed feed, NotificationsState state, NotificationsStyle? style = null)
+        => NotificationsLayout.Build(Page(), feed, state, Colors, style ?? Style);
 
     // ---- pixels ----
 
@@ -103,25 +100,41 @@ public class NotificationsRenderTests
         }
     }
 
-    private static RgbaImage Draw(Layout.Node tree)
+    private static RgbaImage Draw(Layout.Node tree, float width = W)
     {
-        var renderer = new RgbaImageRenderer((uint)W, (uint)H);
+        var renderer = new RgbaImageRenderer((uint)width, (uint)H);
         renderer.Surface.Clear(Theme.Palette.ContentBg);
-        new Widget(renderer) { FontPath = NotificationsRenderTests.FontPath }.Render(tree, new RectF32(0, 0, W, H));
+        new Widget(renderer) { FontPath = NotificationsRenderTests.FontPath }.Render(tree, new RectF32(0, 0, width, H));
         return renderer.Surface;
     }
 
-    [Fact]
-    public void CollapsedStripWithThreeToastsAtTopRight()
-        => CompareBaseline(Draw(Tree(ToastFeed(), new NotificationsState(), null)), "notifications_strip_toasts_top_right.png");
+    private static readonly NotificationsStyle TopRight = new() { Corner = ToastCorner.TopRight };
 
     [Fact]
-    public void PointerAtTopRightMovesTheToastsToTheBottomRight()
-        => CompareBaseline(Draw(Tree(ToastFeed(), new NotificationsState(), OverTopRightToasts())), "notifications_strip_toasts_bottom_right.png");
+    public void CollapsedStripWithThreeToastsAtBottomRight()
+        => CompareBaseline(Draw(Tree(ToastFeed(), new NotificationsState())), "notifications_strip_toasts_bottom_right.png");
+
+    [Fact]
+    public void CollapsedStripWithThreeToastsAtTopRightWhenAsked()
+        => CompareBaseline(Draw(Tree(ToastFeed(), new NotificationsState(), TopRight)), "notifications_strip_toasts_top_right.png");
+
+    [Fact]
+    public void NarrowCollapsedStripWithToastsAtBottomRightAndALongMessage()
+        => CompareBaseline(Draw(Tree(NarrowFeed(), new NotificationsState()), NarrowW), "notifications_strip_toasts_bottom_right_narrow.png");
+
+    private static NotificationFeed NarrowFeed()
+    {
+        var feed = new NotificationFeed();
+        feed.Post(new Notification { Title = "Plate solve finished", Text = "Centre moved 4.2 arcmin from target.", Severity = NotificationSeverity.Info, Kind = NotificationKind.Fading, Source = "solver" }, At(0));
+        feed.Post(new Notification { Title = "Dome shutter will not close", Text = "Rain sensor reports wet; the shutter has not moved for 90 seconds, the mount is parked and the camera is still cooling, so someone needs to go and look at the roof before the next shower arrives from the west.", Severity = NotificationSeverity.Warn, Kind = NotificationKind.Staying, ActionLabel = "Retry", Action = () => { }, Source = "dome" }, At(0));
+        feed.Advance(At(0));
+        feed.Advance(At(1));
+        return feed;
+    }
 
     [Fact]
     public void BarOpenOverThePageWithNeedsYouAndHistory()
-        => CompareBaseline(Draw(Tree(ListFeed(), new NotificationsState { Open = true }, null)), "notifications_bar_open.png");
+        => CompareBaseline(Draw(Tree(ListFeed(), new NotificationsState { Open = true })), "notifications_bar_open.png");
 
     // ---- cells ----
 
@@ -180,16 +193,16 @@ public class NotificationsRenderTests
     }
 
     [Fact]
-    public void CellsCollapsedStripWithThreeToastsAtTopRight()
-        => CompareSnapshot(Cells(Tree(ToastFeed(), new NotificationsState(), null)), "notifications_strip_toasts_top_right.txt");
+    public void CellsCollapsedStripWithThreeToastsAtBottomRight()
+        => CompareSnapshot(Cells(Tree(ToastFeed(), new NotificationsState())), "notifications_strip_toasts_bottom_right.txt");
 
     [Fact]
-    public void CellsPointerAtTopRightMovesTheToastsToTheBottomRight()
-        => CompareSnapshot(Cells(Tree(ToastFeed(), new NotificationsState(), OverTopRightToasts())), "notifications_strip_toasts_bottom_right.txt");
+    public void CellsCollapsedStripWithThreeToastsAtTopRightWhenAsked()
+        => CompareSnapshot(Cells(Tree(ToastFeed(), new NotificationsState(), TopRight)), "notifications_strip_toasts_top_right.txt");
 
     [Fact]
     public void CellsBarOpenOverThePageWithNeedsYouAndHistory()
-        => CompareSnapshot(Cells(Tree(ListFeed(), new NotificationsState { Open = true }, null)), "notifications_bar_open.txt");
+        => CompareSnapshot(Cells(Tree(ListFeed(), new NotificationsState { Open = true })), "notifications_bar_open.txt");
 
     private static string ThisFile([CallerFilePath] string? file = null) => file!;
 

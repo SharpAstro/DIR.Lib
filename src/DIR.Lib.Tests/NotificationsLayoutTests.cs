@@ -94,8 +94,8 @@ public class NotificationsLayoutTests
 
     private static readonly Layout.Node Page = Layout.Builder.Spacer().Stretch();
 
-    private static Layout.Node Tree(NotificationFeed feed, NotificationsState state, Vector2? pointer = null, RectF32 content = default)
-        => NotificationsLayout.Build(Page, feed, state, Colors, Style, pointer, content);
+    private static Layout.Node Tree(NotificationFeed feed, NotificationsState state, NotificationsStyle? style = null)
+        => NotificationsLayout.Build(Page, feed, state, Colors, style ?? Style);
 
     private static RectF32 ContentOf(bool cells)
         => Arrange(Tree(new NotificationFeed(), new NotificationsState()), cells).First(p => ReferenceEquals(p.Node, Page)).Rect;
@@ -160,86 +160,96 @@ public class NotificationsLayoutTests
         TextsOf(open).ShouldContain("b");
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void AtMostThreeToasts_NewestOnTop(bool cells)
+    private static readonly NotificationsStyle TopRightStyle = new() { Corner = ToastCorner.TopRight };
+
+    private static List<long> PostFive(NotificationFeed feed)
     {
-        var feed = new NotificationFeed();
         var ids = new List<long>();
         for (var i = 0; i < 5; i++)
         {
             ids.Add(feed.Post(Fade($"t{i}"), At(i * 0.1)).Id);
         }
 
-        var toasts = Toasts(Arrange(Tree(feed, new NotificationsState()), cells));
-
-        toasts.Count.ShouldBe(3);
-        toasts.Select(t => ((NotificationHit)t.Node.Hit!).Id).ShouldBe([ids[4], ids[3], ids[2]]);
+        return ids;
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void ToastsSitAtTheTopRightOfTheContentRect(bool cells)
+    public void TheDefaultPutsTheStackAtTheBottomRightOfThePage(bool cells)
+    {
+        new NotificationsStyle().Corner.ShouldBe(ToastCorner.BottomRight);
+        var feed = new NotificationFeed();
+        feed.Post(Fade("a"), At(0));
+        feed.Post(Fade("b"), At(0));
+        var content = ContentOf(cells);
+
+        var toasts = Toasts(Arrange(Tree(feed, new NotificationsState()), cells));
+
+        toasts.Count.ShouldBe(2);
+        toasts.Max(t => t.Rect.Bottom).ShouldBe(content.Bottom - Style.Margin, Tol(cells));
+        toasts.Max(t => t.Rect.Right).ShouldBe(content.Right - Style.Margin, Tol(cells));
+        toasts.ShouldAllBe(t => Math.Abs(t.Rect.Width - Style.ToastWidth) <= Tol(cells));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CornerTopRightPutsTheStackAtTheTopRight(bool cells)
     {
         var feed = new NotificationFeed();
         feed.Post(Fade("a"), At(0));
         var content = ContentOf(cells);
-        var toast = Toasts(Arrange(Tree(feed, new NotificationsState(), null, content), cells)).Single().Rect;
 
-        toast.Right.ShouldBe(content.Right - Style.Margin, Tol(cells));
+        var toast = Toasts(Arrange(Tree(feed, new NotificationsState(), TopRightStyle), cells)).Single().Rect;
+
         toast.Y.ShouldBe(content.Y + Style.Margin, Tol(cells));
-        toast.Width.ShouldBe(Style.ToastWidth, Tol(cells));
+        toast.Right.ShouldBe(content.Right - Style.Margin, Tol(cells));
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void WhenThePointerIsOverTheTopRightStack_ToastsGoToTheBottomRight_NeverUnderIt(bool cells)
+    public void AtMostThreeToasts_NewestNearestTheCorner_InBothCorners(bool cells)
+    {
+        var feed = new NotificationFeed();
+        var ids = PostFive(feed);
+
+        var bottom = Toasts(Arrange(Tree(feed, new NotificationsState()), cells));
+        var top = Toasts(Arrange(Tree(feed, new NotificationsState(), TopRightStyle), cells));
+
+        // Bottom right: the newest is the bottom card. Top right: the newest is the top card. Sorted by Y either way.
+        bottom.Select(t => ((NotificationHit)t.Node.Hit!).Id).ShouldBe([ids[2], ids[3], ids[4]]);
+        top.Select(t => ((NotificationHit)t.Node.Hit!).Id).ShouldBe([ids[4], ids[3], ids[2]]);
+    }
+
+#pragma warning disable CS0618 // the obsolete overload is called on purpose: it must ignore the pointer
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ThePointerNeverMovesTheStack_NotEvenOverWhereATopRightStackWouldSit(bool cells)
     {
         var feed = new NotificationFeed();
         feed.Post(Fade("a"), At(0));
         feed.Post(Fade("b"), At(0));
         var content = ContentOf(cells);
-        var over = TopRightCentre(content, 2);
+        var none = Toasts(Arrange(Tree(feed, new NotificationsState()), cells)).Select(t => t.Rect).ToList();
 
-        var toasts = Toasts(Arrange(Tree(feed, new NotificationsState(), over, content), cells));
-
-        toasts.Count.ShouldBe(2);
-        toasts.Max(t => t.Rect.Bottom).ShouldBe(content.Bottom - Style.Margin, Tol(cells));
-        toasts.Min(t => t.Rect.Y).ShouldBeGreaterThan(content.Height / 2f);
-        toasts.ShouldAllBe(t => !t.Rect.Contains(over));
-        toasts.Max(t => t.Rect.Right).ShouldBe(content.Right - Style.Margin, Tol(cells));
+        var pointers = new Vector2?[]
+        {
+            null,
+            new Vector2(50f, 300f),
+            new Vector2(content.Right - Style.Margin - Style.ToastWidth / 2f, content.Y + Style.Margin + 40f),
+            none[0].Center,
+            none[1].Center,
+        };
+        foreach (var pointer in pointers)
+        {
+            var tree = NotificationsLayout.Build(Page, feed, new NotificationsState(), Colors, Style, pointer, content);
+            Toasts(Arrange(tree, cells)).Select(t => t.Rect).ShouldBe(none);
+        }
     }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ThePointerElsewhereLeavesToastsAtTheTop(bool cells)
-    {
-        var feed = new NotificationFeed();
-        feed.Post(Fade("a"), At(0));
-        var content = ContentOf(cells);
-        var toast = Toasts(Arrange(Tree(feed, new NotificationsState(), new Vector2(50f, 300f), content), cells)).Single().Rect;
-
-        toast.Y.ShouldBe(content.Y + Style.Margin, Tol(cells));
-    }
-
-    [Fact]
-    public void ThePlacementRuleIsPure()
-    {
-        var content = new RectF32(0, 0, 952, 640);
-        var region = NotificationsLayout.TopRightRegion(content, 2, Style);
-
-        NotificationsLayout.PlaceToasts(content, 2, Style, region.Center).ShouldBe(ToastCorner.BottomRight);
-        NotificationsLayout.PlaceToasts(content, 2, Style, new Vector2(region.X - 1f, region.Center.Y)).ShouldBe(ToastCorner.TopRight);
-        NotificationsLayout.PlaceToasts(content, 2, Style, new Vector2(region.Center.X, region.Bottom + 1f)).ShouldBe(ToastCorner.TopRight);
-        NotificationsLayout.PlaceToasts(content, 2, Style, null).ShouldBe(ToastCorner.TopRight);
-        NotificationsLayout.PlaceToasts(default, 2, Style, region.Center).ShouldBe(ToastCorner.TopRight);
-        // A pointer that has left the region lets the stack return, so the dodge cannot flip-flop under a still pointer.
-        NotificationsLayout.PlaceToasts(content, 2, Style, region.Center).ShouldBe(ToastCorner.BottomRight);
-    }
+#pragma warning restore CS0618
 
     [Theory]
     [InlineData(false)]
@@ -249,10 +259,10 @@ public class NotificationsLayoutTests
         var feed = new NotificationFeed();
         feed.Post(Fade("a"), At(0));
         var content = ContentOf(cells);
-        var before = Toasts(Arrange(Tree(feed, new NotificationsState(), null, content), cells)).Single().Rect;
+        var before = Toasts(Arrange(Tree(feed, new NotificationsState()), cells)).Single().Rect;
         feed.Advance(At(0));
         feed.Advance(At(2));
-        var after = Toasts(Arrange(Tree(feed, new NotificationsState(), null, content), cells)).Single().Rect;
+        var after = Toasts(Arrange(Tree(feed, new NotificationsState()), cells)).Single().Rect;
 
         after.ShouldBe(before);
     }
@@ -348,7 +358,7 @@ public class NotificationsLayoutTests
         var n = feed.Post(Fade("a", NotificationSeverity.Warn), At(0));
         feed.Advance(At(0));
         feed.Advance(At(2.5));
-        var all = Arrange(Tree(feed, new NotificationsState(), null, ContentOf(cells)), cells);
+        var all = Arrange(Tree(feed, new NotificationsState()), cells);
         var toast = Toasts(all).Single();
 
         NotificationsLayout.ToastIdOf(toast.Node.Hit).ShouldBe(n.Id);
@@ -367,7 +377,7 @@ public class NotificationsLayoutTests
         var ran = false;
         var feed = new NotificationFeed();
         feed.Post(Stay("s") with { ActionLabel = "Go", Action = () => ran = true }, At(0));
-        var all = Arrange(Tree(feed, new NotificationsState(), null, ContentOf(cells)), cells);
+        var all = Arrange(Tree(feed, new NotificationsState()), cells);
 
         all.Any(p => p.Node.Background == Colors.Track).ShouldBeFalse();
         var action = all.First(p => p.Node.Hit is NotificationHit { Part: NotificationPart.Action }).Node;
@@ -406,7 +416,4 @@ public class NotificationsLayoutTests
         ((Layout.Node.Wrap)wrap).Ellipsis.ShouldBeTrue();
         ((Layout.Node.Wrap)wrap).MaxLines.ShouldBe(Style.MaxTextLines);
     }
-
-    private static Vector2 TopRightCentre(RectF32 content, int count)
-        => NotificationsLayout.TopRightRegion(content, count, Style).Center;
 }
