@@ -1328,7 +1328,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             return true;
         }
 
-        if (key.Key is InputKey.Up or InputKey.Down or InputKey.Enter && HandleDeclaredListKey(key))
+        if (key.Key is InputKey.Up or InputKey.Down or InputKey.Left or InputKey.Right or InputKey.Enter && HandleDeclaredListKey(key))
         {
             requestRedraw();
             return true;
@@ -1508,6 +1508,10 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         if (_declaredLists.Count == 0) return false;
         if (DeclaredList.Active(_declaredLists, FocusedListId(widgets), _pressedListId) is not { } active) return false;
 
+        // Up/Down belong to a vertical list and Left/Right to a horizontal one; the other pair is not this list's key.
+        if (key.Key is InputKey.Left or InputKey.Right && !active.Horizontal) return false;
+        if (key.Key is InputKey.Up or InputKey.Down && active.Horizontal) return false;
+
         var cursor = active.Cursor;
         if (!string.Equals(cursor.ListId, active.ListId, StringComparison.Ordinal))
         {
@@ -1531,9 +1535,10 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         var regions = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_listRegions);
         switch (key.Key)
         {
-            case InputKey.Up or InputKey.Down:
-                if (!ListKeys.Move(cursor, key.Key == InputKey.Up ? -1 : 1, regions, _listClipped, _listScratch)) return false;
+            case InputKey.Up or InputKey.Down or InputKey.Left or InputKey.Right:
+                if (!ListKeys.Move(cursor, key.Key is InputKey.Up or InputKey.Left ? -1 : 1, regions, _listClipped, _listScratch)) return false;
                 Reveal();
+                if (active.SelectOnStep) ListKeys.Activate(cursor, key.Modifiers, regions, _listClipped, _listScratch);
                 return true;
             default:
                 return ListKeys.Activate(cursor, key.Modifiers, regions, _listClipped, _listScratch, Reveal);

@@ -176,6 +176,15 @@ public sealed record UiPalette
         init => _success = value;
     }
 
+    /// <summary>
+    /// The ink that reads on <paramref name="fill"/>: <see cref="BodyText"/> or <see cref="ContentBg"/>, whichever has the
+    /// higher <see cref="RGBAColor32.ContrastRatio"/> against it. The one rule for the text and icon on an
+    /// <see cref="Accent"/> (or any other solid) fill, so a chosen segment or an on-state toggle reads in every palette
+    /// and no call site picks a colour by eye. Ties go to <see cref="BodyText"/>.
+    /// </summary>
+    public RGBAColor32 InkOn(RGBAColor32 fill)
+        => RGBAColor32.ContrastRatio(ContentBg, fill) > RGBAColor32.ContrastRatio(BodyText, fill) ? ContentBg : BodyText;
+
     // ---- derived -----------------------------------------------------------------------------
 
     /// <summary>

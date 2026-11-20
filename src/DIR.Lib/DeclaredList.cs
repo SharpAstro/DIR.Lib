@@ -12,6 +12,14 @@ namespace DIR.Lib;
 /// <param name="ListId">The list id of the rows this cursor owns.</param>
 public sealed record DeclaredList(ListCursor Cursor, string ListId)
 {
+    /// <summary>True for a list laid out along the row: <see cref="InputRouter"/> steps it with Left/Right instead of
+    /// Up/Down. Init-only, so the constructor keeps its shape.</summary>
+    public bool Horizontal { get; init; }
+
+    /// <summary>True when a step also acts on the row it lands on, as Enter would: a segmented control chooses the segment
+    /// the arrow reaches. A row with no handler (the chosen one) is only landed on.</summary>
+    public bool SelectOnStep { get; init; }
+
     /// <summary>
     /// THE active-list rule, stated once: the declared list holding the focus, else the one holding the
     /// pointer's last press, else the only list declared on the frame, else none.
