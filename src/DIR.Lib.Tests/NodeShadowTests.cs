@@ -130,8 +130,8 @@ public class NodeShadowTests
 
         var plain = Layout.Engine.Arrange(Tree(false), new Rect<int>(0, 0, 40, 10), new CellCtx());
         var shadowed = Layout.Engine.Arrange(Tree(true), new Rect<int>(0, 0, 40, 10), new CellCtx());
-        shadowed.Count.ShouldBe(plain.Count);
-        for (var i = 0; i < shadowed.Count; i++)
+        shadowed.Length.ShouldBe(plain.Length);
+        for (var i = 0; i < shadowed.Length; i++)
         {
             shadowed[i].Bounds.ShouldBe(plain[i].Bounds);
         }
