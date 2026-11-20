@@ -32,10 +32,10 @@
 10 Leaf:Box 83 14 7 1
 7 Leaf:Box 91 10 0 0
 6 Stack 53 9 40 7
-7 Stack 54 9 38 1
-8 Leaf:Box 54 9 36 0
-8 Stack [Close#1] 90 9 2 1
-9 Icon Close 90 9 2 1
+7 Stack 54 10 38 1
+8 Leaf:Box 54 10 36 0
+8 Stack [Close#1] 90 10 2 1
+9 Icon Close 90 10 2 1
 5 Overlay 53 16 40 8
 6 Stack [Toast#2] 53 16 40 8
 7 Icon Warning 55 17 2 1
@@ -68,10 +68,10 @@
 10 Leaf:Box 83 22 7 1
 7 Leaf:Box 91 17 0 0
 6 Stack 53 16 40 8
-7 Stack 54 16 38 1
-8 Leaf:Box 54 16 36 0
-8 Stack [Close#2] 90 16 2 1
-9 Icon Close 90 16 2 1
+7 Stack 54 17 38 1
+8 Leaf:Box 54 17 36 0
+8 Stack [Close#2] 90 17 2 1
+9 Icon Close 90 17 2 1
 5 Stack 53 24 40 6
 6 Icon Error 55 25 2 1
 6 Stack 58 25 33 4
