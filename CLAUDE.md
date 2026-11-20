@@ -13,24 +13,29 @@ DIR.Lib is a Device-Independent input + Rendering library for .NET — the share
 dotnet build DIR.Lib.sln
 
 # Run all tests
-dotnet test src/DIR.Lib.Tests
+dotnet test --project src/DIR.Lib.Tests
 
 # Run a single test
-dotnet test src/DIR.Lib.Tests --filter "FullyQualifiedName~TestMethodName"
+dotnet test --project src/DIR.Lib.Tests --filter-method "*TestMethodName"
 
 # Run tests in a specific class
-dotnet test src/DIR.Lib.Tests --filter "FullyQualifiedName~RenderAcceptanceTests"
+dotnet test --project src/DIR.Lib.Tests --filter-class "*RenderAcceptanceTests"
 
 # Regenerate visual baselines (only after investigating failures)
-DIR_LIB_UPDATE_BASELINES=1 dotnet test src/DIR.Lib.Tests --filter "FullyQualifiedName~RenderAcceptanceTests"
+DIR_LIB_UPDATE_BASELINES=1 dotnet test --project src/DIR.Lib.Tests --filter-class "*RenderAcceptanceTests"
 ```
+
+`--filter-class` matches the full class name (`DIR.Lib.Tests.FooTests`) or a wildcard (`*FooTests`); a bare class name
+matches nothing, MTP exits 8 ("Zero tests ran") and a leg check fails with no failing test named (issue #283).
+`--minimum-expected-tests 1` makes a filter that matched nothing explicit.
 
 CI runs tests in Release config after building, before publishing NuGet packages.
 
 **Tests run on Microsoft.Testing.Platform (MTP), not VSTest** (since 11.1). The runner is declared in
 the root `global.json`, which pins no SDK; each test project is an `Exe` on xunit.v3 4.x, with no
-`Microsoft.NET.Test.Sdk` or `xunit.runner.visualstudio`. `--filter` is unchanged. VSTest options are
-not: use `--output Detailed` for `--logger "console;verbosity=detailed"`, `--report-trx
+`Microsoft.NET.Test.Sdk` or `xunit.runner.visualstudio`. VSTest's `--filter` is refused by pilot's node here; use
+`--filter-class` / `--filter-method` / `--filter-namespace`. Other VSTest options are
+not either: use `--output Detailed` for `--logger "console;verbosity=detailed"`, `--report-trx
 --report-trx-filename x.trx` for a TRX logger, `--crashdump` / `--hangdump --hangdump-timeout 5min` for
 `--blame-*`, and `--minimum-expected-tests N` to fail a filter that matched nothing. A stale VSTest
 option fails the run as unknown rather than collecting less. **Both test projects reference the same
