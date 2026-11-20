@@ -10,21 +10,23 @@
 3 Stack 1 16 92 14
 4 Leaf:Box 1 16 52 0
 4 Stack 53 16 40 14
-5 Stack 53 16 40 4
+5 Stack [Toast#1] 53 16 40 4
 6 Stack 55 16 37 3
 7 Stack 55 16 37 1
-8 Text "Camera disconnected" 55 16 37 1
+8 Text "Plate solve finished" 55 16 37 1
 7 Wrap 55 17 37 1
-8 Text "USB " 55 17 4 1
-8 Text "link " 59 17 5 1
-8 Text "lost." 64 17 5 1
-7 Text "camera" 55 18 37 1
-6 Stack 55 19 37 1
-7 Leaf:Box 55 19 15 0
-7 Stack [Action#3] 71 19 11 1
-8 Text "Reconnect" 72 19 9 1
-7 Stack [Dismiss#3] 83 19 9 1
-8 Text "Dismiss" 84 19 7 1
+8 Text "Centre " 55 17 7 1
+8 Text "moved " 62 17 6 1
+8 Text "4.2 " 68 17 4 1
+8 Text "arcmin " 72 17 7 1
+8 Text "from " 79 17 5 1
+8 Text "target." 84 17 7 1
+7 Text "solver" 55 18 37 1
+6 Overlay 55 19 37 1
+7 Leaf:Box 55 19 37 1
+7 Stack 55 19 37 1
+8 Leaf:Box 55 19 29 1
+8 Leaf:Box 84 19 8 1
 5 Stack [Toast#2] 53 20 40 6
 6 Stack 55 20 37 5
 7 Stack 55 20 37 1
@@ -54,20 +56,18 @@
 7 Stack 55 25 37 1
 8 Leaf:Box 55 25 29 1
 8 Leaf:Box 84 25 8 1
-5 Stack [Toast#1] 53 26 40 4
+5 Stack 53 26 40 4
 6 Stack 55 26 37 3
 7 Stack 55 26 37 1
-8 Text "Plate solve finished" 55 26 37 1
+8 Text "Camera disconnected" 55 26 37 1
 7 Wrap 55 27 37 1
-8 Text "Centre " 55 27 7 1
-8 Text "moved " 62 27 6 1
-8 Text "4.2 " 68 27 4 1
-8 Text "arcmin " 72 27 7 1
-8 Text "from " 79 27 5 1
-8 Text "target." 84 27 7 1
-7 Text "solver" 55 28 37 1
-6 Overlay 55 29 37 1
-7 Leaf:Box 55 29 37 1
-7 Stack 55 29 37 1
-8 Leaf:Box 55 29 29 1
-8 Leaf:Box 84 29 8 1
+8 Text "USB " 55 27 4 1
+8 Text "link " 59 27 5 1
+8 Text "lost." 64 27 5 1
+7 Text "camera" 55 28 37 1
+6 Stack 55 29 37 1
+7 Leaf:Box 55 29 15 0
+7 Stack [Action#3] 71 29 11 1
+8 Text "Reconnect" 72 29 9 1
+7 Stack [Dismiss#3] 83 29 9 1
+8 Text "Dismiss" 84 29 7 1
