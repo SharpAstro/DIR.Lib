@@ -44,6 +44,16 @@ public static class IconSet
         return Loaded.GetOrAdd(kind, VectorIcon.FromSvg(buffer.ToArray()));
     }
 
+    /// <summary>
+    /// The filled form a toggle shows when pressed: Pin becomes PinFilled. A kind with no filled drawing keeps its
+    /// outline (and a filled kind maps to itself), so the one mapping serves every toggle.
+    /// </summary>
+    public static Layout.IconKind FilledForm(Layout.IconKind kind) => kind switch
+    {
+        Layout.IconKind.Pin => Layout.IconKind.PinFilled,
+        _ => kind,
+    };
+
     private static string? ResourceName(Layout.IconKind kind) => kind switch
     {
         Layout.IconKind.Info => "info",
