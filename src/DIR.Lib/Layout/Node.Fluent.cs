@@ -88,6 +88,11 @@ public abstract partial record Node
     public Node ListOf(ListCursor cursor, string listId)
         => this with { DeclaredList = new DIR.Lib.DeclaredList(cursor, listId) };
 
+    /// <summary><see cref="ListOf(ListCursor, string)"/> for a list along the row (<see cref="DIR.Lib.DeclaredList.Horizontal"/>:
+    /// Left/Right step it) that, with <paramref name="selectOnStep"/>, also acts on the row each step lands on.</summary>
+    public Node ListOf(ListCursor cursor, string listId, bool horizontal, bool selectOnStep = false)
+        => this with { DeclaredList = new DIR.Lib.DeclaredList(cursor, listId) { Horizontal = horizontal, SelectOnStep = selectOnStep } };
+
     /// <summary>Round the corners of this node's <see cref="Bg"/> (and a <see cref="Content.Box"/> leaf's
     /// own fill) by <paramref name="designUnits"/>. Chrome only -- arrange is unchanged, so a rounded node
     /// occupies exactly the rect a square one would. See <see cref="CornerRadius"/> for how each surface
