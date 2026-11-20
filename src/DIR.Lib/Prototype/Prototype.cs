@@ -457,8 +457,10 @@ public static partial class Prototype
                     if (v.ValueKind == JsonValueKind.String) return Str(v.GetString()!);
                     return Wrong(path, "a string");
                 case PrototypePropertyType.Number:
-                    if (v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out var d)) return Num(d);
-                    return Wrong(path, "a number");
+                    if (v.ValueKind != JsonValueKind.Number || !v.TryGetDouble(out var d)) return Wrong(path, "a number");
+                    // An extent, a gap, a padding or a font size below zero draws nothing a reader could have meant.
+                    if (prop.NonNegative && d < 0) return Wrong(path, "a number that is not negative");
+                    return Num(d);
                 case PrototypePropertyType.Integer:
                     if (v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n)) return Num(n);
                     return Wrong(path, "a whole number");
@@ -472,7 +474,7 @@ public static partial class Prototype
                 case PrototypePropertyType.Size:
                     if (v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out var sz) && sz >= 0) return Num(sz);
                     if (v.ValueKind == JsonValueKind.String && IsSizeWord(v.GetString()!)) return Str(v.GetString()!);
-                    return Wrong(path, "a number, \"auto\", \"star\" or \"star:<weight>\"");
+                    return Wrong(path, "a number that is not negative, \"auto\", \"star\" or \"star:<weight>\"");
                 case PrototypePropertyType.Enum:
                     if (v.ValueKind == JsonValueKind.String && prop.Values.Contains(v.GetString()!)) return Str(v.GetString()!);
                     return Wrong(path, "one of " + string.Join(", ", prop.Values));

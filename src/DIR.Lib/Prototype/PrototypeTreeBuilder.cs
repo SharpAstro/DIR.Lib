@@ -46,7 +46,13 @@ public sealed class PrototypeTreeBuilder
         _onAction = onAction;
     }
 
-    /// <summary>The design area in design units, which centres a fixed-size modal card; null leaves the card as built.</summary>
+    /// <summary>
+    /// The design area in design units. It centres a fixed-size modal card, and its width sets the read-only
+    /// <c>target</c> state on every <see cref="Build"/> (<see cref="PrototypeTargets.ForWidth"/>). Null leaves the card
+    /// as built and <c>target</c> as it is: on a builder used on its own that is unset, so a <c>when</c> on
+    /// <c>target</c> holds for neither value until a size is given. A <see cref="PrototypePlayer{TSurface}"/> sets
+    /// this from its own design size before each build, so a value written here on a player's builder does not last.
+    /// </summary>
     public (float Width, float Height)? DesignSize { get; set; }
 
     /// <summary>The persistent field state for a bound name, created on first use.</summary>

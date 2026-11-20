@@ -83,6 +83,38 @@ public sealed class PrototypeLoaderTests
             .ShouldBe(["$.screens[0].root.fontSize: wrong value type: expected a number"]);
     }
 
+    // DIR.Lib #257: a number that measures something drawn is a load problem below zero, where it used to load and draw nonsense.
+    [Theory]
+    [InlineData("""{ "kind": "text", "text": "x", "fontSize": -12 }""", "fontSize")]
+    [InlineData("""{ "kind": "text", "text": "x", "padding": -4 }""", "padding")]
+    [InlineData("""{ "kind": "vstack", "gap": -1 }""", "gap")]
+    [InlineData("""{ "kind": "box", "borderWidth": -1 }""", "borderWidth")]
+    [InlineData("""{ "kind": "fill", "minWidth": -0.5 }""", "minWidth")]
+    public void ANegativeExtentIsReportedAtItsPath(string root, string property)
+    {
+        Problems(Doc(Screen("a", root)))
+            .ShouldBe([$"$.screens[0].root.{property}: wrong value type: expected a number that is not negative"]);
+    }
+
+    [Theory]
+    [InlineData("width")]
+    [InlineData("height")]
+    public void ANegativeFixedSizeIsReportedAtItsPath(string property)
+    {
+        Problems(Doc(Screen("a", $$"""{ "kind": "box", "{{property}}": -5 }""")))
+            .ShouldBe([$"$.screens[0].root.{property}: wrong value type: expected a number that is not negative, \"auto\", \"star\" or \"star:<weight>\""]);
+    }
+
+    [Fact]
+    public void ZeroExtentsAndNegativeValuesLoad()
+    {
+        Problems(Doc(Screen("a", """
+            { "kind": "vstack", "gap": 0, "padding": 0, "width": 0, "children": [
+              { "kind": "slider", "bind": "v", "min": -10, "max": -1 },
+              { "kind": "progress", "value": -0.5 } ] }
+            """))).ShouldBeEmpty();
+    }
+
     [Fact]
     public void AMalformedColourIsReported()
     {
