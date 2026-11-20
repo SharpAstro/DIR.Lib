@@ -98,14 +98,15 @@ public sealed class NotificationsColorsTests
     }
 
     [Fact]
-    public void OneHuePaletteFallsBackToPlainRaisedSeparatorAndNoShadow()
+    public void OneHuePaletteFallsBackToPlainRaisedAnEdgeAt3To1AndNoShadow()
     {
         var c = NotificationsColors.From(NightRed());
         c.OneHue.ShouldBeTrue();
         foreach (var s in new[] { NotificationSeverity.Info, NotificationSeverity.Warn, NotificationSeverity.Error, NotificationSeverity.Success })
         {
             c.TintedFill(s).ShouldBe(c.Raised);
-            c.TintedEdge(s).ShouldBe(c.Edge);
+            c.TintedEdge(s).ShouldBe(c.EdgeOnPage());
+            RGBAColor32.ContrastRatio(c.TintedEdge(s), c.Page).ShouldBeGreaterThanOrEqualTo(3f);
         }
         c.ToastShadow.ShouldBeNull();
     }
