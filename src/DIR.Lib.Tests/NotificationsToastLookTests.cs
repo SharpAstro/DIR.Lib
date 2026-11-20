@@ -18,27 +18,20 @@ public class NotificationsToastLookTests
     private static readonly NotificationSeverity[] Severities =
         [NotificationSeverity.Info, NotificationSeverity.Success, NotificationSeverity.Warn, NotificationSeverity.Error];
 
-    private static readonly UiPalette Dark = new()
-    {
-        ContentBg = new(18, 18, 20, 255),
-        PanelBg = new(28, 29, 32, 255),
-        HeaderBg = new(40, 42, 46, 255),
-        Separator = new(64, 66, 72, 255),
-        BodyText = new(220, 222, 226, 255),
-        DimText = new(150, 154, 162, 255),
-        Accent = new(90, 160, 255, 255),
-        Selection = new(50, 80, 130, 255),
-        HeaderText = new(235, 237, 240, 255),
-        SelectionText = new(255, 255, 255, 255),
-        Info = new(90, 160, 255, 255),
-        Warn = new(240, 190, 60, 255),
-        Error = new(230, 80, 80, 255),
-        Success = new(60, 200, 110, 255),
-    };
+    /// <summary>The dark palette of the look baselines, so the contrast asserted is the contrast drawn.</summary>
+    private static readonly UiPalette Dark = NotificationsRenderTests.Dark;
 
     public static TheoryData<string> Palettes => new() { "dark", "light" };
 
-    private static UiPalette PaletteOf(string name) => name == "dark" ? Dark : NotificationsRenderTests.Light;
+    /// <summary>The edge rule holds on the one-hue palette too: there it is the only thing marking the card.</summary>
+    public static TheoryData<string> EdgePalettes => new() { "dark", "light", "onehue" };
+
+    private static UiPalette PaletteOf(string name) => name switch
+    {
+        "dark" => Dark,
+        "onehue" => NotificationsRenderTests.OneHue,
+        _ => NotificationsRenderTests.Light,
+    };
 
     [Theory]
     [MemberData(nameof(Palettes))]
@@ -59,7 +52,7 @@ public class NotificationsToastLookTests
     }
 
     [Theory]
-    [MemberData(nameof(Palettes))]
+    [MemberData(nameof(EdgePalettes))]
     public void IconAndEdgeReach3To1(string name)
     {
         var p = PaletteOf(name);

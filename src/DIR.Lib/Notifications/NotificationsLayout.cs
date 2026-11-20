@@ -82,6 +82,14 @@ namespace DIR.Lib.Notifications
         /// <summary>The edge of a raised surface. Defaults to <see cref="Separator"/>.</summary>
         public RGBAColor32 Edge { get => _edge ?? Separator; init => _edge = value; }
 
+        private readonly RGBAColor32? _page;
+
+        /// <summary>
+        /// The page the toasts are drawn over, which the edge must stand out from. Defaults to <see cref="Surface"/>;
+        /// <see cref="From(UiPalette)"/> takes <see cref="UiPalette.ContentBg"/>.
+        /// </summary>
+        public RGBAColor32 Page { get => _page ?? Surface; init => _page = value; }
+
         /// <summary>
         /// Ink on a filled severity button. Null (the default) derives it per severity as black or white, whichever
         /// contrasts more with the severity colour; see <see cref="InkOn"/>.
@@ -106,9 +114,25 @@ namespace DIR.Lib.Notifications
         /// <summary>
         /// Tinted edge of a severity's toast: the severity colour itself (a full mix into <see cref="Raised"/>), because the
         /// edge must reach 3:1 against the page on dark and light palettes alike and no weaker mix does on every severity;
-        /// <see cref="Edge"/> when one-hue.
+        /// when one-hue, <see cref="EdgeOnPage"/>: with no tint and no shadow the edge is the only thing marking the card.
         /// </summary>
-        public RGBAColor32 TintedEdge(NotificationSeverity s) => OneHue ? Edge : RGBAColor32.Mix(Raised, Of(s), 1f);
+        public RGBAColor32 TintedEdge(NotificationSeverity s) => OneHue ? EdgeOnPage() : RGBAColor32.Mix(Raised, Of(s), 1f);
+
+        /// <summary>
+        /// The edge to draw over <see cref="Page"/>: <see cref="Edge"/> itself when it reaches 3:1 there, else
+        /// <see cref="Edge"/> moved toward <see cref="Text"/> in steps of a tenth until it does.
+        /// </summary>
+        public RGBAColor32 EdgeOnPage()
+        {
+            if (RGBAColor32.ContrastRatio(Edge, Page) >= 3f) return Edge;
+            for (var i = 1; i <= 10; i++)
+            {
+                var edge = RGBAColor32.Mix(Edge, Text, i / 10f);
+                if (RGBAColor32.ContrastRatio(edge, Page) >= 3f) return edge;
+            }
+
+            return Text;
+        }
 
         /// <summary>
         /// The dim ink to draw on <paramref name="fill"/>: <see cref="Dim"/> itself when it reaches 4.5:1 there, else
@@ -148,6 +172,7 @@ namespace DIR.Lib.Notifications
         {
             Raised = p.RaisedBg,
             Edge = p.Edge,
+            Page = p.ContentBg,
             OneHue = p.IsOneHue,
             Info = p.Info,
             Warn = p.Warn,

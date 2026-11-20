@@ -14,14 +14,19 @@ changed and why.
 **Toasts look like toasts: tinted by severity, with an edge, a key shadow and a severity icon.**
 (additive; issue #289)
 
-- **`Layout.Node.Shadow`**: a declared drop shadow (`Shadow(ShadowStyle)`) painted under a node's rounded rect. Cells draw
-  none and it takes no cells, so a cell arrange is the same with or without it.
-- **An SVG icon set** and new `IconKind` members (including `Info`, `Warning`, `Error`, `Close`), each with one
-  character in `IconGlyphs` for cells. Console.Lib must spell the new members in its own `EveryIconKindHasAGlyph` test.
+- **`Layout.Node.Shadow`**: a declared drop shadow (`Shadow(ShadowStyle)`, or `Elevated(level)` for a stock shadow by
+  elevation) painted under a node's rounded rect. Cells draw none and it takes no cells, so a cell arrange is the same
+  with or without it. The painter draws it through the new public virtual `Renderer.DrawShadow`, whose default stacks
+  rounded fills (one per pixel of blur): a GPU renderer (SdlVulkan.Renderer, WebGl.Renderer) should override it.
+- **An SVG icon set** (`IconSet`: twelve embedded outlines on one 16-unit grid, drawn in the caller's ink) and new
+  `IconKind` members (including `Info`, `Warning`, `Error`, `Close`), each with one character in `IconGlyphs` for
+  cells. Console.Lib must spell the new members in its own `EveryIconKindHasAGlyph` test.
 - **Theme tokens**: `UiPalette.RaisedBg` and `UiPalette.Edge` (init-only, derived by default), `UiMetrics.CornerRadius`,
   `UiMetrics.Shadow` and `UiMetrics.DefaultShadow` (init-only, no binary break), and `NotificationsColors` gains tint roles (`TintedFill`, `TintedEdge`, `InkOn`, `Raised`, `Edge`,
   `Shadow`, `OneHue`, `CornerRadius`, and an init-only `Body`), plus `RGBAColor32.Mix`, `RGBAColor32.ContrastRatio` and
-  `UiPalette.IsOneHue`. A one-hue palette falls back by rule: no tint, no shadow.
+  `UiPalette.IsOneHue`. A one-hue palette falls back by rule: no tint, no shadow, and an edge moved toward `Text`
+  until it reaches 3:1 against the page (`Page`, from `UiPalette.ContentBg`; `EdgeOnPage`), since it is then the only
+  thing marking the card.
 - **Toast look B.** A 1-unit tinted edge, radius 6, the key shadow, an 18-unit severity icon at the left, the title in
   `Text` and the body in body ink. A fading toast has a Close cross at its top right (`NotificationPart.Close`) that
   dismisses it; the card's own hit still reaches the host. A staying card's first button is filled in the severity colour

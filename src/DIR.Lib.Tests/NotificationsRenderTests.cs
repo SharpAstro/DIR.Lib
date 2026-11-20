@@ -110,6 +110,12 @@ public class NotificationsRenderTests
 
     // ---- toast look B: tinted by severity, icon, Close, shadow; dark, light and one-hue palettes ----
 
+    /// <summary>
+    /// The dark palette of the look baselines and of <see cref="NotificationsToastLookTests"/>: the theme's palette with a
+    /// green Success, so the success toast is green rather than falling back to the info blue.
+    /// </summary>
+    internal static readonly UiPalette Dark = Theme.Palette with { Success = new(60, 200, 110, 255) };
+
     internal static readonly UiPalette Light = new()
     {
         ContentBg = new(246, 247, 249, 255),
@@ -171,8 +177,8 @@ public class NotificationsRenderTests
         return Draw(tree, width, LookH, palette.ContentBg);
     }
 
-    [Fact] public void ToastLookDarkWide() => CompareBaseline(DrawLook(Theme.Palette, W), "notifications_toast_look_dark.png");
-    [Fact] public void ToastLookDarkNarrow() => CompareBaseline(DrawLook(Theme.Palette, NarrowW), "notifications_toast_look_dark_narrow.png");
+    [Fact] public void ToastLookDarkWide() => CompareBaseline(DrawLook(Dark, W), "notifications_toast_look_dark.png");
+    [Fact] public void ToastLookDarkNarrow() => CompareBaseline(DrawLook(Dark, NarrowW), "notifications_toast_look_dark_narrow.png");
     [Fact] public void ToastLookLightWide() => CompareBaseline(DrawLook(Light, W), "notifications_toast_look_light.png");
     [Fact] public void ToastLookLightNarrow() => CompareBaseline(DrawLook(Light, NarrowW), "notifications_toast_look_light_narrow.png");
     [Fact] public void ToastLookOneHueWide() => CompareBaseline(DrawLook(OneHue, W), "notifications_toast_look_onehue.png");
@@ -248,10 +254,12 @@ public class NotificationsRenderTests
         _ => n.GetType().Name,
     } + (n.Hit is NotificationHit h ? " [" + h.Part + (h.Id != 0 ? "#" + h.Id.ToString(CultureInfo.InvariantCulture) : "") + "]" : "");
 
-    private static string Cells(Layout.Node tree)
+    private static string Cells(Layout.Node tree, int rows = (int)(H / 16))
     {
-        var arranged = Layout.Engine.Arrange(tree, new Rect<int>(0, 0, (int)(W / 8), (int)(H / 16)), new CellCtx());
-        var sb = new StringBuilder("# cell 100x30 (8x16)\n");
+        var columns = (int)(W / 8);
+        var arranged = Layout.Engine.Arrange(tree, new Rect<int>(0, 0, columns, rows), new CellCtx());
+        var sb = new StringBuilder("# cell " + columns.ToString(CultureInfo.InvariantCulture) + "x"
+            + rows.ToString(CultureInfo.InvariantCulture) + " (8x16)\n");
         foreach (var a in arranged)
         {
             var b = a.Bounds;
@@ -275,10 +283,11 @@ public class NotificationsRenderTests
         => CompareSnapshot(Cells(Tree(ListFeed(), new NotificationsState { Open = true })), "notifications_bar_open.txt");
 
     [Fact]
-    public void CellsToastLookHasNoShadowAndOneCharacterPerIcon()
+    public void CellsToastLookArrangesFiveToastsInThirtySixRows()
     {
+        // 36 rows, not the 30 of the other snapshots: the five toasts of the look feed stack to 34 rows in cells.
         var tree = NotificationsLayout.Build(Page(), LookFeed(), new NotificationsState(), Colors, LookStyle);
-        CompareSnapshot(Cells(tree), "notifications_toast_look.txt");
+        CompareSnapshot(Cells(tree, 36), "notifications_toast_look.txt");
     }
 
     private static string ThisFile([CallerFilePath] string? file = null) => file!;
