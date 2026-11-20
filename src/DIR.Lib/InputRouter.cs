@@ -293,11 +293,126 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         ExpireTooltip();
 
         // A popover opened, moved or closed during the paint, so what was painted before it was confined to the
-        // claim it no longer makes (WindowUiSettings.PointerClaim): the next frame carries the new one.
-        if (!ui.PointerClaimSettled)
+        // claim it no longer makes (WindowUiSettings.PointerClaim): the next frame carries the new one. Asked of every
+        // widget's settings, since a toast in a widget of its own is its own settings' surface.
+        var settled = ui.PointerClaimSettled;
+        for (var i = 0; i < widgets.Count && settled; i++)
+        {
+            settled = widgets[i].Ui.PointerClaimSettled;
+        }
+
+        if (!settled | CarrySurfacesAcrossSettings(widgets))
         {
             requestRedraw();
         }
+    }
+
+    private readonly List<WindowUiSettings.PaintedSurface> _crossSurfaces = [];
+
+    /// <summary>
+    /// Lays the surfaces each widget painted over the widgets painted before it that do NOT share its settings, so the
+    /// painter's hover rule (<see cref="WindowUiSettings.IsCoveredBySurface"/>) holds across them as it does within one
+    /// settings object (<see cref="Layout.Node.IsSurface"/>). Returns whether any widget's carried set changed.
+    /// </summary>
+    /// <remarks>
+    /// The list is the one thing that knows the paint order of every widget in the window, so this is the router's: a host
+    /// that paints its toasts in a widget of its own, with settings of its own, needs to share nothing for a row under a
+    /// toast to stay dark. Each surface reaches the earlier widget's settings with that widget's END as its order (the order
+    /// at which the next widget sharing those settings began), so a widget painted after the surface (a panel over the
+    /// toasts) still lights. Only the surfaces the later widget itself painted go across, read off its own range of its
+    /// settings' paint order, for the same reason.
+    /// </remarks>
+    private bool CarrySurfacesAcrossSettings(IReadOnlyList<IPixelWidget> widgets)
+    {
+        var changed = false;
+        for (var a = 0; a < widgets.Count; a++)
+        {
+            var settings = widgets[a].Ui;
+            if (FirstWith(widgets, settings) != a)
+            {
+                continue;   // these settings were handled at the first widget that uses them
+            }
+
+            _crossSurfaces.Clear();
+            for (var w = a; w < widgets.Count; w++)
+            {
+                if (!ReferenceEquals(widgets[w].Ui, settings))
+                {
+                    continue;
+                }
+
+                var below = PaintRange(widgets, w).End;
+                for (var k = w + 1; k < widgets.Count; k++)
+                {
+                    var other = widgets[k].Ui;
+                    if (ReferenceEquals(other, settings))
+                    {
+                        continue;
+                    }
+
+                    var (start, end) = PaintRange(widgets, k);
+                    foreach (var s in other.PaintedSurfaces)
+                    {
+                        if (s.Order >= start && s.Order < end)
+                        {
+                            _crossSurfaces.Add(new WindowUiSettings.PaintedSurface(s.Rect, below));
+                        }
+                    }
+                }
+            }
+
+            changed |= settings.CarrySurfacesFromOtherSettings(_crossSurfaces);
+        }
+
+        return changed;
+
+        static int FirstWith(IReadOnlyList<IPixelWidget> widgets, WindowUiSettings settings)
+        {
+            for (var i = 0; i < widgets.Count; i++)
+            {
+                if (ReferenceEquals(widgets[i].Ui, settings))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+    }
+
+    /// <summary>
+    /// The paint orders of its settings that widget <paramref name="w"/> painted this cycle: from where it began to where
+    /// the next widget of the list sharing its settings began, or to the end. A widget whose start is not known (one that
+    /// noted its frame under another object) is taken to start at 0 when nothing before it shares its settings, and to
+    /// have painted nothing otherwise.
+    /// </summary>
+    private static (int Start, int End) PaintRange(IReadOnlyList<IPixelWidget> widgets, int w)
+    {
+        var settings = widgets[w].Ui;
+        var end = int.MaxValue;
+        for (var j = w + 1; j < widgets.Count; j++)
+        {
+            if (ReferenceEquals(widgets[j].Ui, settings) && settings.FrameStartOrder(widgets[j]) is { } next)
+            {
+                end = next;
+                break;
+            }
+        }
+
+        if (settings.FrameStartOrder(widgets[w]) is { } start)
+        {
+            return (start, end);
+        }
+
+        for (var j = 0; j < w; j++)
+        {
+            if (ReferenceEquals(widgets[j].Ui, settings))
+            {
+                return (0, 0);
+            }
+        }
+
+        return (0, end);
     }
 
     /// <summary>

@@ -29,6 +29,11 @@ changed and why.
   `PaintedSurfaces`, `IsCoveredBySurface`), clears them per cycle, carries them into the next and folds them into
   `PointerClaimSettled`: the frame a surface appears, moves or goes asks the router for one more, exactly as a popover
   that opens does. `HoverMayAnswer` is the one predicate for both claims; `HoverAllowedAt` and `PointerHovers` follow it.
+- **Across widgets that share no settings too.** A host may paint its toasts in a widget it never shares settings with
+  (pilot does). `InputRouter.AfterPaint`, which knows the paint order of every widget in its list, lays each widget's
+  surfaces onto the settings of the widgets painted before it, bounded by paint order so a widget sharing the page's
+  settings but painted after the surface (a panel over the toasts) still lights, and asks for one more frame when that
+  set changes. It also asks every listed widget's settings for `PointerClaimSettled`, not only the router's own.
 - **`NotificationsLayout`**: every toast card (fading and staying) and the open bar are surfaces. A fading toast keeps
   its `NotificationHit` (`ToastIdOf` still names it); a staying card's body takes the press and does nothing; its
   buttons act as ever. The toast stack sits at `NotificationsStyle.Corner`, default `ToastCorner.BottomRight`, and never
@@ -38,9 +43,18 @@ changed and why.
 - **`ChildWindowsLayout`**: each window (and the tabbed box) is a surface, so the host's tooltip, hover and wheel no
   longer reach through a window's body, a back window's close button no longer lights through the one in front, and a
   maximised window's border no longer passes a press to the host.
-- Cost to consumers: none in source or binary (only init-only properties and new members). A non-pixel painter
-  (Console.Lib's `CellLayout`) registers no surface regions until it learns `IsSurface`, so a terminal keeps the old
-  behaviour.
+- **Cost to consumers.** Binary: none (init-only properties and new members only; no record constructor changed). Source:
+  `Build(page, feed, state, colors, style, pointer)` with six positional arguments no longer compiles (the seven-argument
+  overload has no default for `contentRect`; no caller in the org passes six). Behaviour and warnings, for pilot when its
+  pin moves (a pilot follow-up flight): its host call `NotificationsHost.Frame` compiles and binds unchanged, but
+  `Pilot.Gui.Tests/ToastTests.cs` calls the now `[Obsolete]` `TopRightRegion`, which is CS0618 and, with pilot's
+  `TreatWarningsAsErrors` in Release and CI, a build error; and two of its tests pin the old placement and fail on
+  behaviour: `AFadingToastPausesWhileThePointerIsOverIt` looks for the toast only near the top, and
+  `NoToastIsPlacedUnderThePointerAndNoMoreThanThreeShow` expects the toast to dodge the pointer, which it no longer does
+  by design. Pilot's own open bar (`NotificationsHost.OpenBar`) is pilot's tree, not the library's bar, so it does not
+  become a surface until pilot marks it `AsSurface()`; pilot's toasts are the library's and do. A non-pixel painter
+  (Console.Lib's `CellLayout`) registers no surface regions until it learns `IsSurface`, so a terminal (`Pilot.Tui`)
+  keeps the old behaviour.
 
 ## 11.85
 

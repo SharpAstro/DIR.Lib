@@ -206,9 +206,12 @@ public sealed class WindowUiSettings
     /// is the popover claim's, and so is the extra frame when it changes). Hover consults it, so a row under a toast stops
     /// lighting.
     /// </summary>
-    public bool IsCoveredBySurface(float x, float y, int order)
+    public bool IsCoveredBySurface(float x, float y, int order) =>
+        Covers(_carriedSurfaces, x, y, order) || Covers(_surfacesFromOtherSettings, x, y, order);
+
+    private static bool Covers(PaintedSurface[] surfaces, float x, float y, int order)
     {
-        foreach (var s in _carriedSurfaces)
+        foreach (var s in surfaces)
         {
             var r = s.Rect;
             if (s.Order > order && x >= r.X && x < r.X + r.Width && y >= r.Y && y < r.Y + r.Height)
@@ -219,6 +222,45 @@ public sealed class WindowUiSettings
 
         return false;
     }
+
+    // Surfaces painted by widgets that do NOT share these settings but are painted after a widget that does, each with
+    // the paint order (of THESE settings) below which it covers: the order at which the next widget sharing these
+    // settings began, since that one is painted over the surface. Set by InputRouter.AfterPaint, which alone knows the
+    // paint order of every widget in the window (its list), so a toast in a widget of its own darkens the page's row
+    // beneath it without the host sharing one settings object between them.
+    private PaintedSurface[] _surfacesFromOtherSettings = [];
+
+    /// <summary>
+    /// Replaces the surfaces that widgets painted with OTHER settings lay over the nodes painted with these, each as the
+    /// paint order below which it covers. Returns whether they changed, so the caller asks for one more frame. Called by
+    /// <see cref="InputRouter.AfterPaint"/>.
+    /// </summary>
+    internal bool CarrySurfacesFromOtherSettings(List<PaintedSurface> surfaces)
+    {
+        if (surfaces.Count == _surfacesFromOtherSettings.Length)
+        {
+            var same = true;
+            for (var i = 0; i < surfaces.Count && same; i++)
+            {
+                same = surfaces[i] == _surfacesFromOtherSettings[i];
+            }
+
+            if (same)
+            {
+                return false;
+            }
+        }
+
+        _surfacesFromOtherSettings = surfaces.Count == 0 ? [] : [.. surfaces];
+        return true;
+    }
+
+    // The paint order at which each widget began this cycle (NoteFrameBegin), so the router can tell which of the nodes
+    // painted with these settings a widget of its list painted.
+    private readonly Dictionary<object, int> _frameStartOrders = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>The paint order at which <paramref name="widget"/> began this cycle, or null when it has not.</summary>
+    internal int? FrameStartOrder(object widget) => _frameStartOrders.TryGetValue(widget, out var order) ? order : null;
 
     private bool SurfacesSettled
     {
@@ -288,6 +330,7 @@ public sealed class WindowUiSettings
     {
         if (_begunThisCycle.Add(widget))
         {
+            _frameStartOrders[widget] = _paintOrder;
             return;
         }
 
@@ -301,6 +344,8 @@ public sealed class WindowUiSettings
         _carriedSurfaces = _surfaces.Count == 0 ? [] : [.. _surfaces];
         _surfaces.Clear();
         _paintOrder = 0;
+        _frameStartOrders.Clear();
+        _frameStartOrders[widget] = 0;
         _paintedPopovers.Clear();
         PaintedModal = null;
     }
