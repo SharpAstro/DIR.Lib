@@ -181,8 +181,7 @@ public class NotificationsToastLookTests
     {
         var tree = NotificationsLayout.Build(Layout.Builder.Spacer().Stretch(), NotificationsRenderTests.LookFeed(),
             new NotificationsState(), colors, new NotificationsStyle { MaxToasts = 5 });
-        return string.Join('
-', Layout.Engine.Arrange(tree, new Rect<int>(0, 0, 100, 45), new CellCtx())
+        return string.Join('\n', Layout.Engine.Arrange(tree, new Rect<int>(0, 0, 100, 45), new CellCtx())
             .Select(a => $"{a.Depth} {a.Node.GetType().Name} {a.Bounds.X} {a.Bounds.Y} {a.Bounds.Width} {a.Bounds.Height}"));
     }
 
