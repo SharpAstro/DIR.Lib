@@ -492,8 +492,9 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
 
                 // A right press over a part with no menu of its own (a twirl caret, a cell button) belongs to
                 // the row's menu beneath it: the reader right-clicked the row. See Node.OnContextMenu.
+                // Not from a surface itself: nothing beneath one hears the press (Layout.Node.IsSurface).
                 if (down.Button == MouseButton.Right && region.OnContextMenu is null && region.Dismisses is null
-                    && ContextMenuBeneath(i, down.X, down.Y) is { } owning)
+                    && !region.IsSurface && ContextMenuBeneath(i, down.X, down.Y) is { } owning)
                 {
                     region = owning;
                 }
