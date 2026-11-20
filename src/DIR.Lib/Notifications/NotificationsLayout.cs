@@ -114,21 +114,25 @@ namespace DIR.Lib.Notifications
         /// <summary>
         /// Tinted edge of a severity's toast: the severity colour itself (a full mix into <see cref="Raised"/>), because the
         /// edge must reach 3:1 against the page on dark and light palettes alike and no weaker mix does on every severity;
-        /// when one-hue, <see cref="EdgeOnPage"/>: with no tint and no shadow the edge is the only thing marking the card.
+        /// a severity colour that still misses 3:1 against <see cref="Page"/> is moved toward <see cref="Text"/> in steps of
+        /// a tenth until it reaches it (see <see cref="OnPage"/>); when one-hue, <see cref="EdgeOnPage"/>: with no tint and no shadow the edge is the only thing marking the card.
         /// </summary>
-        public RGBAColor32 TintedEdge(NotificationSeverity s) => OneHue ? EdgeOnPage() : RGBAColor32.Mix(Raised, Of(s), 1f);
+        public RGBAColor32 TintedEdge(NotificationSeverity s) => OneHue ? EdgeOnPage() : OnPage(RGBAColor32.Mix(Raised, Of(s), 1f));
 
         /// <summary>
         /// The edge to draw over <see cref="Page"/>: <see cref="Edge"/> itself when it reaches 3:1 there, else
         /// <see cref="Edge"/> moved toward <see cref="Text"/> in steps of a tenth until it does.
         /// </summary>
-        public RGBAColor32 EdgeOnPage()
+        public RGBAColor32 EdgeOnPage() => OnPage(Edge);
+
+        /// <summary><paramref name="edge"/> itself when it reaches 3:1 against <see cref="Page"/>, else moved toward <see cref="Text"/> until it does.</summary>
+        public RGBAColor32 OnPage(RGBAColor32 edge)
         {
-            if (RGBAColor32.ContrastRatio(Edge, Page) >= 3f) return Edge;
+            if (RGBAColor32.ContrastRatio(edge, Page) >= 3f) return edge;
             for (var i = 1; i <= 10; i++)
             {
-                var edge = RGBAColor32.Mix(Edge, Text, i / 10f);
-                if (RGBAColor32.ContrastRatio(edge, Page) >= 3f) return edge;
+                var moved = RGBAColor32.Mix(edge, Text, i / 10f);
+                if (RGBAColor32.ContrastRatio(moved, Page) >= 3f) return moved;
             }
 
             return Text;

@@ -36,6 +36,11 @@ changed and why.
   against the page on every severity), and the source line's dim ink is derived per fill (`DimOn`) to keep 4.5:1.
   Shadows are cheap on a few toasts but not on many rows: `Elevated(3)` on 30 rows costs about 12 ms a frame in
   `RgbaImageRenderer`, so hosts keep shadows off rows.
+- **Small public additions**: `NotificationsColors.From(UiTheme)` (every role from a theme in one call),
+  `NotificationsColors.OnSeverity` (init-only ink on a filled severity button; `InkOn` derives it when null),
+  `NotificationsColors.ToastShadow` (the shadow to paint, null when one-hue), `NotificationsColors.DimOn(fill)`,
+  `NotificationsColors.EdgeOnPage()` and `NotificationsColors.OnPage(edge)`. A multi-hue `TintedEdge` that misses 3:1
+  against `Page` is now moved toward `Text` until it reaches it, as the one-hue edge already was.
 
 ## 11.87
 
