@@ -323,6 +323,12 @@ public abstract partial record Node
         => this is Wrap wt ? wt with { FirstLineTrailing = trailing } : this;
 
     /// <summary>
+    /// Declares the form this node takes when its natural width does not fit the room offered: the node itself is the
+    /// full form and <paramref name="narrow"/> replaces it whole when it is too wide. See <see cref="Node.NarrowForm"/>.
+    /// </summary>
+    public Node OrWhenNarrow(Node narrow) => this with { NarrowForm = narrow };
+
+    /// <summary>
     /// Extra main-axis space before this child in a flow, suppressed when it starts a line. See
     /// <see cref="LeadingGap"/>.
     /// </summary>

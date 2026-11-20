@@ -420,6 +420,17 @@ public abstract partial record Node
     /// learns it, since a press handler sees no layout. Called on the arranging thread: keep it to storing a number.</summary>
     public Action<float>? OnArranged { get; init; }
 
+    /// <summary>
+    /// The form this node takes when the room offered is too narrow for it, or null for none. The rule, applied
+    /// identically in <see cref="Engine.Measure{T}"/> and <see cref="Engine.Arrange{T}"/> (one helper, so they cannot
+    /// disagree) and for a float and an int (cell) measure context alike: the FULL form (this node) is used when its
+    /// natural width, measured unconstrained on the main axis, fits the width offered; otherwise the narrow form
+    /// replaces it whole, so the arranged list, painters, <c>InputRouter</c> and damage see only the chosen form (a
+    /// click region exists only for it). The narrow form is never measured against a third form: its own
+    /// <c>NarrowForm</c> is ignored. Init-only on purpose, never a constructor parameter (the 9.1 binary-break rule).
+    /// </summary>
+    public Node? NarrowForm { get; init; }
+
     /// <summary>Collapse threshold in design units, honoured by a parent <see cref="Stack"/>: when this
     /// node's resolved main-axis extent lands below the threshold, the node drops out of the arrangement
     /// entirely (not painted, no hit region, no gap) and its space redistributes to the surviving
