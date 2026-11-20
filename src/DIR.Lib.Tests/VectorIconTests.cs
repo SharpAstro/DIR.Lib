@@ -150,6 +150,10 @@ public sealed class VectorIconTests
 
         // What a frame does: ask for the mask and the image it already has. Ten thousand frames of it, after a few to
         // let the runtime settle; were either rasterised again, this would be megabytes.
+        // The bar is 64 KB, between what the runtime itself allocates on this thread while the loop runs (a kilobyte or
+        // two when it recompiles the loop under it: 1,688 bytes failed a bar of 1,024 on main after #291, on a tree
+        // that had just passed) and what it guards against: the 40 px image alone is 6,400 bytes, so rasterising it
+        // again once in a thousand frames is about the whole bar, and a 24-byte key allocated per call is 480 KB.
         long runs = 0;
         for (int frame = 0; frame < 100; frame++) runs += icon.Mask(20).Runs.Length + icon.Image(40, 40).Width;
         long before = GC.GetAllocatedBytesForCurrentThread();
@@ -160,7 +164,7 @@ public sealed class VectorIconTests
         }
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         runs.ShouldBeGreaterThan(0);
-        allocated.ShouldBeLessThan(1024);
+        allocated.ShouldBeLessThan(64 * 1024);
     }
 
     [Fact]
