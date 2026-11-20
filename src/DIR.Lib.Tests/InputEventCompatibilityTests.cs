@@ -53,6 +53,21 @@ public class InputEventCompatibilityTests
     }
 
     [Fact]
+    public void UiMetricsKeepsItsFiveParameterConstructorAndDeconstruct()
+    {
+        // CornerRadius and Shadow arrived as init-only properties, never constructor parameters.
+        typeof(UiMetrics)
+            .GetConstructor([typeof(float), typeof(float), typeof(float), typeof(float), typeof(float)])
+            .ShouldNotBeNull("a published host compiled against the 5-argument form calls exactly this");
+        typeof(UiMetrics).GetConstructors().ShouldAllBe(c => c.GetParameters().Length == 5 || c.GetParameters().Length == 0);
+        var deconstruct = typeof(UiMetrics).GetMethod("Deconstruct");
+        deconstruct.ShouldNotBeNull();
+        deconstruct!.GetParameters().Length.ShouldBe(5);
+        var (a, b, c2, d, e) = new UiMetrics(1, 2, 3, 4, 5);
+        (a, b, c2, d, e).ShouldBe((1f, 2f, 3f, 4f, 5f));
+    }
+
+    [Fact]
     public void MouseUpKeepsItsThreeParameterConstructorInTheASSEMBLY()
     {
         // Console.Lib 4.33: new InputEvent.MouseUp(mouse.X, mouse.Y, button).

@@ -65,9 +65,62 @@ namespace DIR.Lib.Notifications
         /// <summary>The bar of a fading toast's countdown.</summary>
         public required RGBAColor32 Track { get; init; }
 
+        private readonly RGBAColor32? _raised;
+        private readonly RGBAColor32? _edge;
+
+        /// <summary>A raised surface (a toast). Defaults to <see cref="Card"/>, so an 11.86 initializer is unchanged.</summary>
+        public RGBAColor32 Raised { get => _raised ?? Card; init => _raised = value; }
+
+        /// <summary>The edge of a raised surface. Defaults to <see cref="Separator"/>.</summary>
+        public RGBAColor32 Edge { get => _edge ?? Separator; init => _edge = value; }
+
+        /// <summary>
+        /// Ink on a filled severity button. Null (the default) derives it per severity as black or white, whichever
+        /// contrasts more with the severity colour; see <see cref="InkOn"/>.
+        /// </summary>
+        public RGBAColor32? OnSeverity { get; init; }
+
+        /// <summary>True when the palette has one hue (<see cref="UiPalette.IsOneHue"/>): severity is then not tinted.</summary>
+        public bool OneHue { get; init; }
+
+        /// <summary>Corner radius of a toast, in design units.</summary>
+        public float CornerRadius { get; init; } = 6f;
+
+        /// <summary>The shadow a toast carries when the palette has several hues; see <see cref="ToastShadow"/>.</summary>
+        public Layout.ShadowStyle Shadow { get; init; } = UiMetrics.DefaultShadow;
+
+        /// <summary>The shadow to paint: none (null) when <see cref="OneHue"/> or when the shadow is fully transparent.</summary>
+        public Layout.ShadowStyle? ToastShadow => OneHue || Shadow.Color.Alpha == 0 ? null : Shadow;
+
+        /// <summary>Tinted fill of a severity's toast: the severity mixed 15% into <see cref="Raised"/>; plain <see cref="Raised"/> when one-hue.</summary>
+        public RGBAColor32 TintedFill(NotificationSeverity s) => OneHue ? Raised : RGBAColor32.Mix(Raised, Of(s), 0.15f);
+
+        /// <summary>Tinted edge of a severity's toast: the severity mixed 55% into <see cref="Raised"/>; <see cref="Separator"/> when one-hue.</summary>
+        public RGBAColor32 TintedEdge(NotificationSeverity s) => OneHue ? Separator : RGBAColor32.Mix(Raised, Of(s), 0.55f);
+
+        /// <summary>Ink for text or an icon drawn on a filled severity button of <paramref name="s"/>.</summary>
+        public RGBAColor32 InkOn(NotificationSeverity s)
+        {
+            if (OnSeverity is { } ink) return ink;
+            var fill = Of(s);
+            var black = new RGBAColor32(0, 0, 0, 255);
+            var white = new RGBAColor32(255, 255, 255, 255);
+            return RGBAColor32.ContrastRatio(fill, black) >= RGBAColor32.ContrastRatio(fill, white) ? black : white;
+        }
+
+        /// <summary>Takes every role from a theme's palette and metrics in one call.</summary>
+        public static NotificationsColors From(UiTheme theme) => From(theme.Palette) with
+        {
+            CornerRadius = theme.Metrics.CornerRadius,
+            Shadow = theme.Metrics.Shadow,
+        };
+
         /// <summary>Takes every role from a palette, so the theme stays the one source.</summary>
         public static NotificationsColors From(UiPalette p) => new()
         {
+            Raised = p.RaisedBg,
+            Edge = p.Edge,
+            OneHue = p.IsOneHue,
             Info = p.Info,
             Warn = p.Warn,
             Error = p.Error,
