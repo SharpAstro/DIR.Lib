@@ -112,6 +112,16 @@ public readonly record struct ClickableRegion(
     /// must not toggle it straight back open.
     /// </summary>
     public PopoverState? Dismisses { get; init; }
+
+    /// <summary>
+    /// This region is a SURFACE (<see cref="Layout.Node.IsSurface"/>): within its rect, nothing registered before it, in
+    /// this widget or in a widget painted beneath, gets the pointer. <see cref="InputRouter"/> stops every walk down the
+    /// regions here: the press, the release click, the double click, the tooltip, the cursor, the wheel and a context
+    /// menu. What is registered after it (the surface's own buttons) works as ever. A surface with no handler of its own
+    /// takes a press and does nothing with it.
+    /// </summary>
+    /// <remarks>An init-only property, so the record's constructor keeps its shape (11.86).</remarks>
+    public bool IsSurface { get; init; }
 }
 
 /// <summary>

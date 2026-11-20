@@ -416,4 +416,22 @@ public class NotificationsLayoutTests
         ((Layout.Node.Wrap)wrap).Ellipsis.ShouldBeTrue();
         ((Layout.Node.Wrap)wrap).MaxLines.ShouldBe(Style.MaxTextLines);
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EveryToastCardAndTheOpenBarAreSurfaces_OnEitherContext(bool cells)
+    {
+        var feed = new NotificationFeed();
+        feed.Post(Fade("a"), At(0));
+        feed.Post(Stay("b"), At(0));
+
+        var collapsed = Arrange(Tree(feed, new NotificationsState()), cells);
+        collapsed.Count(p => p.Node.IsSurface).ShouldBe(2, "one per card, fading and staying alike");
+        collapsed.Single(p => p.Node.IsSurface && p.Node.Hit is NotificationHit { Part: NotificationPart.Toast })
+            .Rect.Width.ShouldBe(Style.ToastWidth, Tol(cells));
+
+        var open = Arrange(Tree(feed, new NotificationsState { Open = true }), cells);
+        open.Single(p => p.Node.IsSurface).Rect.Width.ShouldBe(Style.BarWidth, Tol(cells));
+    }
 }

@@ -398,8 +398,10 @@ namespace DIR.Lib
         /// edge never both claim it.</summary>
         /// <param name="r">The node's arranged rect.</param>
         /// <param name="inClaimantContent">Whether the node is painted inside an open popover's content.</param>
-        private bool PointerWithin(Rect<float> r, bool inClaimantContent) =>
-            Pointer is { } p && HoverMayAnswer(p, inClaimantContent)
+        /// <param name="order">The node's paint order (<see cref="WindowUiSettings.NotePaintedNode"/>): a surface painted
+        /// after it over the pointer keeps it dark (<see cref="Layout.Node.IsSurface"/>).</param>
+        private bool PointerWithin(Rect<float> r, bool inClaimantContent, int order) =>
+            Pointer is { } p && HoverMayAnswer(p, inClaimantContent, order)
             && p.X >= r.X && p.X < r.X + r.Width && p.Y >= r.Y && p.Y < r.Y + r.Height;
 
         /// <summary>
@@ -416,11 +418,15 @@ namespace DIR.Lib
         /// popover itself; neither is pointed at.</para>
         /// <para>Only HOVER is confined; the region tracker still hit-tests in paint order, so the backdrop keeps taking
         /// the click that dismisses.</para>
+        /// <para>The same predicate answers for a surface (<see cref="Layout.Node.IsSurface"/>, 11.86): a node at paint
+        /// order <paramref name="order"/> under a surface painted after it does not light, whatever the popover claim says.
+        /// One rule, two kinds of claim: a popover's over everything outside its content, a surface's over what it covers.</para>
         /// </remarks>
-        private bool HoverMayAnswer((float X, float Y) p, bool inClaimantContent) =>
-            Ui.PointerClaim is not { } owner
-            || (inClaimantContent
-                && p.X >= owner.X && p.X < owner.X + owner.Width && p.Y >= owner.Y && p.Y < owner.Y + owner.Height);
+        private bool HoverMayAnswer((float X, float Y) p, bool inClaimantContent, int order) =>
+            !Ui.IsCoveredBySurface(p.X, p.Y, order)
+            && (Ui.PointerClaim is not { } owner
+                || (inClaimantContent
+                    && p.X >= owner.X && p.X < owner.X + owner.Width && p.Y >= owner.Y && p.Y < owner.Y + owner.Height));
 
         /// <summary>
         /// Whether hover may answer at (<paramref name="x"/>, <paramref name="y"/>) for chrome a widget paints by hand:
@@ -434,8 +440,10 @@ namespace DIR.Lib
         /// it.</para>
         /// <para>Before this a consumer kept its own prediction of "does an overlay own the pointer" beside such chrome,
         /// a list of its popovers that every new one had to be added to.</para>
+        /// <para>Under a surface (<see cref="Layout.Node.IsSurface"/>) painted after the chrome, as the next node to paint
+        /// would be, it is not allowed either.</para>
         /// </remarks>
-        protected bool HoverAllowedAt(float x, float y) => HoverMayAnswer((x, y), inClaimantContent: false);
+        protected bool HoverAllowedAt(float x, float y) => HoverMayAnswer((x, y), inClaimantContent: false, Ui.PaintOrder);
 
         /// <summary>
         /// Whether <see cref="Pointer"/> hovers <paramref name="rect"/> of hand-painted chrome by the rule a declared node
@@ -443,7 +451,7 @@ namespace DIR.Lib
         /// (<see cref="HoverAllowedAt"/>).
         /// </summary>
         protected bool PointerHovers(RectF32 rect) =>
-            Pointer is { } p && HoverMayAnswer(p, inClaimantContent: false)
+            Pointer is { } p && HoverMayAnswer(p, inClaimantContent: false, Ui.PaintOrder)
             && p.X >= rect.X && p.X < rect.X + rect.Width && p.Y >= rect.Y && p.Y < rect.Y + rect.Height;
 
         /// <summary>
@@ -685,9 +693,20 @@ namespace DIR.Lib
             for (var i = regions.Length - 1; i >= 0; i--)
             {
                 var r = regions[i];
-                if (r.Scroll is { } scroll && x >= r.X && x < r.X + r.Width && y >= r.Y && y < r.Y + r.Height)
+                if (!(x >= r.X && x < r.X + r.Width && y >= r.Y && y < r.Y + r.Height))
+                {
+                    continue;
+                }
+
+                if (r.Scroll is { } scroll)
                 {
                     return scroll;
+                }
+
+                // Nothing painted before a surface gets the wheel (Layout.Node.IsSurface).
+                if (r.IsSurface)
+                {
+                    return null;
                 }
             }
             return null;
@@ -1376,6 +1395,10 @@ namespace DIR.Lib
                 // popover being nodes that appear rather than nodes whose signature never changed.
                 captured.Add(arrangedNode);
 
+                // The node's place in the cycle's paint order, which a surface painted after it is compared against
+                // (WindowUiSettings.IsCoveredBySurface), and the surface's own note when it is one.
+                var paintOrder = Ui.NotePaintedNode();
+
                 // The pointer owner is the popover's CONTENT rect, and it cannot be read off the Anchored
                 // node: ArrangeNode records every node against the rect it was GIVEN, so the Anchored node's
                 // own entry carries the pane it floats in, and the placed rect belongs to its child, which
@@ -1414,7 +1437,7 @@ namespace DIR.Lib
                 // what the pointer is over are the same rectangle by construction -- the guarantee the
                 // click region below already has. A node with no HoverBackground, or a host that sets no
                 // Pointer, paints exactly as it did before.
-                var nodeFill = node.HoverBackground is { } hover && PointerWithin(bounds, openPopoverDepth >= 0) ? hover
+                var nodeFill = node.HoverBackground is { } hover && PointerWithin(bounds, openPopoverDepth >= 0, paintOrder) ? hover
                     // And the keyboard's own position, resolved against the node's HIT rather than
                     // against a rect -- the row already says which list and index it is.
                     : node.FocusBackground is { } focus && CursorIsOn(node.Hit) ? focus
@@ -1483,6 +1506,17 @@ namespace DIR.Lib
                 // What the region covers: the arranged rect, or only the part of it inside the enclosing
                 // scrolled node's viewport -- the rest is not on screen and must not answer a press.
                 var region = scrolls.Count > 0 ? Intersect(scrolls.Peek().Clip, bounds) : bounds;
+
+                // A surface takes the pointer from what was painted before it (Node.IsSurface): its region covers the
+                // whole rect, so the router's walk down the regions stops here, and the rect is noted for the hover of
+                // the next frame's earlier nodes. A surface with no hit of its own registers plain chrome that is not
+                // inert: a press on it is taken and does nothing.
+                var surface = node.IsSurface;
+                if (surface)
+                {
+                    Ui.NoteSurfacePainted(new RectF32(region.X, region.Y, region.Width, region.Height), paintOrder);
+                }
+
                 if (node.Hit is { } hit)
                 {
                     if (hit is HitResult.ListItemHit listRow && scrolls.Count > 0)
@@ -1507,9 +1541,10 @@ namespace DIR.Lib
                         // the press is swallowed, and swallowed is all it is.
                         Opens = disabled ? null : node.OpensPopover,
                         Dismisses = node.DismissesPopover,
+                        IsSurface = surface,
                     });
                 }
-                else if (cursor is not null || tooltip is not null || node.Scroll is not null || (node.OnPressWithin is not null && !disabled))
+                else if (surface || cursor is not null || tooltip is not null || node.Scroll is not null || (node.OnPressWithin is not null && !disabled))
                 {
                     // A cursor, a tooltip or a scroll target with no hit still needs a region, or the
                     // statement has nowhere to live. Inert to presses (ChromeHit, no handler), which is
@@ -1523,6 +1558,7 @@ namespace DIR.Lib
                         IsDisabled = disabled,
                         Scroll = node.Scroll,
                         OnPressWithin = disabled ? null : node.OnPressWithin,
+                        IsSurface = surface,
                     });
                 }
 

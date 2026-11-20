@@ -74,9 +74,21 @@ namespace DIR.Lib
             for (var i = _regions.Count - 1; i >= 0; i--)
             {
                 var r = _regions[i];
-                if (r.Cursor is { } cursor && x >= r.X && x < r.X + r.Width && y >= r.Y && y < r.Y + r.Height)
+                if (!(x >= r.X && x < r.X + r.Width && y >= r.Y && y < r.Y + r.Height))
+                {
+                    continue;
+                }
+
+                if (r.Cursor is { } cursor)
                 {
                     return cursor;
+                }
+
+                // A surface states the cursor for everything beneath it: nothing painted before it shows through
+                // (Layout.Node.IsSurface), so null here is the host's default, not the cursor of a row underneath.
+                if (r.IsSurface)
+                {
+                    return null;
                 }
             }
             return null;

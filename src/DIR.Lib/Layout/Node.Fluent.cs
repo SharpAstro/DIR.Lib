@@ -251,6 +251,11 @@ public abstract partial record Node
     /// the <see cref="Node.Cursor"/> property it sets, which a same-named method cannot shadow.</summary>
     public Node WithCursor(CursorKind cursor) => this with { Cursor = cursor };
 
+    /// <summary>Make this node a surface: within its rect, nothing painted before it gets the pointer (hover, tooltip,
+    /// cursor, press, release, double click, wheel), while what it contains works as ever. A toast's card, an open side
+    /// bar, a floating window. See <see cref="Node.IsSurface"/>.</summary>
+    public Node AsSurface() => this with { IsSurface = true };
+
     /// <summary>Drop this node from the arrangement entirely when a parent <see cref="Stack"/> would give
     /// it a main-axis extent below <paramref name="designUnits"/> -- the freed space redistributes to the
     /// surviving siblings. See <see cref="CollapseThreshold"/>.</summary>
