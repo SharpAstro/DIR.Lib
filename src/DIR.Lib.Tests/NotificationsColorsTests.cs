@@ -93,7 +93,7 @@ public sealed class NotificationsColorsTests
     {
         var c = NotificationsColors.From(MultiHue());
         c.TintedFill(NotificationSeverity.Error).ShouldBe(RGBAColor32.Mix(c.Raised, c.Error, 0.15f));
-        c.TintedEdge(NotificationSeverity.Warn).ShouldBe(RGBAColor32.Mix(c.Raised, c.Warn, 0.55f));
+        c.TintedEdge(NotificationSeverity.Warn).ShouldBe(c.Warn);
         c.TintedFill(NotificationSeverity.Error).ShouldNotBe(c.Raised);
     }
 
@@ -105,7 +105,7 @@ public sealed class NotificationsColorsTests
         foreach (var s in new[] { NotificationSeverity.Info, NotificationSeverity.Warn, NotificationSeverity.Error, NotificationSeverity.Success })
         {
             c.TintedFill(s).ShouldBe(c.Raised);
-            c.TintedEdge(s).ShouldBe(c.Separator);
+            c.TintedEdge(s).ShouldBe(c.Edge);
         }
         c.ToastShadow.ShouldBeNull();
     }

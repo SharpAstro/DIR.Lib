@@ -63,8 +63,10 @@ public static class IconSet
 }
 
 /// <summary>
-/// The one-character cell glyph of each <see cref="Layout.IconKind"/>: what a cell host, such as Console.Lib's
-/// <c>CellLayout.IconGlyph</c>, should draw for an icon so every host agrees on the character.
+/// The one-character cell glyph of the icon kinds added with the SVG icon set (Info, Warning, Error, Success, Close,
+/// Pin, PinFilled, OpenInPage and the Compare kinds): what a cell host, such as Console.Lib's <c>CellLayout.IconGlyph</c>,
+/// should draw for them. The older kinds are listed too, but Console.Lib's own mapping for those (Grid, Minus,
+/// ThemeLight, ThemeDark) differs and stays authoritative.
 /// </summary>
 public static class IconGlyphs
 {

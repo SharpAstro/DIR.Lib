@@ -71,7 +71,11 @@ namespace DIR.Lib
             public Layout.ShadowStyle? Shadow { get; init; }
         }
 
-        /// <summary>The rect a signature repaints: its bounds, grown on every side by its shadow's extent.</summary>
+        /// <summary>
+        /// The rect a signature repaints: its bounds, grown on every side by its shadow's extent. The unit is the bounds':
+        /// the shadow's extent is in design units, so the bounds must be in design units too (a surface at a
+        /// <c>DesignScale</c> other than 1 must pass bounds it has divided by that scale, or grow the result itself).
+        /// </summary>
         public static Rect<float> DamageRect(in PaintSignature sig)
         {
             if (sig.Shadow is not { Color.Alpha: > 0 } s)

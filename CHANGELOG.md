@@ -18,7 +18,8 @@ changed and why.
   none and it takes no cells, so a cell arrange is the same with or without it.
 - **An SVG icon set** and new `IconKind` members (including `Info`, `Warning`, `Error`, `Close`), each with one
   character in `IconGlyphs` for cells. Console.Lib must spell the new members in its own `EveryIconKindHasAGlyph` test.
-- **Theme tokens**: `NotificationsColors` gains tint roles (`TintedFill`, `TintedEdge`, `InkOn`, `Raised`, `Edge`,
+- **Theme tokens**: `UiPalette.RaisedBg` and `UiPalette.Edge` (init-only, derived by default), `UiMetrics.CornerRadius`,
+  `UiMetrics.Shadow` and `UiMetrics.DefaultShadow` (init-only, no binary break), and `NotificationsColors` gains tint roles (`TintedFill`, `TintedEdge`, `InkOn`, `Raised`, `Edge`,
   `Shadow`, `OneHue`, `CornerRadius`, and an init-only `Body`), plus `RGBAColor32.Mix`, `RGBAColor32.ContrastRatio` and
   `UiPalette.IsOneHue`. A one-hue palette falls back by rule: no tint, no shadow.
 - **Toast look B.** A 1-unit tinted edge, radius 6, the key shadow, an 18-unit severity icon at the left, the title in
@@ -26,7 +27,10 @@ changed and why.
   dismisses it; the card's own hit still reaches the host. A staying card's first button is filled in the severity colour
   and the rest are plain: the public `NotificationsLayout.PrimaryButton` / `PlainButton`, also used in the bar's rows
   (the rows keep their own left-border look). The countdown sits inside the rounded card.
-  `NotificationsToastLookTests` asserts the contrast of every ink on its fill.
+  `NotificationsToastLookTests` asserts the contrast of every ink on its fill. The edge is the severity colour itself (3:1
+  against the page on every severity), and the source line's dim ink is derived per fill (`DimOn`) to keep 4.5:1.
+  Shadows are cheap on a few toasts but not on many rows: `Elevated(3)` on 30 rows costs about 12 ms a frame in
+  `RgbaImageRenderer`, so hosts keep shadows off rows.
 
 ## 11.87
 

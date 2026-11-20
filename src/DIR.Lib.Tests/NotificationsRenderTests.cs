@@ -153,7 +153,7 @@ public class NotificationsRenderTests
     /// <summary>One toast of each severity (fading) and a staying card with two buttons and a long title.</summary>
     internal static NotificationFeed LookFeed()
     {
-        var feed = new NotificationFeed();
+        var feed = new NotificationFeed { MaxToasts = 5 };
         feed.Post(new Notification { Title = "Frame saved", Text = "IMG_0412.fits, 120 s, gain 120.", Severity = NotificationSeverity.Success, Kind = NotificationKind.Fading, Source = "camera" }, At(0));
         feed.Post(new Notification { Title = "Plate solve finished", Text = "Centre moved 4.2 arcmin from target.", Severity = NotificationSeverity.Info, Kind = NotificationKind.Fading, Source = "solver" }, At(0));
         feed.Post(new Notification { Title = "Guiding RMS above 1.5 arcsec", Text = "Wind gusts are shaking the mount; the subframes since 21:04 may be soft.", Severity = NotificationSeverity.Warn, Kind = NotificationKind.Fading, Source = "guider" }, At(0));
