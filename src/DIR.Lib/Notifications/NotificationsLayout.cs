@@ -380,7 +380,7 @@ namespace DIR.Lib.Notifications
             var closeLayer = Builder.VStack(Builder.HStack(Builder.Spacer().WStar(), close).WStar())
                 .Pad(s.Padding)
                 .Stretch();
-            return Builder.Overlay(card.Clickable(new NotificationHit(NotificationPart.Toast, n.Id)).AsSurface(), closeLayer);
+            return Builder.Overlay(card.Clickable(new NotificationHit(NotificationPart.Toast, n.Id)).AsSurface(), closeLayer).WStar();
         }
 
         private static Node Buttons(Notification n, NotificationFeed feed, NotificationsColors c, NotificationsStyle s)
