@@ -9,6 +9,22 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.90
+
+**Fix: the arrows could not get past a run of disabled rows taller than a scrolled list's viewport.** (additive)
+
+- A scrolled stack lays out only the rows within a viewport's extent of its viewport (`Engine.ArrangeStack`; pilot's
+  chat is 300 rows and more), and the arrows step onto the nearest laid-out row that is enabled. A run of disabled rows
+  taller than that margin holds no such row, and the rows after it are not in the frame at all, so Down (or Up) was
+  refused as if the list had ended: with five disabled 20 unit rows in a 50 unit viewport the key did nothing.
+- **`IPixelWidget.RevealListEdge(cursor, delta)`** (a default interface method that answers false, so an implementer
+  compiles and runs unchanged). When no row can take the cursor, `PixelWidgetBase.MoveListCursor` and `InputRouter`'s
+  declared-list step ask the surface to bring the farthest row it holds in that direction into view. If the list
+  moved, the key is taken: the next paint lays out the rows after it and the next press continues, so a long run
+  scrolls by under repeated presses and the cursor lands on the first enabled row beyond it. If it did not move, that
+  row was already in view and the key is refused, as at any end of a list.
+- `PixelWidgetBase` implements it from the scrolled rows the last paint noted. Console.Lib's cell surface shares the
+  engine and so the defect; it gets the same method in its next release.
 ## 11.89
 
 **A segmented control and an icon toggle button, with words that drop when the row is narrow.**

@@ -107,6 +107,17 @@ namespace DIR.Lib
         /// does nothing, which is right for a surface whose lists do not scroll.
         /// </summary>
         void RevealListRow(ListCursor cursor) { }
+
+        /// <summary>
+        /// Called when an arrow could not step <paramref name="cursor"/>: no row of the last paint can take it in the
+        /// direction of <paramref name="delta"/>. A scrolled list lays out only the rows within a viewport's extent of
+        /// its viewport (<c>Engine.ArrangeStack</c>), so a run of disabled rows taller than that holds nothing to
+        /// step to although the list goes on. The surface brings the farthest row it holds in that direction into
+        /// view and answers whether the list moved: the next paint then lays out the rows after it, and the next
+        /// press continues. False is the end of the list. A default interface method (11.88): the default answers
+        /// false, which is right for a surface whose lists do not scroll.
+        /// </summary>
+        bool RevealListEdge(ListCursor cursor, int delta) => false;
     }
 
     /// <summary>
@@ -488,11 +499,54 @@ namespace DIR.Lib
             CollectClippedListRows(cursor.ListId!, _clippedListRows);
             if (!ListKeys.Move(cursor, delta, RegisteredRegions, _clippedListRows, _paintedListRows))
             {
-                return false;
+                // Nothing in the frame can take the cursor that way. That is the end of the list only when the
+                // list cannot scroll further towards it (see RevealListEdge).
+                return RevealListEdge(cursor, delta);
             }
 
             RevealListCursor(cursor);
             return true;
+        }
+
+        /// <inheritdoc cref="IPixelWidget.RevealListEdge"/>
+        public virtual bool RevealListEdge(ListCursor cursor, int delta)
+        {
+            ArgumentNullException.ThrowIfNull(cursor);
+            if (delta == 0)
+            {
+                return false;
+            }
+
+            // The farthest row of the cursor's list the last paint met in a scrolled node, beyond the cursor in the
+            // direction of the key. Painted or clipped, enabled or not: it is where the laid-out part of the list ends.
+            ScrolledListRow? edge = null;
+            foreach (var row in _scrolledListRows)
+            {
+                if (!cursor.Owns(row.Hit))
+                {
+                    continue;
+                }
+
+                var index = row.Hit.Index;
+                if (cursor.Index >= 0 && (delta > 0 ? index <= cursor.Index : index >= cursor.Index))
+                {
+                    continue;
+                }
+
+                if (edge is not { } best || (delta > 0 ? index > best.Hit.Index : index < best.Hit.Index))
+                {
+                    edge = row;
+                }
+            }
+
+            if (edge is not { } farthest)
+            {
+                return false;
+            }
+
+            var before = farthest.Scroll.Offset;
+            farthest.Scroll.RevealExtent(farthest.Start, farthest.End);
+            return farthest.Scroll.Offset != before;
         }
 
         /// <summary>

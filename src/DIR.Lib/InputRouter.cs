@@ -1536,7 +1536,17 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         switch (key.Key)
         {
             case InputKey.Up or InputKey.Down or InputKey.Left or InputKey.Right:
-                if (!ListKeys.Move(cursor, key.Key is InputKey.Up or InputKey.Left ? -1 : 1, regions, _listClipped, _listScratch)) return false;
+                var delta = key.Key is InputKey.Up or InputKey.Left ? -1 : 1;
+                if (!ListKeys.Move(cursor, delta, regions, _listClipped, _listScratch))
+                {
+                    // No row in the frame can take the cursor that way. A scrolled list lays out only the rows near its
+                    // viewport, so that is the end of the list only when no surface can scroll it further towards the
+                    // key (IPixelWidget.RevealListEdge); when one did, the key is taken and the next press continues.
+                    var scrolled = false;
+                    foreach (var widget in widgets) scrolled |= widget.RevealListEdge(cursor, delta);
+                    return scrolled;
+                }
+
                 Reveal();
                 if (active.SelectOnStep) ListKeys.Activate(cursor, key.Modifiers, regions, _listClipped, _listScratch);
                 return true;

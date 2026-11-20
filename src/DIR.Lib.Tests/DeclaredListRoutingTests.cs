@@ -148,6 +148,49 @@ public class DeclaredListRoutingTests
         }
     }
 
+    // The router's half of the same rule (LayoutScrolledListCursorTests has the widget's): a run of disabled rows
+    // taller than the viewport holds no row the cursor can take, and the rows after it are not laid out until the
+    // list scrolls towards them. Down is taken, the list moves, and the cursor arrives within a few presses.
+    [Fact]
+    public void A_declared_list_under_WithScroll_gets_past_a_run_of_disabled_rows_taller_than_its_viewport()
+    {
+        var renderer = new StubRenderer(200, 200);
+        var widget = new ScrollWidget(renderer);
+        var scroll = new ListScrollController { Mode = ScrollBarMode.None };
+        var cursor = new ListCursor();
+        const float rowH = 20f, viewportH = 50f;
+        Layout.Node Card()
+        {
+            var rows = new Layout.Node[10];
+            for (var i = 0; i < rows.Length; i++)
+            {
+                var row = Layout.Builder.Spacer().RowH(rowH).Clickable(new HitResult.ListItemHit("rows", i), _ => { });
+                rows[i] = i is >= 2 and <= 6 ? row.Disabled("not now") : row;
+            }
+
+            return Layout.Builder.VStack(
+                    Layout.Builder.VStack(rows).WStar().HClamp(0f, viewportH).WithScroll(scroll).ListOf(cursor, "rows"),
+                    Layout.Builder.Spacer().RowH(30f))
+                .Stretch();
+        }
+
+        var bounds = new RectF32(0, 0, 200, 200);
+        widget.Render(Card(), bounds);
+        var router = new InputRouter(widget.Ui, new BackgroundTaskTracker(), static () => { }) { Widgets = () => [widget] };
+        router.Handle(new InputEvent.MouseDown(10f, 25f, MouseButton.Left, InputModifier.None, 1)).ShouldBeTrue(); // row 1
+        cursor.Index.ShouldBe(1);
+
+        var presses = 0;
+        while (cursor.Index != 7 && presses < 6)
+        {
+            router.Handle(new InputEvent.KeyDown(InputKey.Down, InputModifier.None)).ShouldBeTrue($"press {presses + 1} is taken: the list goes on");
+            widget.Render(Card(), bounds);
+            presses++;
+        }
+
+        cursor.Index.ShouldBe(7, "the first row after the five disabled ones");
+    }
+
     [Fact]
     public void Two_lists_a_press_on_B_makes_B_the_one_the_arrows_step()
     {
