@@ -347,10 +347,12 @@ public abstract record Content
 }
 
 /// <summary>
-/// The pictograms a <see cref="Content.Icon"/> can name. Deliberately a CLOSED and tiny set: every kind
-/// costs a drawing in the pixel painter AND a glyph choice in every cell painter, so a kind earns its place
-/// by having a consumer on both. A one-off pictogram belongs in a <see cref="Content.Fill"/> the app draws
-/// itself, which is what that escape hatch is for.
+/// The pictograms a <see cref="Content.Icon"/> can name. Deliberately a small set that grows only by
+/// appending: every kind costs a drawing in the pixel painter AND a glyph choice in every cell painter
+/// (<see cref="IconGlyphs.For"/>), so a kind earns its place by having a consumer on both. The older kinds
+/// are drawn from rectangles; the members from <see cref="Info"/> on are drawn from embedded SVG outlines
+/// on one 16-unit grid and one stroke weight, in the ink given, sharp at any scale. A one-off pictogram
+/// belongs in a <see cref="Content.Fill"/> the app draws itself, which is what that escape hatch is for.
 /// </summary>
 public enum IconKind
 {
@@ -497,4 +499,40 @@ public enum IconKind
     /// its own rune for it (U+1F514, with U+2407 as the narrow fallback).
     /// </summary>
     Bell,
+
+    /// <summary>"Information": a circle with an i. Drawn from an embedded SVG outline in the ink given.</summary>
+    Info,
+
+    /// <summary>"Warning": a triangle with an exclamation mark. Embedded SVG outline.</summary>
+    Warning,
+
+    /// <summary>"Error": a circle with a cross. Embedded SVG outline.</summary>
+    Error,
+
+    /// <summary>"Success": a circle with a tick. Embedded SVG outline.</summary>
+    Success,
+
+    /// <summary>"Close" or "dismiss": a cross. Embedded SVG outline.</summary>
+    Close,
+
+    /// <summary>"Pin this": an outlined drawing pin. Embedded SVG outline.</summary>
+    Pin,
+
+    /// <summary>"Pinned": <see cref="Pin"/> with a solid head. Embedded SVG outline.</summary>
+    PinFilled,
+
+    /// <summary>"Open in its own page": a box with an arrow leaving it. Embedded SVG outline.</summary>
+    OpenInPage,
+
+    /// <summary>Compare mode "side by side": two panes. Embedded SVG outline.</summary>
+    CompareSideBySide,
+
+    /// <summary>Compare mode "overlay": two panes laid over each other. Embedded SVG outline.</summary>
+    CompareOverlay,
+
+    /// <summary>Compare mode "slider": one pane with a divider and a grip. Embedded SVG outline.</summary>
+    CompareSlider,
+
+    /// <summary>Compare mode "changes": two opposed arrows, before and after. Embedded SVG outline.</summary>
+    CompareChanges,
 }
