@@ -42,8 +42,9 @@ dotnet test --project src/DIR.Lib.Tests -c Release --no-build --filter-class "*I
 dotnet test --project src/DIR.Lib.Shaping.Tests -c Release --no-build --filter-class "*ShapingTextShaperTests"
 ```
 
-- Tests are xunit.v3 with Shouldly on Microsoft.Testing.Platform, not VSTest: `--logger`, `--blame-*` and `--filter`
-  fail the run as unknown options. Narrow with `--filter-class`, `--filter-method` or `--filter-namespace`.
+- Tests are xunit.v3 with Shouldly on Microsoft.Testing.Platform, not VSTest: `--logger` and `--blame-*` fail the run
+  as unknown options. Narrow with `--filter-class`, `--filter-method` or `--filter-namespace`; `--filter` with a VSTest
+  expression (`--filter "FullyQualifiedName~FooTests"`) works too.
   A filter that matches nothing already exits 8; `--minimum-expected-tests N` additionally fails a run that ran fewer
   than N tests.
 - `--filter-class` matches the full class name (`DIR.Lib.Tests.FooTests`) or a wildcard (`*FooTests`). A bare class name
