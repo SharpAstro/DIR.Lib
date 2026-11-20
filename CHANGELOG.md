@@ -9,6 +9,25 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.88
+
+**Toasts look like toasts: tinted by severity, with an edge, a key shadow and a severity icon.**
+(additive; issue #289)
+
+- **`Layout.Node.Shadow`**: a declared drop shadow (`Shadow(ShadowStyle)`) painted under a node's rounded rect. Cells draw
+  none and it takes no cells, so a cell arrange is the same with or without it.
+- **An SVG icon set** and new `IconKind` members (including `Info`, `Warning`, `Error`, `Close`), each with one
+  character in `IconGlyphs` for cells. Console.Lib must spell the new members in its own `EveryIconKindHasAGlyph` test.
+- **Theme tokens**: `NotificationsColors` gains tint roles (`TintedFill`, `TintedEdge`, `InkOn`, `Raised`, `Edge`,
+  `Shadow`, `OneHue`, `CornerRadius`, and an init-only `Body`), plus `RGBAColor32.Mix`, `RGBAColor32.ContrastRatio` and
+  `UiPalette.IsOneHue`. A one-hue palette falls back by rule: no tint, no shadow.
+- **Toast look B.** A 1-unit tinted edge, radius 6, the key shadow, an 18-unit severity icon at the left, the title in
+  `Text` and the body in body ink. A fading toast has a Close cross at its top right (`NotificationPart.Close`) that
+  dismisses it; the card's own hit still reaches the host. A staying card's first button is filled in the severity colour
+  and the rest are plain: the public `NotificationsLayout.PrimaryButton` / `PlainButton`, also used in the bar's rows
+  (the rows keep their own left-border look). The countdown sits inside the rounded card.
+  `NotificationsToastLookTests` asserts the contrast of every ink on its fill.
+
 ## 11.87
 
 **The points DIR.Lib's reviews left for later, worked through: one layout fix, one loader rule, one test that never ran.**
