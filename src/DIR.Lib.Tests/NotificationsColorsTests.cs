@@ -112,6 +112,17 @@ public sealed class NotificationsColorsTests
     }
 
     [Fact]
+    public void AMultiHueEdgeThatMissesThreeToOneAgainstThePageIsMovedTowardText()
+    {
+        var c = NotificationsColors.From(NightRed()) with { OneHue = false };
+        var yellow = c with { Page = c.Warn };
+        RGBAColor32.ContrastRatio(yellow.Warn, yellow.Page).ShouldBeLessThan(3f);
+        var edge = yellow.TintedEdge(NotificationSeverity.Warn);
+        edge.ShouldNotBe(yellow.Warn);
+        RGBAColor32.ContrastRatio(edge, yellow.Page).ShouldBeGreaterThanOrEqualTo(3f);
+    }
+
+    [Fact]
     public void AFullyTransparentShadowIsNone()
     {
         var c = NotificationsColors.From(MultiHue()) with { Shadow = new DIR.Lib.Layout.ShadowStyle { Color = new RGBAColor32(0, 0, 0, 0) } };
