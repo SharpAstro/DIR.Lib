@@ -43,6 +43,65 @@ public sealed class UiPaletteTests
     }
 
     [Fact]
+    public void RaisedBgAndEdgeDefaultToPanelBgAndSeparatorAndCanBeStated()
+    {
+        var p = Minimal();
+        p.RaisedBg.ShouldBe(p.PanelBg);
+        p.Edge.ShouldBe(p.Separator);
+
+        var raised = new RGBAColor32(1, 2, 3, 255);
+        var edge = new RGBAColor32(4, 5, 6, 255);
+        var q = p with { RaisedBg = raised, Edge = edge };
+        q.RaisedBg.ShouldBe(raised);
+        q.Edge.ShouldBe(edge);
+    }
+
+    [Fact]
+    public void MixIsExactAtZeroAndOneHundredPercent()
+    {
+        var a = new RGBAColor32(10, 20, 30, 40);
+        var b = new RGBAColor32(200, 150, 100, 250);
+        RGBAColor32.Mix(a, b, 0f).ShouldBe(a);
+        RGBAColor32.Mix(a, b, 1f).ShouldBe(b);
+        RGBAColor32.Mix(a, b, -3f).ShouldBe(a);
+        RGBAColor32.Mix(a, b, 7f).ShouldBe(b);
+        RGBAColor32.Mix(new RGBAColor32(0, 0, 0, 255), new RGBAColor32(200, 100, 50, 255), 0.5f)
+            .ShouldBe(new RGBAColor32(100, 50, 25, 255));
+    }
+
+    [Fact]
+    public void ContrastRatioIsTwentyOneForBlackOnWhiteAndOneForEqualColours()
+    {
+        RGBAColor32.ContrastRatio(new RGBAColor32(0, 0, 0, 255), new RGBAColor32(255, 255, 255, 255)).ShouldBe(21f, 0.01f);
+        RGBAColor32.ContrastRatio(new RGBAColor32(9, 9, 9, 255), new RGBAColor32(9, 9, 9, 255)).ShouldBe(1f, 0.001f);
+    }
+
+    [Fact]
+    public void OneHueIsTrueForARedOnBlackNightPaletteAndFalseForDarkAndLightMultiHue()
+    {
+        static RGBAColor32 C(byte r, byte g, byte b) => new(r, g, b, 0xff);
+        var night = new UiPalette
+        {
+            ContentBg = C(0, 0, 0), PanelBg = C(0x10, 0, 0), HeaderBg = C(0x18, 0, 0), Separator = C(0x40, 0, 0),
+            BodyText = C(0xc0, 0x20, 0x20), DimText = C(0x80, 0x10, 0x10), Accent = C(0xff, 0x30, 0x30), Selection = C(0x50, 0, 0),
+            Info = C(0xc0, 0x20, 0x20), Warn = C(0xff, 0x40, 0x30), Error = C(0xff, 0x20, 0x20),
+        };
+        night.IsOneHue.ShouldBeTrue();
+
+        Minimal().IsOneHue.ShouldBeFalse();
+
+        var light = Minimal(new RGBAColor32(0xf5, 0xf6, 0xf8, 0xff)) with
+        {
+            BodyText = new RGBAColor32(0x20, 0x24, 0x2c, 0xff),
+            Info = new RGBAColor32(0x1a, 0x6f, 0xd0, 0xff),
+            Warn = new RGBAColor32(0xb3, 0x6b, 0x00, 0xff),
+            Error = new RGBAColor32(0xc6, 0x28, 0x28, 0xff),
+            Success = new RGBAColor32(0x1e, 0x8e, 0x3e, 0xff),
+        };
+        light.IsOneHue.ShouldBeFalse();
+    }
+
+    [Fact]
     public void AStatedOptionalRoleWins()
     {
         var strong = new RGBAColor32(0x3c, 0x44, 0x4f, 0xff);

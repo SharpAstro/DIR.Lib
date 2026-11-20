@@ -26,6 +26,40 @@ public readonly record struct RGBAColor32(byte Red, byte Green, byte Blue, byte 
         (byte)Math.Round(a.Alpha + (b.Alpha - a.Alpha) * t));
 
     /// <summary>
+    /// Mixes <paramref name="b"/> into <paramref name="a"/>: <paramref name="fraction"/> 0 is exactly <paramref name="a"/>,
+    /// 1 is exactly <paramref name="b"/>, in between is the per-channel (alpha included) linear blend. The fraction is
+    /// clamped to 0..1.
+    /// </summary>
+    public static RGBAColor32 Mix(RGBAColor32 a, RGBAColor32 b, float fraction)
+    {
+        if (fraction <= 0f) return a;
+        if (fraction >= 1f) return b;
+        return Lerp(a, b, fraction);
+    }
+
+    /// <summary>Relative luminance (WCAG 2.x) of the colour's RGB, 0 (black) to 1 (white); alpha is ignored.</summary>
+    public float RelativeLuminance
+    {
+        get
+        {
+            static float Lin(byte c)
+            {
+                var s = c / 255f;
+                return s <= 0.04045f ? s / 12.92f : MathF.Pow((s + 0.055f) / 1.055f, 2.4f);
+            }
+            return 0.2126f * Lin(Red) + 0.7152f * Lin(Green) + 0.0722f * Lin(Blue);
+        }
+    }
+
+    /// <summary>The WCAG contrast ratio between two colours (alpha ignored), 1 to 21.</summary>
+    public static float ContrastRatio(RGBAColor32 a, RGBAColor32 b)
+    {
+        var la = a.RelativeLuminance;
+        var lb = b.RelativeLuminance;
+        return (MathF.Max(la, lb) + 0.05f) / (MathF.Min(la, lb) + 0.05f);
+    }
+
+    /// <summary>
     /// Creates an <see cref="RGBAColor32"/> from float RGBA components (0..1 each).
     /// </summary>
     public static RGBAColor32 FromFloat(float r, float g, float b, float a) => new(

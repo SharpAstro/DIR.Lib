@@ -32,6 +32,8 @@ public sealed record UiPalette
     private readonly RGBAColor32? _focus;
     private readonly RGBAColor32? _selectionText;
     private readonly RGBAColor32? _success;
+    private readonly RGBAColor32? _raisedBg;
+    private readonly RGBAColor32? _edge;
 
     // ---- surfaces, back to front -------------------------------------------------------------
 
@@ -44,7 +46,24 @@ public sealed record UiPalette
     /// <summary>A header strip, tab bar or status bar.</summary>
     public required RGBAColor32 HeaderBg { get; init; }
 
+    /// <summary>
+    /// A surface raised above <see cref="PanelBg"/>: a toast, a popover, a menu card. Defaults to
+    /// <see cref="PanelBg"/>, so a palette written before this role existed compiles and looks as it did.
+    /// </summary>
+    public RGBAColor32 RaisedBg
+    {
+        get => _raisedBg ?? PanelBg;
+        init => _raisedBg = value;
+    }
+
     // ---- rules -------------------------------------------------------------------------------
+
+    /// <summary>The edge drawn round a raised surface. Defaults to <see cref="Separator"/>.</summary>
+    public RGBAColor32 Edge
+    {
+        get => _edge ?? Separator;
+        init => _edge = value;
+    }
 
     /// <summary>Hairline divider between regions.</summary>
     public required RGBAColor32 Separator { get; init; }
@@ -168,18 +187,89 @@ public sealed record UiPalette
     /// </para>
     /// </summary>
     public bool IsDark => ContentBg.Luminance < 0x80;
+
+    /// <summary>
+    /// The one-hue rule: true when the palette cannot tell severities apart by hue, so a consumer must not tint
+    /// by severity (pilot's night palette, red on black, is the case). A colour counts as chromatic when its
+    /// channel spread is at least 24; the reference hue is <see cref="BodyText"/>'s when that is chromatic, else the
+    /// first chromatic severity's. The rule holds when every chromatic one of <see cref="Info"/>, <see cref="Warn"/>,
+    /// <see cref="Error"/> and <see cref="Success"/> lies within 30 degrees of the reference. A palette with no
+    /// chromatic severity at all is one-hue too. Computed, never stored, so it cannot disagree with the colours.
+    /// </summary>
+    public bool IsOneHue
+    {
+        get
+        {
+            const int MinChroma = 24;
+            const float MaxHueDelta = 30f;
+            Span<RGBAColor32> sev = [Info, Warn, Error, Success];
+            float? reference = HueOf(BodyText, MinChroma);
+            foreach (var c in sev)
+            {
+                var h = HueOf(c, MinChroma);
+                if (h is null) continue;
+                reference ??= h;
+                var d = MathF.Abs(h.Value - reference.Value) % 360f;
+                if (d > 180f) d = 360f - d;
+                if (d > MaxHueDelta) return false;
+            }
+            return true;
+        }
+    }
+
+    private static float? HueOf(RGBAColor32 c, int minChroma)
+    {
+        int max = Math.Max(c.Red, Math.Max(c.Green, c.Blue));
+        int min = Math.Min(c.Red, Math.Min(c.Green, c.Blue));
+        int chroma = max - min;
+        if (chroma < minChroma) return null;
+        float h;
+        if (max == c.Red) h = ((c.Green - c.Blue) / (float)chroma) % 6f;
+        else if (max == c.Green) h = (c.Blue - c.Red) / (float)chroma + 2f;
+        else h = (c.Red - c.Green) / (float)chroma + 4f;
+        h *= 60f;
+        return h < 0 ? h + 360f : h;
+    }
 }
 
 /// <summary>
 /// Base (unscaled, pixel) layout metrics shared across chrome. Callers still multiply
 /// by their own DPI scale; these are the logical base sizes.
 /// </summary>
+/// <remarks>
+/// Positional, so a parameter added to the constructor is a binary break (the 9.1 lesson in CLAUDE.md): the five
+/// parameters stay, and later fields are init-only properties whose default survives <c>default(UiMetrics)</c>
+/// (a nullable backing field with a fallback getter). Pinned by <c>InputEventCompatibilityTests</c>.
+/// </remarks>
 public readonly record struct UiMetrics(
     float BaseFontSize,
     float Padding,
     float HeaderHeight,
     float ItemHeight,
-    float ButtonHeight);
+    float ButtonHeight)
+{
+    private readonly float? _cornerRadius;
+    private readonly Layout.ShadowStyle? _shadow;
+
+    /// <summary>The toast's key shadow: no offset across, 1 down, blur 2, black at 55%.</summary>
+    public static Layout.ShadowStyle DefaultShadow { get; } = new() { OffsetX = 0, OffsetY = 1, Blur = 2, Color = new RGBAColor32(0, 0, 0, 140) };
+
+    /// <summary>Corner radius of a raised surface, in design units. Defaults to 6.</summary>
+    public float CornerRadius
+    {
+        get => _cornerRadius ?? 6f;
+        init => _cornerRadius = value;
+    }
+
+    /// <summary>
+    /// The shadow of a raised surface. Defaults to <see cref="DefaultShadow"/>; a colour with alpha 0 states none.
+    /// </summary>
+    public Layout.ShadowStyle Shadow
+    {
+        get => _shadow ?? DefaultShadow;
+        init => _shadow = value;
+    }
+}
 
 /// <summary>
 /// A complete UI theme: a colour <see cref="Palette"/> plus base <see cref="Metrics"/>.
