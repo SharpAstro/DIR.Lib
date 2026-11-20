@@ -78,6 +78,25 @@ public sealed class PrototypeFormatDocTests
     }
 
     [Fact]
+    public void TheDocNamesEveryNumberThatMayNotBeNegative()
+    {
+        var lines = DocLines();
+        var start = Array.IndexOf(lines, "## Numbers") + 1;
+        start.ShouldBeGreaterThan(0, "the format doc has a Numbers section");
+        var end = Array.FindIndex(lines, start, l => l.StartsWith("## ", StringComparison.Ordinal));
+        var section = string.Join(' ', lines[start..end]);
+
+        var owed = PrototypeVocabulary.Common.Concat(PrototypeVocabulary.Kinds.Values.SelectMany(k => k.Properties))
+            .Where(p => p.NonNegative).Select(p => p.Name).Distinct().Order().ToArray();
+        owed.ShouldNotBeEmpty();
+        foreach (var name in owed) section.ShouldContain($"`{name}`");
+        // The reverse: a number the section does not name may be negative, so the section names no value property.
+        foreach (var free in new[] { "min", "max", "value" })
+            PrototypeVocabulary.Kinds.Values.SelectMany(k => k.Properties).Where(p => p.Name == free)
+                .ShouldAllBe(p => !p.NonNegative);
+    }
+
+    [Fact]
     public void TheDocsExampleLoads()
     {
         var lines = DocLines();

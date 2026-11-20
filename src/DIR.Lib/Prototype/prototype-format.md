@@ -64,6 +64,13 @@ Accepted by every kind.
 | `side` | enum | `left`, `right`, `top`, `bottom`: pins a child of a `dock` |
 | `size` | number | extent of a docked child along its dock axis |
 
+## Numbers
+
+A number that measures something drawn may not be below zero, and one that is is a load problem at its path:
+`padding`, `borderWidth`, `borderRadius`, `size`, `gap`, `firstExtent`, `fontSize`, `iconSize`, `minWidth`,
+`minHeight`, and a `width` or `height` given as a number. Zero is accepted. A slider's `min` and `max` and a
+progress `value` are values, not extents, and may be any number.
+
 ## Colours
 
 A colour is a `UiPalette` role name or `#rgb`, `#rrggbb` or `#rrggbbaa`.
@@ -268,7 +275,5 @@ What the loader and builder do on purpose, or have not tightened yet:
   context, because a node's properties depend on its `kind` and every problem needs its JSON path. No reflection is used, so the AOT rule holds.
 - **Modal card.** A modal card is centred by the document design size, even when the modal is nested in a smaller
   container. Declare modals at the screen root.
-- **Negative numbers.** `padding`, `fontSize`, `width` and `height` are accepted as written and are not a load problem;
-  `Prototype.Check` reports what they draw.
 - **Dropdown state.** Dropdowns that share a `bind` share one open state, as inputs sharing a `bind` share one value.
   Give each dropdown its own `bind`.

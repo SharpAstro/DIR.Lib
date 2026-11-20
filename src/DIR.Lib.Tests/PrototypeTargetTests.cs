@@ -88,6 +88,57 @@ public sealed class PrototypeTargetTests
         => PrototypeTargets.ForWidth(width).ShouldBe(expected);
 
     [Fact]
+    public void ABuilderOnItsOwnSetsTargetOnlyOnceItHasADesignSize()
+    {
+        var state = new PrototypeState();
+        var builder = new PrototypeTreeBuilder(PrototypeKit.Theme, state);
+        var screen = Doc().Screens[0];
+
+        var bare = builder.Build(screen);
+        state.Has(PrototypeTargets.StateName).ShouldBeFalse("no design size, so nothing says which target this is");
+        Has(bare, "always").ShouldBeTrue();
+        Has(bare, "phone").ShouldBeFalse();
+        Has(bare, "desktop").ShouldBeFalse();
+
+        builder.DesignSize = (1440f, 900f);
+        Has(builder.Build(screen), "desktop").ShouldBeTrue();
+        state.Get(PrototypeTargets.StateName).ShouldBe(PrototypeTargets.Regular);
+    }
+
+    [Fact]
+    public void ThePlayersTargetFollowsItsOwnDesignSize_NotOneWrittenOnItsBuilder()
+    {
+        var player = new PrototypePlayer<RgbaImage>(new RgbaImageRenderer(10, 10), Doc(), PrototypeKit.Theme, "font.ttf");
+        player.TreeBuilder.DesignSize = (1440f, 900f);
+
+        Has(player.BuildTree(), "phone").ShouldBeTrue("the player draws at 360 wide, so the screen is the compact one");
+        player.State.Get(PrototypeTargets.StateName).ShouldBe(PrototypeTargets.Compact);
+        player.TreeBuilder.DesignSize.ShouldBe(player.DesignSize);
+    }
+
+    [Fact]
+    public void BuildingATreeNeverRaisesChanged_EvenWhenTheTargetMoves()
+    {
+        var player = new PrototypePlayer<RgbaImage>(new RgbaImageRenderer(10, 10), Doc(), PrototypeKit.Theme, "font.ttf");
+        var raised = 0;
+        player.State.Changed += () => raised++;
+
+        player.BuildTree();
+        player.Target = new PrototypeTarget { Name = "desktop", Width = 1440, Height = 900 };
+        player.BuildTree();
+        player.State.Get(PrototypeTargets.StateName).ShouldBe(PrototypeTargets.Regular, "the target did move");
+        raised.ShouldBe(0, "target is written while building, and a build that raised Changed would ask for another build");
+    }
+
+    [Fact]
+    public void ADefaultFindingPrintsWithoutThrowing()
+    {
+        // default skips the Target initializer, so Target is null there and ToString must not assume a string.
+        default(PrototypeFinding).Target.ShouldBeNull();
+        default(PrototypeFinding).ToString().ShouldBe(" [] 0x0: ");
+    }
+
+    [Fact]
     public void TargetsMustBeAnArray()
         => Paths(Wrap("\"targets\": 3,")).ShouldBe(["$.targets"]);
 

@@ -84,6 +84,9 @@ public sealed class PrototypePlayer<TSurface> : PixelWidgetBase<TSurface>
     /// <summary>Builds the current screen's tree for the current state, without painting.</summary>
     public Node BuildTree()
     {
+        // The player owns the design size: TreeBuilder is public, and a size written on it must not leave the
+        // target state and the modal centring following one size while Fit scales by another.
+        _builder.DesignSize = DesignSize;
         return _builder.Build(_screen);
     }
 

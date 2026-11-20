@@ -31,6 +31,12 @@ public sealed record PrototypeProperty(string Name, PrototypePropertyType Type)
 
     /// <summary>The allowed words, for an <see cref="PrototypePropertyType.Enum"/>.</summary>
     public ImmutableArray<string> Values { get; init; } = [];
+
+    /// <summary>
+    /// True for a <see cref="PrototypePropertyType.Number"/> that is an extent, a gap, a padding or a font size: a
+    /// value below zero is a load problem (11.87). A slider's bounds and a progress value may be any number.
+    /// </summary>
+    public bool NonNegative { get; init; }
 }
 
 /// <summary>One node kind: its own properties and how many children it takes.</summary>
@@ -58,6 +64,9 @@ public static class PrototypeVocabulary
     private static PrototypeProperty P(string n, PrototypePropertyType t, bool required = false, ImmutableArray<string> values = default)
         => new(n, t) { Required = required, Values = values.IsDefault ? [] : values };
 
+    /// <summary>A number that measures something drawn (an extent, a gap, a padding, a font size), so never below zero.</summary>
+    private static PrototypeProperty Extent(string n) => new(n, PrototypePropertyType.Number) { NonNegative = true };
+
     /// <summary>The <c>UiPalette</c> role names a colour may use.</summary>
     public static ImmutableArray<string> ColorRoles { get; } = W(
         "ContentBg", "PanelBg", "HeaderBg", "Separator", "SeparatorStrong", "BodyText", "DimText", "HeaderText",
@@ -66,24 +75,24 @@ public static class PrototypeVocabulary
     /// <summary>The properties every kind accepts.</summary>
     public static ImmutableArray<PrototypeProperty> Common { get; } =
     [
-        P("padding", PrototypePropertyType.Number),
+        Extent("padding"),
         P("background", PrototypePropertyType.Color),
         P("border", PrototypePropertyType.Color),
-        P("borderWidth", PrototypePropertyType.Number),
-        P("borderRadius", PrototypePropertyType.Number),
+        Extent("borderWidth"),
+        Extent("borderRadius"),
         P("width", PrototypePropertyType.Size),
         P("height", PrototypePropertyType.Size),
         P("key", PrototypePropertyType.String),
         P("tooltip", PrototypePropertyType.String),
         P("side", PrototypePropertyType.Enum, values: W("left", "right", "top", "bottom")),
-        P("size", PrototypePropertyType.Number),
+        Extent("size"),
     ];
 
     private static PrototypeKind K(string name, int min, int max, bool bind, params PrototypeProperty[] props)
         => new(name, [.. props]) { MinChildren = min, MaxChildren = max, SupportsBind = bind };
 
-    private static readonly PrototypeProperty Gap = P("gap", PrototypePropertyType.Number);
-    private static readonly PrototypeProperty FontSize = P("fontSize", PrototypePropertyType.Number);
+    private static readonly PrototypeProperty Gap = Extent("gap");
+    private static readonly PrototypeProperty FontSize = Extent("fontSize");
     private static readonly PrototypeProperty Color = P("color", PrototypePropertyType.Color);
 
     /// <summary>The accepted node kinds by name.</summary>
@@ -94,15 +103,15 @@ public static class PrototypeVocabulary
         K("grid", 0, -1, false, P("columns", PrototypePropertyType.Integer, true), Gap),
         K("wrap", 0, -1, false, Gap, P("vertical", PrototypePropertyType.Bool)),
         K("dock", 1, -1, false),
-        K("split", 2, 2, false, P("axis", PrototypePropertyType.Enum, values: W("horizontal", "vertical")), P("firstExtent", PrototypePropertyType.Number)),
+        K("split", 2, 2, false, P("axis", PrototypePropertyType.Enum, values: W("horizontal", "vertical")), Extent("firstExtent")),
         K("overlay", 2, 2, false),
         K("modal", 2, 2, false, P("open", PrototypePropertyType.Bool)),
         K("text", 0, 0, false, P("text", PrototypePropertyType.String, true), FontSize, Color,
             P("align", PrototypePropertyType.Enum, values: W("near", "center", "far"))),
         K("markdown", 0, 0, false, P("source", PrototypePropertyType.String, true)),
-        K("icon", 0, 0, false, P("icon", PrototypePropertyType.String, true), P("iconSize", PrototypePropertyType.Number), Color),
+        K("icon", 0, 0, false, P("icon", PrototypePropertyType.String, true), Extent("iconSize"), Color),
         K("box", 0, 0, false, Color),
-        K("fill", 0, 0, false, P("minWidth", PrototypePropertyType.Number), P("minHeight", PrototypePropertyType.Number)),
+        K("fill", 0, 0, false, Extent("minWidth"), Extent("minHeight")),
         K("spacer", 0, 0, false),
         K("textInput", 0, 0, true, P("placeholder", PrototypePropertyType.String), FontSize),
         K("checkbox", 0, 0, true, P("label", PrototypePropertyType.String, true)),
