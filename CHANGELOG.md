@@ -9,6 +9,39 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.86
+
+**What is painted over something takes the pointer from it, and toasts sit at the bottom right.** (additive; #282)
+
+- **`Layout.Node.IsSurface`, set with `AsSurface()`.** Within a surface's rect, nothing painted before it (earlier in
+  the same tree, or in a widget painted beneath) gets the hover highlight, the tooltip, the cursor, a press, a release
+  click, a double click, a context menu or the wheel. What the surface contains (its buttons, its own hover rows) works
+  as ever. Declared rather than inferred from an opaque background, so no existing tree changes until it says so.
+- **One rule, in the engine.** The painter registers a region over the surface's whole rect (its own `Hit`, else a
+  `ChromeHit`) marked `ClickableRegion.IsSurface` (init-only), and every walk of `InputRouter` stops there: press,
+  press-within, context menu, tooltip, cursor, wheel, the click under a selection, the declared list a press chooses
+  and the start of a text selection. A surface with no handler takes a press and does nothing; the wheel over it is
+  consumed, not handed to `Unhandled`. A release with no capture still reaches `Unhandled`, so a host's own drag that
+  ends over a toast still ends. `ClickableRegionTracker.HitTestCursor` and `PixelWidgetBase.ScrollTargetAt` stop at a
+  surface too.
+- **Hover rides the popover's pointer claim.** Hover resolves during paint, before a later surface is known, so
+  `WindowUiSettings` notes each painted surface with its paint order (`NotePaintedNode`, `NoteSurfacePainted`,
+  `PaintedSurfaces`, `IsCoveredBySurface`), clears them per cycle, carries them into the next and folds them into
+  `PointerClaimSettled`: the frame a surface appears, moves or goes asks the router for one more, exactly as a popover
+  that opens does. `HoverMayAnswer` is the one predicate for both claims; `HoverAllowedAt` and `PointerHovers` follow it.
+- **`NotificationsLayout`**: every toast card (fading and staying) and the open bar are surfaces. A fading toast keeps
+  its `NotificationHit` (`ToastIdOf` still names it); a staying card's body takes the press and does nothing; its
+  buttons act as ever. The toast stack sits at `NotificationsStyle.Corner`, default `ToastCorner.BottomRight`, and never
+  changes corner with the pointer; at the bottom the newest toast is nearest the corner, so a new toast pushes no older
+  one under the pointer. `Build(..., pointer, contentRect)` still compiles and ignores both; `PlaceToasts`,
+  `TopRightRegion` and `ToastHeightEstimate` are `[Obsolete]`.
+- **`ChildWindowsLayout`**: each window (and the tabbed box) is a surface, so the host's tooltip, hover and wheel no
+  longer reach through a window's body, a back window's close button no longer lights through the one in front, and a
+  maximised window's border no longer passes a press to the host.
+- Cost to consumers: none in source or binary (only init-only properties and new members). A non-pixel painter
+  (Console.Lib's `CellLayout`) registers no surface regions until it learns `IsSurface`, so a terminal keeps the old
+  behaviour.
+
 ## 11.85
 
 **Floating child windows inside one host window, as a model and one declaration.** (additive)
