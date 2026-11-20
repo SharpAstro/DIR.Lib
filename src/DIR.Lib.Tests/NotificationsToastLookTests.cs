@@ -52,6 +52,7 @@ public class NotificationsToastLookTests
             RGBAColor32.ContrastRatio(c.Text, fill).ShouldBeGreaterThanOrEqualTo(4.5f, $"{name} title on {s}");
             RGBAColor32.ContrastRatio(c.Body, fill).ShouldBeGreaterThanOrEqualTo(4.5f, $"{name} body on {s}");
             RGBAColor32.ContrastRatio(c.InkOn(s), c.Of(s)).ShouldBeGreaterThanOrEqualTo(4.5f, $"{name} primary button ink on {s}");
+            RGBAColor32.ContrastRatio(c.DimOn(fill), fill).ShouldBeGreaterThanOrEqualTo(4.5f, $"{name} source line on {s}");
             // The plain button and the Close cross sit on the card's own fill, in Text ink.
             RGBAColor32.ContrastRatio(c.Text, fill).ShouldBeGreaterThanOrEqualTo(4.5f, $"{name} plain button on {s}");
         }
@@ -67,8 +68,15 @@ public class NotificationsToastLookTests
         {
             RGBAColor32.ContrastRatio(c.Of(s), c.TintedFill(s)).ShouldBeGreaterThanOrEqualTo(3f, $"{name} icon on its fill, {s}");
             RGBAColor32.ContrastRatio(c.Of(s), p.ContentBg).ShouldBeGreaterThanOrEqualTo(3f, $"{name} icon on the page, {s}");
-            RGBAColor32.ContrastRatio(c.TintedEdge(s), p.ContentBg).ShouldBeGreaterThanOrEqualTo(1.5f, $"{name} edge against the page, {s}");
+            RGBAColor32.ContrastRatio(c.TintedEdge(s), p.ContentBg).ShouldBeGreaterThanOrEqualTo(3f, $"{name} edge against the page, {s}");
         }
+    }
+
+    [Fact]
+    public void TheSourceLineReaches4_5To1OnTheOneHueFillToo()
+    {
+        var c = NotificationsColors.From(NotificationsRenderTests.OneHue);
+        RGBAColor32.ContrastRatio(c.DimOn(c.Raised), c.Raised).ShouldBeGreaterThanOrEqualTo(4.5f);
     }
 
     [Fact]
@@ -196,8 +204,9 @@ public class NotificationsToastLookTests
     [Fact]
     public void EachSeverityIconAndCloseHaveOneDistinctCellCharacter()
     {
-        var kinds = new[] { Layout.IconKind.Info, Layout.IconKind.Warning, Layout.IconKind.Error, Layout.IconKind.Close };
-        kinds.Select(IconGlyphs.For).Distinct().Count().ShouldBe(4);
+        // Success shares the tick with the older Check kind (they mean the same), but is distinct from the other icons here.
+        var kinds = new[] { Layout.IconKind.Info, Layout.IconKind.Warning, Layout.IconKind.Error, Layout.IconKind.Success, Layout.IconKind.Close };
+        kinds.Select(IconGlyphs.For).Distinct().Count().ShouldBe(5);
         kinds.ShouldAllBe(k => IconGlyphs.For(k) != '?');
     }
 

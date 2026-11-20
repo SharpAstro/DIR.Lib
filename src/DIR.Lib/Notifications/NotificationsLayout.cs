@@ -103,8 +103,28 @@ namespace DIR.Lib.Notifications
         /// <summary>Tinted fill of a severity's toast: the severity mixed 15% into <see cref="Raised"/>; plain <see cref="Raised"/> when one-hue.</summary>
         public RGBAColor32 TintedFill(NotificationSeverity s) => OneHue ? Raised : RGBAColor32.Mix(Raised, Of(s), 0.15f);
 
-        /// <summary>Tinted edge of a severity's toast: the severity mixed 55% into <see cref="Raised"/>; <see cref="Separator"/> when one-hue.</summary>
-        public RGBAColor32 TintedEdge(NotificationSeverity s) => OneHue ? Separator : RGBAColor32.Mix(Raised, Of(s), 0.55f);
+        /// <summary>
+        /// Tinted edge of a severity's toast: the severity colour itself (a full mix into <see cref="Raised"/>), because the
+        /// edge must reach 3:1 against the page on dark and light palettes alike and no weaker mix does on every severity;
+        /// <see cref="Edge"/> when one-hue.
+        /// </summary>
+        public RGBAColor32 TintedEdge(NotificationSeverity s) => OneHue ? Edge : RGBAColor32.Mix(Raised, Of(s), 1f);
+
+        /// <summary>
+        /// The dim ink to draw on <paramref name="fill"/>: <see cref="Dim"/> itself when it reaches 4.5:1 there, else
+        /// <see cref="Dim"/> moved toward <see cref="Text"/> in steps of a tenth until it does.
+        /// </summary>
+        public RGBAColor32 DimOn(RGBAColor32 fill)
+        {
+            if (RGBAColor32.ContrastRatio(Dim, fill) >= 4.5f) return Dim;
+            for (var i = 1; i <= 10; i++)
+            {
+                var ink = RGBAColor32.Mix(Dim, Text, i / 10f);
+                if (RGBAColor32.ContrastRatio(ink, fill) >= 4.5f) return ink;
+            }
+
+            return Text;
+        }
 
         /// <summary>Ink for text or an icon drawn on a filled severity button of <paramref name="s"/>.</summary>
         public RGBAColor32 InkOn(NotificationSeverity s)
@@ -337,7 +357,7 @@ namespace DIR.Lib.Notifications
         {
             var n = view.Notification;
             var fading = n.Kind == NotificationKind.Fading;
-            var parts = new List<Node> { n.Row?.Invoke() ?? DefaultBody(n, c, s, showTime: false) };
+            var parts = new List<Node> { n.Row?.Invoke() ?? DefaultBody(n, c, s, showTime: false, c.TintedFill(n.Severity)) };
             if (!fading)
             {
                 parts.Add(Buttons(n, feed, c, s));
@@ -379,6 +399,9 @@ namespace DIR.Lib.Notifications
                 .WAuto();
             var closeLayer = Builder.VStack(Builder.HStack(Builder.Spacer().WStar(), close).WStar())
                 .Pad(s.Padding)
+                // The card's 1-unit edge takes a whole cell on a cell surface, so the layer is bordered alike (invisibly)
+                // and the cross sits inside the edge instead of on it.
+                .Border(new RGBAColor32(0, 0, 0, 0), 1f, 0f)
                 .Stretch();
             return Builder.Overlay(card.Clickable(new NotificationHit(NotificationPart.Toast, n.Id)).AsSurface(), closeLayer).WStar();
         }
@@ -502,7 +525,7 @@ namespace DIR.Lib.Notifications
 
         // ---- the default row ----
 
-        private static Node DefaultBody(Notification n, NotificationsColors c, NotificationsStyle s, bool showTime)
+        private static Node DefaultBody(Notification n, NotificationsColors c, NotificationsStyle s, bool showTime, RGBAColor32? fill = null)
         {
             var head = new List<Node>
             {
@@ -523,7 +546,7 @@ namespace DIR.Lib.Notifications
 
             if (!string.IsNullOrEmpty(n.Source))
             {
-                parts.Add(Builder.Text(n.Source!, s.FontSize, c.Dim).WStar().WithTooltip(n.Source!));
+                parts.Add(Builder.Text(n.Source!, s.FontSize, fill is { } f ? c.DimOn(f) : c.Dim).WStar().WithTooltip(n.Source!));
             }
 
             return Builder.VStack([.. parts]).WStar();
