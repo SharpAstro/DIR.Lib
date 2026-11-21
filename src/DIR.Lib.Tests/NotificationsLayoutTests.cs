@@ -420,6 +420,32 @@ public class NotificationsLayoutTests
         var heights = all.Where(p => p.Node.Hit is HitResult.ButtonHit || p.Node.Hit is NotificationHit
             { Part: NotificationPart.Action or NotificationPart.Dismiss }).Select(p => p.Rect.Height).Distinct().ToList();
         heights.Max().ShouldBe(heights.Min(), Tol(cells));
+
+        var middles = all.Where(p => p.Node.Hit is HitResult.ButtonHit || p.Node.Hit is NotificationHit
+            { Part: NotificationPart.Action or NotificationPart.Dismiss }).Select(p => p.Rect.Y + p.Rect.Height / 2f).ToList();
+        middles.Max().ShouldBe(middles.Min(), Tol(cells));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheBarRowCarriesTheHostButtonsBeforeDismiss(bool cells)
+    {
+        var feed = new NotificationFeed();
+        feed.Post(WithHostButtons(Stay("s")), At(0));
+        var all = Arrange(Tree(feed, new NotificationsState { Open = true }), cells);
+
+        var fix = all.Where(p => p.Node.Hit is HitResult.ButtonHit { Action: "fix" }).ToList();
+        var merge = all.Where(p => p.Node.Hit is HitResult.ButtonHit { Action: "merge" }).ToList();
+        var dismiss = all.Where(p => p.Node.Hit is NotificationHit { Part: NotificationPart.Dismiss }).ToList();
+        fix.ShouldNotBeEmpty();
+        merge.ShouldNotBeEmpty();
+        dismiss.ShouldNotBeEmpty();
+        // The bar's row is the last of each (the toast, when shown, is painted before it)
+        fix[^1].Rect.X.ShouldBeLessThan(merge[^1].Rect.X);
+        merge[^1].Rect.X.ShouldBeLessThan(dismiss[^1].Rect.X);
+        fix[^1].Rect.Height.ShouldBe(dismiss[^1].Rect.Height, Tol(cells));
+        (fix[^1].Rect.Y + fix[^1].Rect.Height / 2f).ShouldBe(dismiss[^1].Rect.Y + dismiss[^1].Rect.Height / 2f, Tol(cells));
     }
 
     [Theory]

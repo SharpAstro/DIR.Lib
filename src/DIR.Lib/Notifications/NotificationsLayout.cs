@@ -460,6 +460,7 @@ namespace DIR.Lib.Notifications
                 ? PlainButton("Dismiss", c, s, dismissHit, () => feed.Dismiss(n.Id))
                 : PrimaryButton("Dismiss", n.Severity, c, s, dismissHit, () => feed.Dismiss(n.Id)));
 
+            // A single non-wrapping row, kept so the buttons stay right-aligned on one middle; the host keeps its labels short.
             return Builder.HStack([.. buttons]).WithGap(s.Gap).CrossCenter().WStar();
         }
 
@@ -468,7 +469,7 @@ namespace DIR.Lib.Notifications
 
         /// <summary>
         /// A button filled in <paramref name="severity"/>'s colour with <see cref="NotificationsColors.InkOn"/> ink: the
-        /// first button of a staying card. A host's own row builds the same button by calling this.
+        /// the lead button of a row of buttons on a staying card (the action, or Dismiss when it stands alone). A host's own buttons are built by calling this too.
         /// </summary>
         public static Node PrimaryButton(string label, NotificationSeverity severity, NotificationsColors colors,
             NotificationsStyle style, HitResult hit, Action run)
@@ -484,7 +485,7 @@ namespace DIR.Lib.Notifications
                 .WAuto();
         }
 
-        /// <summary>A button with no fill, in <see cref="NotificationsColors.Text"/>: every button of a staying card after the first.</summary>
+        /// <summary>A button with no fill, in <see cref="NotificationsColors.Text"/>: a button beside another on a staying card (Dismiss beside any other button, and the host's secondary buttons).</summary>
         public static Node PlainButton(string label, NotificationsColors colors, NotificationsStyle style,
             HitResult hit, Action run)
         {
