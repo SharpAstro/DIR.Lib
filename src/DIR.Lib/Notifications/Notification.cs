@@ -54,6 +54,15 @@ namespace DIR.Lib.Notifications
         /// the default row from the fields above.
         /// </summary>
         public Func<Layout.Node>? Row { get; init; }
+
+        /// <summary>
+        /// The host's own buttons for a staying toast, drawn in the button row after the action (if any) and before
+        /// Dismiss, so they share its height, padding, radius and middle. Evaluated every frame like <see cref="Row"/>,
+        /// so a host can show a working or done state. Build them with <see cref="NotificationsLayout.PrimaryButton"/>
+        /// and <see cref="NotificationsLayout.PlainButton"/>. Staying toasts only; a fading toast has no button row.
+        /// Init-only, never a constructor parameter, so the record's constructor keeps its shape.
+        /// </summary>
+        public Func<IReadOnlyList<Layout.Node>>? Buttons { get; init; }
     }
 
     /// <summary>A toast on screen: the notification and, for a fading one, how much of its time is left.</summary>

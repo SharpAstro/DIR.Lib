@@ -437,20 +437,28 @@ namespace DIR.Lib.Notifications
 
         private static Node Buttons(Notification n, NotificationFeed feed, NotificationsColors c, NotificationsStyle s)
         {
-            // The first button (the action, else Dismiss) is filled in the severity colour; the rest are plain.
+            // Order: [Action, filled] [the host's own buttons] [Dismiss]. Dismiss is filled in the severity colour only when
+            // it stands alone (no action and no host button); beside any other button it is plain.
             var buttons = new List<Node> { Builder.Spacer().WStar() };
+            var hasOther = false;
             if (n.Action is not null && !string.IsNullOrEmpty(n.ActionLabel))
             {
                 buttons.Add(PrimaryButton(n.ActionLabel!, n.Severity, c, s,
                     new NotificationHit(NotificationPart.Action, n.Id), () => feed.Handle(n.Id)));
-                buttons.Add(PlainButton("Dismiss", c, s,
-                    new NotificationHit(NotificationPart.Dismiss, n.Id), () => feed.Dismiss(n.Id)));
+                hasOther = true;
             }
-            else
+
+            var host = n.Buttons?.Invoke();
+            if (host is { Count: > 0 })
             {
-                buttons.Add(PrimaryButton("Dismiss", n.Severity, c, s,
-                    new NotificationHit(NotificationPart.Dismiss, n.Id), () => feed.Dismiss(n.Id)));
+                buttons.AddRange(host);
+                hasOther = true;
             }
+
+            var dismissHit = new NotificationHit(NotificationPart.Dismiss, n.Id);
+            buttons.Add(hasOther
+                ? PlainButton("Dismiss", c, s, dismissHit, () => feed.Dismiss(n.Id))
+                : PrimaryButton("Dismiss", n.Severity, c, s, dismissHit, () => feed.Dismiss(n.Id)));
 
             return Builder.HStack([.. buttons]).WithGap(s.Gap).CrossCenter().WStar();
         }
