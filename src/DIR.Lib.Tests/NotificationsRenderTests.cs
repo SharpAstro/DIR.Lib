@@ -27,7 +27,7 @@ public class NotificationsRenderTests
     private static readonly DateTimeOffset T0 = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
     private static DateTimeOffset At(double s) => T0.AddSeconds(s);
 
-    private static readonly bool UpdateBaselines = true; // TEMP
+    private static readonly bool UpdateBaselines = Environment.GetEnvironmentVariable("DIR_LIB_UPDATE_BASELINES") == "1";
     private static readonly bool UpdateSnapshots = Environment.GetEnvironmentVariable("DIR_LIB_UPDATE_SNAPSHOTS") == "1";
     private static readonly string FontPath = Path.Combine(AppContext.BaseDirectory, "Fonts", "DejaVuSans.ttf");
     private static readonly string BaselineDir = Path.Combine(AppContext.BaseDirectory, "Baselines");
