@@ -211,8 +211,8 @@ public class NotificationsRenderTests
             Source = "pilot",
             Buttons = () =>
             [
-                NotificationsLayout.PrimaryButton("Fix it", NotificationSeverity.Warn, Colors, Style, new ButtonHit("fix"), () => { }),
-                NotificationsLayout.PlainButton("Merge the PR", Colors, Style, new ButtonHit("merge"), () => { }),
+                NotificationsLayout.PrimaryButton("Fix it", NotificationSeverity.Warn, Colors, Style, new HitResult.ButtonHit("fix"), () => { }),
+                NotificationsLayout.PlainButton("Merge the PR", Colors, Style, new HitResult.ButtonHit("merge"), () => { }),
             ],
         }, At(0));
         return feed;

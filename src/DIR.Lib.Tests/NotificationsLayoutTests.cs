@@ -393,8 +393,8 @@ public class NotificationsLayoutTests
             Buttons = () =>
             [
                 NotificationsLayout.PrimaryButton(label?.Invoke() ?? "Fix it", n.Severity, Colors, Style,
-                    new ButtonHit("fix"), () => onFix?.Invoke()),
-                NotificationsLayout.PlainButton("Merge", Colors, Style, new ButtonHit("merge"), () => { }),
+                    new HitResult.ButtonHit("fix"), () => onFix?.Invoke()),
+                NotificationsLayout.PlainButton("Merge", Colors, Style, new HitResult.ButtonHit("merge"), () => { }),
             ],
         };
 
@@ -409,15 +409,15 @@ public class NotificationsLayoutTests
 
         float X(Func<Placed, bool> f) => all.First(f).Rect.X;
         var action = X(p => p.Node.Hit is NotificationHit { Part: NotificationPart.Action });
-        var fix = X(p => p.Node.Hit is ButtonHit { Action: "fix" });
-        var merge = X(p => p.Node.Hit is ButtonHit { Action: "merge" });
+        var fix = X(p => p.Node.Hit is HitResult.ButtonHit { Action: "fix" });
+        var merge = X(p => p.Node.Hit is HitResult.ButtonHit { Action: "merge" });
         var dismiss = all.First(p => p.Node.Hit is NotificationHit { Part: NotificationPart.Dismiss });
         action.ShouldBeLessThan(fix);
         fix.ShouldBeLessThan(merge);
         merge.ShouldBeLessThan(dismiss.Rect.X);
         dismiss.Node.Background.ShouldBeNull();
 
-        var heights = all.Where(p => p.Node.Hit is ButtonHit || p.Node.Hit is NotificationHit
+        var heights = all.Where(p => p.Node.Hit is HitResult.ButtonHit || p.Node.Hit is NotificationHit
             { Part: NotificationPart.Action or NotificationPart.Dismiss }).Select(p => p.Rect.Height).Distinct().ToList();
         heights.Max().ShouldBe(heights.Min(), Tol(cells));
     }
@@ -456,7 +456,7 @@ public class NotificationsLayoutTests
         feed.Post(WithHostButtons(Stay("s"), () => ran++), At(0));
         var all = Arrange(Tree(feed, new NotificationsState()), cells);
 
-        all.First(p => p.Node.Hit is ButtonHit { Action: "fix" }).Node.OnClick!(InputModifier.None);
+        all.First(p => p.Node.Hit is HitResult.ButtonHit { Action: "fix" }).Node.OnClick!(InputModifier.None);
         ran.ShouldBe(1);
         feed.NeedsYou.Count.ShouldBe(1);
     }
