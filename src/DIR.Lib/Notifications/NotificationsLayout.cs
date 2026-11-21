@@ -468,7 +468,7 @@ namespace DIR.Lib.Notifications
         public const float ButtonPadY = 4f;
 
         /// <summary>
-        /// A button filled in <paramref name="severity"/>'s colour with <see cref="NotificationsColors.InkOn"/> ink: the
+        /// A button filled in <paramref name="severity"/>'s colour with <see cref="NotificationsColors.InkOn"/> ink:
         /// the lead button of a row of buttons on a staying card (the action, or Dismiss when it stands alone). A host's own buttons are built by calling this too.
         /// </summary>
         public static Node PrimaryButton(string label, NotificationSeverity severity, NotificationsColors colors,
