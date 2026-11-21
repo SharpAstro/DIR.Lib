@@ -9,6 +9,15 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.91
+
+A staying `Notification` carries the host's own buttons in its button row (#302). The new init-only
+`Notification.Buttons` (`Func<IReadOnlyList<Layout.Node>>?`) is evaluated every build like `Row`, so a host can
+show a working or done state, and its buttons are drawn after the action and before Dismiss. Built with
+`NotificationsLayout.PrimaryButton` and `PlainButton`, they share one height, padding, radius and middle with
+Dismiss, where a host's own row above it did not. Dismiss is filled only when it stands alone; beside an action
+or any host button it is plain. Additive: an init-only property, no constructor change.
+
 ## 11.90
 
 **Fix: the arrows could not get past a run of disabled rows taller than a scrolled list's viewport.** (additive)

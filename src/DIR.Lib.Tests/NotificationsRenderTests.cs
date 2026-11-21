@@ -198,6 +198,34 @@ public class NotificationsRenderTests
     public void NarrowCollapsedStripWithToastsAtBottomRightAndALongMessage()
         => CompareBaseline(Draw(Tree(NarrowFeed(), new NotificationsState()), NarrowW), "notifications_strip_toasts_bottom_right_narrow.png");
 
+    /// <summary>A staying toast with the host's own two buttons (one filled, one plain) beside the plain Dismiss.</summary>
+    private static NotificationFeed HostButtonsFeed()
+    {
+        var feed = new NotificationFeed();
+        feed.Post(new Notification
+        {
+            Title = "Card 214 failed its checks",
+            Text = "Two tests fail on the branch; fix them or merge the pull request as it stands.",
+            Severity = NotificationSeverity.Warn,
+            Kind = NotificationKind.Staying,
+            Source = "pilot",
+            Buttons = () =>
+            [
+                NotificationsLayout.PrimaryButton("Fix it", NotificationSeverity.Warn, Colors, Style, new ButtonHit("fix"), () => { }),
+                NotificationsLayout.PlainButton("Merge the PR", Colors, Style, new ButtonHit("merge"), () => { }),
+            ],
+        }, At(0));
+        return feed;
+    }
+
+    [Fact]
+    public void StayingToastWithHostButtonsWide()
+        => CompareBaseline(Draw(Tree(HostButtonsFeed(), new NotificationsState())), "notifications_host_buttons.png");
+
+    [Fact]
+    public void StayingToastWithHostButtonsNarrow()
+        => CompareBaseline(Draw(Tree(HostButtonsFeed(), new NotificationsState()), NarrowW), "notifications_host_buttons_narrow.png");
+
     private static NotificationFeed NarrowFeed()
     {
         var feed = new NotificationFeed();
