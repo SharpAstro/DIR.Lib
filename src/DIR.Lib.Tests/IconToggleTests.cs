@@ -189,7 +189,7 @@ public class IconToggleTests
         rig.Asked.ShouldBeEmpty();
     }
 
-    // ---- contrast ----
+    // ---- hit identity ----
 
     private static (Widget Widget, InputRouter Router) Paint(Node tree)
     {
@@ -221,8 +221,12 @@ public class IconToggleTests
         var hit = new HitResult.ButtonHit("pin-row-3");
         var tree = Builder.HStack(Builder.IconToggle(IconKind.Pin, false, _ => { }, Dark, "Pin", hit: hit)).HFixed(28f);
         Arrange(tree, 200f).Any(n => Equals(n.Node.Hit, hit)).ShouldBeTrue();
-        var (w, _) = Paint(tree);
+        var asked = new List<bool>();
+        var pressTree = Builder.HStack(Builder.IconToggle(IconKind.Pin, false, asked.Add, Dark, "Pin", hit: hit)).HFixed(28f);
+        var (w, router) = Paint(pressTree);
         RegionOf(w, hit).Result.ShouldBe(hit);
+        ClickOn(router, RegionOf(w, hit));
+        asked.ShouldBe([true]);
     }
 
     [Fact]
@@ -265,6 +269,8 @@ public class IconToggleTests
         var (w, _) = Paint(tree);
         RegionOf(w, expected).Result.ShouldBe(expected);
     }
+
+    // ---- contrast ----
 
     public static TheoryData<string> Palettes => new() { "dark", "light", "onehue" };
 
