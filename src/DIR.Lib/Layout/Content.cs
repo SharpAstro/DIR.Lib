@@ -71,6 +71,12 @@ public abstract record Content
         /// </para>
         /// </summary>
         public bool Selectable { get; init; }
+
+        /// <summary>
+        /// Draws a 1-unit rule under the measured run, in <see cref="Color"/>, while the pointer is within the
+        /// node. For a hyperlink. The pixel painter honours it; Console.Lib's cell painter does not yet.
+        /// </summary>
+        public bool UnderlineOnHover { get; init; }
     }
 
     /// <summary>A fixed-size piece (icon, swatch, separator, spacer) -- intrinsic size is <paramref name="Width"/> x <paramref name="Height"/> design units. The painter fills it only when <see cref="Color"/> is non-transparent, so a transparent Box is a pure spacer.</summary>

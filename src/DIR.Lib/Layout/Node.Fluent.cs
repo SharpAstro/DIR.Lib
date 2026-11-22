@@ -77,6 +77,20 @@ public abstract partial record Node
     /// motion; without one this is inert.</summary>
     public Node BgHover(RGBAColor32 color) => this with { HoverBackground = color };
 
+    /// <summary>
+    /// Paints <paramref name="color"/> instead of the hover, focus and ordinary background while the primary button is
+    /// held down on this node. See <see cref="Node.PressedBackground"/>.
+    /// </summary>
+    public Node BgPressed(RGBAColor32 color) => this with { PressedBackground = color };
+
+    /// <summary>
+    /// Underlines the text of this leaf, in its own colour, while the pointer is within the node (a link's hover).
+    /// A no-op on a node that is not a text leaf. See <see cref="Content.Text.UnderlineOnHover"/>.
+    /// </summary>
+    public Node UnderlineOnHover() => this is Leaf { Content: Content.Text t } leaf
+        ? leaf with { Content = t with { UnderlineOnHover = true } }
+        : this;
+
     /// <summary>Paint <paramref name="color"/> instead of <see cref="Node.Bg"/> while the keyboard
     /// cursor is on this node. See <see cref="Node.FocusBackground"/> — it resolves against this node's
     /// <see cref="Node.Hit"/>, so a row needs no state of its own to be navigable.</summary>

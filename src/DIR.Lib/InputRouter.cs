@@ -593,6 +593,12 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     }
 
     /// <summary>A press nothing in Top took, while a modal is painted: consumed, and outside the card it closes the modal.</summary>
+    private bool WithinModalCard(float x, float y)
+    {
+        var card = ui.PaintedModal!.Card;
+        return x >= card.X && x < card.X + card.Width && y >= card.Y && y < card.Y + card.Height;
+    }
+
     private bool ConsumeModalPress(IReadOnlyList<IPixelWidget> widgets, float x, float y)
     {
         if (ModalIndex(widgets) < 0) return false;
@@ -623,6 +629,12 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         var press = new PointerPress(down.X, down.Y, down.Button, down.Modifiers, down.ClickCount);
         var widgets = Widgets();
         NoteListPress(widgets, down.X, down.Y);
+
+        // A new left press replaces whatever press was recorded (a release the window never saw).
+        if (down.Button == MouseButton.Left)
+        {
+            ui.PressOrigin = null;
+        }
 
         if (!ModalActive(widgets) && SelectionPress(widgets, down, press))
         {
@@ -658,6 +670,15 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                     && !region.IsSurface && ContextMenuBeneath(i, down.X, down.Y) is { } owning)
                 {
                     region = owning;
+                }
+
+                // Record the held press for Node.PressedBackground. Not when a surface or a popover backdrop took
+                // it, and under a declared modal only inside its card: a press such a layer took lights nothing beneath.
+                if (down.Button == MouseButton.Left && !region.IsSurface && region.Dismisses is null
+                    && (!ModalActive(widgets) || WithinModalCard(down.X, down.Y)))
+                {
+                    ui.PressOrigin = (down.X, down.Y);
+                    requestRedraw();
                 }
 
                 // A container that declared OnPressWithin (a floating window) hears the press first, then the topmost
@@ -982,6 +1003,13 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     private bool HandleMouseUp(InputEvent.MouseUp up)
     {
         _pointer = (up.X, up.Y);
+
+        // The held press ends with the release, whatever else the release does; the pressed fill goes with it.
+        if (up.Button == MouseButton.Left && ui.PressOrigin is not null)
+        {
+            ui.PressOrigin = null;
+            requestRedraw();
+        }
 
         // The release of a side button belongs to the app, like its press, and is not the end of a drag
         // another button began: a gesture only ends when its own button comes up.
@@ -1865,7 +1893,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                     continue;
                 }
 
-                if (node.HoverBackground is not null)
+                if (node.HoverBackground is not null || node.PressedBackground is not null)
                 {
                     return node;
                 }
