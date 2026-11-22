@@ -102,7 +102,7 @@ namespace DIR.Lib
             /// <summary>
             /// A painter callback owns these pixels, so the tree cannot see them change. Compared like
             /// any other node (its rect and background still matter), but its CONTENT is invisible here,
-            /// which is why <see cref="Compute"/> takes a <c>fillChanged</c> predicate: the only thing
+            /// which is why <c>Compute</c> takes a <c>fillChanged</c> predicate: the only thing
             /// that knows whether an image pane or a histogram moved is whatever draws it.
             /// </summary>
             Fill,
