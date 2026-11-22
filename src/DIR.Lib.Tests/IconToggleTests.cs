@@ -191,6 +191,81 @@ public class IconToggleTests
 
     // ---- contrast ----
 
+    private static (Widget Widget, InputRouter Router) Paint(Node tree)
+    {
+        var widget = new Widget(new RgbaImageRenderer(200u, 60u)) { FontPath = FontPath, Tree = tree };
+        var router = new InputRouter(widget.Ui, new BackgroundTaskTracker(), static () => { }) { Widgets = () => [widget] };
+        widget.Render(200f, 60f);
+        router.AfterPaint();
+        return (widget, router);
+    }
+
+    private static ClickableRegion RegionOf(Widget widget, HitResult hit)
+    {
+        var regions = new List<ClickableRegion>();
+        widget.CollectPaintedRegions(regions);
+        return regions.First(r => r.Result == hit);
+    }
+
+    private static void ClickOn(InputRouter router, ClickableRegion r)
+    {
+        var x = r.X + r.Width / 2f;
+        var y = r.Y + r.Height / 2f;
+        router.Handle(new InputEvent.MouseDown(x, y, MouseButton.Left, InputModifier.None, 1));
+        router.Handle(new InputEvent.MouseUp(x, y, MouseButton.Left, InputModifier.None));
+    }
+
+    [Fact]
+    public void An_IconToggle_with_a_hit_registers_that_hit()
+    {
+        var hit = new HitResult.ButtonHit("pin-row-3");
+        var tree = Builder.HStack(Builder.IconToggle(IconKind.Pin, false, _ => { }, Dark, "Pin", hit: hit)).HFixed(28f);
+        Arrange(tree, 200f).Any(n => Equals(n.Node.Hit, hit)).ShouldBeTrue();
+        var (w, _) = Paint(tree);
+        RegionOf(w, hit).Result.ShouldBe(hit);
+    }
+
+    [Fact]
+    public void An_IconAction_with_a_hit_registers_that_hit()
+    {
+        var hit = new HitResult.ButtonHit("open-row-3");
+        var pressed = 0;
+        var tree = Builder.HStack(Builder.IconAction(IconKind.OpenInPage, () => pressed++, Dark, "Open", hit: hit)).HFixed(28f);
+        Arrange(tree, 200f).Any(n => Equals(n.Node.Hit, hit)).ShouldBeTrue();
+        var (w, router) = Paint(tree);
+        ClickOn(router, RegionOf(w, hit));
+        pressed.ShouldBe(1);
+    }
+
+    [Fact]
+    public void Two_Pin_toggles_with_distinct_hits_are_told_apart()
+    {
+        var hitA = new HitResult.ButtonHit("pin-a");
+        var hitB = new HitResult.ButtonHit("pin-b");
+        var asked = new List<string>();
+        var tree = Builder.HStack(
+            Builder.IconToggle(IconKind.Pin, false, _ => asked.Add("a"), Dark, "Pin", hit: hitA).WFixed(28f),
+            Builder.IconToggle(IconKind.Pin, false, _ => asked.Add("b"), Dark, "Pin", hit: hitB).WFixed(28f)).HFixed(28f);
+        var (w, router) = Paint(tree);
+        var a = RegionOf(w, hitA);
+        var b = RegionOf(w, hitB);
+        a.X.ShouldNotBe(b.X);
+        ClickOn(router, b);
+        asked.ShouldBe(["b"]);
+        ClickOn(router, a);
+        asked.ShouldBe(["b", "a"]);
+    }
+
+    [Fact]
+    public void Without_a_hit_the_identity_is_the_icon_toggle_kind()
+    {
+        var expected = new HitResult.ButtonHit("icon-toggle:" + IconKind.Pin);
+        var tree = Builder.HStack(Builder.IconToggle(IconKind.Pin, false, _ => { }, Dark, "Pin")).HFixed(28f);
+        Arrange(tree, 200f).Any(n => Equals(n.Node.Hit, expected)).ShouldBeTrue();
+        var (w, _) = Paint(tree);
+        RegionOf(w, expected).Result.ShouldBe(expected);
+    }
+
     public static TheoryData<string> Palettes => new() { "dark", "light", "onehue" };
 
     private static UiPalette PaletteNamed(string name) => name switch

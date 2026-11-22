@@ -227,6 +227,28 @@ public class SegmentedControlTests
 
     // ---- contrast ----
 
+    [Fact]
+    public void A_selected_option_with_its_own_hit_leaves_the_cursor_closed()
+    {
+        var own = new HitResult.ButtonHit("mode-side");
+        var options = Options();
+        options[1] = new ButtonGroupOption<Mode>(Mode.Side, "Side by side", IconKind.CompareSideBySide) { Hit = own };
+
+        var cursor = new ListCursor();
+        var tree = Build(Dark, Mode.Side, _ => { }, cursor, options);
+        cursor.IsOpen.ShouldBeFalse();
+        var arranged = Arrange(tree, 900f);
+        arranged.Any(n => Equals(n.Node.Hit, own)).ShouldBeTrue();
+        arranged.Any(n => n.Node.Hit is HitResult.ListItemHit { Index: 1 }).ShouldBeFalse();
+
+        var plain = new ListCursor();
+        var plainTree = Build(Dark, Mode.Side, _ => { }, plain);
+        plain.IsOpen.ShouldBeTrue();
+        plain.ListId.ShouldBe("mode");
+        plain.Index.ShouldBe(1);
+        Arrange(plainTree, 900f).Any(n => n.Node.Hit is HitResult.ListItemHit { Index: 1 }).ShouldBeTrue();
+    }
+
     public static TheoryData<string> Palettes => new() { "dark", "light", "onehue" };
 
     private static UiPalette PaletteNamed(string name) => name switch
