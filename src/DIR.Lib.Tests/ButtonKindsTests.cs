@@ -154,14 +154,17 @@ public class ButtonKindsTests
         private readonly TestWidget _widget;
         private readonly InputRouter _router;
         public int Clicks;
-        public Node Root { get; }
+        public Node Root { get; private set; }
 
         public Rig(UiTheme theme, ButtonKind kind, string? disabledReason = null, bool focused = false)
-            : this(theme, focused
+            : this(theme, (Node?)null)
+        {
+            Root = focused
                 ? Builder.HStack(Builder.Button("Save", kind, () => Clicks++, theme, disabledReason: disabledReason,
                         hit: new HitResult.ListItemHit("btns", 0))).HFixed(28f).ListOf(Cursor("btns"), "btns")
-                : Builder.HStack(Builder.Button("Save", kind, () => Clicks++, theme, disabledReason: disabledReason)).HFixed(28f))
-        { }
+                : Builder.HStack(Builder.Button("Save", kind, () => Clicks++, theme, disabledReason: disabledReason)).HFixed(28f);
+            Paint();
+        }
 
         private static ListCursor Cursor(string id)
         {
@@ -170,9 +173,9 @@ public class ButtonKindsTests
             return c;
         }
 
-        public Rig(UiTheme theme, Node root)
+        public Rig(UiTheme theme, Node? root)
         {
-            Root = root;
+            Root = root ?? Builder.Spacer();
             _renderer.Surface.Clear(theme.Palette.PanelBg);
             _widget = new TestWidget(_renderer);
             _router = new InputRouter(_widget.Ui, new BackgroundTaskTracker(), static () => { }) { Widgets = () => [_widget] };
