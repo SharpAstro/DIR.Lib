@@ -12,7 +12,8 @@ changed and why.
 ## 11.92
 
 Fix, additive, no API change. A widget listed in `InputRouter.Widgets` that did not paint a cycle now stops counting
-in `InputRouter.AfterPaint` (decided per settings object, so a wrapper that forwards `Ui` counts as the inner widget): its settings are no longer asked whether the pointer claim settled, and the surfaces it
+in `InputRouter.AfterPaint` (decided per settings object, so a wrapper that forwards `Ui` counts as the inner
+widget): its settings are no longer asked whether the pointer claim settled, and the surfaces it
 painted last are no longer laid over the widgets painted before it. A host that kept a toast in a widget with its own
 settings saw endless redraws, and a row dark beneath the toast's old rect, once that widget stopped painting. Consumers
 need no change.

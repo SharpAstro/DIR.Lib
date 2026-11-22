@@ -421,4 +421,24 @@ public class InputRouterSurfaceTests
         h.Redraws.ShouldBe(0);
         h.PixelAt(Covered).ShouldBe(RowHot, "once the wrapped widget stops painting the row lights");
     }
+
+    [Fact]
+    public void ASettingsObjectUnlistedThenListedAgain_CountsAsNewAndIsCarriedAgain()
+    {
+        var h = new Harness(Placement.LaterWidgetOwnSettings);
+        h.Move(Covered);
+        h.Paint();
+        h.Paint();
+
+        h.Router.Widgets = () => [h.Back];
+        for (var i = 0; i < 3; i++)
+        {
+            h.PaintBackOnly();      // Front's settings are forgotten here
+        }
+
+        h.Router.Widgets = () => [h.Back, h.Front];
+        h.Redraws = 0;
+        h.PaintBackOnly();
+        h.Redraws.ShouldBeGreaterThan(0, "a forgotten settings object is new again, so its last surfaces are carried");
+    }
 }
