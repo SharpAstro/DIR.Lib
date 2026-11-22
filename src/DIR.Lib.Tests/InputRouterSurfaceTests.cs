@@ -350,6 +350,7 @@ public class InputRouterSurfaceTests
         h.Move(Covered);
         h.Paint();      // Front paints its surface once; its own settings never see it settle
 
+        h.Redraws = 0;
         h.PaintBackOnly();      // at most one extra frame is asked for, to drop the stale carry
         h.Redraws.ShouldBeLessThanOrEqualTo(1);
         h.Redraws = 0;
@@ -384,6 +385,7 @@ public class InputRouterSurfaceTests
         h.Router.Widgets = () => [h.Back, new WrapperWidget(h.Front)];
         h.Move(Covered);
         h.Paint();
+        h.Paint();      // the carry reaches the row on the frame after the surface first paints
         h.PixelAt(Covered).ShouldBe(RowRest, "the wrapped widget's surface covers the row while it paints");
 
         for (var i = 0; i < 3; i++)
