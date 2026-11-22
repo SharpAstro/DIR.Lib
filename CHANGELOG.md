@@ -9,6 +9,26 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.93
+
+Theme-driven buttons and links (#312, step 1), additive. New public members:
+
+- `UiPalette.ControlFill`, `ControlFillHover`, `ControlFillPressed`, `ControlEdge`: the neutral control roles, derived
+  from the existing palette so every palette and theme looks as it did.
+- `UiMetrics.ControlRadius` (init-only, default 4).
+- `ControlStyles`, `ButtonStyle` and `HyperlinkStyle` records, and `UiTheme.Controls` (derived per instance by
+  `ControlStyles.For`; restyle one kind with a `with`).
+- `Layout.Node.PressedBackground`, set with `BgPressed`: painted while the primary button is held on the node.
+- `Layout.Content.Text.UnderlineOnHover`, set with `Node.UnderlineOnHover()`.
+- `Layout.ButtonKind` (Accent, Standard, Subtle) and `Builder.Button(label, kind, onClick, theme, icon, opens,
+  disabledReason, tooltip, hit)`: height `ButtonHeight`, everything else from `UiTheme.Controls`; `opens` adds a
+  `CaretDown`; a disabled button is flat, takes no press and shows its reason.
+- `Builder.Hyperlink(label, onClick, theme, external)`: link colour, underline on hover, hand cursor, a trailing north-east
+  arrow when `external`; its hit is a `ButtonHit` named by the label.
+
+Console.Lib's cell painter and the other consumers are not built here; the new Node members are inert for a painter that
+ignores them.
+
 ## 11.92
 
 Fix, additive, no API change. A widget listed in `InputRouter.Widgets` that did not paint a cycle now stops counting
