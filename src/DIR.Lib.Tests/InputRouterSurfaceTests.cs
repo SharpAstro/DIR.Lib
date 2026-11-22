@@ -343,6 +343,25 @@ public class InputRouterSurfaceTests
         h.PixelAt(Open).ShouldBe(RowHot, "the row in the open lights as ever");
     }
 
+    [Theory]
+    [MemberData(nameof(Placements))]
+    public void ASecondAfterPaintWithNoPaintBetween_LeavesTheCarryAlone(Placement placement)
+    {
+        var h = new Harness(placement);
+        h.Move(Covered);
+        h.Paint();
+        h.Paint();
+
+        h.Redraws = 0;
+        h.Router.AfterPaint();
+        h.Router.AfterPaint();
+        h.Redraws.ShouldBe(0, "nothing painted, so nothing is asked");
+
+        h.Paint();
+        h.PixelAt(Covered).ShouldBe(RowRest, "the carry survived the extra calls");
+        h.Redraws.ShouldBe(0);
+    }
+
     [Fact]
     public void AListedWidgetThatStopsPainting_NeitherAsksForRedrawsNorKeepsTheRowDark()
     {
