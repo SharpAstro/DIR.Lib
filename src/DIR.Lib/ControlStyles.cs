@@ -20,6 +20,9 @@ public sealed record ButtonStyle
     /// <summary>Edge colour; null draws no edge.</summary>
     public RGBAColor32? Edge { get; init; }
 
+    /// <summary>Width of the edge ring in design units (used when <see cref="Edge"/> is set).</summary>
+    public required float EdgeWidth { get; init; }
+
     /// <summary>Corner radius in design units.</summary>
     public required float Radius { get; init; }
 
@@ -38,6 +41,9 @@ public sealed record HyperlinkStyle
 {
     /// <summary>Link colour.</summary>
     public required RGBAColor32 Color { get; init; }
+
+    /// <summary>Gap between the text and the trailing arrow of an external link, in design units.</summary>
+    public required float ArrowGap { get; init; }
 
     /// <summary>Whether the text is underlined while the pointer is over it.</summary>
     public bool UnderlineOnHover { get; init; } = true;
@@ -82,6 +88,7 @@ public sealed record ControlStyles
                 RestFill = palette.Accent,
                 HoverFill = RGBAColor32.Mix(palette.Accent, away, AccentHoverStep),
                 PressedFill = RGBAColor32.Mix(palette.Accent, away, AccentPressedStep),
+                EdgeWidth = metrics.ControlEdgeWidth,
                 Radius = metrics.ControlRadius,
                 PaddingX = metrics.Padding,
                 Ink = accentInk,
@@ -93,6 +100,7 @@ public sealed record ControlStyles
                 HoverFill = palette.ControlFillHover,
                 PressedFill = palette.ControlFillPressed,
                 Edge = palette.ControlEdge,
+                EdgeWidth = metrics.ControlEdgeWidth,
                 Radius = metrics.ControlRadius,
                 PaddingX = metrics.Padding,
                 Ink = palette.BodyText,
@@ -102,12 +110,13 @@ public sealed record ControlStyles
             {
                 HoverFill = palette.ControlFillHover,
                 PressedFill = palette.ControlFillPressed,
+                EdgeWidth = metrics.ControlEdgeWidth,
                 Radius = metrics.ControlRadius,
                 PaddingX = metrics.Padding,
                 Ink = palette.BodyText,
                 DisabledInk = palette.DimText,
             },
-            Hyperlink = new HyperlinkStyle { Color = LinkColor(palette) },
+            Hyperlink = new HyperlinkStyle { Color = LinkColor(palette), ArrowGap = metrics.LinkArrowGap },
         };
     }
 

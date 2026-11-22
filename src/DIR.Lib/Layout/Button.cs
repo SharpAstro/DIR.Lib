@@ -23,11 +23,13 @@ public static partial class Builder
     /// A themed text button, drawn from <see cref="UiTheme.Controls"/> alone (fills, edge, radius, padding, ink), at
     /// <see cref="UiMetrics.ButtonHeight"/>. Hover, pressed and keyboard focus are declared fills
     /// (<see cref="Node.BgHover"/>, <see cref="Node.BgPressed"/>, <see cref="Node.BgFocus"/>), so the look follows the
-    /// pointer with no state of the caller's. <paramref name="opens"/> adds a trailing <see cref="IconKind.CaretDown"/>
-    /// ("this opens something"). A <paramref name="disabledReason"/> makes the button flat (no hover, no pressed), dims
+    /// pointer with no state of the caller's. <paramref name="opens"/> adds a trailing <see cref="IconKind.CaretRight"/>
+    /// ("this opens something behind it"). A <paramref name="disabledReason"/> makes the button flat (no hover, no pressed), dims
     /// the ink, takes no press and shows the reason as its tooltip with the not-allowed cursor.
     /// </summary>
-    /// <remarks>The hit identity is <c>ButtonHit(label)</c> unless <paramref name="hit"/> says otherwise: pass one when two buttons share a label in a frame.</remarks>
+    /// <remarks>Keyboard focus shows only for a button in a declared list (<see cref="Node.ListOf"/>) whose <paramref name="hit"/>
+    /// is that list's <see cref="HitResult.ListItemHit"/>: focus resolves through the list cursor, not the default hit.
+    /// The hit identity is <c>ButtonHit(label)</c> unless <paramref name="hit"/> says otherwise: pass one when two buttons share a label in a frame.</remarks>
     public static Node Button(string label, ButtonKind kind, Action onClick, UiTheme theme,
         IconKind? icon = null, bool opens = false, string? disabledReason = null, string? tooltip = null, HitResult? hit = null)
     {
@@ -48,12 +50,12 @@ public static partial class Builder
         var parts = new List<Node>(3);
         if (icon is { } kindOfIcon) parts.Add(Icon(kindOfIcon, fontSize, ink));
         parts.Add(Text(label, fontSize, ink, TextAlign.Near, TextAlign.Center));
-        if (opens) parts.Add(Icon(IconKind.CaretDown, fontSize, ink));
+        if (opens) parts.Add(Icon(IconKind.CaretRight, fontSize, ink));
 
         var cell = HStack([.. parts]).WithGap(IconWordGap).CrossCenter()
             .Pad(style.PaddingX, 0f).HFixed(theme.Metrics.ButtonHeight).Radius(style.Radius);
         if (style.RestFill is { } rest) cell = cell.Bg(rest);
-        if (style.Edge is { } edge) cell = cell.Border(edge, 1f, style.Radius);
+        if (style.Edge is { } edge) cell = cell.Border(edge, style.EdgeWidth, style.Radius);
 
         cell = cell.Clickable(hit ?? new HitResult.ButtonHit(label), enabled ? _ => onClick() : null);
         if (!enabled) return cell.Disabled(disabledReason!);

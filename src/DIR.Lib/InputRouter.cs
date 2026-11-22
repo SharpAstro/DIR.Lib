@@ -592,13 +592,27 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         }
     }
 
-    /// <summary>A press nothing in Top took, while a modal is painted: consumed, and outside the card it closes the modal.</summary>
+    /// <summary>Whether a point is inside the painted modal's card.</summary>
     private bool WithinModalCard(float x, float y)
     {
         var card = ui.PaintedModal!.Card;
         return x >= card.X && x < card.X + card.Width && y >= card.Y && y < card.Y + card.Height;
     }
 
+    /// <summary>
+    /// Records (or clears) the held press on the router's settings and on every listed widget's own settings, as the
+    /// pointer is pushed to each: a widget with unshared <see cref="WindowUiSettings"/> paints its pressed fill too.
+    /// </summary>
+    private void SetPressOrigin(IReadOnlyList<IPixelWidget> widgets, (float X, float Y)? origin)
+    {
+        ui.PressOrigin = origin;
+        for (var i = 0; i < widgets.Count; i++)
+        {
+            widgets[i].Ui.PressOrigin = origin;
+        }
+    }
+
+    /// <summary>A press nothing in Top took, while a modal is painted: consumed, and outside the card it closes the modal.</summary>
     private bool ConsumeModalPress(IReadOnlyList<IPixelWidget> widgets, float x, float y)
     {
         if (ModalIndex(widgets) < 0) return false;
@@ -633,7 +647,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         // A new left press replaces whatever press was recorded (a release the window never saw).
         if (down.Button == MouseButton.Left)
         {
-            ui.PressOrigin = null;
+            SetPressOrigin(widgets, null);
         }
 
         if (!ModalActive(widgets) && SelectionPress(widgets, down, press))
@@ -677,7 +691,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                 if (down.Button == MouseButton.Left && !region.IsSurface && region.Dismisses is null
                     && (!ModalActive(widgets) || WithinModalCard(down.X, down.Y)))
                 {
-                    ui.PressOrigin = (down.X, down.Y);
+                    SetPressOrigin(widgets, (down.X, down.Y));
                     requestRedraw();
                 }
 
@@ -1007,7 +1021,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         // The held press ends with the release, whatever else the release does; the pressed fill goes with it.
         if (up.Button == MouseButton.Left && ui.PressOrigin is not null)
         {
-            ui.PressOrigin = null;
+            SetPressOrigin(Widgets(), null);
             requestRedraw();
         }
 

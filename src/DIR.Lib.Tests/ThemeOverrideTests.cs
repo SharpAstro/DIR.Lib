@@ -20,10 +20,12 @@ public class ThemeOverrideTests
         Metrics = new UiMetrics(14f, 6f, 28f, 24f, 28f),
     };
 
-    private static readonly UiTheme Square = Default with
+    // The radius comes from the metric alone: no Radius is set by hand on any style.
+    private static readonly UiTheme ZeroRadius = Default with { Metrics = Default.Metrics with { ControlRadius = 0f } };
+
+    private static readonly UiTheme Square = ZeroRadius with
     {
-        Metrics = Default.Metrics with { ControlRadius = 0f },
-        Controls = Default.Controls with { Standard = Default.Controls.Standard with { Radius = 0f, Edge = null } },
+        Controls = ZeroRadius.Controls with { Standard = ZeroRadius.Controls.Standard with { Edge = null } },
     };
 
     private sealed class StubRenderer(uint w, uint h) : RgbaImageRenderer(w, h)
@@ -89,9 +91,43 @@ public class ThemeOverrideTests
     }
 
     [Fact]
-    public void Overriding_one_kind_leaves_the_others_derived()
+    public void Overriding_one_kind_leaves_the_others_derived_from_the_new_metrics()
     {
-        Square.Controls.Accent.ShouldBe(Default.Controls.Accent);
-        Square.Controls.Subtle.ShouldBe(Default.Controls.Subtle);
+        Square.Controls.Accent.ShouldBe(ZeroRadius.Controls.Accent);
+        Square.Controls.Accent.Radius.ShouldBe(0f);
+        Square.Controls.Subtle.Radius.ShouldBe(0f);
+        Default.Controls.Accent.Radius.ShouldBe(4f);
+    }
+
+    [Fact]
+    public void A_with_after_Controls_was_read_derives_afresh_not_from_the_copied_cache()
+    {
+        var t = new UiTheme { Palette = NotificationsRenderTests.Dark, Metrics = new UiMetrics(14f, 6f, 28f, 24f, 28f) };
+        _ = t.Controls;
+        (t with { Metrics = t.Metrics with { ControlRadius = 0f } }).Controls.Standard.Radius.ShouldBe(0f);
+        var light = NotificationsRenderTests.Light;
+        (t with { Palette = light }).Controls.Standard.RestFill.ShouldBe(light.ControlFill);
+        t.Controls.Standard.Radius.ShouldBe(4f);
+    }
+
+    [Fact]
+    public void Reading_Controls_does_not_change_equality()
+    {
+        UiTheme Make() => new() { Palette = NotificationsRenderTests.Dark, Metrics = new UiMetrics(14f, 6f, 28f, 24f, 28f) };
+        var a = Make();
+        var b = Make();
+        a.ShouldBe(b);
+        _ = a.Controls;
+        a.ShouldBe(b);
+        a.Controls.ShouldBeSameAs(a.Controls);
+    }
+
+    [Fact]
+    public void Edge_width_and_link_gap_come_from_the_metrics()
+    {
+        var thick = Default with { Metrics = Default.Metrics with { ControlEdgeWidth = 3f, LinkArrowGap = 9f } };
+        thick.Controls.Standard.EdgeWidth.ShouldBe(3f);
+        thick.Controls.Hyperlink.ArrowGap.ShouldBe(9f);
+        Builder.Button("Save", ButtonKind.Standard, () => { }, thick).BorderStyle!.Width.ShouldBe(3f);
     }
 }

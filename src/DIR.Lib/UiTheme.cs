@@ -318,6 +318,8 @@ public readonly record struct UiMetrics(
 {
     private readonly float? _cornerRadius;
     private readonly float? _controlRadius;
+    private readonly float? _controlEdgeWidth;
+    private readonly float? _linkArrowGap;
     private readonly Layout.ShadowStyle? _shadow;
 
     /// <summary>The toast's key shadow: no offset across, 1 down, blur 2, black at 55%.</summary>
@@ -335,6 +337,20 @@ public readonly record struct UiMetrics(
     {
         get => _controlRadius ?? 4f;
         init => _controlRadius = value;
+    }
+
+    /// <summary>Width of a control's edge ring, in design units. Defaults to 1.</summary>
+    public float ControlEdgeWidth
+    {
+        get => _controlEdgeWidth ?? 1f;
+        init => _controlEdgeWidth = value;
+    }
+
+    /// <summary>Gap between a link's text and its trailing arrow, in design units. Defaults to 2.</summary>
+    public float LinkArrowGap
+    {
+        get => _linkArrowGap ?? 2f;
+        init => _linkArrowGap = value;
     }
 
     /// <summary>
@@ -361,15 +377,18 @@ public sealed record UiTheme
     public required UiMetrics Metrics { get; init; }
 
     private readonly ControlStyles? _controls;
-    private ControlStyles? _derivedControls;
+
+    // The derived styles are cached outside the record, keyed on the instance: a record field would be copied by
+    // `with` (a stale cache for the new palette or metrics) and compared by Equals.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<UiTheme, ControlStyles> DerivedControls = new();
 
     /// <summary>
     /// The control styles. Defaults to <see cref="ControlStyles.For"/> of <see cref="Palette"/> and <see cref="Metrics"/>,
-    /// derived once per instance. Override one kind with <c>theme with { Controls = theme.Controls with { Standard = ... } }</c>.
+    /// derived once per instance (never carried over by <c>with</c>). Override one kind with <c>theme with { Controls = theme.Controls with { Standard = ... } }</c>.
     /// </summary>
     public ControlStyles Controls
     {
-        get => _controls ?? (_derivedControls ??= ControlStyles.For(Palette, Metrics));
+        get => _controls ?? DerivedControls.GetValue(this, static t => ControlStyles.For(t.Palette, t.Metrics));
         init => _controls = value;
     }
 }
