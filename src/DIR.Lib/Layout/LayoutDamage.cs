@@ -60,7 +60,7 @@ namespace DIR.Lib
             int Caret,
             int SelectionAnchor)
         {
-            /// <summary>The node's border, or null. Init-only, set in <see cref="Signature"/>, so the positional
+            /// <summary>The node's border, or null. Init-only, set in <c>Signature</c>, so the positional
             /// constructor keeps its arity (a new positional parameter would be a binary break). An unbordered
             /// node leaves it null, so its signature is what it was before borders existed.</summary>
             public Layout.BorderStyle? Border { get; init; }

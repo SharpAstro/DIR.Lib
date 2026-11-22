@@ -27,7 +27,7 @@ public static partial class Builder
     /// ("this opens something behind it"). A <paramref name="disabledReason"/> makes the button flat (no hover, no pressed), dims
     /// the ink, takes no press and shows the reason as its tooltip with the not-allowed cursor.
     /// </summary>
-    /// <remarks>Keyboard focus shows only for a button in a declared list (<see cref="Node.ListOf"/>) whose <paramref name="hit"/>
+    /// <remarks>Keyboard focus shows only for a button in a declared list (<c>Node.ListOf</c>) whose <paramref name="hit"/>
     /// is that list's <see cref="HitResult.ListItemHit"/>: focus resolves through the list cursor, not the default hit.
     /// The hit identity is <c>ButtonHit(label)</c> unless <paramref name="hit"/> says otherwise: pass one when two buttons share a label in a frame.</remarks>
     public static Node Button(string label, ButtonKind kind, Action onClick, UiTheme theme,
