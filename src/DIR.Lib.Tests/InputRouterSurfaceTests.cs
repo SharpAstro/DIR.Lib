@@ -351,6 +351,7 @@ public class InputRouterSurfaceTests
         h.Paint();      // Front paints its surface once; its own settings never see it settle
 
         h.PaintBackOnly();      // at most one extra frame is asked for, to drop the stale carry
+        h.Redraws.ShouldBeLessThanOrEqualTo(1);
         h.Redraws = 0;
         for (var i = 0; i < 4; i++)
         {
@@ -359,5 +360,44 @@ public class InputRouterSurfaceTests
 
         h.Redraws.ShouldBe(0, "an unpainted widget is not on screen, so it cannot ask for frames");
         h.PixelAt(Covered).ShouldBe(RowHot, "Front's old surface no longer covers the row");
+    }
+
+    /// <summary>Forwards everything to an inner widget, as pilot's wrappers do: the inner widget notes its frame under
+    /// itself, never under this object.</summary>
+    private sealed class WrapperWidget(IPixelWidget inner) : IPixelWidget
+    {
+        public WindowUiSettings Ui => inner.Ui;
+        public (float X, float Y)? Pointer { get => inner.Pointer; set => inner.Pointer = value; }
+        public HitResult? HitTest(float x, float y) => inner.HitTest(x, y);
+        public List<TextInputState> GetRegisteredTextInputs() => inner.GetRegisteredTextInputs();
+        public int CaretIndexAt(HitResult.TextInputHit hit, float pointerX) => inner.CaretIndexAt(hit, pointerX);
+        public void CollectPaintedRegions(List<ClickableRegion> into) => inner.CollectPaintedRegions(into);
+        public void CollectPaintedNodes(List<Layout.ArrangedNode<float>> into) => inner.CollectPaintedNodes(into);
+        public ListScrollController? ScrollTargetAt(float x, float y) => inner.ScrollTargetAt(x, y);
+        public CursorKind? HitTestCursor(float x, float y) => inner.HitTestCursor(x, y);
+    }
+
+    [Fact]
+    public void AWrappedListedWidget_CountsAsPaintedWhileItPaints_AndStopsWhenItDoesNot()
+    {
+        var h = new Harness(Placement.LaterWidgetOwnSettings);
+        h.Router.Widgets = () => [h.Back, new WrapperWidget(h.Front)];
+        h.Move(Covered);
+        h.Paint();
+        h.PixelAt(Covered).ShouldBe(RowRest, "the wrapped widget's surface covers the row while it paints");
+
+        for (var i = 0; i < 3; i++)
+        {
+            h.PaintBackOnly();
+        }
+
+        h.Redraws = 0;
+        for (var i = 0; i < 3; i++)
+        {
+            h.PaintBackOnly();
+        }
+
+        h.Redraws.ShouldBe(0);
+        h.PixelAt(Covered).ShouldBe(RowHot, "once the wrapped widget stops painting the row lights");
     }
 }
