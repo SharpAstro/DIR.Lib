@@ -5,7 +5,7 @@ namespace DIR.Lib;
 
 /// <summary>
 /// A list a layout node declares: the <see cref="ListCursor"/> that owns its rows and the id its rows
-/// state in <see cref="HitResult.ListItemHit"/>. Set with <see cref="Layout.Node.ListOf"/> on the list's
+/// state in <see cref="HitResult.ListItemHit"/>. Set with <see cref="Layout.Node.ListOf(ListCursor, string)"/> on the list's
 /// container, so any router reading the PAINTED nodes finds it, whatever kind of widget painted them.
 /// </summary>
 /// <param name="Cursor">The cursor the arrows move and Enter acts on.</param>

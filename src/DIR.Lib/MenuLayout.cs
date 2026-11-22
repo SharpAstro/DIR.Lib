@@ -29,7 +29,7 @@ public static class MenuLayout
     /// the content block: title leaf, prompt leaf, a small gap box, and one leaf per item.
     /// Each item leaf carries a <see cref="HitResult.ListItemHit"/> ("MenuItem", i) and
     /// an OnClick that calls <see cref="MenuModel.ConfirmAt"/>. The keys are declared too, as
-    /// <see cref="Layout.Node.Shortcut"/>s that call <see cref="MenuModel.HandleKey"/> (Up and Down on the
+    /// <see cref="Layout.Node.Shortcut"/>s that call <see cref="MenuModel.HandleKey(InputKey)"/> (Up and Down on the
     /// spacers, Enter on the gap, D1..D9 on the rows), so <see cref="InputRouter"/> reaches the model with no
     /// host fallback and <see cref="MenuModel"/> stays the one owner of the selection.
     /// </para>

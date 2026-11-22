@@ -236,7 +236,7 @@ public abstract partial record Node
     public Action<InputModifier>? OnActivate { get; init; }
 
     /// <summary>
-    /// The list this node is the container of, set via <see cref="ListOf"/>: the cursor that owns its rows
+    /// The list this node is the container of, set via <see cref="ListOf(ListCursor, string)"/>: the cursor that owns its rows
     /// and their list id. An init-only property, so no constructor changes shape. See <see cref="DIR.Lib.DeclaredList"/>.
     /// </summary>
     public DIR.Lib.DeclaredList? DeclaredList { get; init; }

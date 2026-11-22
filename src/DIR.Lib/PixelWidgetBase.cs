@@ -558,7 +558,7 @@ namespace DIR.Lib
         }
 
         /// <summary>
-        /// The cursor the keys act on. Where the painted tree declares lists (<see cref="Layout.Node.ListOf"/>)
+        /// The cursor the keys act on. Where the painted tree declares lists (<see cref="Layout.Node.ListOf(ListCursor, string)"/>)
         /// it is the active declared list's own cursor, by <see cref="DeclaredList.Active"/>: this widget sees
         /// no presses, so its hint is the one declared list whose cursor is already open (a press opens it),
         /// else the only list on the frame, else none. Where nothing is declared it is

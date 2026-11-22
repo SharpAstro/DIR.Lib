@@ -60,7 +60,7 @@ namespace DIR.Lib
             int Caret,
             int SelectionAnchor)
         {
-            /// <summary>The node's border, or null. Init-only, set in <c>Signature</c>, so the positional
+            /// <summary>The node's border, or null. Init-only, set in <see cref="Signature(in Layout.ArrangedNode{float}, ValueTuple{float, float}?, ValueTuple{float, float}?)"/>, so the positional
             /// constructor keeps its arity (a new positional parameter would be a binary break). An unbordered
             /// node leaves it null, so its signature is what it was before borders existed.</summary>
             public Layout.BorderStyle? Border { get; init; }
@@ -102,7 +102,7 @@ namespace DIR.Lib
             /// <summary>
             /// A painter callback owns these pixels, so the tree cannot see them change. Compared like
             /// any other node (its rect and background still matter), but its CONTENT is invisible here,
-            /// which is why <c>Compute</c> takes a <c>fillChanged</c> predicate: the only thing
+            /// which is why <see cref="Compute(IReadOnlyList{Layout.ArrangedNode{float}}, IReadOnlyList{Layout.ArrangedNode{float}}, ValueTuple{float, float}?, ValueTuple{float, float}?, Func{string, bool}, List{Rect{float}})"/> takes a <c>fillChanged</c> predicate: the only thing
             /// that knows whether an image pane or a histogram moved is whatever draws it.
             /// </summary>
             Fill,
