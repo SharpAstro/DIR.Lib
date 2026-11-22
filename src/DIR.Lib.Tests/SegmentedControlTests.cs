@@ -225,7 +225,7 @@ public class SegmentedControlTests
         regions.Count(r => r.Result is HitResult.ListItemHit).ShouldBe(0);
     }
 
-    // ---- contrast ----
+    // ---- own hit ----
 
     [Fact]
     public void A_selected_option_with_its_own_hit_leaves_the_cursor_closed()
@@ -248,6 +248,8 @@ public class SegmentedControlTests
         plain.Index.ShouldBe(1);
         Arrange(plainTree, 900f).Any(n => n.Node.Hit is HitResult.ListItemHit { Index: 1 }).ShouldBeTrue();
     }
+
+    // ---- contrast ----
 
     public static TheoryData<string> Palettes => new() { "dark", "light", "onehue" };
 
