@@ -15,7 +15,8 @@ Theme-driven buttons and links (#312, step 1), additive. New public members:
 
 - `UiPalette.ControlFill`, `ControlFillHover`, `ControlFillPressed`, `ControlEdge`: the neutral control roles, derived
   from the existing palette so every palette and theme looks as it did.
-- `UiMetrics.ControlRadius` (init-only, default 4).
+- `UiMetrics.ControlRadius` (init-only, default 4), `UiMetrics.ControlEdgeWidth` (default 1) and `UiMetrics.LinkArrowGap`
+  (default 2); `ButtonStyle.EdgeWidth` and `HyperlinkStyle.ArrowGap` take them.
 - `ControlStyles`, `ButtonStyle` and `HyperlinkStyle` records, and `UiTheme.Controls` (derived per instance by
   `ControlStyles.For`; restyle one kind with a `with`).
 - `Layout.Node.PressedBackground`, set with `BgPressed`: painted while the primary button is held on the node.
@@ -23,8 +24,8 @@ Theme-driven buttons and links (#312, step 1), additive. New public members:
 - `Layout.ButtonKind` (Accent, Standard, Subtle) and `Builder.Button(label, kind, onClick, theme, icon, opens,
   disabledReason, tooltip, hit)`: height `ButtonHeight`, everything else from `UiTheme.Controls`; `opens` adds a
   `CaretRight` (›); a disabled button is flat, takes no press and shows its reason.
-- `Builder.Hyperlink(label, onClick, theme, external)`: link colour, underline on hover, hand cursor, a trailing north-east
-  arrow when `external`; its hit is a `ButtonHit` named by the label.
+- `Builder.Hyperlink(label, onClick, theme, external, hit)`: link colour, underline on hover, hand cursor, a trailing north-east
+  arrow when `external`; its hit is a `ButtonHit` named by the label unless `hit` says otherwise.
 
 Console.Lib's cell painter and the other consumers are not built here; the new Node members are inert for a painter that
 ignores them.
