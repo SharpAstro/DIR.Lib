@@ -58,9 +58,10 @@ public class ButtonKindsTests
 
     [Theory]
     [MemberData(nameof(Themes))]
-    public void The_link_reads_on_the_panel_and_the_edge_is_seen_against_it(UiTheme theme, string name)
+    public void The_link_reads_on_the_panel_and_the_content_and_the_edge_is_seen_against_the_panel(UiTheme theme, string name)
     {
         RGBAColor32.ContrastRatio(theme.Controls.Hyperlink.Color, theme.Palette.PanelBg).ShouldBeGreaterThanOrEqualTo(4.5f, name);
+        RGBAColor32.ContrastRatio(theme.Controls.Hyperlink.Color, theme.Palette.ContentBg).ShouldBeGreaterThanOrEqualTo(4.5f, name);
         RGBAColor32.ContrastRatio(theme.Palette.ControlEdge, theme.Palette.PanelBg).ShouldBeGreaterThanOrEqualTo(3f, name);
     }
 
@@ -209,7 +210,8 @@ public class ButtonKindsTests
             return n;
         }
 
-        public void Move() => _router.Handle(new InputEvent.MouseMove(5, 14));
+        public void Move() => MoveTo(5, 14);
+        public void MoveTo(float x, float y) => _router.Handle(new InputEvent.MouseMove(x, y));
         public void Down() => _router.Handle(new InputEvent.MouseDown(5, 14, MouseButton.Left, InputModifier.None, 1));
         public void Up() => _router.Handle(new InputEvent.MouseUp(5, 14, MouseButton.Left));
     }
@@ -257,6 +259,20 @@ public class ButtonKindsTests
         rig.Move();
         rig.Paint();
         rig.Count(colour).ShouldBeGreaterThan(0, $"{name} hover");
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void Hovering_an_external_links_arrow_underlines_its_text(UiTheme theme, string name)
+    {
+        var style = theme.Controls.Hyperlink;
+        var rig = new Rig(theme, Builder.HStack(Builder.Hyperlink("Docs", () => { }, theme, external: true)).HFixed(28f));
+        rig.Count(style.Color).ShouldBe(0, $"{name} rest");
+
+        // The stub measures 8 units a character: "Docs" is 0..32, the gap follows, then the 8-unit arrow.
+        rig.MoveTo(32f + style.ArrowGap + 4f, 14f);
+        rig.Paint();
+        rig.Count(style.Color).ShouldBe(32, $"{name} the text's underline, one row as wide as the run");
     }
 
     [Fact]

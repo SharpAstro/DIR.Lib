@@ -1301,6 +1301,11 @@ namespace DIR.Lib
             // two painters have to agree, or the same tree means different things per surface.
             var links = new Stack<(int Depth, string Url)>();
 
+            // The nearest enclosing node with a hit (the node itself included), by depth like the link above: a hover
+            // underline (Content.Text.UnderlineOnHover) shows while the pointer is anywhere in that region, so a link's
+            // trailing arrow underlines its text as the text itself does. LayoutDamage resolves it identically.
+            var hitScopes = new Stack<(int Depth, Rect<float> Bounds)>();
+
             // The nearest enclosing DISABLED node, and the background the dim is measured against, both
             // resolved by depth exactly as the link above is. Disabling reaches the subtree because that
             // is what a caller means by it: a row declared unavailable whose label stayed bright would be
@@ -1350,6 +1355,11 @@ namespace DIR.Lib
                 while (links.Count > 0 && links.Peek().Depth >= arrangedNode.Depth)
                 {
                     links.Pop();
+                }
+
+                while (hitScopes.Count > 0 && hitScopes.Peek().Depth >= arrangedNode.Depth)
+                {
+                    hitScopes.Pop();
                 }
 
                 while (scrolls.Count > 0 && scrolls.Peek().Depth >= arrangedNode.Depth)
@@ -1501,6 +1511,11 @@ namespace DIR.Lib
                 if (node.Hit is HitResult.LinkHit linkHit)
                 {
                     links.Push((arrangedNode.Depth, linkHit.Url));
+                }
+
+                if (node.Hit is not null)
+                {
+                    hitScopes.Push((arrangedNode.Depth, bounds));
                 }
 
                 if (node.IsDisabled && disabledDepth < 0)
@@ -1726,7 +1741,8 @@ namespace DIR.Lib
 
                             // The hover underline: a 1-unit rule under the measured run, in the run's colour.
                             if (text.UnderlineOnHover && !disabled && value.Length > 0
-                                && PointerWithin(bounds, openPopoverDepth >= 0, paintOrder))
+                                && PointerWithin(hitScopes.Count > 0 ? hitScopes.Peek().Bounds : bounds,
+                                    openPopoverDepth >= 0, paintOrder))
                             {
                                 var run = Renderer.MeasureText(value.AsSpan(), fp, fontSize);
                                 var runW = MathF.Min(run.Width, bounds.Width);

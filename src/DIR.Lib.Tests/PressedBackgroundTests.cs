@@ -202,6 +202,127 @@ public class PressedBackgroundTests
         Layout.Builder.Spacer().PressedBackground.ShouldBeNull();
     }
 
+    // ---- presses a layer over the button takes ----
+
+    [Fact]
+    public void APressASurfaceTakes_LightsNothingBeneath()
+    {
+        // A transparent surface over the whole button: the button shows through it, and a press on it is the surface's.
+        var h = WithButton(Layout.Builder.Overlay(Button(), Layout.Builder.Spacer().Stretch().AsSurface()));
+        h.Paint();
+        h.Move(30, 30);
+        h.Press(30, 30);
+        h.Paint();
+
+        h.Widget.Ui.PressOrigin.ShouldBeNull();
+        h.Pixel(30, 30).ShouldNotBe(Down);
+    }
+
+    [Fact]
+    public void APressAPopoverBackdropTakes_LightsNothingBeneath()
+    {
+        var state = new PopoverState();
+        state.Open();
+        var content = Layout.Builder.Box(4, 4, Ink);
+        var h = WithButton(Layout.Builder.Overlay(Button(), Layout.Builder.Popover(new RectF32(10, 10, 4, 4), content, state)));
+        h.Paint();
+        h.Move(40, 40);
+        h.Press(40, 40);
+        state.IsOpen.ShouldBeFalse("the backdrop's press closes the popover");
+        h.Paint();
+
+        // Still held over the button, now uncovered: hover, never the pressed fill of a press it did not take.
+        h.Widget.Ui.PressOrigin.ShouldBeNull();
+        h.Pixel(40, 40).ShouldBe(Hot);
+    }
+
+    // A modal card at the widget's top left (10,10)-(26,26), over the button; outside it the press is the modal's.
+    private static Layout.Node ModalOverButton() => Layout.Builder.Modal(Button(),
+        Layout.Builder.Anchored(Layout.Builder.Box(16, 16).Bg(Rest).BgHover(Hot).BgPressed(Down)
+            .Clickable(new HitResult.ButtonHit("card"))));
+
+    [Fact]
+    public void APressOutsideAModalCard_LightsNothingBeneath()
+    {
+        var h = WithButton(ModalOverButton());
+        h.Paint();
+        h.Move(40, 40);
+        h.Press(40, 40);
+        h.Paint();
+
+        h.Widget.Ui.PressOrigin.ShouldBeNull();
+        h.Pixel(40, 40).ShouldNotBe(Down);
+    }
+
+    [Fact]
+    public void APressInsideAModalCard_LightsTheCardsButton()
+    {
+        var h = WithButton(ModalOverButton());
+        h.Paint();
+        h.Move(15, 15);
+        h.Press(15, 15);
+        h.Paint();
+
+        h.Pixel(15, 15).ShouldBe(Down);
+        h.Release(15, 15);
+        h.Paint();
+        h.Pixel(15, 15).ShouldBe(Hot);
+    }
+
+    // ---- widgets that share no settings ----
+
+    [Fact]
+    public void WidgetsWithUnsharedSettings_EachPaintTheirOwnPressedFill()
+    {
+        // Two widgets, each with its own WindowUiSettings, and a router on a third: the press reaches the widget that
+        // paints the button only through the router writing it to every listed widget.
+        var lowerRenderer = new StubRenderer(100, 100);
+        var upperRenderer = new StubRenderer(100, 100);
+        var lower = new TestWidget(lowerRenderer);
+        var upper = new TestWidget(upperRenderer);
+        var router = new InputRouter(new WindowUiSettings(), new BackgroundTaskTracker(), static () => { })
+        {
+            Widgets = () => [lower, upper],
+        };
+        lower.Ui.ShouldNotBeSameAs(upper.Ui);
+
+        void Paint()
+        {
+            lower.Render(Button(), new RectF32(0, 0, 40, 40));
+            upper.Render(Button(), new RectF32(50, 50, 40, 40));
+            router.AfterPaint();
+        }
+
+        static RGBAColor32 PixelOf(StubRenderer r, int x, int y)
+        {
+            var img = r.Surface;
+            var i = (y * img.Width + x) * 4;
+            return new RGBAColor32(img.Pixels[i], img.Pixels[i + 1], img.Pixels[i + 2], img.Pixels[i + 3]);
+        }
+
+        Paint();
+
+        // The upper widget's button.
+        router.Handle(new InputEvent.MouseMove(70, 70));
+        router.Handle(new InputEvent.MouseDown(70, 70, MouseButton.Left, InputModifier.None, 1));
+        Paint();
+        PixelOf(upperRenderer, 70, 70).ShouldBe(Down);
+        PixelOf(lowerRenderer, 20, 20).ShouldBe(Rest);
+        router.Handle(new InputEvent.MouseUp(70, 70, MouseButton.Left));
+        Paint();
+        PixelOf(upperRenderer, 70, 70).ShouldBe(Hot);
+
+        // The lower widget's button.
+        router.Handle(new InputEvent.MouseMove(20, 20));
+        router.Handle(new InputEvent.MouseDown(20, 20, MouseButton.Left, InputModifier.None, 1));
+        Paint();
+        PixelOf(lowerRenderer, 20, 20).ShouldBe(Down);
+        PixelOf(upperRenderer, 70, 70).ShouldBe(Rest);
+        router.Handle(new InputEvent.MouseUp(20, 20, MouseButton.Left));
+        Paint();
+        PixelOf(lowerRenderer, 20, 20).ShouldBe(Hot);
+    }
+
     private static Layout.Node Link() => Layout.Builder.Text("link", 14f, Ink).Stretch().Bg(Rest)
         .UnderlineOnHover().Clickable(new HitResult.ButtonHit("l"));
 

@@ -223,6 +223,83 @@ namespace DIR.Lib.Tests
             sig.ShouldBe(sig with { Border = null });
         }
 
+        // ---- the held press (Node.PressedBackground) and the hover underline ----
+
+        private static readonly RGBAColor32 Down = new(0, 160, 60, 255);
+
+        // A node with a pressed fill and no hover fill, so any damage below is the press's alone.
+        private static Layout.ArrangedNode<float> Pressable()
+            => Arranged(Layout.Builder.Box(50, 20).Bg(Plain).BgPressed(Down), 0, 0, 50, 20);
+
+        private static List<Rect<float>> PressDamage(
+            (float X, float Y)? beforePointer, (float X, float Y)? afterPointer,
+            (float X, float Y)? beforePress, (float X, float Y)? afterPress,
+            params Layout.ArrangedNode<float>[] frame)
+        {
+            var damage = new List<Rect<float>>();
+            LayoutDamage.Compute(frame, frame, beforePointer, afterPointer, beforePress, afterPress, null, damage);
+            return damage;
+        }
+
+        [Fact]
+        public void APressThatStartsOnTheNodeDamagesIt()
+        {
+            var damage = PressDamage((10, 10), (10, 10), null, (10, 10), Pressable());
+            damage.ShouldBe([new Rect<float>(0, 0, 50, 20)]);
+        }
+
+        [Fact]
+        public void APressThatEndsOnTheNodeDamagesIt()
+        {
+            var damage = PressDamage((10, 10), (10, 10), (10, 10), null, Pressable());
+            damage.ShouldBe([new Rect<float>(0, 0, 50, 20)]);
+        }
+
+        [Fact]
+        public void APressDraggedOffTheNodeDamagesIt()
+        {
+            // Still held, the pointer leaves: the pressed fill goes, so the node repaints.
+            var damage = PressDamage((10, 10), (90, 90), (10, 10), (10, 10), Pressable());
+            damage.ShouldBe([new Rect<float>(0, 0, 50, 20)]);
+        }
+
+        [Fact]
+        public void NoPressDamagesNothing()
+        {
+            PressDamage((10, 10), (10, 10), null, null, Pressable()).ShouldBeEmpty();
+            // A press held elsewhere, the pointer over the node: neither pressed nor changed.
+            PressDamage((10, 10), (10, 10), (90, 90), (90, 90), Pressable()).ShouldBeEmpty();
+        }
+
+        [Fact]
+        public void ThePressAwareSignatureSignsAHeldPressDifferently()
+        {
+            var node = Pressable();
+            LayoutDamage.Signature(node, (10, 10), (10, 10)).Background.ShouldBe(Down);
+            LayoutDamage.Signature(node, (10, 10), null).Background.ShouldBe(Plain);
+            LayoutDamage.Signature(node, (10, 10)).ShouldBe(LayoutDamage.Signature(node, (10, 10), null));
+            // A disabled node is never pressed.
+            LayoutDamage.Signature(Arranged(node.Node.Disabled("no"), 0, 0, 50, 20), (10, 10), (10, 10))
+                .Background.ShouldBe(Plain);
+        }
+
+        [Fact]
+        public void HoveringALinksArrowDamagesItsUnderlinedText()
+        {
+            // The link's region (depth 0) holds the underlined text and the arrow (depth 1): hovering the arrow shows
+            // the text's underline, as the painter resolves it, so the text's rect is damage.
+            var link = Arranged(Layout.Builder.HStack(Layout.Builder.Text("Docs"), Layout.Builder.Text("↗"))
+                .Clickable(new HitResult.ButtonHit("Docs")), 0, 0, 60, 20);
+            var text = Arranged(Layout.Builder.Text("Docs").UnderlineOnHover(), 0, 0, 30, 20) with { Depth = 1 };
+            var arrow = Arranged(Layout.Builder.Text("↗"), 40, 0, 10, 20) with { Depth = 1 };
+
+            var damage = PressDamage((90, 90), (45, 10), null, null, link, text, arrow);
+            damage.ShouldContain(new Rect<float>(0, 0, 30, 20));
+
+            // Outside the link's region the text does not change.
+            PressDamage((90, 90), (95, 10), null, null, link, text, arrow).ShouldBeEmpty();
+        }
+
         // ---- helpers ----
 
         private static List<Rect<float>> Damage(
