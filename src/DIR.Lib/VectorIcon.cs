@@ -174,7 +174,7 @@ public sealed class VectorIcon
         return VectorSceneFile.IsSceneFile(data) ? new VectorIcon(VectorSceneFile.Read(data), render) : FromSvg(data, render, options);
     }
 
-    /// <summary>The drawing as a scene file: bytes that <see cref="Load"/> turns back into it without reading any SVG.</summary>
+    /// <summary>The drawing as a scene file: bytes that <see cref="Load(byte[], SvgReadOptions)"/> turns back into it without reading any SVG.</summary>
     public byte[] ToSceneFile() => VectorSceneFile.Write(Scene);
 
     /// <summary>The drawing.</summary>

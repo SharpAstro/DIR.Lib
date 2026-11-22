@@ -14,7 +14,7 @@ namespace DIR.Lib.Prototyping;
 public readonly record struct PrototypeFinding(string Screen, string State, uint Width, uint Height, WireframeFinding Finding)
 {
     /// <summary>
-    /// The name of the document target the screen was drawn at; empty from the sized <see cref="Prototype.Check"/>
+    /// The name of the document target the screen was drawn at; empty from the sized <see cref="Prototype.Check(PrototypeDocument, IEnumerable{ValueTuple{uint, uint}}, UiTheme, WireframeOptions, string)"/>
     /// overload, which draws at a size rather than a target. Init-only so the constructor and <c>Deconstruct</c> keep their shape.
     /// </summary>
     public string Target { get; init; } = "";
@@ -158,7 +158,7 @@ public static partial class Prototype
     /// Draws every screen in its entry (default) state at <paramref name="size"/> and returns one image per screen,
     /// in the document's screen order.
     /// </summary>
-    /// <param name="fontPath">As for <see cref="Check"/>: null or empty resolves the platform's default face.</param>
+    /// <param name="fontPath">As for <see cref="Check(PrototypeDocument, IEnumerable{ValueTuple{uint, uint}}, UiTheme, WireframeOptions, string)"/>: null or empty resolves the platform's default face.</param>
     /// <exception cref="FileNotFoundException">No font was given and the platform has none, or the given file is missing.</exception>
     public static ImmutableArray<(string Screen, RgbaImage Image)> Render(PrototypeDocument document,
         (uint Width, uint Height) size, UiTheme? theme = null, string? fontPath = null)
@@ -178,7 +178,7 @@ public static partial class Prototype
     }
 
     /// <summary>
-    /// The font <see cref="Check"/> and <see cref="Render"/> draw with: <paramref name="fontPath"/> when given, else
+    /// The font <see cref="Check(PrototypeDocument, IEnumerable{ValueTuple{uint, uint}}, UiTheme, WireframeOptions, string)"/> and <see cref="Render(PrototypeDocument, ValueTuple{uint, uint}, UiTheme, string)"/> draw with: <paramref name="fontPath"/> when given, else
     /// the platform default from <see cref="FontResolver.ResolveSystemFont"/>.
     /// </summary>
     /// <remarks>
