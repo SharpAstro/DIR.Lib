@@ -416,6 +416,13 @@ namespace DIR.Lib
             Pointer is { } p && HoverMayAnswer(p, inClaimantContent, order)
             && p.X >= r.X && p.X < r.X + r.Width && p.Y >= r.Y && p.Y < r.Y + r.Height;
 
+        /// <summary>Whether the primary button is held with its press inside <paramref name="r"/> and the pointer
+        /// still inside it, both by the hover rule (<see cref="HoverMayAnswer"/>). See <see cref="Layout.Node.PressedBackground"/>.</summary>
+        private bool PressedWithin(Rect<float> r, bool inClaimantContent, int order) =>
+            Ui.PressOrigin is { } o && PointerWithin(r, inClaimantContent, order)
+            && HoverMayAnswer(o, inClaimantContent, order)
+            && o.X >= r.X && o.X < r.X + r.Width && o.Y >= r.Y && o.Y < r.Y + r.Height;
+
         /// <summary>
         /// Whether hover may answer at <paramref name="p"/> for a node: always, unless an open popover has claimed the
         /// pointer (<see cref="WindowUiSettings.PointerClaim"/>), and then only for the popover's OWN content, with the
@@ -1511,7 +1518,10 @@ namespace DIR.Lib
                 // what the pointer is over are the same rectangle by construction -- the guarantee the
                 // click region below already has. A node with no HoverBackground, or a host that sets no
                 // Pointer, paints exactly as it did before.
-                var nodeFill = node.HoverBackground is { } hover && PointerWithin(bounds, openPopoverDepth >= 0, paintOrder) ? hover
+                // Pressed outranks hover, hover outranks focus, and a disabled node shows neither pressed nor hover.
+                var nodeFill = !disabled && node.PressedBackground is { } pressed
+                        && PressedWithin(bounds, openPopoverDepth >= 0, paintOrder) ? pressed
+                    : !disabled && node.HoverBackground is { } hover && PointerWithin(bounds, openPopoverDepth >= 0, paintOrder) ? hover
                     // And the keyboard's own position, resolved against the node's HIT rather than
                     // against a rect -- the row already says which list and index it is.
                     : node.FocusBackground is { } focus && CursorIsOn(node.Hit) ? focus
@@ -1712,6 +1722,29 @@ namespace DIR.Lib
                                 DrawText(value.AsSpan(), fp, ctx.Fallback,
                                     bounds.X, bounds.Y, bounds.Width, bounds.Height,
                                     fontSize, runColor, text.HAlign, text.VAlign);
+                            }
+
+                            // The hover underline: a 1-unit rule under the measured run, in the run's colour.
+                            if (text.UnderlineOnHover && !disabled && value.Length > 0
+                                && PointerWithin(bounds, openPopoverDepth >= 0, paintOrder))
+                            {
+                                var run = Renderer.MeasureText(value.AsSpan(), fp, fontSize);
+                                var runW = MathF.Min(run.Width, bounds.Width);
+                                var runX = text.HAlign switch
+                                {
+                                    TextAlign.Center => bounds.X + (bounds.Width - runW) / 2f,
+                                    TextAlign.Far => bounds.X + bounds.Width - runW,
+                                    _ => bounds.X,
+                                };
+                                var runTop = text.VAlign switch
+                                {
+                                    TextAlign.Center => bounds.Y + (bounds.Height - run.Height) / 2f,
+                                    TextAlign.Far => bounds.Y + bounds.Height - run.Height,
+                                    _ => bounds.Y,
+                                };
+                                var rule = MathF.Max(1f, ctx.ToSurface(1f));
+                                FillRect(runX, MathF.Min(runTop + run.Height - rule, bounds.Y + bounds.Height - rule),
+                                    runW, rule, text.Color);
                             }
                             break;
                         case Layout.Content.Box box when box.Color.Alpha > 0:

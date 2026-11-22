@@ -137,6 +137,14 @@ public sealed class WindowUiSettings
     public RectF32? PointerOwner { get; set; }
 
     /// <summary>
+    /// Where the primary button went down and is still held, or null. Set by <see cref="InputRouter"/> on a left
+    /// press that a region took (and no surface, popover backdrop or modal scrim took), cleared on the release. The
+    /// painter lights <see cref="Layout.Node.PressedBackground"/> on a node that contains both this point and the
+    /// pointer. Kept here, beside the other per-window pointer state, so widgets that share these settings agree.
+    /// </summary>
+    public (float X, float Y)? PressOrigin { get; set; }
+
+    /// <summary>
     /// The pointer claim in force for whatever is being painted NOW: <see cref="PointerOwner"/> once an open
     /// popover has painted this cycle, and before that, the claim the last cycle ended with, for as long as the
     /// popover that made it is still open. Hover painting confines itself to this.

@@ -125,6 +125,20 @@ public abstract partial record Node
     public RGBAColor32? HoverBackground { get; init; }
 
     /// <summary>
+    /// Background to paint instead of <see cref="HoverBackground"/>, <see cref="FocusBackground"/> and
+    /// <see cref="Background"/> while the primary button is HELD down on this node: the press went down inside
+    /// the node's arranged rect (not on a surface, popover backdrop or modal that took it) and the pointer is still
+    /// inside it. Letting go, or dragging off the node, ends it; a press that started elsewhere and is dragged over
+    /// the node lights nothing. A disabled node never shows it.
+    /// <para>
+    /// The press is recorded by <see cref="InputRouter"/> (<see cref="WindowUiSettings.PressOrigin"/>) on a left
+    /// MouseDown and cleared on the MouseUp, with a redraw on both edges, so no host code is needed.
+    /// Painted by the pixel painter; Console.Lib's cell painter, SdlVulkan.Renderer and WebGl.Renderer may honour it later.
+    /// </para>
+    /// </summary>
+    public RGBAColor32? PressedBackground { get; init; }
+
+    /// <summary>
     /// Background to paint instead of <see cref="Background"/> while the KEYBOARD cursor is on this
     /// node — the same idea as <see cref="HoverBackground"/>, for the other pointing device.
     /// <para>

@@ -118,18 +118,33 @@ namespace DIR.Lib
 
         /// <summary>The signature of one arranged node, resolving hover against <paramref name="pointer"/>.</summary>
         public static PaintSignature Signature(in Layout.ArrangedNode<float> node, (float X, float Y)? pointer)
+            => Signature(node, pointer, null);
+
+        /// <summary>The signature of one arranged node, resolving hover against <paramref name="pointer"/> and
+        /// <see cref="Layout.Node.PressedBackground"/> against <paramref name="pressOrigin"/> (where the primary
+        /// button is held down, or null). A hovered underlined text run signs differently from a resting one.</summary>
+        public static PaintSignature Signature(in Layout.ArrangedNode<float> node, (float X, float Y)? pointer,
+            (float X, float Y)? pressOrigin)
         {
             var n = node.Node;
             var bounds = node.Bounds;
 
-            var background = n.HoverBackground is { } hover && Contains(bounds, pointer)
-                ? hover
+            var background = n.PressedBackground is { } pressed && !n.IsDisabled
+                    && Contains(bounds, pointer) && Contains(bounds, pressOrigin) ? pressed
+                : n.HoverBackground is { } hover && !n.IsDisabled && Contains(bounds, pointer) ? hover
                 : n.Background;
 
             var signature = n is Layout.Node.Leaf { Content: { } content }
                 ? SignatureOfContent(content, bounds, background, n.CornerRadius)
                 : new PaintSignature(bounds, background, n.CornerRadius, ContentShape.Container,
                     null, null, 0f, default, 0, 0, 0);
+            if (n is Layout.Node.Leaf { Content: Layout.Content.Text { UnderlineOnHover: true } }
+                && !n.IsDisabled && Contains(bounds, pointer))
+            {
+                // Caret is unused by a text run: it carries "underline showing".
+                signature = signature with { Caret = 1 };
+            }
+
             if (n.BorderStyle is { } border)
             {
                 signature = signature with { Border = border };
@@ -206,6 +221,19 @@ namespace DIR.Lib
             (float X, float Y)? currentPointer,
             Func<string?, bool>? fillChanged,
             List<Rect<float>> damage)
+            => Compute(previous, current, previousPointer, currentPointer, null, null, fillChanged, damage);
+
+        /// <summary>As the shorter overload, also resolving the pressed fill against where the button was held
+        /// down before and now (<see cref="WindowUiSettings.PressOrigin"/>).</summary>
+        public static void Compute(
+            IReadOnlyList<Layout.ArrangedNode<float>> previous,
+            IReadOnlyList<Layout.ArrangedNode<float>> current,
+            (float X, float Y)? previousPointer,
+            (float X, float Y)? currentPointer,
+            (float X, float Y)? previousPress,
+            (float X, float Y)? currentPress,
+            Func<string?, bool>? fillChanged,
+            List<Rect<float>> damage)
         {
             ArgumentNullException.ThrowIfNull(previous);
             ArgumentNullException.ThrowIfNull(current);
@@ -214,13 +242,13 @@ namespace DIR.Lib
             var before = new HashSet<PaintSignature>(previous.Count);
             for (var i = 0; i < previous.Count; i++)
             {
-                before.Add(Signature(previous[i], previousPointer));
+                before.Add(Signature(previous[i], previousPointer, previousPress));
             }
 
             var after = new HashSet<PaintSignature>(current.Count);
             for (var i = 0; i < current.Count; i++)
             {
-                after.Add(Signature(current[i], currentPointer));
+                after.Add(Signature(current[i], currentPointer, currentPress));
             }
 
             // Deduplicated by RECT, because a node that changed in place appears in both halves of
