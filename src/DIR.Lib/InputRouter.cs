@@ -315,28 +315,26 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             _seenBegins[widgets[i].Ui] = widgets[i].Ui.FrameBeginCount;
         }
 
-        // Forget settings no longer listed, so a host that swaps widgets does not grow this for the router's lifetime.
-        if (_seenBegins.Count > widgets.Count)
+        // Forget settings no longer listed, so a host that swaps widgets does not grow this for the router's lifetime,
+        // and a settings object listed again later counts as new (painted) rather than as one that did not paint.
+        _stale.Clear();
+        foreach (var key in _seenBegins.Keys)
         {
-            _stale.Clear();
-            foreach (var key in _seenBegins.Keys)
+            var listed = false;
+            for (var i = 0; i < widgets.Count && !listed; i++)
             {
-                var listed = false;
-                for (var i = 0; i < widgets.Count && !listed; i++)
-                {
-                    listed = ReferenceEquals(widgets[i].Ui, key);
-                }
-
-                if (!listed)
-                {
-                    _stale.Add(key);
-                }
+                listed = ReferenceEquals(widgets[i].Ui, key);
             }
 
-            foreach (var key in _stale)
+            if (!listed)
             {
-                _seenBegins.Remove(key);
+                _stale.Add(key);
             }
+        }
+
+        foreach (var key in _stale)
+        {
+            _seenBegins.Remove(key);
         }
 
         var settled = ui.PointerClaimSettled;
