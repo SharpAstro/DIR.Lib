@@ -52,6 +52,8 @@ public static partial class Builder
         parts.Add(Text(label, fontSize, ink, TextAlign.Near, TextAlign.Center));
         if (opens) parts.Add(Icon(IconKind.CaretRight, fontSize, ink));
 
+        // IconWordGap is the one size not taken from the theme: the icon-to-word gap Segmented and IconToggle share, kept
+        // in one constant so the three controls agree. Moving it to UiMetrics is for all three at once, not this button.
         var cell = HStack([.. parts]).WithGap(IconWordGap).CrossCenter()
             .Pad(style.PaddingX, 0f).HFixed(theme.Metrics.ButtonHeight).Radius(style.Radius);
         if (style.RestFill is { } rest) cell = cell.Bg(rest);

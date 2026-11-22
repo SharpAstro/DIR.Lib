@@ -125,6 +125,12 @@ namespace DIR.Lib
         /// button is held down, or null). A hovered underlined text run signs differently from a resting one.</summary>
         public static PaintSignature Signature(in Layout.ArrangedNode<float> node, (float X, float Y)? pointer,
             (float X, float Y)? pressOrigin)
+            => Signature(node, pointer, pressOrigin, node.Bounds);
+
+        /// <summary>As the public overload, with the hover underline resolved against <paramref name="underlineScope"/>:
+        /// the rect of the nearest node with a hit that holds this one (itself included), as the painter resolves it.</summary>
+        private static PaintSignature Signature(in Layout.ArrangedNode<float> node, (float X, float Y)? pointer,
+            (float X, float Y)? pressOrigin, in Rect<float> underlineScope)
         {
             var n = node.Node;
             var bounds = node.Bounds;
@@ -139,7 +145,7 @@ namespace DIR.Lib
                 : new PaintSignature(bounds, background, n.CornerRadius, ContentShape.Container,
                     null, null, 0f, default, 0, 0, 0);
             if (n is Layout.Node.Leaf { Content: Layout.Content.Text { UnderlineOnHover: true } }
-                && !n.IsDisabled && Contains(bounds, pointer))
+                && !n.IsDisabled && Contains(underlineScope, pointer))
             {
                 // Caret is unused by a text run: it carries "underline showing".
                 signature = signature with { Caret = 1 };
@@ -223,6 +229,34 @@ namespace DIR.Lib
             List<Rect<float>> damage)
             => Compute(previous, current, previousPointer, currentPointer, null, null, fillChanged, damage);
 
+        /// <summary>
+        /// The signatures of a frame's nodes in paint (pre-)order. A hover underline answers to the nearest enclosing node
+        /// with a hit (a link's whole region, its arrow included), tracked by depth as the painter does.
+        /// </summary>
+        private static HashSet<PaintSignature> SignAll(IReadOnlyList<Layout.ArrangedNode<float>> frame,
+            (float X, float Y)? pointer, (float X, float Y)? press)
+        {
+            var signatures = new HashSet<PaintSignature>(frame.Count);
+            var scopes = new Stack<(int Depth, Rect<float> Bounds)>();
+            for (var i = 0; i < frame.Count; i++)
+            {
+                var node = frame[i];
+                while (scopes.Count > 0 && scopes.Peek().Depth >= node.Depth)
+                {
+                    scopes.Pop();
+                }
+
+                if (node.Node.Hit is not null)
+                {
+                    scopes.Push((node.Depth, node.Bounds));
+                }
+
+                signatures.Add(Signature(node, pointer, press, scopes.Count > 0 ? scopes.Peek().Bounds : node.Bounds));
+            }
+
+            return signatures;
+        }
+
         /// <summary>As the shorter overload, also resolving the pressed fill against where the button was held
         /// down before and now (<see cref="WindowUiSettings.PressOrigin"/>).</summary>
         public static void Compute(
@@ -239,17 +273,8 @@ namespace DIR.Lib
             ArgumentNullException.ThrowIfNull(current);
             ArgumentNullException.ThrowIfNull(damage);
 
-            var before = new HashSet<PaintSignature>(previous.Count);
-            for (var i = 0; i < previous.Count; i++)
-            {
-                before.Add(Signature(previous[i], previousPointer, previousPress));
-            }
-
-            var after = new HashSet<PaintSignature>(current.Count);
-            for (var i = 0; i < current.Count; i++)
-            {
-                after.Add(Signature(current[i], currentPointer, currentPress));
-            }
+            var before = SignAll(previous, previousPointer, previousPress);
+            var after = SignAll(current, currentPointer, currentPress);
 
             // Deduplicated by RECT, because a node that changed in place appears in both halves of
             // the symmetric difference -- once as the old signature vanishing and once as the new one

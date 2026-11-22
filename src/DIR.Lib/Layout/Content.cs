@@ -74,7 +74,8 @@ public abstract record Content
 
         /// <summary>
         /// Draws a 1-unit rule under the measured run, in <see cref="Color"/>, while the pointer is within the
-        /// node. For a hyperlink. The pixel painter honours it; Console.Lib's cell painter does not yet.
+        /// nearest node with a hit that holds this one (the leaf itself when it is clickable), so the whole of a link's
+        /// region, a trailing arrow included, underlines its text. For a hyperlink. The pixel painter honours it; Console.Lib's cell painter does not yet.
         /// </summary>
         public bool UnderlineOnHover { get; init; }
     }

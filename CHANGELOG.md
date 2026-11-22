@@ -20,11 +20,16 @@ Theme-driven buttons and links (#312, step 1), additive. New public members:
 - `ControlStyles`, `ButtonStyle` and `HyperlinkStyle` records, and `UiTheme.Controls` (derived per instance by
   `ControlStyles.For`; restyle one kind with a `with`).
 - `Layout.Node.PressedBackground`, set with `BgPressed`: painted while the primary button is held on the node.
-- `Layout.Content.Text.UnderlineOnHover`, set with `Node.UnderlineOnHover()`.
+- `Layout.Content.Text.UnderlineOnHover`, set with `Node.UnderlineOnHover()`: shown while the pointer is in the nearest
+  node with a hit that holds the text, so hovering an external link's arrow underlines its text (painter and
+  `LayoutDamage` alike).
+- `LayoutDamage.Signature(node, pointer, pressOrigin)` and `LayoutDamage.Compute(..., previousPress, currentPress, ...)`:
+  the press-aware overloads, so a host's damage repaint sees a pressed fill come and go.
 - `Layout.ButtonKind` (Accent, Standard, Subtle) and `Builder.Button(label, kind, onClick, theme, icon, opens,
   disabledReason, tooltip, hit)`: height `ButtonHeight`, everything else from `UiTheme.Controls`; `opens` adds a
-  `CaretRight` (›); a disabled button is flat, takes no press and shows its reason.
-- `Builder.Hyperlink(label, onClick, theme, external, hit)`: link colour, underline on hover, hand cursor, a trailing north-east
+  `CaretRight` (a right-pointing caret, the family having no chevron); a disabled button is flat, takes no press and shows its reason.
+- `Builder.Hyperlink(label, onClick, theme, external, hit)`: link colour (the accent, stepped towards `BodyText` until it
+  reads at 4.5:1 on both `PanelBg` and `ContentBg`), underline on hover, hand cursor, a trailing north-east
   arrow when `external`; its hit is a `ButtonHit` named by the label unless `hit` says otherwise.
 
 Console.Lib's cell painter and the other consumers are not built here; the new Node members are inert for a painter that

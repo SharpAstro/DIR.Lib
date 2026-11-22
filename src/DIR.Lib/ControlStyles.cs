@@ -1,3 +1,5 @@
+using System;
+
 namespace DIR.Lib;
 
 /// <summary>
@@ -120,15 +122,18 @@ public sealed record ControlStyles
         };
     }
 
-    // The accent when it reaches 4.5:1 on PanelBg, else the accent stepped towards BodyText until it does (bounded;
-    // BodyText itself is the last resort).
+    // The accent when it reaches 4.5:1 on both grounds a link sits on (PanelBg and ContentBg, cards included), else the
+    // accent stepped towards BodyText until it does on the lesser of the two (bounded; BodyText itself is the last resort).
     private static RGBAColor32 LinkColor(UiPalette p)
     {
         var c = p.Accent;
-        for (int i = 0; i < LinkMaxSteps && RGBAColor32.ContrastRatio(c, p.PanelBg) < LinkMinContrast; i++)
+        for (int i = 0; i < LinkMaxSteps && LeastContrast(c, p) < LinkMinContrast; i++)
         {
             c = RGBAColor32.Mix(c, p.BodyText, LinkStep);
         }
-        return RGBAColor32.ContrastRatio(c, p.PanelBg) < LinkMinContrast ? p.BodyText : c;
+        return LeastContrast(c, p) < LinkMinContrast ? p.BodyText : c;
     }
+
+    private static float LeastContrast(RGBAColor32 c, UiPalette p)
+        => MathF.Min(RGBAColor32.ContrastRatio(c, p.PanelBg), RGBAColor32.ContrastRatio(c, p.ContentBg));
 }

@@ -84,7 +84,8 @@ public abstract partial record Node
     public Node BgPressed(RGBAColor32 color) => this with { PressedBackground = color };
 
     /// <summary>
-    /// Underlines the text of this leaf, in its own colour, while the pointer is within the node (a link's hover).
+    /// Underlines the text of this leaf, in its own colour, while the pointer is within the nearest node with a hit
+    /// that holds it (a link's hover).
     /// A no-op on a node that is not a text leaf. See <see cref="Content.Text.UnderlineOnHover"/>.
     /// </summary>
     public Node UnderlineOnHover() => this is Leaf { Content: Content.Text t } leaf
