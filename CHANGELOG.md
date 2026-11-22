@@ -99,6 +99,16 @@ Console.Lib needs a follow-up for the cell look of these controls. No existing p
   `NotificationsColors.ToastShadow` (the shadow to paint, null when one-hue), `NotificationsColors.DimOn(fill)`,
   `NotificationsColors.EdgeOnPage()` and `NotificationsColors.OnPage(edge)`. A multi-hue `TintedEdge` that misses 3:1
   against `Page` is now moved toward `Text` until it reaches it, as the one-hue edge already was.
+- **Shadow and damage members**: the `Layout.ShadowStyle` record (`OffsetX`, `OffsetY`, `Blur`, `Color`, and `Extent`,
+  how far the shadow reaches past the node's rect), the `Node.Shadow(offsetX, offsetY, blur, color)` overload that
+  builds one in place, and the `Node.ShadowStyle` property that reads it back. `LayoutDamage.PaintSignature.Shadow` is
+  init-only, so the record's constructor keeps its arity, and `LayoutDamage.DamageRect` now grows a damaged rect by a
+  shadow's `Extent`, in design units, so a shadow's fringe is repainted.
+- **Icon and colour helpers**: `IconSet.IsVectorBacked` (whether an `IconKind` has an embedded outline) and
+  `IconSet.Get` (the outline for a kind), and `RGBAColor32.RelativeLuminance` (the WCAG luminance that
+  `ContrastRatio` is built on).
+- **Toast constants**: `NotificationsLayout.ToastIconSize` (the 18-unit severity icon), `CloseBoxSize` (the square hit
+  box of the Close cross) and `ButtonPadY` (vertical padding of a toast button).
 
 ## 11.87
 
