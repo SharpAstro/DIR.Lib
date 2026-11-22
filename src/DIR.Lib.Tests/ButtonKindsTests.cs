@@ -97,7 +97,7 @@ public class ButtonKindsTests
         plain.Any(n => n.Node is Node.Leaf { Content: Content.Icon }).ShouldBeFalse();
 
         var opens = Arrange(Builder.Button("Save", ButtonKind.Standard, () => { }, Dark, opens: true));
-        opens.Count(n => n.Node is Node.Leaf { Content: Content.Icon { Kind: IconKind.CaretDown } }).ShouldBe(1);
+        opens.Count(n => n.Node is Node.Leaf { Content: Content.Icon { Kind: IconKind.CaretRight } }).ShouldBe(1);
 
         var withIcon = Arrange(Builder.Button("Pin", ButtonKind.Subtle, () => { }, Dark, icon: IconKind.Pin));
         withIcon.Any(n => n.Node is Node.Leaf { Content: Content.Icon { Kind: IconKind.Pin } }).ShouldBeTrue();
@@ -156,10 +156,23 @@ public class ButtonKindsTests
         public int Clicks;
         public Node Root { get; }
 
-        public Rig(UiTheme theme, ButtonKind kind, string? disabledReason = null)
+        public Rig(UiTheme theme, ButtonKind kind, string? disabledReason = null, bool focused = false)
+            : this(theme, focused
+                ? Builder.HStack(Builder.Button("Save", kind, () => Clicks++, theme, disabledReason: disabledReason,
+                        hit: new HitResult.ListItemHit("btns", 0))).HFixed(28f).ListOf(Cursor("btns"), "btns")
+                : Builder.HStack(Builder.Button("Save", kind, () => Clicks++, theme, disabledReason: disabledReason)).HFixed(28f))
+        { }
+
+        private static ListCursor Cursor(string id)
         {
-            // Left-aligned in a stack so the button takes its own width, not the surface's.
-            Root = Builder.HStack(Builder.Button("Save", kind, () => Clicks++, theme, disabledReason: disabledReason)).HFixed(28f);
+            var c = new ListCursor();
+            c.Open(id, 0);
+            return c;
+        }
+
+        public Rig(UiTheme theme, Node root)
+        {
+            Root = root;
             _renderer.Surface.Clear(theme.Palette.PanelBg);
             _widget = new TestWidget(_renderer);
             _router = new InputRouter(_widget.Ui, new BackgroundTaskTracker(), static () => { }) { Widgets = () => [_widget] };
@@ -180,6 +193,17 @@ public class ButtonKindsTests
             const int x = 4, y = 14;
             var i = (y * img.Width + x) * 4;
             return new RGBAColor32(img.Pixels[i], img.Pixels[i + 1], img.Pixels[i + 2], img.Pixels[i + 3]);
+        }
+
+        public int Count(RGBAColor32 c)
+        {
+            var img = _renderer.Surface;
+            var n = 0;
+            for (var i = 0; i + 3 < img.Pixels.Length; i += 4)
+            {
+                if (img.Pixels[i] == c.R && img.Pixels[i + 1] == c.G && img.Pixels[i + 2] == c.B && img.Pixels[i + 3] == c.A) n++;
+            }
+            return n;
         }
 
         public void Move() => _router.Handle(new InputEvent.MouseMove(5, 14));
@@ -208,12 +232,38 @@ public class ButtonKindsTests
         rig.Clicks.ShouldBe(1);
     }
 
+    // Focus shows only for a button in a declared list whose hit is that list's ListItemHit, with the cursor on it.
     [Theory]
     [MemberData(nameof(ThemesAndKinds))]
-    public void Focus_declares_the_hover_fill_so_the_keyboard_cursor_shows(UiTheme theme, string name, ButtonKind kind)
+    public void Focus_paints_the_hover_fill_for_a_button_under_the_list_cursor(UiTheme theme, string name, ButtonKind kind)
     {
-        var button = Builder.Button("Save", kind, () => { }, theme);
-        button.FocusBackground.ShouldBe(StyleOf(theme, kind).HoverFill, $"{name} {kind}");
+        var s = StyleOf(theme, kind);
+        new Rig(theme, kind, focused: true).Fill().ShouldBe(s.HoverFill, $"{name} {kind} focus");
+        new Rig(theme, kind).Fill().ShouldBe(s.RestFill ?? default, $"{name} {kind} not focused");
+    }
+
+    // ---- the link, rendered ----
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void The_link_draws_no_underline_at_rest_and_one_in_its_colour_on_hover(UiTheme theme, string name)
+    {
+        var colour = theme.Controls.Hyperlink.Color;
+        var rig = new Rig(theme, Builder.HStack(Builder.Hyperlink("Docs", () => { }, theme)).HFixed(28f));
+        rig.Count(colour).ShouldBe(0, $"{name} rest");
+        rig.Move();
+        rig.Paint();
+        rig.Count(colour).ShouldBeGreaterThan(0, $"{name} hover");
+        rig.Count(theme.Palette.PanelBg).ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
+    public void Two_links_with_one_label_take_distinct_hits_when_asked()
+    {
+        var a = Builder.Hyperlink("Docs", () => { }, Dark, hit: new HitResult.ButtonHit("docs-a"));
+        var b = Builder.Hyperlink("Docs", () => { }, Dark, hit: new HitResult.ButtonHit("docs-b"));
+        a.Hit.ShouldNotBe(b.Hit);
+        Builder.Hyperlink("Docs", () => { }, Dark).Hit.ShouldBe(new HitResult.ButtonHit("Docs"));
     }
 
     [Theory]
@@ -239,11 +289,12 @@ public class ButtonKindsTests
 
     [Theory]
     [MemberData(nameof(ThemesAndKinds))]
-    public void Disabled_ink_stays_legible_but_dimmer_than_the_ink(UiTheme theme, string name, ButtonKind kind)
+    public void Disabled_ink_is_dimmer_than_the_ink_and_still_reads_at_3_to_1(UiTheme theme, string name, ButtonKind kind)
     {
         var s = StyleOf(theme, kind);
         var ground = s.RestFill ?? theme.Palette.PanelBg;
         s.DisabledInk.ShouldNotBeNull();
         RGBAColor32.ContrastRatio(s.DisabledInk!.Value, ground).ShouldBeLessThan(RGBAColor32.ContrastRatio(s.Ink, ground), $"{name} {kind}");
+        RGBAColor32.ContrastRatio(s.DisabledInk!.Value, ground).ShouldBeGreaterThanOrEqualTo(3f, $"{name} {kind} floor");
     }
 }

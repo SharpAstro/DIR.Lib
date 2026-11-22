@@ -22,7 +22,7 @@ Theme-driven buttons and links (#312, step 1), additive. New public members:
 - `Layout.Content.Text.UnderlineOnHover`, set with `Node.UnderlineOnHover()`.
 - `Layout.ButtonKind` (Accent, Standard, Subtle) and `Builder.Button(label, kind, onClick, theme, icon, opens,
   disabledReason, tooltip, hit)`: height `ButtonHeight`, everything else from `UiTheme.Controls`; `opens` adds a
-  `CaretDown`; a disabled button is flat, takes no press and shows its reason.
+  `CaretRight` (›); a disabled button is flat, takes no press and shows its reason.
 - `Builder.Hyperlink(label, onClick, theme, external)`: link colour, underline on hover, hand cursor, a trailing north-east
   arrow when `external`; its hit is a `ButtonHit` named by the label.
 
