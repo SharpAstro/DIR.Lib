@@ -34,6 +34,20 @@ public sealed record UiPalette
     private readonly RGBAColor32? _success;
     private readonly RGBAColor32? _raisedBg;
     private readonly RGBAColor32? _edge;
+    private readonly RGBAColor32? _controlFill;
+    private readonly RGBAColor32? _controlFillHover;
+    private readonly RGBAColor32? _controlFillPressed;
+    private readonly RGBAColor32? _controlEdge;
+
+    // Steps (fractions towards white on a dark palette, black on a light one) of the neutral control roles.
+    private const float ControlFillStep = 0.06f;
+    private const float ControlHoverStep = 0.06f;
+    private const float ControlEdgeStep = 0.08f;
+    private const float ControlEdgeMinContrast = 3f;
+    private const int ControlEdgeMaxSteps = 12;
+
+    private RGBAColor32 StepFrom(RGBAColor32 from, float fraction)
+        => RGBAColor32.Mix(from, IsDark ? new RGBAColor32(0xff, 0xff, 0xff, 0xff) : new RGBAColor32(0, 0, 0, 0xff), fraction);
 
     // ---- surfaces, back to front -------------------------------------------------------------
 
@@ -54,6 +68,51 @@ public sealed record UiPalette
     {
         get => _raisedBg ?? PanelBg;
         init => _raisedBg = value;
+    }
+
+    // ---- neutral controls --------------------------------------------------------------------
+
+    /// <summary>
+    /// Resting fill of a standard button. Defaults to one step off <see cref="PanelBg"/>: lighter when <see cref="IsDark"/>,
+    /// darker when not. Never falls back to <see cref="Accent"/>.
+    /// </summary>
+    public RGBAColor32 ControlFill
+    {
+        get => _controlFill ?? StepFrom(PanelBg, ControlFillStep);
+        init => _controlFill = value;
+    }
+
+    /// <summary>Fill under the pointer. Defaults to one step further from <see cref="ControlFill"/> in the same direction.</summary>
+    public RGBAColor32 ControlFillHover
+    {
+        get => _controlFillHover ?? StepFrom(ControlFill, ControlHoverStep);
+        init => _controlFillHover = value;
+    }
+
+    /// <summary>Fill while pressed. Defaults to one step further from <see cref="ControlFillHover"/> in the same direction.</summary>
+    public RGBAColor32 ControlFillPressed
+    {
+        get => _controlFillPressed ?? StepFrom(ControlFillHover, ControlHoverStep);
+        init => _controlFillPressed = value;
+    }
+
+    /// <summary>
+    /// Edge of a standard button. Defaults to <see cref="ControlFill"/> stepped further in the same direction until it
+    /// reaches 3:1 against <see cref="PanelBg"/> (at most 12 steps, then the last value; no loop waits on anything).
+    /// </summary>
+    public RGBAColor32 ControlEdge
+    {
+        get
+        {
+            if (_controlEdge is { } e) return e;
+            var c = ControlFill;
+            for (int i = 0; i < ControlEdgeMaxSteps && RGBAColor32.ContrastRatio(c, PanelBg) < ControlEdgeMinContrast; i++)
+            {
+                c = StepFrom(c, ControlEdgeStep);
+            }
+            return c;
+        }
+        init => _controlEdge = value;
     }
 
     // ---- rules -------------------------------------------------------------------------------
@@ -258,6 +317,7 @@ public readonly record struct UiMetrics(
     float ButtonHeight)
 {
     private readonly float? _cornerRadius;
+    private readonly float? _controlRadius;
     private readonly Layout.ShadowStyle? _shadow;
 
     /// <summary>The toast's key shadow: no offset across, 1 down, blur 2, black at 55%.</summary>
@@ -268,6 +328,13 @@ public readonly record struct UiMetrics(
     {
         get => _cornerRadius ?? 6f;
         init => _cornerRadius = value;
+    }
+
+    /// <summary>Corner radius of a button or other control, in design units. Defaults to 4.</summary>
+    public float ControlRadius
+    {
+        get => _controlRadius ?? 4f;
+        init => _controlRadius = value;
     }
 
     /// <summary>
@@ -292,4 +359,17 @@ public sealed record UiTheme
 
     /// <summary>The base metrics.</summary>
     public required UiMetrics Metrics { get; init; }
+
+    private readonly ControlStyles? _controls;
+    private ControlStyles? _derivedControls;
+
+    /// <summary>
+    /// The control styles. Defaults to <see cref="ControlStyles.For"/> of <see cref="Palette"/> and <see cref="Metrics"/>,
+    /// derived once per instance. Override one kind with <c>theme with { Controls = theme.Controls with { Standard = ... } }</c>.
+    /// </summary>
+    public ControlStyles Controls
+    {
+        get => _controls ?? (_derivedControls ??= ControlStyles.For(Palette, Metrics));
+        init => _controls = value;
+    }
 }

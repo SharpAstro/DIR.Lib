@@ -158,4 +158,89 @@ public sealed class UiPaletteTests
         m.SelectedForeground.ShouldBe(gold);
         m.TitleColor.ShouldBe(Minimal().Accent);
     }
+
+    private static UiPalette Light() => Minimal(new RGBAColor32(0xf2, 0xf4, 0xf6, 0xff)) with
+    {
+        PanelBg = new RGBAColor32(0xff, 0xff, 0xff, 0xff),
+        BodyText = new RGBAColor32(0x1a, 0x1d, 0x23, 0xff),
+        DimText = new RGBAColor32(0x5c, 0x64, 0x70, 0xff),
+        Accent = new RGBAColor32(0x0b, 0x5c, 0xc4, 0xff),
+    };
+
+    [Fact]
+    public void ControlRolesStepLighterOnDarkAndDarkerOnLight()
+    {
+        var d = Minimal();
+        d.ControlFill.Luminance.ShouldBeGreaterThan(d.PanelBg.Luminance);
+        d.ControlFillHover.Luminance.ShouldBeGreaterThan(d.ControlFill.Luminance);
+        d.ControlFillPressed.Luminance.ShouldBeGreaterThan(d.ControlFillHover.Luminance);
+        d.ControlEdge.Luminance.ShouldBeGreaterThan(d.ControlFill.Luminance);
+
+        var l = Light();
+        l.ControlFill.Luminance.ShouldBeLessThan(l.PanelBg.Luminance);
+        l.ControlFillHover.Luminance.ShouldBeLessThan(l.ControlFill.Luminance);
+        l.ControlFillPressed.Luminance.ShouldBeLessThan(l.ControlFillHover.Luminance);
+        l.ControlEdge.Luminance.ShouldBeLessThan(l.ControlFill.Luminance);
+    }
+
+    [Fact]
+    public void ControlEdgeReachesThreeToOneAgainstPanelBgAndNoRoleIsTheAccent()
+    {
+        foreach (var p in new[] { Minimal(), Light() })
+        {
+            RGBAColor32.ContrastRatio(p.ControlEdge, p.PanelBg).ShouldBeGreaterThanOrEqualTo(3f);
+            p.ControlFill.ShouldNotBe(p.Accent);
+            p.ControlFillHover.ShouldNotBe(p.Accent);
+            p.ControlFillPressed.ShouldNotBe(p.Accent);
+            p.ControlEdge.ShouldNotBe(p.Accent);
+        }
+    }
+
+    [Fact]
+    public void ControlRolesCanBeStated()
+    {
+        var c = new RGBAColor32(1, 2, 3, 0xff);
+        var p = Minimal() with { ControlFill = c, ControlEdge = c };
+        p.ControlFill.ShouldBe(c);
+        p.ControlEdge.ShouldBe(c);
+    }
+
+    [Fact]
+    public void ControlRadiusDefaultsToFourAndCanBeStated()
+    {
+        default(UiMetrics).ControlRadius.ShouldBe(4f);
+        (default(UiMetrics) with { ControlRadius = 9f }).ControlRadius.ShouldBe(9f);
+    }
+
+    [Fact]
+    public void ThemeControlsDeriveFromPaletteAndMetrics()
+    {
+        var p = Light();
+        var theme = new UiTheme { Palette = p, Metrics = new UiMetrics(14, 8, 30, 24, 28) };
+        var c = theme.Controls;
+
+        c.ShouldBeSameAs(theme.Controls);
+        c.Accent.RestFill.ShouldBe(p.Accent);
+        c.Accent.Ink.ShouldBe(p.InkOn(p.Accent));
+        c.Accent.Edge.ShouldBeNull();
+        c.Standard.RestFill.ShouldBe(p.ControlFill);
+        c.Standard.Edge.ShouldBe(p.ControlEdge);
+        c.Subtle.RestFill.ShouldBeNull();
+        c.Subtle.HoverFill.ShouldBe(p.ControlFillHover);
+        c.Standard.Radius.ShouldBe(theme.Metrics.ControlRadius);
+        c.Standard.PaddingX.ShouldBe(8f);
+        RGBAColor32.ContrastRatio(c.Hyperlink.Color, p.PanelBg).ShouldBeGreaterThanOrEqualTo(4.5f);
+        c.Hyperlink.UnderlineOnHover.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ThemeControlsOverrideOneKindWithWith()
+    {
+        var theme = new UiTheme { Palette = Minimal(), Metrics = new UiMetrics(14, 8, 30, 24, 28) };
+        var std = theme.Controls.Standard with { Radius = 12f };
+        var t2 = theme with { Controls = theme.Controls with { Standard = std } };
+
+        t2.Controls.Standard.Radius.ShouldBe(12f);
+        t2.Controls.Accent.ShouldBe(theme.Controls.Accent);
+    }
 }
