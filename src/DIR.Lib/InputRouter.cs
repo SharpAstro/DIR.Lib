@@ -295,10 +295,19 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         // A popover opened, moved or closed during the paint, so what was painted before it was confined to the
         // claim it no longer makes (WindowUiSettings.PointerClaim): the next frame carries the new one. Asked of every
         // widget's settings, since a toast in a widget of its own is its own settings' surface.
+        // A listed widget that did not paint this cycle is skipped: it is not on screen, and its settings (whose cycle
+        // only turns over when one of its widgets begins) still hold the last surfaces it painted, which would ask for
+        // redraws for ever and keep a row beneath them dark.
+        _painted.Clear();
+        for (var i = 0; i < widgets.Count; i++)
+        {
+            _painted.Add(widgets[i].Ui.TakeBegan(widgets[i]));
+        }
+
         var settled = ui.PointerClaimSettled;
         for (var i = 0; i < widgets.Count && settled; i++)
         {
-            settled = widgets[i].Ui.PointerClaimSettled;
+            settled = !_painted[i] || widgets[i].Ui.PointerClaimSettled;
         }
 
         if (!settled | CarrySurfacesAcrossSettings(widgets))
@@ -308,6 +317,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     }
 
     private readonly List<WindowUiSettings.PaintedSurface> _crossSurfaces = [];
+    private readonly List<bool> _painted = [];
 
     /// <summary>
     /// Lays the surfaces each widget painted over the widgets painted before it that do NOT share its settings, so the
@@ -319,7 +329,8 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     /// that paints its toasts in a widget of its own, with settings of its own, needs to share nothing for a row under a
     /// toast to stay dark. Each surface reaches the earlier widget's settings with that widget's END as its order (the order
     /// at which the next widget sharing those settings began), so a widget painted after the surface (a panel over the
-    /// toasts) still lights. Only the surfaces the later widget itself painted go across, read off its own range of its
+    /// toasts) still lights. A widget that did not paint this cycle (<c>_painted</c>) contributes no surface: it is not on
+    /// screen, and its settings still hold what it last painted. Only the surfaces the later widget itself painted go across, read off its own range of its
     /// settings' paint order, for the same reason.
     /// </remarks>
     private bool CarrySurfacesAcrossSettings(IReadOnlyList<IPixelWidget> widgets)
@@ -336,7 +347,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             _crossSurfaces.Clear();
             for (var w = a; w < widgets.Count; w++)
             {
-                if (!ReferenceEquals(widgets[w].Ui, settings))
+                if (!_painted[w] || !ReferenceEquals(widgets[w].Ui, settings))
                 {
                     continue;
                 }
@@ -345,7 +356,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
                 for (var k = w + 1; k < widgets.Count; k++)
                 {
                     var other = widgets[k].Ui;
-                    if (ReferenceEquals(other, settings))
+                    if (!_painted[k] || ReferenceEquals(other, settings))
                     {
                         continue;
                     }

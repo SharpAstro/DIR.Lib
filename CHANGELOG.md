@@ -9,6 +9,14 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.92
+
+Fix, additive, no API change. A widget listed in `InputRouter.Widgets` that did not paint a cycle now stops counting
+in `InputRouter.AfterPaint`: its settings are no longer asked whether the pointer claim settled, and the surfaces it
+painted last are no longer laid over the widgets painted before it. A host that kept a toast in a widget with its own
+settings saw endless redraws, and a row dark beneath the toast's old rect, once that widget stopped painting. Consumers
+need no change.
+
 ## 11.91
 
 A staying `Notification` carries the host's own buttons in its button row (#302). The new init-only
