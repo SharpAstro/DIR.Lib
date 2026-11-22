@@ -312,6 +312,14 @@ public sealed class WindowUiSettings
     public ModalClaim NoteModalPainted(object widget, int regionStart, int nodeStart, RectF32 card, Action? dismiss)
         => PaintedModal = new ModalClaim(widget, regionStart, nodeStart, card, dismiss);
 
+    // Widgets that began a frame since the router last asked (TakeBegan). A settings object's cycle only turns over
+    // when one of its widgets begins again, so a widget with settings of its own that stopped painting keeps its last
+    // surfaces; this is how the router tells it from one that painted.
+    private readonly HashSet<object> _begunSinceCheck = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>Whether <paramref name="widget"/> began a frame since the last call for it, and forgets it.</summary>
+    internal bool TakeBegan(object widget) => _begunSinceCheck.Remove(widget);
+
     private readonly HashSet<object> _begunThisCycle = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
@@ -328,6 +336,7 @@ public sealed class WindowUiSettings
     /// </remarks>
     public void NoteFrameBegin(object widget)
     {
+        _begunSinceCheck.Add(widget);
         if (_begunThisCycle.Add(widget))
         {
             _frameStartOrders[widget] = _paintOrder;
