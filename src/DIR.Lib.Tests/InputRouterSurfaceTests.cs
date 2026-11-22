@@ -158,6 +158,13 @@ public class InputRouterSurfaceTests
             Router.AfterPaint();
         }
 
+        /// <summary>Paints one frame of Back alone: Front, listed in the router, does not paint.</summary>
+        public void PaintBackOnly()
+        {
+            Back.Render(Layout.Builder.VStack(Row.Node()).Stretch(), new RectF32(0, 0, 200, 200));
+            Router.AfterPaint();
+        }
+
         public bool Press((float X, float Y) at, int clicks = 1, MouseButton button = MouseButton.Left)
             => Router.Handle(new InputEvent.MouseDown(at.X, at.Y, button, InputModifier.None, clicks));
 
@@ -334,5 +341,23 @@ public class InputRouterSurfaceTests
         h.Move(Open);
         h.Paint();
         h.PixelAt(Open).ShouldBe(RowHot, "the row in the open lights as ever");
+    }
+
+    [Fact]
+    public void AListedWidgetThatStopsPainting_NeitherAsksForRedrawsNorKeepsTheRowDark()
+    {
+        var h = new Harness(Placement.LaterWidgetOwnSettings);
+        h.Move(Covered);
+        h.Paint();      // Front paints its surface once; its own settings never see it settle
+
+        h.PaintBackOnly();      // at most one extra frame is asked for, to drop the stale carry
+        h.Redraws = 0;
+        for (var i = 0; i < 4; i++)
+        {
+            h.PaintBackOnly();
+        }
+
+        h.Redraws.ShouldBe(0, "an unpainted widget is not on screen, so it cannot ask for frames");
+        h.PixelAt(Covered).ShouldBe(RowHot, "Front's old surface no longer covers the row");
     }
 }
