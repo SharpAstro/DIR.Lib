@@ -204,7 +204,7 @@ public class ButtonKindsTests
             var n = 0;
             for (var i = 0; i + 3 < img.Pixels.Length; i += 4)
             {
-                if (img.Pixels[i] == c.R && img.Pixels[i + 1] == c.G && img.Pixels[i + 2] == c.B && img.Pixels[i + 3] == c.A) n++;
+                if (img.Pixels[i] == c.Red && img.Pixels[i + 1] == c.Green && img.Pixels[i + 2] == c.Blue && img.Pixels[i + 3] == c.Alpha) n++;
             }
             return n;
         }
