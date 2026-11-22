@@ -102,8 +102,10 @@ Console.Lib needs a follow-up for the cell look of these controls. No existing p
 - **Shadow and damage members**: the `Layout.ShadowStyle` record (`OffsetX`, `OffsetY`, `Blur`, `Color`, and `Extent`,
   how far the shadow reaches past the node's rect), the `Node.Shadow(offsetX, offsetY, blur, color)` overload that
   builds one in place, and the `Node.ShadowStyle` property that reads it back. `LayoutDamage.PaintSignature.Shadow` is
-  init-only, so the record's constructor keeps its arity, and `LayoutDamage.DamageRect` now grows a damaged rect by a
-  shadow's `Extent`, in design units, so a shadow's fringe is repainted.
+  init-only, so the record's constructor keeps its arity, and `LayoutDamage.DamageRect` now grows a damaged rect on
+  every side by a shadow's `Extent` rounded up plus one pixel (the default shadow reaches one pixel past its extent, and
+  the offset rounds), in design units, so a shadow's fringe is repainted. A shadow with zero alpha grows nothing, and a
+  surface at a `DesignScale` other than 1 passes bounds divided by that scale.
 - **Icon and colour helpers**: `IconSet.IsVectorBacked` (whether an `IconKind` has an embedded outline) and
   `IconSet.Get` (the outline for a kind), and `RGBAColor32.RelativeLuminance` (the WCAG luminance that
   `ContrastRatio` is built on).
