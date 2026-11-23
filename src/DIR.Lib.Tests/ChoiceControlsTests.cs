@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using DIR.Lib;
 using DIR.Lib.Layout;
 using Shouldly;
@@ -656,7 +657,9 @@ public class ChoiceControlsTests
         var right = 4;
         while (right < 200 && rig.At(right, 14) != theme.Palette.PanelBg) right++;
         var x = right / 2;
-        right.ShouldBeGreaterThan(8, name + " chip found");
+        var seen = string.Join(",", Enumerable.Range(0, 120).Where(i => rig.At(i, 14) != theme.Palette.PanelBg));
+        var seenY = string.Join(",", Enumerable.Range(0, 60).Where(i => rig.At(14, i) != theme.Palette.PanelBg));
+        right.ShouldBeGreaterThan(8, name + " chip found; x at y14: " + seen + "; y at x14: " + seenY);
         rig.At(x, 14).ShouldBe(s.OnFill, name + " fill is the rest fill");
         var gap = (int)theme.Metrics.FocusRingGap;
         rig.At(x, 28).ShouldNotBe(theme.Palette.Focus, name + " gap is not the ring");
