@@ -59,7 +59,7 @@ public class FocusRingTests
             if (disabled) row = row.Disabled("no");
             rows[i] = row;
         }
-        return new Layout.Node.Stack(rows) { Padding = 20f, Gap = 10f };
+        return new Layout.Node.Stack(System.Collections.Immutable.ImmutableArray.Create(rows)) { Padding = 20f, Gap = 10f };
     }
 
     private static StubRenderer Draw(Layout.Node tree, int cursorRow)
