@@ -84,7 +84,9 @@ public static partial class Builder
         var row = HStack(block, mark).WithGap(style.Gap).CrossCenter()
             .Pad(style.PaddingX, style.PaddingY).Radius(style.Radius).Bg(style.RestFill);
         row = row.Clickable(hit ?? new HitResult.ButtonHit(title), enabled && onClick is not null ? _ => onClick() : null);
-        if (!enabled) return row.Disabled(disabledReason!);
+        // Disabled propagates to every descendant, so a trailing node (a switch, a button) would die with its row. The row goes
+        // flat with the reason as its tooltip instead and the node keeps its own state.
+        if (!enabled) return trailing.Kind == SettingTrailingKind.Node ? row.WithTooltip(disabledReason!) : row.Disabled(disabledReason!);
         return row.BgHover(style.HoverFill).BgFocus(style.HoverFill).BgPressed(style.PressedFill).WithCursor(CursorKind.Pointer);
     }
 }

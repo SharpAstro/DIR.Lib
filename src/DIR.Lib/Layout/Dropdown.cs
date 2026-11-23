@@ -14,7 +14,7 @@ public static partial class Builder
     /// the Escape claim come from <see cref="Popover"/>, a disabled row is <see cref="Node.Disabled(string)"/>
     /// (dimmed, press swallowed with <see cref="CursorKind.NotAllowed"/>, the reason as its tooltip), the
     /// highlight is <see cref="Node.BgHover"/>, the overflow is <see cref="Node.WithScroll"/>. What was
-    /// missing was a node to know them ON -- <c>PixelWidgetBase.RenderDropdownMenu</c> knows all of it
+    /// missing was a node to know them ON: <c>PixelWidgetBase.RenderDropdownMenu</c> knows all of it
     /// inside a ten-parameter method carrying the obligation "must be called LAST in the render pass",
     /// and a caller who gets that order wrong gets a menu that paints under the chrome it belongs to and
     /// loses its clicks, with nothing to say so.
@@ -82,7 +82,7 @@ public static partial class Builder
             rows[i] = row;
         }
 
-        // A row is the atom, so the keyboard's EnsureVisible and the wheel's step count rows -- the
+        // A row is the atom, so the keyboard's EnsureVisible and the wheel's step count rows; the
         // engine converts it to surface units when it feeds the controller. Stated on every build for
         // the same reason the rows are: the menu's font may have changed since the last one.
         state.Scroll.AtomDesignUnits = rowHeight;
@@ -127,12 +127,15 @@ public static partial class Builder
             maxHeight, side, list => list.Radius(style.MenuRadius).Shadow(style.MenuShadow).AsSurface());
     }
 
+    /// <summary>How far an explicit box fill is mixed toward the body text for its hover fill.</summary>
+    private const float HoverMix = 0.12f;
+
     /// <summary>
     /// The closed box of a themed dropdown: <paramref name="label"/> on the control fill with the control edge ring at the
     /// control radius, <see cref="UiMetrics.ButtonHeight"/> tall, and a trailing <see cref="IconKind.CaretDown"/> that
     /// becomes <see cref="IconKind.CaretUp"/> while <paramref name="state"/> is open. A press toggles the menu
     /// (<c>state.Popover.Toggle()</c>), so there is no dispatcher line to add. The hit identity is <c>ButtonHit(label)</c>
-    /// unless <paramref name="hit"/> says otherwise. <paramref name="fillColor"/> and <paramref name="textColor"/> win over the theme.
+    /// unless <paramref name="hit"/> says otherwise. <paramref name="fillColor"/> and <paramref name="textColor"/> win over the theme; an explicit fill gets its own hover, the fill mixed a little toward the body text.
     /// </summary>
     public static Node DropdownBox<T>(string label, DropdownMenuState<T> state, UiTheme theme,
         HitResult? hit = null, RGBAColor32? fillColor = null, RGBAColor32? textColor = null, string? tooltip = null)
@@ -151,7 +154,7 @@ public static partial class Builder
             .Pad(style.PaddingX, 0f).HFixed(theme.Metrics.ButtonHeight).Radius(style.BoxRadius)
             .Bg(fill).Border(style.BoxEdge, style.EdgeWidth, style.BoxRadius)
             .Clickable(hit ?? new HitResult.ButtonHit(label), _ => state.Popover.Toggle())
-            .BgHover(fillColor ?? style.BoxHoverFill).WithCursor(CursorKind.Pointer);
+            .BgHover(fillColor is { } explicit ? RGBAColor32.Mix(explicit, theme.Palette.BodyText, HoverMix) : style.BoxHoverFill).WithCursor(CursorKind.Pointer);
         return tooltip is null ? box : box.WithTooltip(tooltip);
     }
 }
