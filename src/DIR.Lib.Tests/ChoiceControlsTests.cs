@@ -652,14 +652,18 @@ public class ChoiceControlsTests
     {
         var s = theme.Controls.ChipOrDerived;
         var rig = new Rig(theme, on: true, row: true);
-        // Chip 0 is on and under the cursor; the chip is 28 tall at the top left.
-        rig.Fill().ShouldBe(s.OnFill, name + " fill is the rest fill");
+        // Chip 0 is on and under the cursor, and may be narrower than the shared probe column: probe its own middle.
+        var right = 4;
+        while (right < 200 && rig.At(right, 14) != theme.Palette.PanelBg) right++;
+        var x = right / 2;
+        right.ShouldBeGreaterThan(8, name + " chip found");
+        rig.At(x, 14).ShouldBe(s.OnFill, name + " fill is the rest fill");
         var gap = (int)theme.Metrics.FocusRingGap;
-        rig.At(14, 28).ShouldNotBe(theme.Palette.Focus, name + " gap is not the ring");
-        rig.At(14, 28).ShouldNotBe(s.OnFill, name + " gap is not the fill");
-        rig.At(14, 28 + gap).ShouldBe(theme.Palette.Focus, name + " ring below the gap");
-        rig.At(14, 29 + gap).ShouldBe(theme.Palette.Focus, name + " ring is two units wide");
-        new Rig(theme, on: true).At(14, 28 + gap).ShouldNotBe(theme.Palette.Focus, name + " no ring unfocused");
+        rig.At(x, 28).ShouldNotBe(theme.Palette.Focus, name + " gap is not the ring");
+        rig.At(x, 28).ShouldNotBe(s.OnFill, name + " gap is not the fill");
+        rig.At(x, 28 + gap).ShouldBe(theme.Palette.Focus, name + " ring below the gap");
+        rig.At(x, 29 + gap).ShouldBe(theme.Palette.Focus, name + " ring is two units wide");
+        new Rig(theme, on: true).At(x, 28 + gap).ShouldNotBe(theme.Palette.Focus, name + " no ring unfocused");
     }
 
     [Theory]
