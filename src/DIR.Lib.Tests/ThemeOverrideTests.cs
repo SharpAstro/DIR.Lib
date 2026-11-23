@@ -79,6 +79,67 @@ public class ThemeOverrideTests
     }
 
     [Fact]
+    public void A_chip_style_with_no_ring_and_another_radius_renders_ringless_with_that_radius()
+    {
+        var ringless = Default with
+        {
+            Controls = Default.Controls with { Chip = Default.Controls.Chip! with { OffEdge = null, Radius = 4f } },
+        };
+        var def = Builder.Chip("Tag", false, _ => { }, Default);
+        var over = Builder.Chip("Tag", false, _ => { }, ringless);
+        def.BorderStyle.ShouldNotBeNull();
+        def.CornerRadius.ShouldBe(14f);
+        over.BorderStyle.ShouldBeNull();
+        over.CornerRadius.ShouldBe(4f);
+
+        RgbaImage DrawChip(UiTheme t)
+        {
+            var r = new StubRenderer(200, 60);
+            r.Surface.Clear(default);
+            new TestWidget(r).Render(Builder.HStack(Builder.Chip("Tag", false, _ => { }, t)).HFixed(28f));
+            return r.Surface;
+        }
+
+        var fill = Default.Controls.Chip!.OffFill;
+        var a = DrawChip(Default);
+        var b = DrawChip(ringless);
+        At(a, 0, 0).ShouldNotBe(fill);
+        At(b, 0, 0).ShouldNotBe(fill); // radius 4 still cuts the corner
+        At(a, 0, 14).ShouldNotBe(fill);
+        At(b, 0, 14).ShouldBe(fill);
+        At(b, 2, 2).ShouldBe(fill); // inside the small radius, where the round default is still clear
+        At(a, 2, 2).ShouldNotBe(fill);
+    }
+
+    [Fact]
+    public void A_standard_style_with_no_ring_and_another_radius_changes_the_split_button()
+    {
+        var ringless = Default with
+        {
+            Controls = Default.Controls with { Standard = Default.Controls.Standard with { Edge = null, Radius = 2f } },
+        };
+        var def = Builder.SplitButton("Run", false, _ => { }, () => { }, Default);
+        var over = Builder.SplitButton("Run", false, _ => { }, () => { }, ringless);
+        def.ShouldBeOfType<Node.Overlay>();
+        over.ShouldBeOfType<Node.Stack>(); // no ring layer
+        over.CornerRadius.ShouldBe(2f);
+        ((Node.Overlay)def).Base.CornerRadius.ShouldBe(Default.Controls.Standard.Radius);
+    }
+
+    [Fact]
+    public void A_tile_style_with_no_ring_and_another_radius_changes_the_toggle_tile()
+    {
+        var tile = Default.Controls.TileOrDerived with { OffEdge = null, Radius = 2f };
+        var over = Default with { Controls = Default.Controls with { Tile = tile } };
+        var def = (Node.Stack)Builder.ToggleTile(IconKind.Pin, "Grid", false, _ => { }, Default);
+        var changed = (Node.Stack)Builder.ToggleTile(IconKind.Pin, "Grid", false, _ => { }, over);
+        def.Children[0].BorderStyle.ShouldNotBeNull();
+        def.Children[0].CornerRadius.ShouldBe(Default.Controls.Standard.Radius);
+        changed.Children[0].BorderStyle.ShouldBeNull();
+        changed.Children[0].CornerRadius.ShouldBe(2f);
+    }
+
+    [Fact]
     public void The_node_carries_the_override_and_the_default_carries_radius_and_edge()
     {
         var def = Builder.Button("Save", ButtonKind.Standard, () => { }, Default);
