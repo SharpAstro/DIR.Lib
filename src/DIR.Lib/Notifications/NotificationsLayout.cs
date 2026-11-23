@@ -203,7 +203,11 @@ namespace DIR.Lib.Notifications
     /// <summary>Sizes of the notifications UI, in design units.</summary>
     public sealed record NotificationsStyle
     {
-        /// <summary>Width of the strip at the right edge that always shows the bell.</summary>
+        /// <summary>
+        /// Width of the strip at the right edge that always shows the bell. 0 or less leaves the strip out of
+        /// <c>NotificationsLayout.Build</c> (no bell, no count, no shortcut node). The <see cref="ToggleKey"/> shortcut
+        /// lives on the strip, so a strip-less host binds its own.
+        /// </summary>
         public float StripWidth { get; init; } = 48f;
         /// <summary>Width of the open bar.</summary>
         public float BarWidth { get; init; } = 360f;
@@ -264,6 +268,11 @@ namespace DIR.Lib.Notifications
                 fill = toasts.Count == 0
                     ? page
                     : Builder.Overlay(page, ToastLayer(toasts, feed, colors, style, style.Corner));
+            }
+
+            if (style.StripWidth <= 0f)
+            {
+                return fill;
             }
 
             return Builder.Dock(fill, Builder.Right(Strip(feed, state, colors, style), style.StripWidth));
@@ -503,7 +512,34 @@ namespace DIR.Lib.Notifications
 
         // ---- the bar ----
 
+        /// <summary>
+        /// The notifications list frame alone: the header (Notifications, Clear) over the scrolled list of Needs you and
+        /// History, padded, on <see cref="NotificationsColors.Surface"/>, as wide and as tall as the room it is given
+        /// (no fixed width, no spacer). A host with a page of its own for the list (pilot's Notifications page,
+        /// tianwen's tab) builds this; the open bar is built from the same frame, so there is one source for it.
+        /// It is NOT a surface (<c>Node.IsSurface</c>): it sits in a page of its own and covers nothing, so it takes the
+        /// pointer from nothing. The bar adds the surface because it is painted over the page.
+        /// </summary>
+        public static Node BuildList(NotificationFeed feed, NotificationsState state,
+            NotificationsColors colors, NotificationsStyle style)
+        {
+            ArgumentNullException.ThrowIfNull(feed);
+            ArgumentNullException.ThrowIfNull(state);
+            ArgumentNullException.ThrowIfNull(colors);
+            ArgumentNullException.ThrowIfNull(style);
+            return ListFrame(feed, state, colors, style).WStar().HStar();
+        }
+
         private static Node BarLayer(NotificationFeed feed, NotificationsState state, NotificationsColors c, NotificationsStyle s)
+        {
+            var bar = ListFrame(feed, state, c, s).BorderLeft(c.Separator)
+                .WithCursor(CursorKind.Default)
+                .AsSurface()   // over the page's right: nothing of the page beneath it gets the pointer
+                .WFixed(s.BarWidth).HStar();
+            return Builder.HStack(Builder.Spacer().WStar().HStar(), bar).Stretch();
+        }
+
+        private static Node ListFrame(NotificationFeed feed, NotificationsState state, NotificationsColors c, NotificationsStyle s)
         {
             var header = Builder.HStack(
                     Builder.Text("Notifications", s.FontSize, c.Text).WStar(),
@@ -541,12 +577,7 @@ namespace DIR.Lib.Notifications
             }
 
             var list = Builder.VStack([.. rows]).WithGap(s.Gap).WStar().HStar().WithScroll(state.ListScroll);
-            var bar = Builder.VStack(header, list)
-                .WithGap(s.Gap).Pad(s.Padding).Bg(c.Surface).BorderLeft(c.Separator)
-                .WithCursor(CursorKind.Default)
-                .AsSurface()   // over the page's right: nothing of the page beneath it gets the pointer
-                .WFixed(s.BarWidth).HStar();
-            return Builder.HStack(Builder.Spacer().WStar().HStar(), bar).Stretch();
+            return Builder.VStack(header, list).WithGap(s.Gap).Pad(s.Padding).Bg(c.Surface);
         }
 
         private static Node Section(string title, int count, NotificationsColors c, NotificationsStyle s)

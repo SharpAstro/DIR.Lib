@@ -349,6 +349,93 @@ public class NotificationsLayoutTests
         feed.History.ShouldBeEmpty();
     }
 
+    private static NotificationFeed FeedWithThreeStaying_AndOneInHistory()
+    {
+        var feed = new NotificationFeed();
+        feed.Post(Fade("old one"), At(0));
+        feed.Advance(At(10));
+        feed.Post(Stay("a"), At(60));
+        feed.Post(Stay("b"), At(60));
+        feed.Post(Stay("c"), At(60));
+        return feed;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BuildListArrangesEveryNodeInsideTheRectGiven_WithTheBarsRowsAndSections(bool cells)
+    {
+        var feed = FeedWithThreeStaying_AndOneInHistory();
+        var all = Arrange(NotificationsLayout.BuildList(feed, new NotificationsState(), Colors, Style), cells);
+
+        var tol = Tol(cells);
+        foreach (var p in all)
+        {
+            p.Rect.X.ShouldBeGreaterThanOrEqualTo(-tol);
+            p.Rect.Y.ShouldBeGreaterThanOrEqualTo(-tol);
+            p.Rect.Right.ShouldBeLessThanOrEqualTo(W + tol);
+        }
+
+        // As wide as it is given: the root fills the whole rect, with no fixed bar width and no left spacer.
+        all[0].Rect.Width.ShouldBe(W, tol);
+        all[0].Rect.Height.ShouldBe(H, tol);
+        all[0].Node.IsSurface.ShouldBeFalse();
+        TextsOf(all).ShouldContain("Needs you (3)");
+        TextsOf(all).ShouldContain("History (1)");
+        TextsOf(all).ShouldContain("old one");
+        all.Any(p => p.Node.Hit is NotificationHit { Part: NotificationPart.Bell }).ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BuildListsClearWorks(bool cells)
+    {
+        var feed = new NotificationFeed();
+        feed.Post(Fade("old"), At(0));
+        feed.Advance(At(10));
+        var clear = Arrange(NotificationsLayout.BuildList(feed, new NotificationsState(), Colors, Style), cells)
+            .First(p => p.Node.Hit is NotificationHit { Part: NotificationPart.Clear }).Node;
+
+        clear.OnClick!(InputModifier.None);
+
+        feed.History.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ABuildWithNoStripHasNoBellAndNoCount_AndThePageFillsTheWidth(bool cells)
+    {
+        var feed = FeedWithThreeStaying_AndOneInHistory();
+        feed.BellCount.ShouldBe(3);
+        var noStrip = new NotificationsStyle { StripWidth = 0f };
+
+        foreach (var open in new[] { false, true })
+        {
+            var all = Arrange(Tree(feed, new NotificationsState { Open = open }, noStrip), cells);
+
+            all.Any(p => p.Node.Hit is NotificationHit { Part: NotificationPart.Bell }).ShouldBeFalse();
+            TextsOf(all).ShouldNotContain("3");
+            all.Any(p => p.Node.Shortcut is not null).ShouldBeFalse();
+            all.First(p => ReferenceEquals(p.Node, Page)).Rect.Width.ShouldBe(W, Tol(cells));
+            all.Max(p => p.Rect.Right).ShouldBeLessThanOrEqualTo(W + Tol(cells));
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheDefaultStripWidthKeepsTheStrip(bool cells)
+    {
+        var feed = FeedWithThreeStaying_AndOneInHistory();
+        var all = Arrange(Tree(feed, new NotificationsState()), cells);
+
+        all.Any(p => p.Node.Hit is NotificationHit { Part: NotificationPart.Bell }).ShouldBeTrue();
+        TextsOf(all).ShouldContain("3");
+        all.First(p => ReferenceEquals(p.Node, Page)).Rect.Right.ShouldBe(W - Style.StripWidth, Tol(cells));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
