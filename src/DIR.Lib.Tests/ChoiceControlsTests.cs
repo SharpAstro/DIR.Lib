@@ -81,13 +81,6 @@ public class ChoiceControlsTests
             _router.AfterPaint();
         }
 
-        public void Dump(string path, int scale = 4)
-        {
-            var img = _renderer.Surface; int w=(int)img.Width, h=(int)img.Height; var o = new byte[w*scale*h*scale*4];
-            for (int y=0;y<h*scale;y++) for (int x=0;x<w*scale;x++) Array.Copy(img.Pixels, ((y/scale)*w+x/scale)*4, o, (y*w*scale+x)*4, 4);
-            System.IO.File.WriteAllBytes(path, SharpAstro.Png.PngWriter.Encode(o, (uint)(w*scale), (uint)(h*scale)));
-        }
-
         public RGBAColor32 At(int x, int y)
         {
             var img = _renderer.Surface;
@@ -704,12 +697,5 @@ public class ChoiceControlsTests
         rig.At(side / 2, side + gap).ShouldBe(theme.Palette.Focus, name + " ring below the gap");
         rig.At(side / 2, side + gap + 1).ShouldBe(theme.Palette.Focus, name + " ring is two units wide");
         new TileRig(theme).At(side / 2, side + gap).ShouldNotBe(theme.Palette.Focus, name + " no ring unfocused");
-    }
-
-    [Theory]
-    [MemberData(nameof(Themes))]
-    public void TmpDump(UiTheme theme, string name)
-    {
-        new SplitRig(theme, focused: true).Dump("C:/Users/SebastianGodelet/.claude/jobs/319a50ad/tmp/split-" + name + "-" + theme.Palette.Accent.GetHashCode() + ".png");
     }
 }
