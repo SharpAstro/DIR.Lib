@@ -253,4 +253,14 @@ public sealed class UiPaletteTests
         var p = which == "dark" ? NotificationsRenderTests.Dark : NotificationsRenderTests.Light;
         RGBAColor32.ContrastRatio(p.Focus, p.ContentBg).ShouldBeGreaterThanOrEqualTo(3f, which);
     }
+
+    // The controls sit on PanelBg, and the ring is drawn on what is behind them, so the ring meets that too.
+    [Theory]
+    [InlineData("dark")]
+    [InlineData("light")]
+    public void Focus_reads_at_3_to_1_against_PanelBg_in_each_built_in_palette(string which)
+    {
+        var p = which == "dark" ? NotificationsRenderTests.Dark : NotificationsRenderTests.Light;
+        RGBAColor32.ContrastRatio(p.Focus, p.PanelBg).ShouldBeGreaterThanOrEqualTo(3f, which);
+    }
 }

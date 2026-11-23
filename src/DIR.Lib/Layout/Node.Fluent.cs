@@ -125,8 +125,8 @@ public abstract partial record Node
     // A method cannot share the property's name (Node.FocusRing), so the setters are WithFocusRing.
     /// <summary>Declares a focus ring of <paramref name="color"/> and <paramref name="width"/> design units outside this node's
     /// edge while the list cursor is on its hit. Chrome only. See <see cref="Node.FocusRing"/>.</summary>
-    public Node WithFocusRing(RGBAColor32 color, float width = 2f)
-        => this with { FocusRing = new FocusRingStyle { Color = color, Width = width } };
+    public Node WithFocusRing(RGBAColor32 color, float width = 2f, float offset = 0f)
+        => this with { FocusRing = new FocusRingStyle { Color = color, Width = width, Offset = offset } };
 
     /// <summary>Declares <paramref name="style"/> as this node's focus ring (null clears it).</summary>
     public Node WithFocusRing(FocusRingStyle? style) => this with { FocusRing = style };

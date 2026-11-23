@@ -654,9 +654,12 @@ public class ChoiceControlsTests
         var rig = new Rig(theme, row: true);
         // Chip 0 is on and under the cursor; the chip is 28 tall at the top left.
         rig.Fill().ShouldBe(s.OnFill, name + " fill is the rest fill");
-        rig.At(14, 28).ShouldBe(theme.Palette.Focus, name + " ring below the edge");
-        rig.At(14, 29).ShouldBe(theme.Palette.Focus, name + " ring is two units wide");
-        new Rig(theme, on: true).At(14, 28).ShouldNotBe(theme.Palette.Focus, name + " no ring unfocused");
+        var gap = (int)theme.Metrics.FocusRingGap;
+        rig.At(14, 28).ShouldNotBe(theme.Palette.Focus, name + " gap is not the ring");
+        rig.At(14, 28).ShouldNotBe(s.OnFill, name + " gap is not the fill");
+        rig.At(14, 28 + gap).ShouldBe(theme.Palette.Focus, name + " ring below the gap");
+        rig.At(14, 29 + gap).ShouldBe(theme.Palette.Focus, name + " ring is two units wide");
+        new Rig(theme, on: true).At(14, 28 + gap).ShouldNotBe(theme.Palette.Focus, name + " no ring unfocused");
     }
 
     [Theory]
@@ -665,10 +668,13 @@ public class ChoiceControlsTests
     {
         var s = theme.Controls.Standard;
         var rig = new SplitRig(theme, focused: true);
+        var gap = (int)theme.Metrics.FocusRingGap;
         rig.At(rig.LeftX, 14).ShouldBe(s.RestFill ?? s.HoverFill, name + " fill is the rest fill");
-        rig.At(rig.LeftX, 28).ShouldBe(theme.Palette.Focus, name + " ring below the edge");
-        rig.At(rig.LeftX, 29).ShouldBe(theme.Palette.Focus, name + " ring is two units wide");
-        new SplitRig(theme).At(new SplitRig(theme).LeftX, 28).ShouldNotBe(theme.Palette.Focus, name + " no ring unfocused");
+        rig.At(rig.LeftX, 28).ShouldNotBe(theme.Palette.Focus, name + " gap is not the ring");
+        rig.At(rig.LeftX, 28 + gap).ShouldBe(theme.Palette.Focus, name + " ring below the gap");
+        rig.At(rig.LeftX, 29 + gap).ShouldBe(theme.Palette.Focus, name + " ring is two units wide");
+        var rest = new SplitRig(theme);
+        rest.At(rest.LeftX, 28 + gap).ShouldNotBe(theme.Palette.Focus, name + " no ring unfocused");
     }
 
     [Theory]
@@ -678,8 +684,10 @@ public class ChoiceControlsTests
         var side = (int)(theme.Metrics.ButtonHeight * theme.Controls.TileOrDerived.SideScale);
         var rig = new TileRig(theme, focused: true);
         rig.Fill().ShouldBe(theme.Controls.TileOrDerived.OffFill, name + " fill is the rest fill");
-        rig.At(side / 2, side).ShouldBe(theme.Palette.Focus, name + " ring below the edge");
-        rig.At(side / 2, side + 1).ShouldBe(theme.Palette.Focus, name + " ring is two units wide");
-        new TileRig(theme).At(side / 2, side).ShouldNotBe(theme.Palette.Focus, name + " no ring unfocused");
+        var gap = (int)theme.Metrics.FocusRingGap;
+        rig.At(side / 2, side).ShouldNotBe(theme.Palette.Focus, name + " gap is not the ring");
+        rig.At(side / 2, side + gap).ShouldBe(theme.Palette.Focus, name + " ring below the gap");
+        rig.At(side / 2, side + gap + 1).ShouldBe(theme.Palette.Focus, name + " ring is two units wide");
+        new TileRig(theme).At(side / 2, side + gap).ShouldNotBe(theme.Palette.Focus, name + " no ring unfocused");
     }
 }

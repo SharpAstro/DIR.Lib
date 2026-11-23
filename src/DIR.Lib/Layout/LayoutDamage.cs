@@ -72,7 +72,8 @@ namespace DIR.Lib
 
             /// <summary>The node's focus ring, or null. Init-only for the same reason as <see cref="Border"/>. Signatures hold
             /// no cursor, so focus is not resolved here (as with FocusBackground): the ring is signed as declared and the
-            /// damage rect always covers it.</summary>
+            /// damage rect covers it WHEN the node is damaged. Moving the cursor produces no damage by itself, so a host must
+            /// repaint when the cursor moves.</summary>
             public Layout.FocusRingStyle? FocusRing { get; init; }
         }
 
@@ -92,7 +93,8 @@ namespace DIR.Lib
 
             if (sig.FocusRing is { Color.Alpha: > 0, Width: > 0f } ring)
             {
-                g = MathF.Max(g, MathF.Ceiling(ring.Width) + 1f);
+                // Like the shadow's extent, in design units: at a DesignScale above 1 the pixel ring is wider than this.
+                g = MathF.Max(g, MathF.Ceiling(ring.Width + MathF.Max(0f, ring.Offset)) + 1f);
             }
 
             if (g <= 0f)

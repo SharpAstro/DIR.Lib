@@ -253,11 +253,19 @@ public class ButtonKindsTests
         var focused = new Rig(theme, kind, focused: true);
         focused.Fill().ShouldBe(s.RestFill ?? default, $"{name} {kind} focus keeps the rest fill");
         // The button is 28 tall at the top left: the band just below its bottom edge holds the ring, clear of the corner cut.
-        focused.Pixel(14, 28).ShouldBe(theme.Palette.Focus, $"{name} {kind} ring below the edge");
-        focused.Pixel(14, 29).ShouldBe(theme.Palette.Focus, $"{name} {kind} ring is two units wide");
+        var gap = (int)theme.Metrics.FocusRingGap;
+        gap.ShouldBeGreaterThan(0);
+        for (var i = 0; i < gap; i++)
+        {
+            // The gap shows the page, so the ring never merges with a control filled in the accent.
+            focused.Pixel(14, 28 + i).ShouldNotBe(theme.Palette.Focus, $"{name} {kind} gap pixel {i} is not the ring");
+            focused.Pixel(14, 28 + i).ShouldNotBe(focused.Fill(), $"{name} {kind} gap pixel {i} is not the fill");
+        }
+        focused.Pixel(14, 28 + gap).ShouldBe(theme.Palette.Focus, $"{name} {kind} ring below the gap");
+        focused.Pixel(14, 29 + gap).ShouldBe(theme.Palette.Focus, $"{name} {kind} ring is two units wide");
         var rest = new Rig(theme, kind);
         rest.Fill().ShouldBe(s.RestFill ?? default, $"{name} {kind} not focused");
-        rest.Pixel(14, 28).ShouldNotBe(theme.Palette.Focus, $"{name} {kind} no ring unfocused");
+        rest.Pixel(14, 28 + gap).ShouldNotBe(theme.Palette.Focus, $"{name} {kind} no ring unfocused");
     }
 
     // ---- the link, rendered ----

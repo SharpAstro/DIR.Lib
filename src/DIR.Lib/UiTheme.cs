@@ -347,6 +347,14 @@ public readonly record struct UiMetrics(
         init => _focusRingWidth = value;
     }
 
+    /// <summary>Gap between a themed control's edge and its focus ring, in design units, so the ring shows on a control
+    /// filled with the accent. Defaults to 2.</summary>
+    public float FocusRingGap
+    {
+        get => _focusRingGap ?? 2f;
+        init => _focusRingGap = value;
+    }
+
     /// <summary>Width of a control's edge ring, in design units. Defaults to 1.</summary>
     public float ControlEdgeWidth
     {

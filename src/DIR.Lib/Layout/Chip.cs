@@ -45,7 +45,7 @@ public static partial class Builder
 
         var hover = on ? style.OnHoverFill : style.OffHoverFill;
         var pressed = on ? style.OnPressedFill : style.OffPressedFill;
-        cell = cell.BgHover(hover).WithFocusRing(theme.Palette.Focus, theme.Metrics.FocusRingWidth).BgPressed(pressed).WithCursor(CursorKind.Pointer);
+        cell = cell.BgHover(hover).WithFocusRing(theme.Palette.Focus, theme.Metrics.FocusRingWidth, theme.Metrics.FocusRingGap).BgPressed(pressed).WithCursor(CursorKind.Pointer);
         return tooltip is null ? cell : cell.WithTooltip(tooltip);
     }
 

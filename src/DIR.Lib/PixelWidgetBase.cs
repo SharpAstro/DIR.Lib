@@ -1588,11 +1588,15 @@ namespace DIR.Lib
                     && CursorIsOn(ringHit) && bounds.Width > 0 && bounds.Height > 0)
                 {
                     var ringWidth = MathF.Max(1f, MathF.Round(ctx.ToSurface(ring.Width)));
+                    // The gap (Offset) leaves the page showing between edge and ring, so the ring reads on a control
+                    // filled in the ring's own colour.
+                    var gap = ring.Offset > 0f ? MathF.Round(ctx.ToSurface(ring.Offset)) : 0f;
+                    var reach = ringWidth + gap;
                     var ringRect = new RectInt(
-                        new PointInt((int)(bounds.X + bounds.Width + ringWidth), (int)(bounds.Y + bounds.Height + ringWidth)),
-                        new PointInt((int)(bounds.X - ringWidth), (int)(bounds.Y - ringWidth)));
+                        new PointInt((int)(bounds.X + bounds.Width + reach), (int)(bounds.Y + bounds.Height + reach)),
+                        new PointInt((int)(bounds.X - reach), (int)(bounds.Y - reach)));
                     Renderer.DrawBorder(ringRect, ring.Color, (int)ringWidth,
-                        fillRadius > 0f ? fillRadius + ringWidth : 0f, Layout.BorderSides.All);
+                        fillRadius > 0f ? fillRadius + reach : 0f, Layout.BorderSides.All);
                 }
 
                 // The engine is the only thing that knows where the list was arranged, so it is the only

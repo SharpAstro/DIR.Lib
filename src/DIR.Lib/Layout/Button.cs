@@ -62,7 +62,7 @@ public static partial class Builder
         cell = cell.Clickable(hit ?? new HitResult.ButtonHit(label), enabled ? _ => onClick() : null);
         if (!enabled) return cell.Disabled(disabledReason!);
 
-        cell = cell.BgHover(style.HoverFill).WithFocusRing(theme.Palette.Focus, theme.Metrics.FocusRingWidth).BgPressed(style.PressedFill)
+        cell = cell.BgHover(style.HoverFill).WithFocusRing(theme.Palette.Focus, theme.Metrics.FocusRingWidth, theme.Metrics.FocusRingGap).BgPressed(style.PressedFill)
             .WithCursor(CursorKind.Pointer);
         return tooltip is null ? cell : cell.WithTooltip(tooltip);
     }
