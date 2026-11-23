@@ -593,6 +593,27 @@ namespace DIR.Lib.Notifications
             return Builder.VStack([.. parts]).WStar();
         }
 
+        // A word split where a line may break: after a path separator or punctuation, and before a hump.
+        private static List<string> BreakPieces(string word)
+        {
+            var pieces = new List<string>();
+            var start = 0;
+            for (var i = 1; i < word.Length; i++)
+            {
+                var prev = word[i - 1];
+                var after = prev is '\' or '/' or '|' or ',' or ';' or '=' or '&' or '-' or '_' or '.';
+                var hump = char.IsLower(prev) && char.IsUpper(word[i]);
+                if (after || hump)
+                {
+                    pieces.Add(word[start..i]);
+                    start = i;
+                }
+            }
+
+            pieces.Add(word[start..]);
+            return pieces;
+        }
+
         // Words in a WrapH capped at maxLines: the text wraps, and what does not fit ends in an ellipsis with the whole
         // text as the hover, so nothing is cut silently.
         private static Node Wrapped(string text, float fontSize, RGBAColor32 ink, int maxLines)
@@ -601,8 +622,15 @@ namespace DIR.Lib.Notifications
             var leaves = new List<Node>(words.Length);
             for (var i = 0; i < words.Length; i++)
             {
-                var word = i < words.Length - 1 ? words[i] + " " : words[i];
-                leaves.Add(Builder.Text(word, fontSize, ink).WAuto());
+                var pieces = BreakPieces(words[i]);
+                for (var k = 0; k < pieces.Count; k++)
+                {
+                    // The trailing space stays on the word's last piece; pieces of one word touch (zero gap).
+                    var last = k == pieces.Count - 1;
+                    var piece = last && i < words.Length - 1 ? pieces[k] + " " : pieces[k];
+                    var leaf = Builder.Text(piece, fontSize, ink).WAuto();
+                    leaves.Add(leaf);
+                }
             }
 
             return Builder.WrapH([.. leaves]).WithMaxLines(maxLines, true).WStar().WithTooltip(text);

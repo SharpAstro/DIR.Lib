@@ -1409,6 +1409,7 @@ public static class Engine
         // Resolve every child's main + natural cross extent up front (see ResolveWrapChild).
         var childMains = new T[n];
         var childCrosses = new T[n];
+        var clamped = new Node?[n];
         for (var i = 0; i < n; i++)
         {
             (childMains[i], childCrosses[i]) = ResolveWrapChild(children[i], axis, availSize, ctx);
@@ -1466,6 +1467,15 @@ public static class Engine
                 var lead = lineEnd == lineStart
                     ? T.Zero
                     : gap + ToSurfaceOn(ctx, children[lineEnd].LeadingGap, axis);
+                if (lineEnd == lineStart && wrap.Ellipsis && childMains[lineEnd] > lineAvail
+                    && children[lineEnd] is Node.Leaf { Content: Content.Text wide } wideLeaf)
+                {
+                    // A text leaf wider than the whole line it opens ends in an ellipsis at the line's room.
+                    var (wideText, wideMain) = EllipsizeWrapText(wide, childMains[lineEnd], lineAvail, axis, ctx);
+                    clamped[lineEnd] = wideLeaf with { Content = wide with { Value = wideText, WidthSample = null } };
+                    childMains[lineEnd] = wideMain;
+                }
+
                 var extra = lead + childMains[lineEnd];
                 if (lineEnd > lineStart && used + extra > lineAvail)
                 {
@@ -1491,9 +1501,9 @@ public static class Engine
                 // A Star cross stretches to the line's extent; everything else keeps its natural cross.
                 var crossSizing = CrossSizing(axis, children[i]);
                 var cross = crossSizing.IsStar ? Clamp(lineCross, crossSizing, ctx, CrossAxis(axis)) : childCrosses[i];
-                var child = children[i];
+                var child = clamped[i] ?? children[i];
                 var childMain = childMains[i];
-                if (cutHere && wrap.Ellipsis && i == lineEnd - 1 && child is Node.Leaf { Content: Content.Text text } leaf)
+                if (clamped[i] is null && cutHere && wrap.Ellipsis && i == lineEnd - 1 && child is Node.Leaf { Content: Content.Text text } leaf)
                 {
                     var room = mainOrigin + lineAvail - mainCursor;
                     var (cutText, cutMain) = EllipsizeWrapText(text, childMain, room, axis, ctx);
@@ -1872,6 +1882,15 @@ public static class Engine
         return (main, cross);
     }
 
+    /// <summary>The main extent a wrap child takes when it opens a line of room <paramref name="lineAvail"/>: in
+    /// an Ellipsis wrap a text leaf wider than that is cut to it (see <see cref="Node.Wrap.Ellipsis"/>), the
+    /// same cut <see cref="ArrangeWrap"/> lays out.</summary>
+    private static T ClampWrapMain<T>(Node.Wrap wrap, Node child, T main, T lineAvail, Axis axis,
+        IMeasureContext<T> ctx) where T : INumber<T>
+        => wrap.Ellipsis && main > lineAvail && child is Node.Leaf { Content: Content.Text text }
+            ? EllipsizeWrapText(text, main, lineAvail, axis, ctx).Main
+            : main;
+
     private static Size<T> MeasureWrap<T>(Node.Wrap wrap, Size<T> available, IMeasureContext<T> ctx)
         where T : INumber<T>
     {
@@ -1925,6 +1944,11 @@ public static class Engine
         for (var i = 0; i < n; i++)
         {
             var (main, cross) = ResolveWrapChild(children[i], axis, available, ctx);
+            if (itemsInLine == 0)
+            {
+                main = ClampWrapMain(wrap, children[i], main, lines == 1 ? firstLineAvail : mainAvail, axis, ctx);
+            }
+
             var extra = itemsInLine == 0
                 ? main
                 : gap + ToSurfaceOn(ctx, children[i].LeadingGap, axis) + main;
@@ -1933,6 +1957,7 @@ public static class Engine
                 maxLineMain = Max(maxLineMain, lines == 1 ? Line1Main(used, itemsInLine) : used);
                 totalCross += lineCross;
                 lines++;
+                main = ClampWrapMain(wrap, children[i], main, mainAvail, axis, ctx);
                 used = main;
                 lineCross = cross;
                 itemsInLine = 1;
@@ -1958,6 +1983,11 @@ public static class Engine
             for (var i = 0; i < n && counted < lines; i++)
             {
                 var (main, cross) = ResolveWrapChild(children[i], axis, available, ctx);
+                if (inLine == 0)
+                {
+                    main = ClampWrapMain(wrap, children[i], main, counted == 0 ? firstLineAvail : mainAvail, axis, ctx);
+                }
+
                 var extra = inLine == 0
                     ? main
                     : gap + ToSurfaceOn(ctx, children[i].LeadingGap, axis) + main;
@@ -1965,6 +1995,7 @@ public static class Engine
                 {
                     totalCross += lineTop;
                     counted++;
+                    main = ClampWrapMain(wrap, children[i], main, mainAvail, axis, ctx);
                     usedInLine = main;
                     lineTop = cross;
                     inLine = 1;
