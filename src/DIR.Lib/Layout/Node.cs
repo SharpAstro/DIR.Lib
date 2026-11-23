@@ -185,7 +185,7 @@ public abstract partial record Node
     /// <summary>The focus ring this node declares, or null (default) for none: a stroke drawn outside the node's edge while
     /// the list cursor is on <see cref="Hit"/>, never for a disabled node. Chrome only: arrange never sees it, so a node with
     /// a ring occupies the rect one without would. A cell surface paints nothing. Init-only, never a constructor parameter.
-    /// Set via <see cref="WithFocusRing(RGBAColor32, float)"/>.</summary>
+    /// Set via <see cref="WithFocusRing(RGBAColor32, float, float)"/>.</summary>
     public FocusRingStyle? FocusRing { get; init; }
 
     /// <summary>Optional click region bound to this node's arranged rect (draw == hit by construction).
