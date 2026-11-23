@@ -5,7 +5,7 @@ namespace DIR.Lib
 {
     /// <summary>
     /// State for a generic dropdown menu overlay. Open it with <see cref="Open"/>,
-    /// declare it with <see cref="Layout.Builder.Dropdown"/>, and handle keyboard with
+    /// declare it with <see cref="Layout.Builder.Dropdown{T}(RectF32, DropdownMenuState{T}, float, RGBAColor32?, RGBAColor32?, RGBAColor32?, RGBAColor32?, float, Layout.DockSide)"/>, and handle keyboard with
     /// <see cref="HandleKeyDown"/> -- which the menu hangs off its own <see cref="PopoverState.ContentKeys"/>,
     /// so a host routing through <see cref="InputRouter"/> never has to call it.
     /// </summary>
@@ -22,13 +22,13 @@ namespace DIR.Lib
         /// </summary>
         /// <remarks>
         /// <b>This is the single writer.</b> <see cref="IsOpen"/> and <see cref="Close"/> both go through
-        /// it, which is what lets <see cref="Layout.Builder.Dropdown"/> hand the very same state to
+        /// it, which is what lets <see cref="Layout.Builder.Dropdown{T}(RectF32, DropdownMenuState{T}, float, RGBAColor32?, RGBAColor32?, RGBAColor32?, RGBAColor32?, float, Layout.DockSide)"/> hand the very same state to
         /// <see cref="Layout.Builder.Popover"/> and have the backdrop, the Escape claim and the open flag
         /// agree by construction. Two flags kept in step by hand is the failure this removes.
         /// </remarks>
         /// <summary>
         /// The <see cref="HitResult.ListItemHit.ListId"/> every dropdown row registers under, on both the
-        /// declared path (<see cref="Layout.Builder.Dropdown"/>) and the hand-rendered one
+        /// declared path (<see cref="Layout.Builder.Dropdown{T}(RectF32, DropdownMenuState{T}, float, RGBAColor32?, RGBAColor32?, RGBAColor32?, RGBAColor32?, float, Layout.DockSide)"/>) and the hand-rendered one
         /// (<c>PixelWidgetBase.RenderDropdownMenu</c>). Named once so the two cannot drift apart while
         /// both exist -- a host matching on the id would otherwise see rows from one path and not the other.
         /// </summary>

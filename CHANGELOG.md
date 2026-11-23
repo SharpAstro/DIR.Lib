@@ -9,7 +9,7 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
-## 11.97
+## 11.98
 
 - `Node.FocusRing` (`FocusRingStyle`, set with `WithFocusRing`): a declared stroke drawn outside a node's rounded edge while the list cursor is on its hit. It takes no layout space, it is in the damage signature, and `DamageRect` grows by the ring's width. Cells draw no ring yet; Console.Lib's cell painter is its own flight (SharpAstro/Console.Lib#107).
 - `FocusRingStyle.Offset` (init-only, design units, default 0, also the third argument of `WithFocusRing`): a gap between the edge and the ring, so what is behind the node shows through. Without it the ring of an accent-filled control (an Accent button, an on chip or tile) is the fill's own colour and cannot be seen. The ring's radius and `DamageRect` follow the offset. Like the shadow's extent, the damage growth is in design units; at a larger scale the pixel ring is wider than the growth.
@@ -17,6 +17,28 @@ changed and why.
 - `UiMetrics.FocusRingGap` (init-only, default 2, survives `default(UiMetrics)`): the offset the themed controls declare.
 - `UiMetrics.FocusRingWidth` (init-only, default 2, survives `default(UiMetrics)`).
 - `Button`, `Chip`, `SplitButton` and `ToggleTile` show focus as a 2-unit ring in `UiPalette.Focus` instead of painting the hover fill under the list cursor. List rows (`GroupedTreeTable`, menus) keep `BgFocus`. Settles DIR312:R1.13.
+
+## 11.97
+
+Theme-driven Slider, Dropdown and Setting row (#314, step 3), additive. Every new member is an overload, a type or an
+init-only property, so no existing signature or constructor changes and the old look stays as it was.
+
+- `SliderStyle` and `DropdownStyle` and `SettingRowStyle`, with `ControlStyles.Slider`, `ControlStyles.Dropdown` and
+  `ControlStyles.SettingRow` (init-only, not required) and their `SliderOrDerived`, `DropdownOrDerived` and
+  `SettingRowOrDerived` fallbacks, which derive from Accent and Standard when a style is unset. `ControlStyles.For` sets all three.
+- `Builder.Slider(state, theme, ...)`: the themed overload. The track fills with the accent up to the thumb over a control-fill
+  track and the thumb is round with an accent centre and a ring. It rides on the init-only `Content.Slider.RoundThumb`,
+  `ThumbRing` and `FillColor` properties; explicit colour arguments still win.
+- `Builder.Dropdown(anchor, state, theme, ...)`: the themed menu overload, a raised surface with a shadow and hover rows.
+- `Builder.DropdownBox(label, state, theme, ...)`: the closed box (control fill, edge ring, control radius, a trailing
+  `CaretDown` that turns to `CaretUp` while the menu is open).
+- `Builder.SettingRow(title, subtitle, trailing, theme, onClick, disabledReason, hit)` and `SettingTrailing`
+  (`Chevron`, `Expand(open)`, `External`, `Of(node)`): a whole card row on the panel with the control radius, a hover fill and
+  the whole row as one hit; a trailing node keeps its own hit and press. Title and subtitle end in an ellipsis with the whole
+  text as tooltip.
+
+The old `Builder.Slider` and `Builder.Dropdown` overloads look exactly as before. Console.Lib's cell painter and the other
+consumers are not built here.
 
 ## 11.96
 

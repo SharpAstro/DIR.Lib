@@ -927,7 +927,7 @@ namespace DIR.Lib
             float handleH, float frac, RGBAColor32 fillColor, RectF32 hitBand, HitResult hit,
             TrackSliderChrome chrome, DesignScale? scale = null)
         {
-            DrawTrackSliderVisual(trackX, trackW, barCenterY, handleY, handleH, frac, fillColor, chrome, scale);
+            DrawTrackSliderVisual(trackX, trackW, barCenterY, handleY, handleH, frac, fillColor, chrome, scale, null);
             RegisterClickable(hitBand.X, hitBand.Y, hitBand.Width, hitBand.Height, hit);
         }
 
@@ -940,7 +940,8 @@ namespace DIR.Lib
         /// leaf (<see cref="PaintLayout(System.Collections.Immutable.ImmutableArray{Layout.ArrangedNode{float}},PixelMeasureContext{TSurface},System.Action{Layout.Content.Fill,RectF32}?)"/>).
         /// </summary>
         private void DrawTrackSliderVisual(float trackX, float trackW, float barCenterY, float handleY,
-            float handleH, float frac, RGBAColor32 fillColor, TrackSliderChrome chrome, DesignScale? scale)
+            float handleH, float frac, RGBAColor32 fillColor, TrackSliderChrome chrome, DesignScale? scale,
+            (RGBAColor32 Ring, float RingWidth)? roundThumb)
         {
             var s = (scale ?? Scale).OrOne();
             // A bar thickness runs across the track and a handle width along it, but both are the same
@@ -967,6 +968,17 @@ namespace DIR.Lib
 
             // Handle marker; guard the clamp's upper bound for a sliver-thin track (trackW < handleW would
             // make Math.Clamp's max < min and throw -- the minimize-to-sliver crash).
+            if (roundThumb is { } round)
+            {
+                // A round thumb is as wide as the row is tall: a disc of the handle colour inside a ring.
+                var radius = handleH / 2f;
+                var cx = Math.Clamp(trackX + trackW * frac, trackX + MathF.Min(radius, trackW / 2f), trackX + MathF.Max(trackW - radius, trackW / 2f));
+                var cy = handleY + radius;
+                FillCircle(cx, cy, radius, round.Ring);
+                FillCircle(cx, cy, MathF.Max(0f, radius - s.ToSurface(round.RingWidth)), chrome.Handle);
+                return;
+            }
+
             var handleMax = MathF.Max(trackX, trackX + trackW - handleW);
             var handleX = Math.Clamp(trackX + trackW * frac - handleW / 2f, trackX, handleMax);
             FillRect(handleX, handleY, handleW, handleH, chrome.Handle);
@@ -1882,9 +1894,12 @@ namespace DIR.Lib
                                     DimTowards(slider.Chrome.TrackBackground, behind),
                                     DimTowards(slider.Chrome.Handle, behind))
                                 : slider.Chrome;
+                            (RGBAColor32, float)? roundThumb = slider.RoundThumb
+                                ? (sliderDisabled ? DimTowards(slider.ThumbRing, behind) : slider.ThumbRing, slider.ThumbRingWidth)
+                                : null;
 
                             DrawTrackSliderVisual(bounds.X, bounds.Width, bounds.Y + bounds.Height / 2f,
-                                bounds.Y, bounds.Height, frac, fillColor, chrome, ctx.Scale);
+                                bounds.Y, bounds.Height, frac, fillColor, chrome, ctx.Scale, roundThumb);
 
                             // draw == hit: the drag reads the SAME rect it was just painted into, captured
                             // once here rather than re-derived from wherever the press lands.
