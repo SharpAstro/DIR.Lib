@@ -84,7 +84,7 @@ public class RowsAndRestylesTests
         var renderer = new DeclarationStubRenderer(200, 60);
         renderer.Surface.Clear(theme.Palette.PanelBg);
         var widget = new DeclarationWidget(renderer);
-        widget.Render(Builder.Slider(HalfSlider(), theme), new RectF32(0, 0, 200, 60));
+        widget.Render(Builder.Slider(HalfSlider(), theme), new RectF32(0, 0, 200, theme.Controls.SliderOrDerived.ThumbSize));
 
         RGBAColor32 At(int x, int y)
         {
@@ -122,7 +122,7 @@ public class RowsAndRestylesTests
         box[0].Node.BorderStyle!.Color.ShouldBe(theme.Palette.ControlEdge, name);
         box[0].Node.CornerRadius.ShouldBe(theme.Metrics.ControlRadius, name);
         box[0].Node.Hit.ShouldBe(new HitResult.ButtonHit("Pick"));
-        box[0].Bounds.Height.ShouldBe(theme.Metrics.ButtonHeight, name);
+        Engine.Measure(Builder.DropdownBox("Pick", State(false), theme), new Size<float>(1000f, 100f), new FloatCtx()).Height.ShouldBe(theme.Metrics.ButtonHeight, name);
     }
 
     private static IconKind[] Carets(Node n)
