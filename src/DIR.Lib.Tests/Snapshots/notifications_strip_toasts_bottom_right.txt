@@ -84,8 +84,9 @@
 9 Text "lost." 67 26 5 1
 8 Text "camera" 58 27 33 1
 7 Stack 58 28 33 1
-8 Leaf:Box 58 28 11 0
-8 Stack [Action#3] 70 28 11 1
-9 Text "Reconnect" 71 28 9 1
-8 Stack [Dismiss#3] 82 28 9 1
-9 Text "Dismiss" 83 28 7 1
+8 Leaf:Box 58 28 12 0
+8 Wrap 70 28 21 1
+9 Stack [Action#3] 70 28 11 1
+10 Text "Reconnect" 71 28 9 1
+9 Stack [Dismiss#3] 82 28 9 1
+10 Text "Dismiss" 83 28 7 1

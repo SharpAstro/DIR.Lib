@@ -387,6 +387,37 @@ public class NotificationsLayoutTests
         feed.NeedsYou.ShouldBeEmpty();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AStayingToastsButtonsThatDoNotFitOneRowWrapAndDismissStaysOnTheCard(bool cells)
+    {
+        // pilot's "PIL1293 is stuck" toast (2026-11-23): two host buttons and Dismiss did not fit a 320-unit card on one row, and the
+        // row, which did not wrap, put Dismiss past the toast's edge and past the window.
+        var feed = new NotificationFeed();
+        feed.Post(Stay("s") with
+        {
+            Buttons = () =>
+            [
+                NotificationsLayout.PrimaryButton("Nudge the worker", NotificationSeverity.Warn, Colors, Style, new HitResult.ButtonHit("nudge"), () => { }),
+                NotificationsLayout.PlainButton("Restart the worker", Colors, Style, new HitResult.ButtonHit("restart"), () => { }),
+            ],
+        }, At(0));
+        var all = Arrange(Tree(feed, new NotificationsState()), cells);
+
+        var nudge = all.First(p => p.Node.Hit is HitResult.ButtonHit { Action: "nudge" }).Rect;
+        var restart = all.First(p => p.Node.Hit is HitResult.ButtonHit { Action: "restart" }).Rect;
+        var dismiss = all.First(p => p.Node.Hit is NotificationHit { Part: NotificationPart.Dismiss }).Rect;
+        var cardRight = W - Style.Margin;
+        foreach (var button in new[] { nudge, restart, dismiss })
+        {
+            (button.X + button.Width).ShouldBeLessThanOrEqualTo(cardRight + Tol(cells), "every button sits on the card");
+        }
+        (restart.Y > nudge.Y || dismiss.Y > nudge.Y).ShouldBeTrue("what does not fit the first row goes onto the next");
+        TextsOf(all).ShouldContain("Restart the worker");
+        TextsOf(all).ShouldContain("Dismiss");
+    }
+
     private static Notification WithHostButtons(Notification n, Action? onFix = null, Func<string>? label = null)
         => n with
         {

@@ -439,7 +439,7 @@ namespace DIR.Lib.Notifications
         {
             // Order: [Action, filled] [the host's own buttons] [Dismiss]. Dismiss is filled in the severity colour only when
             // it stands alone (no action and no host button); beside any other button it is plain.
-            var buttons = new List<Node> { Builder.Spacer().WStar() };
+            var buttons = new List<Node>();
             var hasOther = false;
             if (n.Action is not null && !string.IsNullOrEmpty(n.ActionLabel))
             {
@@ -460,8 +460,11 @@ namespace DIR.Lib.Notifications
                 ? PlainButton("Dismiss", c, s, dismissHit, () => feed.Dismiss(n.Id))
                 : PrimaryButton("Dismiss", n.Severity, c, s, dismissHit, () => feed.Dismiss(n.Id)));
 
-            // A single non-wrapping row, kept so the buttons stay right-aligned on one middle; the host keeps its labels short.
-            return Builder.HStack([.. buttons]).WithGap(s.Gap).CrossCenter().WStar();
+            // Right-aligned on one row while they fit; past that they wrap onto a second row rather than run past the card. A single
+            // row pushed Dismiss past the toast's edge, and past the window, once the host's buttons and Dismiss did not fit (pilot's
+            // toasts on a 320-unit card, 2026-11-23). The wrap is sized to its content (its longest row, never more than the card
+            // gives it), so the spacer before it keeps a row that fits at the right; every button keeps its whole label.
+            return Builder.HStack(Builder.Spacer().WStar(), Builder.WrapH([.. buttons]).WithGap(s.Gap).WithLineGap(s.Gap).WAuto()).WStar();
         }
 
         /// <summary>Vertical padding of a toast button, in design units; primary and plain share it, so a row of them has one height.</summary>

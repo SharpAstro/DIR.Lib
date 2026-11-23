@@ -38,11 +38,12 @@
 8 Text "hand." 55 5 5 1
 7 Text "dome" 53 6 39 1
 6 Stack 53 7 39 1
-7 Leaf:Box 53 7 21 0
-7 Stack [Action#4] 75 7 7 1
-8 Text "Retry" 76 7 5 1
-7 Stack [Dismiss#4] 83 7 9 1
-8 Text "Dismiss" 84 7 7 1
+7 Leaf:Box 53 7 22 0
+7 Wrap 75 7 17 1
+8 Stack [Action#4] 75 7 7 1
+9 Text "Retry" 76 7 5 1
+8 Stack [Dismiss#4] 83 7 9 1
+9 Text "Dismiss" 84 7 7 1
 5 Stack 51 8 42 4
 6 Stack 53 8 39 3
 7 Stack 53 8 39 1
@@ -54,11 +55,12 @@
 8 Text "lost." 62 9 5 1
 7 Text "camera" 53 10 39 1
 6 Stack 53 11 39 1
-7 Leaf:Box 53 11 17 0
-7 Stack [Action#3] 71 11 11 1
-8 Text "Reconnect" 72 11 9 1
-7 Stack [Dismiss#3] 83 11 9 1
-8 Text "Dismiss" 84 11 7 1
+7 Leaf:Box 53 11 18 0
+7 Wrap 71 11 21 1
+8 Stack [Action#3] 71 11 11 1
+9 Text "Reconnect" 72 11 9 1
+8 Stack [Dismiss#3] 83 11 9 1
+9 Text "Dismiss" 84 11 7 1
 5 Text "History (2)" 51 12 42 1
 5 Stack 51 13 42 4
 6 Stack 53 13 39 4
