@@ -589,7 +589,7 @@ public class NotificationsLayoutTests
         var tol = Tol(cells);
         var leaves = all.Skip(wrapIndex + 1)
             .Where(p => p.Node is Layout.Node.Leaf { Content: Layout.Content.Text }
-                && p.Rect.Y >= wrap.Rect.Y - tol && p.Rect.Y < wrap.Rect.Y + wrap.Rect.Height + tol
+                && p.Rect.Y >= wrap.Rect.Y - tol && p.Rect.Y < wrap.Rect.Y + wrap.Rect.Height - 0.01f
                 && p.Rect.X >= wrap.Rect.X - tol && p.Rect.X < wrap.Rect.X + wrap.Rect.Width)
             .ToList();
         leaves.ShouldNotBeEmpty();
