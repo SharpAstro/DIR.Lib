@@ -20,8 +20,7 @@
 9 Wrap 58 11 32 2
 10 Text "Centre " 58 11 7 1
 10 Text "moved " 65 11 6 1
-10 Text "4." 71 11 2 1
-10 Text "2 " 73 11 2 1
+10 Text "4.2 " 71 11 4 1
 10 Text "arcmin " 75 11 7 1
 10 Text "from " 82 11 5 1
 10 Text "target." 58 12 7 1
