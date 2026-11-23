@@ -236,6 +236,43 @@ public sealed record DropdownStyle
 }
 
 /// <summary>
+/// How a themed setting row looks: a whole card row on the panel (<see cref="RestFill"/>), a hover fill, the corner
+/// radius, the padding and gaps, and the title and subtitle inks. Values are palette colours and design units.
+/// </summary>
+public sealed record SettingRowStyle
+{
+    /// <summary>Fill of the row at rest.</summary>
+    public required RGBAColor32 RestFill { get; init; }
+
+    /// <summary>Fill of the row under the pointer or with the keyboard.</summary>
+    public required RGBAColor32 HoverFill { get; init; }
+
+    /// <summary>Fill of the row while pressed.</summary>
+    public required RGBAColor32 PressedFill { get; init; }
+
+    /// <summary>Corner radius in design units.</summary>
+    public required float Radius { get; init; }
+
+    /// <summary>Horizontal padding in design units.</summary>
+    public required float PaddingX { get; init; }
+
+    /// <summary>Vertical padding in design units.</summary>
+    public required float PaddingY { get; init; }
+
+    /// <summary>Gap between the text block and the trailing mark, and between title and subtitle, in design units.</summary>
+    public required float Gap { get; init; }
+
+    /// <summary>Title colour.</summary>
+    public required RGBAColor32 TitleInk { get; init; }
+
+    /// <summary>Subtitle colour.</summary>
+    public required RGBAColor32 SubtitleInk { get; init; }
+
+    /// <summary>Colour of the trailing chevron, caret or arrow.</summary>
+    public required RGBAColor32 MarkInk { get; init; }
+}
+
+/// <summary>
 /// The control kinds a theme styles: <see cref="Accent"/> (the one primary action), <see cref="Standard"/>,
 /// <see cref="Subtle"/> (no fill at rest), <see cref="Hyperlink"/>, the filter <see cref="Chip"/> and the toggle <see cref="Tile"/>. <see cref="For"/> derives them from a palette
 /// and metrics, so every existing theme gets them without stating anything.
@@ -292,6 +329,16 @@ public sealed record ControlStyles
     /// <see cref="Standard"/> and its host's raised surface is the panel. <see cref="For"/> sets it.
     /// </summary>
     public DropdownStyle? Dropdown { get; init; }
+
+    /// <summary>
+    /// The setting row. Init-only and not required; when unset, <see cref="SettingRowOrDerived"/> derives it from
+    /// <see cref="Standard"/> (its hover and pressed fills) over the standard fill. <see cref="For"/> sets it.
+    /// </summary>
+    public SettingRowStyle? SettingRow { get; init; }
+
+    /// <summary>The setting row style: <see cref="SettingRow"/> when set, else derived from <see cref="Standard"/>.</summary>
+    public SettingRowStyle SettingRowOrDerived => SettingRow ?? DeriveSettingRow(Standard,
+        Standard.RestFill ?? Standard.HoverFill, Standard.Ink, Standard.DisabledInk ?? Standard.Ink, Standard.Radius, Standard.PaddingX, Standard.PaddingX / 2f);
 
     /// <summary>The slider style: <see cref="Slider"/> when set, else derived from <see cref="Accent"/> and <see cref="Standard"/>.</summary>
     public SliderStyle SliderOrDerived => Slider ?? DeriveSlider(Accent, Standard, Standard.PaddingX * SliderThumbPaddingScale);
@@ -376,8 +423,24 @@ public sealed record ControlStyles
                 ThumbSize = metrics.ButtonHeight * SliderThumbHeightScale,
             },
             Dropdown = DeriveDropdown(standardStyle, palette.RaisedBg, metrics.CornerRadius, metrics.Shadow),
+            SettingRow = DeriveSettingRow(standardStyle, palette.PanelBg, palette.BodyText, palette.DimText, metrics.ControlRadius, metrics.Padding * 2f, metrics.Padding),
         };
     }
+
+    private static SettingRowStyle DeriveSettingRow(ButtonStyle standard, RGBAColor32 rest, RGBAColor32 title, RGBAColor32 subtitle,
+        float radius, float paddingX, float paddingY) => new()
+    {
+        RestFill = rest,
+        HoverFill = standard.HoverFill,
+        PressedFill = standard.PressedFill,
+        Radius = radius,
+        PaddingX = paddingX,
+        PaddingY = paddingY,
+        Gap = paddingY,
+        TitleInk = title,
+        SubtitleInk = subtitle,
+        MarkInk = subtitle,
+    };
 
     private static SliderStyle DeriveSlider(ButtonStyle accent, ButtonStyle standard, float thumbSize) => new()
     {

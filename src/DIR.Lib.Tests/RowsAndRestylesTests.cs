@@ -200,5 +200,106 @@ public class RowsAndRestylesTests
         Arrange(Builder.Dropdown(new RectF32(0, 0, 100, 28), State(true))).Any(a => a.Node.IsSurface).ShouldBeFalse();
     }
 
-    // ---- the Setting row (the next leg adds its tests below) ----
+    // ---- the Setting row ----
+
+    private static List<Node> NodesOf(Node n) => [.. Arrange(n).Select(a => a.Node)];
+
+    private static IEnumerable<Content.Icon> IconsOf(Node n) => NodesOf(n).OfType<Node.Leaf>().Select(l => l.Content).OfType<Content.Icon>();
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void The_row_title_reads_at_4_5_and_the_subtitle_is_legible_on_rest_and_hover(UiTheme theme, string name)
+    {
+        var s = theme.Controls.SettingRowOrDerived;
+        s.RestFill.ShouldBe(theme.Palette.PanelBg, name);
+        RGBAColor32.ContrastRatio(s.TitleInk, s.RestFill).ShouldBeGreaterThanOrEqualTo(4.5f, name + " title rest");
+        RGBAColor32.ContrastRatio(s.TitleInk, s.HoverFill).ShouldBeGreaterThanOrEqualTo(4.5f, name + " title hover");
+        RGBAColor32.ContrastRatio(s.SubtitleInk, s.RestFill).ShouldBeGreaterThanOrEqualTo(3f, name + " subtitle rest");
+        RGBAColor32.ContrastRatio(s.SubtitleInk, s.HoverFill).ShouldBeGreaterThanOrEqualTo(3f, name + " subtitle hover");
+
+        var row = Arrange(Builder.SettingRow("Title", "Subtitle", SettingTrailing.Chevron, theme))[0].Node;
+        row.Background.ShouldBe(theme.Palette.PanelBg, name);
+        row.HoverBackground.ShouldBe(s.HoverFill, name);
+        row.Hit.ShouldBe(new HitResult.ButtonHit("Title"));
+    }
+
+    [Fact]
+    public void The_row_corner_radius_is_the_themes_control_radius_and_zero_gives_a_square_row()
+    {
+        var theme = ThemeOf(NotificationsRenderTests.Dark);
+        Arrange(Builder.SettingRow("T", null, SettingTrailing.Chevron, theme))[0].Node.CornerRadius.ShouldBe(theme.Metrics.ControlRadius);
+        var square = theme with { Metrics = theme.Metrics with { ControlRadius = 0f } };
+        Arrange(Builder.SettingRow("T", null, SettingTrailing.Chevron, square))[0].Node.CornerRadius.ShouldBe(0f);
+    }
+
+    [Fact]
+    public void Each_trailing_kind_draws_its_mark_and_expand_turns_when_open()
+    {
+        var theme = ThemeOf(NotificationsRenderTests.Dark);
+        IconsOf(Builder.SettingRow("T", "S", SettingTrailing.Chevron, theme)).Select(i => i.Kind).ShouldBe([IconKind.CaretRight]);
+        IconsOf(Builder.SettingRow("T", "S", SettingTrailing.Expand(false), theme)).Select(i => i.Kind).ShouldBe([IconKind.CaretDown]);
+        IconsOf(Builder.SettingRow("T", "S", SettingTrailing.Expand(true), theme)).Select(i => i.Kind).ShouldBe([IconKind.CaretUp]);
+
+        NodesOf(Builder.SettingRow("T", "S", SettingTrailing.External, theme)).OfType<Node.Leaf>().Select(l => l.Content)
+            .OfType<Content.Text>().Select(t => t.Value).ShouldContain("↗");
+
+        var button = Builder.Button("Go", ButtonKind.Standard, () => { }, theme);
+        NodesOf(Builder.SettingRow("T", "S", SettingTrailing.Of(button), theme)).OfType<Node.Leaf>().Select(l => l.Content)
+            .OfType<Content.Text>().Select(t => t.Value).ShouldContain("Go");
+    }
+
+    [Fact]
+    public void A_disabled_row_takes_no_press_and_says_why()
+    {
+        var theme = ThemeOf(NotificationsRenderTests.Dark);
+        var row = Arrange(Builder.SettingRow("T", null, SettingTrailing.Chevron, theme, () => { }, disabledReason: "Not now"))[0].Node;
+        row.OnClick.ShouldBeNull();
+        row.HoverBackground.ShouldBeNull();
+        row.Tooltip.ShouldBe("Not now");
+    }
+
+    private static (InputRouter router, DeclarationWidget widget) Paint(Node tree)
+    {
+        var renderer = new DeclarationStubRenderer(300, 80);
+        var widget = new DeclarationWidget(renderer);
+        var router = new InputRouter(widget.Ui, new BackgroundTaskTracker(), static () => { }) { Widgets = () => [widget] };
+        widget.Render(tree, new RectF32(0, 0, 300, 80));
+        router.AfterPaint();
+        return (router, widget);
+    }
+
+    private static void Press(InputRouter router, float x, float y)
+    {
+        router.Handle(new InputEvent.MouseDown(x, y, MouseButton.Left, InputModifier.None, 1));
+        router.Handle(new InputEvent.MouseUp(x, y, MouseButton.Left));
+    }
+
+    [Fact]
+    public void A_press_on_the_rows_left_middle_and_subtitle_runs_onClick_once_each()
+    {
+        var theme = ThemeOf(NotificationsRenderTests.Dark);
+        var clicks = 0;
+        var (router, _) = Paint(Builder.SettingRow("Title", "Subtitle", SettingTrailing.Chevron, theme, () => clicks++));
+        Press(router, 3f, 10f);
+        clicks.ShouldBe(1);
+        Press(router, 150f, 10f);
+        clicks.ShouldBe(2);
+        var rowHeight = Arrange(Builder.SettingRow("Title", "Subtitle", SettingTrailing.Chevron, theme))[0].Bounds.Height;
+        Press(router, 40f, rowHeight - 8f);
+        clicks.ShouldBe(3);
+    }
+
+    [Fact]
+    public void A_press_on_a_trailing_button_runs_the_buttons_handler_and_not_the_rows()
+    {
+        var theme = ThemeOf(NotificationsRenderTests.Dark);
+        int row = 0, button = 0;
+        var trailing = Builder.Button("Go", ButtonKind.Standard, () => button++, theme).WFixed(60f);
+        var (router, _) = Paint(Builder.SettingRow("Title", "Subtitle", SettingTrailing.Of(trailing), theme, () => row++));
+        var arranged = Engine.Arrange(Builder.SettingRow("Title", "Subtitle", SettingTrailing.Of(trailing), theme, () => { }), new Rect<float>(0, 0, 300f, 80f), new FloatCtx());
+        var b = arranged.Single(a => a.Node.Hit is HitResult.ButtonHit { } h && h.Equals(new HitResult.ButtonHit("Go"))).Bounds;
+        Press(router, b.X + b.Width / 2f, b.Y + b.Height / 2f);
+        button.ShouldBe(1);
+        row.ShouldBe(0);
+    }
 }
