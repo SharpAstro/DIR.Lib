@@ -284,6 +284,28 @@ namespace DIR.Lib.Tests
         }
 
         [Fact]
+        public void TheScopedSignatureShowsTheUnderlineOnlyWhenThePointerIsInTheScope()
+        {
+            var text = Arranged(Layout.Builder.Text("Docs").UnderlineOnHover(), 0, 0, 30, 20);
+            var wide = new Rect<float>(0, 0, 60, 20);
+
+            // Pointer outside the text's own rect but inside the wider scope (the link's region): underlined.
+            var inScope = LayoutDamage.Signature(text, (45, 10), null, wide);
+            var outOfScope = LayoutDamage.Signature(text, (90, 90), null, wide);
+            inScope.ShouldNotBe(outOfScope);
+            inScope.Caret.ShouldBe(1);
+            outOfScope.Caret.ShouldBe(0);
+
+            // The scope, not the node's own bounds, decides: the same pointer against the node's own rect is plain.
+            LayoutDamage.Signature(text, (45, 10), null, text.Bounds).Caret.ShouldBe(0);
+            // Without a scope the node's own bounds are the scope.
+            LayoutDamage.Signature(text, (10, 10), null).ShouldBe(LayoutDamage.Signature(text, (10, 10), null, text.Bounds));
+            // A disabled node is never underlined.
+            LayoutDamage.Signature(Arranged(text.Node.Disabled("no"), 0, 0, 30, 20), (45, 10), null, wide)
+                .Caret.ShouldBe(0);
+        }
+
+        [Fact]
         public void HoveringALinksArrowDamagesItsUnderlinedText()
         {
             // The link's region (depth 0) holds the underlined text and the arrow (depth 1): hovering the arrow shows
