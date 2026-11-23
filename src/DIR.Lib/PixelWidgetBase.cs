@@ -1595,8 +1595,23 @@ namespace DIR.Lib
                     var ringRect = new RectInt(
                         new PointInt((int)(bounds.X + bounds.Width + reach), (int)(bounds.Y + bounds.Height + reach)),
                         new PointInt((int)(bounds.X - reach), (int)(bounds.Y - reach)));
+                    // DrawBorder rounds only a border on all four sides, so a ring with a side left out is drawn
+                    // whole and rounded, inside a clip trimmed on each omitted side to the node's own edge: the
+                    // corners stay round and the open end is flat at the neighbour, with no band over it.
+                    var partial = ring.Sides != Layout.BorderSides.All;
+                    if (partial)
+                    {
+                        var cl = (int)(bounds.X - reach); var ct = (int)(bounds.Y - reach);
+                        var cr = (int)(bounds.X + bounds.Width + reach); var cb = (int)(bounds.Y + bounds.Height + reach);
+                        if ((ring.Sides & Layout.BorderSides.Left) == 0) cl = (int)bounds.X;
+                        if ((ring.Sides & Layout.BorderSides.Top) == 0) ct = (int)bounds.Y;
+                        if ((ring.Sides & Layout.BorderSides.Right) == 0) cr = (int)(bounds.X + bounds.Width);
+                        if ((ring.Sides & Layout.BorderSides.Bottom) == 0) cb = (int)(bounds.Y + bounds.Height);
+                        Renderer.PushClip(new RectInt(new PointInt(cr, cb), new PointInt(cl, ct)));
+                    }
                     Renderer.DrawBorder(ringRect, ring.Color, (int)ringWidth,
-                        fillRadius > 0f ? fillRadius + reach : 0f, ring.Sides);
+                        fillRadius > 0f ? fillRadius + reach : 0f, Layout.BorderSides.All);
+                    if (partial) Renderer.PopClip();
                 }
 
                 // The engine is the only thing that knows where the list was arranged, so it is the only

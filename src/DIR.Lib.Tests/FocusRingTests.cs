@@ -186,4 +186,18 @@ public class FocusRingTests
         PixelAt(r, 19, 35).ShouldBe(Ring);
         PixelAt(r, 80, 35).ShouldNotBe(Ring);
     }
+
+    [Fact]
+    public void ASideLeftOutKeepsTheRoundedCornersAndStopsAtTheNodeEdge()
+    {
+        var rows = ((Layout.Node.Stack)Rows(radius: 12f)).Children.Select(c => c.WithFocusRing(new Layout.FocusRingStyle
+            { Color = Ring, Width = 2f, Sides = Layout.BorderSides.Top | Layout.BorderSides.Left | Layout.BorderSides.Bottom }));
+        var r = Draw(new Layout.Node.Stack(System.Collections.Immutable.ImmutableArray.CreateRange(rows)) { Padding = 20f, Gap = 10f }, 0);
+
+        PixelAt(r, 23, 23).ShouldBe(Ring);           // on the rounded corner's diagonal
+        PixelAt(r, 18, 18).ShouldNotBe(Ring);        // the square corner stays empty
+        PixelAt(r, 50, 19).ShouldBe(Ring);           // straight top band
+        PixelAt(r, 82, 19).ShouldNotBe(Ring);        // no band past the open (right) edge
+        PixelAt(r, 80, 35).ShouldNotBe(Ring);
+    }
 }

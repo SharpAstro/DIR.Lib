@@ -23,6 +23,7 @@ public sealed record FocusRingStyle
     public float Offset { get; init; }
 
     /// <summary>The sides of the ring that are drawn (default all). A part that sits against a neighbour (a split button's
-    /// two halves) leaves out the side that faces it, so the ring never reaches into the other part.</summary>
+    /// two halves) leaves out the side that faces it, so the ring never reaches into the other part. The rounded corners are kept: the ring is clipped on each
+    /// omitted side to the node's own edge, so the open end is flat at the neighbour.</summary>
     public BorderSides Sides { get; init; } = BorderSides.All;
 }
