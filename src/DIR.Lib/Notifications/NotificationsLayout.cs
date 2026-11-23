@@ -627,7 +627,8 @@ namespace DIR.Lib.Notifications
         // Words shorter than this stay one leaf, so "2.1", "e.g." and "v11.95" are never cut across lines.
         private const int LongWord = 16;
 
-        // A long word split where a line may break: after a path separator or punctuation, never between two digits.
+        // A long word split where a line may break: after a path separator or punctuation, never inside a number (a '.' or ','
+        // with a digit on each side).
         // A short word is one piece; a long run with no break point is cut by the engine's ellipsis rule instead.
         private static List<string> BreakPieces(string word)
         {
@@ -643,7 +644,9 @@ namespace DIR.Lib.Notifications
             {
                 var prev = word[i - 1];
                 var after = prev is '\\' or '/' or '|' or ',' or ';' or '=' or '&' or '-' or '_' or '.';
-                if (after && !(char.IsDigit(prev) && char.IsDigit(word[i])))
+                // A '.' or ',' with a digit on each side is inside a number ("11.95", "1,024"): no break there.
+                var inNumber = prev is '.' or ',' && i >= 2 && char.IsDigit(word[i - 2]) && char.IsDigit(word[i]);
+                if (after && !inNumber)
                 {
                     pieces.Add(word[start..i]);
                     start = i;

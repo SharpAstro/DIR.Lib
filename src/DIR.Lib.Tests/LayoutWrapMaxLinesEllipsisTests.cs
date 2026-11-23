@@ -21,6 +21,23 @@ public class LayoutWrapMaxLinesEllipsisTests(ITestOutputHelper output)
         public int ToSurface(float designUnits) => (int)MathF.Round(designUnits);
     }
 
+    // Proportional: '.' is 3 wide, every other character 10, so a cut can leave room a narrow leaf would fit.
+    private sealed class ProportionalCtx : Layout.IMeasureContext<float>
+    {
+        public Layout.Size<float> MeasureText(ReadOnlySpan<char> text, float fontSize)
+        {
+            var w = 0f;
+            foreach (var ch in text)
+            {
+                w += ch == '.' ? 3f : 10f;
+            }
+
+            return new(w, 14f);
+        }
+
+        public float ToSurface(float designUnits) => designUnits;
+    }
+
     private static Layout.Node Words(params string[] words)
         => Layout.Builder.WrapH([.. words.Select(w => Layout.Builder.Text(w))]);
 
@@ -162,5 +179,26 @@ public class LayoutWrapMaxLinesEllipsisTests(ITestOutputHelper output)
         var wide = arranged.Where(IsText).Last();
         TextOf(wide).ShouldBe(new string('x', 30));
         (wide.Bounds.X + wide.Bounds.Width).ShouldBeGreaterThan(100f);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    public void AClampedLeafEndsItsLineSoNoNarrowLeafFollowsTheEllipsis(int maxLines)
+    {
+        // 98 wide: 15 x (150) is cut to "xxxxxxxx…" (90), which leaves 8, room for "." (3) but it must not sit there.
+        var wrap = Words(new string('x', 15), ".", "bb").WithMaxLines(maxLines, ellipsis: true);
+        var ctx = new ProportionalCtx();
+        var measured = Layout.Engine.Measure(wrap, new Layout.Size<float>(98, 1000), ctx);
+        var arranged = Layout.Engine.Arrange(wrap, new Rect<float>(0, 0, 98, measured.Height), ctx);
+        var leaves = arranged.Where(IsText).ToArray();
+        output.WriteLine(string.Join(",", leaves.Select(l => $"{TextOf(l)}@{l.Bounds.X},{l.Bounds.Y}")));
+
+        TextOf(leaves[0]).ShouldBe(new string('x', 8) + Ellipsis);
+        (98f - (leaves[0].Bounds.X + leaves[0].Bounds.Width)).ShouldBeGreaterThan(3f);
+        TextOf(leaves[1]).ShouldBe(".");
+        leaves[1].Bounds.Y.ShouldBeGreaterThan(leaves[0].Bounds.Y);
+        leaves[1].Bounds.X.ShouldBe(0f);
+        leaves.Max(a => a.Bounds.Y + a.Bounds.Height).ShouldBe(measured.Height, 0.01f);
     }
 }
