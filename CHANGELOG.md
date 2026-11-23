@@ -9,6 +9,14 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.94
+
+A staying toast's buttons wrap instead of running past the card (#318), additive. `Notification.Buttons` now sit in an
+Auto-width `WrapH` behind the star spacer: while they fit they stay right-aligned on one row as before (pixel baselines
+unchanged), and past the card they wrap onto further rows. The arranged tree of every staying toast gains that Wrap
+node, so a consumer's cell snapshot differs by the Wrap node and the spacer taking the old gap. A single button wider
+than the whole card still gets its own row and overflows, as `ArrangeWrap` documents.
+
 ## 11.93
 
 Theme-driven buttons and links (#312, step 1), additive. New public members:
