@@ -1476,6 +1476,8 @@ public static class Engine
                     var (wideText, wideMain) = EllipsizeWrapText(wide, childMains[lineEnd], lineAvail, axis, ctx);
                     clamped[lineEnd] = wideLeaf with { Content = wide with { Value = wideText, WidthSample = null } };
                     childMains[lineEnd] = wideMain;
+                    // Always full, though MeasureWrap tests cut != main: when the cut changed nothing the leaf is still
+                    // wider than the line, so used + extra > lineAvail already sends the next child to a new line.
                     lineFull = true;
                 }
 
