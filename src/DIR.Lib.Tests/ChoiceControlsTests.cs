@@ -81,13 +81,6 @@ public class ChoiceControlsTests
             _router.AfterPaint();
         }
 
-        public void Dump(string path, int scale = 4)
-        {
-            var img = _renderer.Surface; int w=(int)img.Width, h=(int)img.Height; var o = new byte[w*scale*h*scale*4];
-            for (int y=0;y<h*scale;y++) for (int x=0;x<w*scale;x++) Array.Copy(img.Pixels, ((y/scale)*w+x/scale)*4, o, (y*w*scale+x)*4, 4);
-            System.IO.File.WriteAllBytes(path, SharpAstro.Png.PngWriter.Encode(o, (uint)(w*scale), (uint)(h*scale)));
-        }
-
         public RGBAColor32 At(int x, int y)
         {
             var img = _renderer.Surface;
@@ -291,6 +284,13 @@ public class ChoiceControlsTests
             _renderer.Surface.Clear(_theme.Palette.PanelBg);
             _widget.Render(Root);
             _router.AfterPaint();
+        }
+
+        public void Dump(string path, int scale = 4)
+        {
+            var img = _renderer.Surface; int w=(int)img.Width, h=(int)img.Height; var o = new byte[w*scale*h*scale*4];
+            for (int y=0;y<h*scale;y++) for (int x=0;x<w*scale;x++) Array.Copy(img.Pixels, ((y/scale)*w+x/scale)*4, o, (y*w*scale+x)*4, 4);
+            System.IO.File.WriteAllBytes(path, SharpAstro.Png.PngWriter.Encode(o, w*scale, h*scale));
         }
 
         public RGBAColor32 At(int x, int y)
