@@ -610,6 +610,12 @@ public abstract partial record Node
         /// When <see cref="MaxLines"/> drops children, end the last kept line with an ellipsis: if the last
         /// kept child is a text leaf, its text is cut from the end and U+2026 appended until it fits the
         /// line. A child that is not a text leaf is left alone. Default false.
+        /// <para>
+        /// An Ellipsis wrap also never lets a text leaf run past its line: a text leaf that opens a line and
+        /// is wider than that line's room is cut to the room and ends in an ellipsis, whether or not the cap
+        /// cuts there (measure and arrange agree on the cut extent). Without Ellipsis such a leaf still gets
+        /// a line of its own and overflows.
+        /// </para>
         /// </summary>
         /// <remarks>
         /// Opt-in, because a capped toolbar of text buttons must not get a glyph glued to a button label,
