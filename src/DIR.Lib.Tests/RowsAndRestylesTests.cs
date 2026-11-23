@@ -160,6 +160,15 @@ public class RowsAndRestylesTests
         box.Select(a => a.Node).OfType<Node.Leaf>().Select(l => l.Content).OfType<Content.Text>().Single().Color.ShouldBe(Teal);
     }
 
+    [Fact]
+    public void An_explicit_box_fill_hovers_to_its_own_fill_mixed_toward_the_body_text_not_the_themes_hover_fill()
+    {
+        var theme = ThemeOf(NotificationsRenderTests.Dark);
+        var node = Arrange(Builder.DropdownBox("Pick", State(false), theme, fillColor: Pink))[0].Node;
+        node.HoverBackground.ShouldBe(RGBAColor32.Mix(Pink, theme.Palette.BodyText, 0.12f));
+        node.HoverBackground.ShouldNotBe(theme.Controls.DropdownOrDerived.BoxHoverFill);
+    }
+
     // ---- the menu ----
 
     [Theory]
@@ -256,6 +265,20 @@ public class RowsAndRestylesTests
         row.OnClick.ShouldBeNull();
         row.HoverBackground.ShouldBeNull();
         row.DisabledReason.ShouldBe("Not now");
+    }
+
+    [Fact]
+    public void A_disabled_row_with_a_trailing_node_goes_flat_with_the_reason_as_tooltip_and_the_node_keeps_its_state()
+    {
+        var theme = ThemeOf(NotificationsRenderTests.Dark);
+        var button = Builder.Button("Go", ButtonKind.Standard, () => { }, theme);
+        var tree = Builder.SettingRow("T", null, SettingTrailing.Of(button), theme, () => { }, disabledReason: "Not now");
+        var row = Arrange(tree)[0].Node;
+        row.OnClick.ShouldBeNull();
+        row.HoverBackground.ShouldBeNull();
+        row.IsDisabled.ShouldBeFalse();
+        row.Tooltip.ShouldBe("Not now");
+        NodesOf(tree).Any(n => n.IsDisabled).ShouldBeFalse();
     }
 
     private static (InputRouter router, DeclarationWidget widget) Paint(Node tree)
