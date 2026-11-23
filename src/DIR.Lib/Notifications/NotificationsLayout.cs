@@ -601,7 +601,7 @@ namespace DIR.Lib.Notifications
             for (var i = 1; i < word.Length; i++)
             {
                 var prev = word[i - 1];
-                var after = prev is '\' or '/' or '|' or ',' or ';' or '=' or '&' or '-' or '_' or '.';
+                var after = prev is '\\' or '/' or '|' or ',' or ';' or '=' or '&' or '-' or '_' or '.';
                 var hump = char.IsLower(prev) && char.IsUpper(word[i]);
                 if (after || hump)
                 {
