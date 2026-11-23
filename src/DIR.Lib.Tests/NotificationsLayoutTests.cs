@@ -562,6 +562,58 @@ public class NotificationsLayoutTests
         ((Layout.Node.Wrap)wrap).MaxLines.ShouldBe(Style.MaxTextLines);
     }
 
+    private const string LongPath = @"C:\Users\ada\src\example-org\orbit\.claude\worktrees\ORB204\src\Orbit.Lib.Tests\Fixtures\a-very-long-folder-name-that-has-no-break";
+
+    private static readonly string LongFilter = "dotnet test --filter '"
+        + string.Join('|', Enumerable.Range(0, 24).Select(i => $"FullyQualifiedName~Orbit.Lib.Tests.Notifications{i}Tests")) + "'";
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    public void AWordWiderThanTheLineBreaksOrEndsInAnEllipsis(bool cells, bool toast, bool filter)
+    {
+        var text = filter ? LongFilter : LongPath;
+        var feed = new NotificationFeed();
+        feed.Post((toast ? Fade("job") : Stay("job")) with { Text = text }, At(0));
+        var all = Arrange(Tree(feed, new NotificationsState { Open = !toast }), cells);
+
+        var wrapIndex = all.FindIndex(p => p.Node is Layout.Node.Wrap);
+        var wrap = all[wrapIndex];
+        wrap.Node.Tooltip.ShouldBe(text);
+        var tol = Tol(cells);
+        var leaves = all.Skip(wrapIndex + 1)
+            .Where(p => p.Node is Layout.Node.Leaf { Content: Layout.Content.Text }
+                && p.Rect.Y >= wrap.Rect.Y - tol && p.Rect.Y < wrap.Rect.Y + wrap.Rect.Height + tol
+                && p.Rect.X >= wrap.Rect.X - tol && p.Rect.X < wrap.Rect.X + wrap.Rect.Width)
+            .ToList();
+        leaves.ShouldNotBeEmpty();
+        foreach (var l in leaves)
+        {
+            (l.Rect.X + l.Rect.Width).ShouldBeLessThanOrEqualTo(wrap.Rect.X + wrap.Rect.Width + tol);
+        }
+
+        var row = toast ? Toasts(all)[0].Rect : all.First(p => p.Node.IsSurface).Rect;
+        (wrap.Rect.X + wrap.Rect.Width).ShouldBeLessThanOrEqualTo(row.X + row.Width + tol);
+
+        var texts = leaves.Select(l => ((Layout.Content.Text)((Layout.Node.Leaf)l.Node).Content).Value).ToList();
+        if (filter)
+        {
+            texts[^1].ShouldEndWith("…");
+        }
+        else
+        {
+            texts.ShouldContain(@"C:\");
+            texts.ShouldContain(@"Users\");
+            texts.ShouldContain(t => t.StartsWith("a-", StringComparison.Ordinal));
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
