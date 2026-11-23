@@ -122,6 +122,15 @@ public abstract partial record Node
     /// <summary>Declares <paramref name="style"/> as this node's shadow (null clears it).</summary>
     public Node Shadow(ShadowStyle? style) => this with { ShadowStyle = style };
 
+    // A method cannot share the property's name (Node.FocusRing), so the setters are WithFocusRing.
+    /// <summary>Declares a focus ring of <paramref name="color"/> and <paramref name="width"/> design units outside this node's
+    /// edge while the list cursor is on its hit. Chrome only. See <see cref="Node.FocusRing"/>.</summary>
+    public Node WithFocusRing(RGBAColor32 color, float width = 2f)
+        => this with { FocusRing = new FocusRingStyle { Color = color, Width = width } };
+
+    /// <summary>Declares <paramref name="style"/> as this node's focus ring (null clears it).</summary>
+    public Node WithFocusRing(FocusRingStyle? style) => this with { FocusRing = style };
+
     /// <summary>A shadow from a fixed elevation table, black, in design units (offsetY, blur, alpha):
     /// 1 = (1, 2, 30%), 2 = (2, 4, 35%), 3 = (4, 8, 40%), 4 = (8, 16, 45%). 0 or less clears the shadow;
     /// above 4 is 4. Never moves sideways.</summary>

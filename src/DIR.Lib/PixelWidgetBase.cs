@@ -1582,6 +1582,19 @@ namespace DIR.Lib
                     }
                 }
 
+                // The focus ring strokes OUTSIDE the edge, after the border so nothing of the node covers it, and takes
+                // no layout space. Only while the list cursor is on the node's hit, never for a disabled node.
+                if (!disabled && node.FocusRing is { Color.Alpha: > 0, Width: > 0f } ring && node.Hit is { } ringHit
+                    && CursorIsOn(ringHit) && bounds.Width > 0 && bounds.Height > 0)
+                {
+                    var ringWidth = MathF.Max(1f, MathF.Round(ctx.ToSurface(ring.Width)));
+                    var ringRect = new RectInt(
+                        new PointInt((int)(bounds.X + bounds.Width + ringWidth), (int)(bounds.Y + bounds.Height + ringWidth)),
+                        new PointInt((int)(bounds.X - ringWidth), (int)(bounds.Y - ringWidth)));
+                    Renderer.DrawBorder(ringRect, ring.Color, (int)ringWidth,
+                        fillRadius > 0f ? fillRadius + ringWidth : 0f, Layout.BorderSides.All);
+                }
+
                 // The engine is the only thing that knows where the list was arranged, so it is the only
                 // thing that can state the viewport without keeping a second copy of the rect. What the
                 // list contains stays the consumer's, through SetExtent -- and bound BEFORE the leaf

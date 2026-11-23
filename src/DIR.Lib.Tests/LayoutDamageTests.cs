@@ -22,6 +22,21 @@ namespace DIR.Lib.Tests
         private static readonly RGBAColor32 Lit = new(60, 60, 60, 255);
 
         [Fact]
+        public void TheSignatureCarriesTheFocusRingAndChangingItIsDamage()
+        {
+            var plain = Layout.Builder.Box(80, 40).Bg(Plain);
+            var ringed = plain.WithFocusRing(Lit, 2f);
+            Layout.ArrangedNode<float>[] Frame(Layout.Node n) => [new Layout.ArrangedNode<float>(n, new Rect<float>(50, 50, 80, 40))];
+
+            LayoutDamage.Signature(Frame(ringed)[0], null).FocusRing!.Width.ShouldBe(2f);
+            LayoutDamage.Signature(Frame(plain)[0], null).FocusRing.ShouldBeNull();
+
+            var damage = new List<Rect<float>>();
+            LayoutDamage.Compute(Frame(plain), Frame(ringed), null, null, null, damage);
+            damage.ShouldNotBeEmpty();
+        }
+
+        [Fact]
         public void AnIdenticalFrameHasNoDamage()
         {
             // The case that has to be exactly zero, because it is the steady state: a frame drawn for
