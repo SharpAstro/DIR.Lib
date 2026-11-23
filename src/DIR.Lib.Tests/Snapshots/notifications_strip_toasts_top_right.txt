@@ -21,11 +21,12 @@
 9 Text "lost." 67 2 5 1
 8 Text "camera" 58 3 33 1
 7 Stack 58 4 33 1
-8 Leaf:Box 58 4 11 0
-8 Stack [Action#3] 70 4 11 1
-9 Text "Reconnect" 71 4 9 1
-8 Stack [Dismiss#3] 82 4 9 1
-9 Text "Dismiss" 83 4 7 1
+8 Leaf:Box 58 4 12 0
+8 Wrap 70 4 21 1
+9 Stack [Action#3] 70 4 11 1
+10 Text "Reconnect" 71 4 9 1
+9 Stack [Dismiss#3] 82 4 9 1
+10 Text "Dismiss" 83 4 7 1
 5 Overlay 53 6 40 8
 6 Stack [Toast#2] 53 6 40 8
 7 Icon Warning 55 7 2 1
