@@ -199,5 +199,9 @@ public class FocusRingTests
         PixelAt(r, 50, 19).ShouldBe(Ring);           // straight top band
         PixelAt(r, 82, 19).ShouldNotBe(Ring);        // no band past the open (right) edge
         PixelAt(r, 80, 35).ShouldNotBe(Ring);
+        // Just inside the cut the open end still follows the rounded corner (centre 68,32, ring 12..14 out):
+        PixelAt(r, 74, 21).ShouldBe(Ring);           // on the arc of the omitted side's rounded corner
+        PixelAt(r, 79, 19).ShouldNotBe(Ring);        // outside the arc: no square end past it
+        PixelAt(r, 79, 30).ShouldNotBe(Ring);        // inside the arc, over the fill
     }
 }
