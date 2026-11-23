@@ -21,6 +21,9 @@ public class ControlLiteralInvariantTests
     [Theory]
     [InlineData("src/DIR.Lib/Layout/Button.cs")]
     [InlineData("src/DIR.Lib/Layout/Hyperlink.cs")]
+    [InlineData("src/DIR.Lib/Layout/Chip.cs")]
+    [InlineData("src/DIR.Lib/Layout/SplitButton.cs")]
+    [InlineData("src/DIR.Lib/Layout/ToggleTile.cs")]
     [InlineData("src/DIR.Lib/ControlStyles.cs")]
     [Trait("Category", "Invariant")]
     public void The_source_states_no_colour_literal(string relative)

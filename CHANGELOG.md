@@ -9,6 +9,29 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.96
+
+Theme-driven choice controls (#313, step 2), additive. New public members:
+
+- `ChipStyle` and `ControlStyles.Chip` (plus `ControlStyles.ChipOrDerived`): the filter chip look, a round pill that is
+  filled with the accent and ringless when on, the neutral fill with the control edge ring when off.
+- `Builder.Chip(label, on, onClick, theme, icon, disabledReason, tooltip, hit)` and its row helper
+  `Builder.ChipRow(cursor, listId, theme, chips)`, a horizontal list that Left/Right step.
+- `Builder.SplitButton(label, on, onPrimary, onDetails, theme, icon, tooltip, detailsTooltip, disabledReason, hit,
+  detailsHit)`: two separate hits with a thin divider, the left part toggling or acting and the right a `CaretRight`
+  that opens details, each with its own hover, pressed fill and tooltip. It is styled from the Accent and Standard
+  styles, so it adds no style type of its own.
+- `ToggleTileStyle` and `ControlStyles.Tile` (plus `ControlStyles.TileOrDerived`): the tile's fills, ring, radius, side
+  (`SideScale` times `UiMetrics.ButtonHeight`), label gap and label ink.
+- `Builder.ToggleTile(icon, label, on, onToggle, theme, opens, disabledReason, tooltip, hit)`: an icon tile (Accent when
+  on, Standard when off) with its label under it, ending in an ellipsis at the tile's width (`TextTrim.End`), with the whole label as the
+  caption's tooltip (a caller's `tooltip` describes the tile), so a long label never squeezes the icon; the tile and its label are one hit.
+
+The new `ControlStyles` members (`Chip`, `Tile`) are init-only and not required, so an existing
+`new ControlStyles { Accent, Standard, Subtle, Hyperlink }` still compiles and gets derived styles. The split button shows its rest fill under both parts (no notch beside the divider) and its caret part defaults to the
+tooltip `label + " options"`; the tile's label gap is `PaddingX / 2` set or derived. The tree shape is unchanged. Console.Lib's cell
+painter and the other consumers are not built here.
+
 ## 11.95
 
 Notifications keep long text on the page, and a host can build the list frame alone (#275), additive. A word wider
