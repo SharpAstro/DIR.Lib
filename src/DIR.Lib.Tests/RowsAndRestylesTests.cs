@@ -255,7 +255,7 @@ public class RowsAndRestylesTests
         var row = Arrange(Builder.SettingRow("T", null, SettingTrailing.Chevron, theme, () => { }, disabledReason: "Not now"))[0].Node;
         row.OnClick.ShouldBeNull();
         row.HoverBackground.ShouldBeNull();
-        row.Tooltip.ShouldBe("Not now");
+        row.DisabledReason.ShouldBe("Not now");
     }
 
     private static (InputRouter router, DeclarationWidget widget) Paint(Node tree)
