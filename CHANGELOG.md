@@ -9,6 +9,18 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.95
+
+Notifications keep long text on the page, and a host can build the list frame alone (#275), additive. A word wider
+than its line never runs past the row: `NotificationsLayout.Wrapped` splits a long token at `-`, `.`, `_` and `/`, and a
+capped wrap with `Ellipsis` ends any text leaf still wider than its line in an ellipsis (the whole text stays the
+hover). New public `NotificationsLayout.BuildList(feed, state, colors, style)` returns the bar's header with Clear and
+its scrolled list as wide and tall as it is given, and is not a surface (a page of its own covers nothing); the open
+bar is built from the same frame and arranges as before. `Build` leaves the strip out when
+`NotificationsStyle.StripWidth` is 0 or less (no bell, no count, no shortcut node); the `ToggleKey` shortcut lives on
+the strip, so a strip-less host binds its own. The cell snapshots of notification text change where a long word now
+splits.
+
 ## 11.94
 
 A staying toast's buttons wrap instead of running past the card (#318), additive. `Notification.Buttons` now sit in an
