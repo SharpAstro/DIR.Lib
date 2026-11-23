@@ -617,9 +617,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     {
         if (ModalIndex(widgets) < 0) return false;
         var modal = ui.PaintedModal!;
-        var card = modal.Card;
-        var inside = x >= card.X && x < card.X + card.Width && y >= card.Y && y < card.Y + card.Height;
-        if (!inside)
+        if (!WithinModalCard(x, y))
         {
             modal.Dismiss?.Invoke();
         }
