@@ -653,20 +653,18 @@ public class ChoiceControlsTests
     {
         var s = theme.Controls.ChipOrDerived;
         var rig = new Rig(theme, on: true, row: true);
-        // Chip 0 is on and under the cursor, and may be narrower than the shared probe column: probe its own middle.
-        var right = 4;
-        while (right < 200 && rig.At(right, 14) != theme.Palette.PanelBg) right++;
-        var x = right / 2;
-        var seen = string.Join(",", Enumerable.Range(0, 120).Where(i => rig.At(i, 14) != theme.Palette.PanelBg));
-        var seenY = string.Join(",", Enumerable.Range(0, 60).Where(i => rig.At(14, i) != theme.Palette.PanelBg));
-        right.ShouldBeGreaterThan(8, name + " chip found; x at y14: " + seen + "; y at x14: " + seenY);
-        rig.At(x, 14).ShouldBe(s.OnFill, name + " fill is the rest fill");
+        // A ChipRow lays its chips out 16 units in from the top left (a probe of the painted pixels showed the chip
+        // spanning y 16..43 with the ring at 46..47), so probe relative to that origin: chip 0 is on and under the cursor.
+        const int origin = 16;
+        var x = origin + 8;
+        var bottom = origin + 28;
+        rig.At(x, origin + 14).ShouldBe(s.OnFill, name + " fill is the rest fill");
         var gap = (int)theme.Metrics.FocusRingGap;
-        rig.At(x, 28).ShouldNotBe(theme.Palette.Focus, name + " gap is not the ring");
-        rig.At(x, 28).ShouldNotBe(s.OnFill, name + " gap is not the fill");
-        rig.At(x, 28 + gap).ShouldBe(theme.Palette.Focus, name + " ring below the gap");
-        rig.At(x, 29 + gap).ShouldBe(theme.Palette.Focus, name + " ring is two units wide");
-        new Rig(theme, on: true).At(x, 28 + gap).ShouldNotBe(theme.Palette.Focus, name + " no ring unfocused");
+        rig.At(x, bottom).ShouldNotBe(theme.Palette.Focus, name + " gap is not the ring");
+        rig.At(x, bottom).ShouldNotBe(s.OnFill, name + " gap is not the fill");
+        rig.At(x, bottom + gap).ShouldBe(theme.Palette.Focus, name + " ring below the gap");
+        rig.At(x, bottom + gap + 1).ShouldBe(theme.Palette.Focus, name + " ring is two units wide");
+        new Rig(theme, on: true).At(14, 28 + gap).ShouldNotBe(theme.Palette.Focus, name + " no ring unfocused");
     }
 
     [Theory]
