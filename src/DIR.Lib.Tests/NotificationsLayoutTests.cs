@@ -675,9 +675,7 @@ public class NotificationsLayoutTests
         wrap.Node.Tooltip.ShouldBe(text);
         var tol = Tol(cells);
         var leaves = all.Skip(wrapIndex + 1)
-            .Where(p => p.Node is Layout.Node.Leaf { Content: Layout.Content.Text }
-                && p.Rect.Y >= wrap.Rect.Y - tol && p.Rect.Y < wrap.Rect.Y + wrap.Rect.Height - 0.01f
-                && p.Rect.X >= wrap.Rect.X - tol && p.Rect.X < wrap.Rect.X + wrap.Rect.Width)
+            .Where(p => p.Depth == wrap.Depth + 1 && p.Node is Layout.Node.Leaf { Content: Layout.Content.Text })
             .ToList();
         leaves.ShouldNotBeEmpty();
         foreach (var l in leaves)
@@ -699,6 +697,34 @@ public class NotificationsLayoutTests
             texts.ShouldContain(@"Users\");
             texts.ShouldContain(t => t.StartsWith("a-", StringComparison.Ordinal));
         }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void AnUnbrokenTokenWiderThanTheLineEndsInAnEllipsisInsideTheRow(bool cells, bool toast)
+    {
+        var text = new string('a', 200);
+        var feed = new NotificationFeed();
+        feed.Post((toast ? Fade("job") : Stay("job")) with { Text = text }, At(0));
+        var all = Arrange(Tree(feed, new NotificationsState { Open = !toast }), cells);
+
+        var wrapIndex = all.FindIndex(p => p.Node is Layout.Node.Wrap);
+        var wrap = all[wrapIndex];
+        wrap.Node.Tooltip.ShouldBe(text);
+        var tol = Tol(cells);
+        var leaves = all.Skip(wrapIndex + 1)
+            .Where(p => p.Depth == wrap.Depth + 1 && p.Node is Layout.Node.Leaf { Content: Layout.Content.Text })
+            .ToList();
+        leaves.ShouldNotBeEmpty();
+        foreach (var l in leaves)
+        {
+            (l.Rect.X + l.Rect.Width).ShouldBeLessThanOrEqualTo(wrap.Rect.X + wrap.Rect.Width + tol);
+        }
+
+        ((Layout.Content.Text)((Layout.Node.Leaf)leaves[^1].Node).Content).Value.ShouldEndWith("…");
     }
 
     [Theory]
