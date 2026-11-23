@@ -199,6 +199,13 @@ public class ButtonKindsTests
             return new RGBAColor32(img.Pixels[i], img.Pixels[i + 1], img.Pixels[i + 2], img.Pixels[i + 3]);
         }
 
+        public RGBAColor32 Pixel(int x, int y)
+        {
+            var img = _renderer.Surface;
+            var i = (y * img.Width + x) * 4;
+            return new RGBAColor32(img.Pixels[i], img.Pixels[i + 1], img.Pixels[i + 2], img.Pixels[i + 3]);
+        }
+
         public int Count(RGBAColor32 c)
         {
             var img = _renderer.Surface;
@@ -240,11 +247,17 @@ public class ButtonKindsTests
     // Focus shows only for a button in a declared list whose hit is that list's ListItemHit, with the cursor on it.
     [Theory]
     [MemberData(nameof(ThemesAndKinds))]
-    public void Focus_paints_the_hover_fill_for_a_button_under_the_list_cursor(UiTheme theme, string name, ButtonKind kind)
+    public void Focus_paints_the_rest_fill_and_a_Focus_ring_outside_the_edge_for_a_button_under_the_list_cursor(UiTheme theme, string name, ButtonKind kind)
     {
         var s = StyleOf(theme, kind);
-        new Rig(theme, kind, focused: true).Fill().ShouldBe(s.HoverFill, $"{name} {kind} focus");
-        new Rig(theme, kind).Fill().ShouldBe(s.RestFill ?? default, $"{name} {kind} not focused");
+        var focused = new Rig(theme, kind, focused: true);
+        focused.Fill().ShouldBe(s.RestFill ?? default, $"{name} {kind} focus keeps the rest fill");
+        // The button is 28 tall at the top left: the band just below its bottom edge holds the ring, clear of the corner cut.
+        focused.Pixel(14, 28).ShouldBe(theme.Palette.Focus, $"{name} {kind} ring below the edge");
+        focused.Pixel(14, 29).ShouldBe(theme.Palette.Focus, $"{name} {kind} ring is two units wide");
+        var rest = new Rig(theme, kind);
+        rest.Fill().ShouldBe(s.RestFill ?? default, $"{name} {kind} not focused");
+        rest.Pixel(14, 28).ShouldNotBe(theme.Palette.Focus, $"{name} {kind} no ring unfocused");
     }
 
     // ---- the link, rendered ----

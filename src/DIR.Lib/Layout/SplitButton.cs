@@ -49,7 +49,7 @@ public static partial class Builder
         {
             cell = cell.Clickable(id, enabled ? click : null);
             if (!enabled) return cell.Disabled(disabledReason!);
-            cell = cell.BgHover(style.HoverFill).BgFocus(style.HoverFill).BgPressed(style.PressedFill)
+            cell = cell.BgHover(style.HoverFill).WithFocusRing(theme.Palette.Focus, theme.Metrics.FocusRingWidth).BgPressed(style.PressedFill)
                 .WithCursor(CursorKind.Pointer);
             return tip is null ? cell : cell.WithTooltip(tip);
         }

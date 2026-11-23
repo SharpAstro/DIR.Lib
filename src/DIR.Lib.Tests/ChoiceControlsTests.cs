@@ -255,11 +255,19 @@ public class ChoiceControlsTests
         public int RightX { get; }
         public int DividerX { get; }
 
-        public SplitRig(UiTheme theme, bool on = false, string? disabledReason = null)
+        public SplitRig(UiTheme theme, bool on = false, string? disabledReason = null, bool focused = false)
         {
             _theme = theme;
-            Root = Builder.HStack(Builder.SplitButton("Run", on, Primary.Add, () => Details++, theme,
-                tooltip: "Run it", detailsTooltip: "Run options", disabledReason: disabledReason)).HFixed(28f);
+            var split = Builder.SplitButton("Run", on, Primary.Add, () => Details++, theme,
+                tooltip: "Run it", detailsTooltip: "Run options", disabledReason: disabledReason,
+                hit: focused ? new HitResult.ListItemHit("split", 0) : null);
+            Root = Builder.HStack(split).HFixed(28f);
+            if (focused)
+            {
+                var cursor = new ListCursor();
+                cursor.Open("split", 0);
+                Root = Root.ListOf(cursor, "split");
+            }
             var pad = theme.Controls.Standard.PaddingX;
             var leftWidth = 2 * pad + 24f;
             LeftX = (int)(pad + 12f);
@@ -437,10 +445,17 @@ public class ChoiceControlsTests
         public List<InputModifier> Toggles { get; } = [];
 
         public TileRig(UiTheme theme, bool on = false, string? disabledReason = null, bool opens = false,
-            string label = "Grid")
+            string label = "Grid", bool focused = false)
         {
             _theme = theme;
-            Root = Builder.HStack(Builder.ToggleTile(IconKind.Pin, label, on, Toggles.Add, theme, opens, disabledReason)).HFixed(60f);
+            Root = Builder.HStack(Builder.ToggleTile(IconKind.Pin, label, on, Toggles.Add, theme, opens, disabledReason,
+                hit: focused ? new HitResult.ListItemHit("tiles", 0) : null)).HFixed(60f);
+            if (focused)
+            {
+                var cursor = new ListCursor();
+                cursor.Open("tiles", 0);
+                Root = Root.ListOf(cursor, "tiles");
+            }
             _widget = new TestWidget(_renderer);
             _router = new InputRouter(_widget.Ui, new BackgroundTaskTracker(), static () => { }) { Widgets = () => [_widget] };
             Paint();
@@ -627,5 +642,44 @@ public class ChoiceControlsTests
         opensTile.Children.Length.ShouldBe(plainTile.Children.Length + 1, name);
         opensTile.Children.OfType<Node.Leaf>().Select(l => l.Content).OfType<Content.Icon>()
             .Select(i => i.Kind).ShouldContain(IconKind.CaretRight, name);
+    }
+
+    // ================= Focus ring (design-language section 6) =================
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void Chip_focus_keeps_the_rest_fill_and_draws_a_Focus_ring_outside_the_edge(UiTheme theme, string name)
+    {
+        var s = theme.Controls.ChipOrDerived;
+        var rig = new Rig(theme, row: true);
+        // Chip 0 is on and under the cursor; the chip is 28 tall at the top left.
+        rig.Fill().ShouldBe(s.OnFill, name + " fill is the rest fill");
+        rig.At(14, 28).ShouldBe(theme.Palette.Focus, name + " ring below the edge");
+        rig.At(14, 29).ShouldBe(theme.Palette.Focus, name + " ring is two units wide");
+        new Rig(theme, on: true).At(14, 28).ShouldNotBe(theme.Palette.Focus, name + " no ring unfocused");
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void SplitButton_focus_keeps_the_rest_fill_and_draws_a_Focus_ring_outside_the_edge(UiTheme theme, string name)
+    {
+        var s = theme.Controls.Standard;
+        var rig = new SplitRig(theme, focused: true);
+        rig.At(rig.LeftX, 14).ShouldBe(s.RestFill ?? s.HoverFill, name + " fill is the rest fill");
+        rig.At(rig.LeftX, 28).ShouldBe(theme.Palette.Focus, name + " ring below the edge");
+        rig.At(rig.LeftX, 29).ShouldBe(theme.Palette.Focus, name + " ring is two units wide");
+        new SplitRig(theme).At(new SplitRig(theme).LeftX, 28).ShouldNotBe(theme.Palette.Focus, name + " no ring unfocused");
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void ToggleTile_focus_keeps_the_rest_fill_and_draws_a_Focus_ring_outside_the_edge(UiTheme theme, string name)
+    {
+        var side = (int)(theme.Metrics.ButtonHeight * theme.Controls.TileOrDerived.SideScale);
+        var rig = new TileRig(theme, focused: true);
+        rig.Fill().ShouldBe(theme.Controls.TileOrDerived.OffFill, name + " fill is the rest fill");
+        rig.At(side / 2, side).ShouldBe(theme.Palette.Focus, name + " ring below the edge");
+        rig.At(side / 2, side + 1).ShouldBe(theme.Palette.Focus, name + " ring is two units wide");
+        new TileRig(theme).At(side / 2, side).ShouldNotBe(theme.Palette.Focus, name + " no ring unfocused");
     }
 }

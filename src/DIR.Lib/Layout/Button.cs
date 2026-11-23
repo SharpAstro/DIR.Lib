@@ -22,7 +22,7 @@ public static partial class Builder
     /// <summary>
     /// A themed text button, drawn from <see cref="UiTheme.Controls"/> alone (fills, edge, radius, padding, ink), at
     /// <see cref="UiMetrics.ButtonHeight"/>. Hover, pressed and keyboard focus are declared fills
-    /// (<see cref="Node.BgHover"/>, <see cref="Node.BgPressed"/>, <see cref="Node.BgFocus"/>), so the look follows the
+    /// (<see cref="Node.BgHover"/>, <see cref="Node.BgPressed"/>, <see cref="Node.FocusRing"/>), so the look follows the
     /// pointer with no state of the caller's. <paramref name="opens"/> adds a trailing <see cref="IconKind.CaretRight"/>
     /// ("this opens something behind it"). A <paramref name="disabledReason"/> makes the button flat (no hover, no pressed), dims
     /// the ink, takes no press and shows the reason as its tooltip with the not-allowed cursor.
@@ -62,7 +62,7 @@ public static partial class Builder
         cell = cell.Clickable(hit ?? new HitResult.ButtonHit(label), enabled ? _ => onClick() : null);
         if (!enabled) return cell.Disabled(disabledReason!);
 
-        cell = cell.BgHover(style.HoverFill).BgFocus(style.HoverFill).BgPressed(style.PressedFill)
+        cell = cell.BgHover(style.HoverFill).WithFocusRing(theme.Palette.Focus, theme.Metrics.FocusRingWidth).BgPressed(style.PressedFill)
             .WithCursor(CursorKind.Pointer);
         return tooltip is null ? cell : cell.WithTooltip(tooltip);
     }

@@ -243,4 +243,14 @@ public sealed class UiPaletteTests
         t2.Controls.Standard.Radius.ShouldBe(12f);
         t2.Controls.Accent.ShouldBe(theme.Controls.Accent);
     }
+
+    // design-language section 6 and the UI-changes rule: a control edge, so the focus ring, reads at 3:1 on the ground.
+    [Theory]
+    [InlineData("dark")]
+    [InlineData("light")]
+    public void Focus_reads_at_3_to_1_against_ContentBg_in_each_built_in_palette(string which)
+    {
+        var p = which == "dark" ? NotificationsRenderTests.Dark : NotificationsRenderTests.Light;
+        RGBAColor32.ContrastRatio(p.Focus, p.ContentBg).ShouldBeGreaterThanOrEqualTo(3f, which);
+    }
 }

@@ -9,6 +9,12 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.97
+
+- `Node.FocusRing` (`FocusRingStyle`, set with `WithFocusRing`): a declared stroke drawn outside a node's rounded edge while the list cursor is on its hit. It takes no layout space, it is in the damage signature, and `DamageRect` grows by the ring's width. Cells draw no ring yet; Console.Lib's cell painter is its own flight.
+- `UiMetrics.FocusRingWidth` (init-only, default 2, survives `default(UiMetrics)`).
+- `Button`, `Chip`, `SplitButton` and `ToggleTile` show focus as a 2-unit ring in `UiPalette.Focus` instead of painting the hover fill under the list cursor. List rows (`GroupedTreeTable`, menus) keep `BgFocus`. Settles DIR312:R1.13.
+
 ## 11.96
 
 Theme-driven choice controls (#313, step 2), additive. New public members:
