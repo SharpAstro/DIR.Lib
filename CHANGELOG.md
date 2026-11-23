@@ -12,9 +12,11 @@ changed and why.
 ## 11.95
 
 Notifications keep long text on the page, and a host can build the list frame alone (#275), additive. A word wider
-than its line never runs past the row: `NotificationsLayout.Wrapped` splits a long token at `-`, `.`, `_` and `/`, and a
+than its line never runs past the row: `NotificationsLayout.Wrapped` splits a word of 16 characters or more after `\`, `/`, `|`, `,`, `;`, `=`, `&`, `-`, `_` or `.` (never between two digits; shorter words such as `2.1` stay whole), and a
 capped wrap with `Ellipsis` ends any text leaf still wider than its line in an ellipsis (the whole text stays the
-hover). New public `NotificationsLayout.BuildList(feed, state, colors, style)` returns the bar's header with Clear and
+hover). That engine rule reaches every capped `Ellipsis` wrap, not only notifications: an over-wide piece is now cut
+with an ellipsis instead of clipped (pilot's `WrappedProse` comment that the engine ends a capped wrap in an ellipsis
+only when it drops a child is stale; a follow-up for pilot). New public `NotificationsLayout.BuildList(feed, state, colors, style)` returns the bar's header with Clear and
 its scrolled list as wide and tall as it is given, and is not a surface (a page of its own covers nothing); the open
 bar is built from the same frame and arranges as before. `Build` leaves the strip out when
 `NotificationsStyle.StripWidth` is 0 or less (no bell, no count, no shortcut node); the `ToggleKey` shortcut lives on

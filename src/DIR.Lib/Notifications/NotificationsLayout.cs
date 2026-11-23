@@ -624,17 +624,26 @@ namespace DIR.Lib.Notifications
             return Builder.VStack([.. parts]).WStar();
         }
 
-        // A word split where a line may break: after a path separator or punctuation, and before a hump.
+        // Words shorter than this stay one leaf, so "2.1", "e.g." and "v11.95" are never cut across lines.
+        private const int LongWord = 16;
+
+        // A long word split where a line may break: after a path separator or punctuation, never between two digits.
+        // A short word is one piece; a long run with no break point is cut by the engine's ellipsis rule instead.
         private static List<string> BreakPieces(string word)
         {
             var pieces = new List<string>();
+            if (word.Length < LongWord)
+            {
+                pieces.Add(word);
+                return pieces;
+            }
+
             var start = 0;
             for (var i = 1; i < word.Length; i++)
             {
                 var prev = word[i - 1];
                 var after = prev is '\\' or '/' or '|' or ',' or ';' or '=' or '&' or '-' or '_' or '.';
-                var hump = char.IsLower(prev) && char.IsUpper(word[i]);
-                if (after || hump)
+                if (after && !(char.IsDigit(prev) && char.IsDigit(word[i])))
                 {
                     pieces.Add(word[start..i]);
                     start = i;
