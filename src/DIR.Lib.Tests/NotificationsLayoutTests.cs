@@ -76,18 +76,21 @@ public class NotificationsLayoutTests
     }
 
     /// <summary>One arranged node with its rect in design units.</summary>
-    private readonly record struct Placed(Layout.Node Node, RectF32 Rect);
+    private readonly record struct Placed(Layout.Node Node, RectF32 Rect)
+    {
+        public int Depth { get; init; }
+    }
 
     private static List<Placed> Arrange(Layout.Node root, bool cells)
     {
         if (!cells)
         {
             return [.. Layout.Engine.Arrange(root, new Rect<float>(0, 0, W, H), new FloatCtx())
-                .Select(a => new Placed(a.Node, new RectF32(a.Bounds.X, a.Bounds.Y, a.Bounds.Width, a.Bounds.Height)))];
+                .Select(a => new Placed(a.Node, new RectF32(a.Bounds.X, a.Bounds.Y, a.Bounds.Width, a.Bounds.Height)) { Depth = a.Depth })];
         }
 
         return [.. Layout.Engine.Arrange(root, new Rect<int>(0, 0, (int)(W / 8), (int)(H / 16)), new CellCtx())
-            .Select(a => new Placed(a.Node, new RectF32(a.Bounds.X * 8f, a.Bounds.Y * 16f, a.Bounds.Width * 8f, a.Bounds.Height * 16f)))];
+            .Select(a => new Placed(a.Node, new RectF32(a.Bounds.X * 8f, a.Bounds.Y * 16f, a.Bounds.Width * 8f, a.Bounds.Height * 16f)) { Depth = a.Depth })];
     }
 
     private static float Tol(bool cells) => cells ? 16f : 0.5f;
