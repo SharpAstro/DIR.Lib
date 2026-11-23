@@ -122,14 +122,17 @@ namespace DIR.Lib
 
         /// <summary>The signature of one arranged node, resolving hover against <paramref name="pointer"/> and
         /// <see cref="Layout.Node.PressedBackground"/> against <paramref name="pressOrigin"/> (where the primary
-        /// button is held down, or null). A hovered underlined text run signs differently from a resting one.</summary>
+        /// button is held down, or null). A hovered underlined text run signs differently from a resting one. A single node
+        /// cannot see its ancestors, so the underline here is resolved against the node's own rect only; <c>Compute</c>
+        /// and the painter use the enclosing hit region, which a caller holding the tree passes through the overload
+        /// that takes an <c>underlineScope</c>.</summary>
         public static PaintSignature Signature(in Layout.ArrangedNode<float> node, (float X, float Y)? pointer,
             (float X, float Y)? pressOrigin)
             => Signature(node, pointer, pressOrigin, node.Bounds);
 
-        /// <summary>As the public overload, with the hover underline resolved against <paramref name="underlineScope"/>:
+        /// <summary>As the overload without a scope, with the hover underline resolved against <paramref name="underlineScope"/>:
         /// the rect of the nearest node with a hit that holds this one (itself included), as the painter resolves it.</summary>
-        private static PaintSignature Signature(in Layout.ArrangedNode<float> node, (float X, float Y)? pointer,
+        public static PaintSignature Signature(in Layout.ArrangedNode<float> node, (float X, float Y)? pointer,
             (float X, float Y)? pressOrigin, in Rect<float> underlineScope)
         {
             var n = node.Node;
