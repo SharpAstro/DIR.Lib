@@ -331,11 +331,33 @@ public abstract record Content
         /// <summary>The played portion of the track and the handle. Default opaque white, the convention
         /// <see cref="Text.Color"/> and <see cref="Icon.Color"/> use; override per slider, the way every
         /// existing hand-painted track slider already supplies its own accent.</summary>
-        public RGBAColor32 FillColor { get; init; } = new(0xff, 0xff, 0xff, 0xff);
+        public RGBAColor32 FillColor { get; init; } = DefaultFillColor;
+
+        /// <summary>The played portion's colour when a slider states none (opaque white).</summary>
+        public static readonly RGBAColor32 DefaultFillColor = new(0xff, 0xff, 0xff, 0xff);
+
+        /// <summary>The unfilled track's colour when a slider states none (the old square slider's track).</summary>
+        public static readonly RGBAColor32 DefaultTrackColor = new(0x40, 0x40, 0x40, 0xff);
+
+        /// <summary>The handle's colour when a slider states none.</summary>
+        public static readonly RGBAColor32 DefaultHandleColor = new(0xff, 0xff, 0xff, 0xff);
+
+        /// <summary>
+        /// Draws the thumb as a disc of <see cref="TrackSliderChrome.Handle"/> inside a ring of <see cref="ThumbRing"/>, as
+        /// tall as the arranged row, instead of the square handle. Init-only, so the chrome and the hand-painted
+        /// <c>DrawTrackSlider</c> keep their shape; the themed <c>Builder.Slider</c> sets it.
+        /// </summary>
+        public bool RoundThumb { get; init; }
+
+        /// <summary>The round thumb's ring colour (used when <see cref="RoundThumb"/> is set).</summary>
+        public RGBAColor32 ThumbRing { get; init; } = DefaultHandleColor;
+
+        /// <summary>The round thumb's ring width in design units (used when <see cref="RoundThumb"/> is set).</summary>
+        public float ThumbRingWidth { get; init; } = 1f;
 
         /// <summary>The unfilled track and the handle marker's own colours: the two chrome tones the
         /// painter needs beside <see cref="FillColor"/>.</summary>
-        public TrackSliderChrome Chrome { get; init; } = new(new RGBAColor32(0x40, 0x40, 0x40, 0xff), new RGBAColor32(0xff, 0xff, 0xff, 0xff));
+        public TrackSliderChrome Chrome { get; init; } = new(DefaultTrackColor, DefaultHandleColor);
     }
 
     /// <summary>

@@ -168,6 +168,74 @@ public sealed record ToggleTileStyle
 }
 
 /// <summary>
+/// How a themed slider looks: the part of the track up to the thumb (<see cref="Fill"/>), the rest of the track
+/// (<see cref="Track"/>) and a round thumb with an accent centre and a ring. Values are palette colours and design units.
+/// </summary>
+public sealed record SliderStyle
+{
+    /// <summary>The track from its start up to the thumb.</summary>
+    public required RGBAColor32 Fill { get; init; }
+
+    /// <summary>The track beyond the thumb.</summary>
+    public required RGBAColor32 Track { get; init; }
+
+    /// <summary>The thumb's centre disc.</summary>
+    public required RGBAColor32 ThumbCentre { get; init; }
+
+    /// <summary>The thumb's ring.</summary>
+    public required RGBAColor32 ThumbRing { get; init; }
+
+    /// <summary>Width of the thumb's ring in design units.</summary>
+    public required float ThumbRingWidth { get; init; }
+
+    /// <summary>The thumb's diameter, and so the slider's height, in design units.</summary>
+    public required float ThumbSize { get; init; }
+}
+
+/// <summary>
+/// How a themed dropdown looks: the closed box (fill, ring, radius, ink) and the menu it opens (a raised surface with
+/// rows in <see cref="RowInk"/> and a hover fill). Values are palette colours and design units, never literals.
+/// </summary>
+public sealed record DropdownStyle
+{
+    /// <summary>Fill of the closed box.</summary>
+    public required RGBAColor32 BoxFill { get; init; }
+
+    /// <summary>Fill of the closed box under the pointer.</summary>
+    public required RGBAColor32 BoxHoverFill { get; init; }
+
+    /// <summary>Ring colour of the closed box.</summary>
+    public required RGBAColor32 BoxEdge { get; init; }
+
+    /// <summary>Width of the box's ring in design units.</summary>
+    public required float EdgeWidth { get; init; }
+
+    /// <summary>Corner radius of the closed box in design units.</summary>
+    public required float BoxRadius { get; init; }
+
+    /// <summary>Horizontal padding of the closed box in design units.</summary>
+    public required float PaddingX { get; init; }
+
+    /// <summary>Text and caret colour of the closed box.</summary>
+    public required RGBAColor32 BoxInk { get; init; }
+
+    /// <summary>Fill of the menu: a raised surface.</summary>
+    public required RGBAColor32 MenuBg { get; init; }
+
+    /// <summary>Corner radius of the menu in design units.</summary>
+    public required float MenuRadius { get; init; }
+
+    /// <summary>Shadow of the menu.</summary>
+    public required Layout.ShadowStyle MenuShadow { get; init; }
+
+    /// <summary>Text colour of a menu row.</summary>
+    public required RGBAColor32 RowInk { get; init; }
+
+    /// <summary>Fill of the menu row under the pointer.</summary>
+    public required RGBAColor32 RowHover { get; init; }
+}
+
+/// <summary>
 /// The control kinds a theme styles: <see cref="Accent"/> (the one primary action), <see cref="Standard"/>,
 /// <see cref="Subtle"/> (no fill at rest), <see cref="Hyperlink"/>, the filter <see cref="Chip"/> and the toggle <see cref="Tile"/>. <see cref="For"/> derives them from a palette
 /// and metrics, so every existing theme gets them without stating anything.
@@ -182,6 +250,10 @@ public sealed record ControlStyles
     // A tile is one and a half buttons square; its label gap is half a button's side padding, set or derived alike.
     private const float TileSideScale = 1.5f;
     private const float LinkMinContrast = 4.5f;
+    // The thumb is as wide as a button's side padding times this (a slider has no ButtonHeight to follow when derived
+    // without metrics); For states it from the metrics instead.
+    private const float SliderThumbPaddingScale = 3f;
+    private const float SliderThumbHeightScale = 0.6f;
 
     /// <summary>The primary action: filled with the accent, no edge.</summary>
     public required ButtonStyle Accent { get; init; }
@@ -208,6 +280,24 @@ public sealed record ControlStyles
     /// unset, <see cref="TileOrDerived"/> derives it from <see cref="Accent"/> and <see cref="Standard"/>. <see cref="For"/> sets it.
     /// </summary>
     public ToggleTileStyle? Tile { get; init; }
+
+    /// <summary>
+    /// The slider. Init-only and not required, so an existing <c>new ControlStyles { ... }</c> still compiles; when unset,
+    /// <see cref="SliderOrDerived"/> derives it from <see cref="Accent"/> and <see cref="Standard"/>. <see cref="For"/> sets it.
+    /// </summary>
+    public SliderStyle? Slider { get; init; }
+
+    /// <summary>
+    /// The dropdown. Init-only and not required; when unset, <see cref="DropdownOrDerived"/> derives it from
+    /// <see cref="Standard"/> and its host's raised surface is the panel. <see cref="For"/> sets it.
+    /// </summary>
+    public DropdownStyle? Dropdown { get; init; }
+
+    /// <summary>The slider style: <see cref="Slider"/> when set, else derived from <see cref="Accent"/> and <see cref="Standard"/>.</summary>
+    public SliderStyle SliderOrDerived => Slider ?? DeriveSlider(Accent, Standard, Standard.PaddingX * SliderThumbPaddingScale);
+
+    /// <summary>The dropdown style: <see cref="Dropdown"/> when set, else derived from <see cref="Standard"/> (the menu is the box's fill).</summary>
+    public DropdownStyle DropdownOrDerived => Dropdown ?? DeriveDropdown(Standard, Standard.RestFill ?? Standard.HoverFill, Standard.Radius, UiMetrics.DefaultShadow);
 
     /// <summary>The tile style: <see cref="Tile"/> when set, else derived from <see cref="Accent"/> and <see cref="Standard"/>.</summary>
     public ToggleTileStyle TileOrDerived => Tile ?? DeriveTile(Accent, Standard, TileSideScale, Standard.PaddingX / 2f, Standard.Ink);
@@ -276,8 +366,44 @@ public sealed record ControlStyles
                 DisabledInk = palette.DimText,
             },
             Tile = DeriveTile(accentStyle, standardStyle, TileSideScale, standardStyle.PaddingX / 2f, palette.BodyText),
+            Slider = new SliderStyle
+            {
+                Fill = palette.Accent,
+                Track = palette.ControlFill,
+                ThumbCentre = palette.Accent,
+                ThumbRing = palette.ControlEdge,
+                ThumbRingWidth = metrics.ControlEdgeWidth * 2f,
+                ThumbSize = metrics.ButtonHeight * SliderThumbHeightScale,
+            },
+            Dropdown = DeriveDropdown(standardStyle, palette.RaisedBg, metrics.CornerRadius, metrics.Shadow),
         };
     }
+
+    private static SliderStyle DeriveSlider(ButtonStyle accent, ButtonStyle standard, float thumbSize) => new()
+    {
+        Fill = accent.RestFill ?? accent.HoverFill,
+        Track = standard.RestFill ?? standard.HoverFill,
+        ThumbCentre = accent.RestFill ?? accent.HoverFill,
+        ThumbRing = standard.Edge ?? standard.HoverFill,
+        ThumbRingWidth = standard.EdgeWidth * 2f,
+        ThumbSize = thumbSize,
+    };
+
+    private static DropdownStyle DeriveDropdown(ButtonStyle standard, RGBAColor32 menuBg, float menuRadius, Layout.ShadowStyle shadow) => new()
+    {
+        BoxFill = standard.RestFill ?? standard.HoverFill,
+        BoxHoverFill = standard.HoverFill,
+        BoxEdge = standard.Edge ?? standard.HoverFill,
+        EdgeWidth = standard.EdgeWidth,
+        BoxRadius = standard.Radius,
+        PaddingX = standard.PaddingX,
+        BoxInk = standard.Ink,
+        MenuBg = menuBg,
+        MenuRadius = menuRadius,
+        MenuShadow = shadow,
+        RowInk = standard.Ink,
+        RowHover = standard.HoverFill,
+    };
 
     private static ToggleTileStyle DeriveTile(ButtonStyle accent, ButtonStyle standard, float sideScale, float labelGap, RGBAColor32 labelInk) => new()
     {

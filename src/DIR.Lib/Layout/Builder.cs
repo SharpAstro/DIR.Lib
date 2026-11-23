@@ -117,25 +117,6 @@ public static partial class Builder
     public static Node Fill(float minWidth = 0f, float minHeight = 0f, string? key = null)
         => new Node.Leaf(new Content.Fill(minWidth, minHeight, key));
 
-    /// <summary>
-    /// A draggable value in a range: <c>Builder.Slider(state)</c> is the whole declaration, and the
-    /// painter takes care of drawing it (through the one shared track/fill/handle implementation),
-    /// registering its <see cref="HitResult.SliderStateHit"/> and arming its own drag. See
-    /// <see cref="Content.Slider"/>.
-    /// <para>
-    /// <c>Star</c> width by default, unlike <see cref="TextInput"/>: a slider almost always fills the row
-    /// it sits in and has no placeholder-shaped content to shrink to under <c>Auto</c> the way a field
-    /// does.
-    /// </para>
-    /// </summary>
-    public static Node Slider(SliderState state, RGBAColor32? fillColor = null, TrackSliderChrome? chrome = null)
-        => new Node.Leaf(new Content.Slider(state)
-        {
-            FillColor = fillColor ?? new RGBAColor32(0xff, 0xff, 0xff, 0xff),
-            Chrome = chrome ?? new TrackSliderChrome(new RGBAColor32(0x40, 0x40, 0x40, 0xff), new RGBAColor32(0xff, 0xff, 0xff, 0xff)),
-        })
-        { Width = Sizing.Star() };
-
     /// <summary>A transparent zero-intrinsic box -- a pure spacer; size it with <c>.ColW()</c> / <c>.HFixed()</c> / a <c>Star</c> weight.</summary>
     public static Node Spacer() => new Node.Leaf(new Content.Box(0f, 0f));
 
@@ -333,100 +314,6 @@ public static partial class Builder
         }
 
         return Overlay(scrim, AnchoredTo(anchor, content, side)) with { Popover = state };
-    }
-
-    /// <summary>
-    /// A dropdown menu: <paramref name="state"/>'s entries as a list floated beside
-    /// <paramref name="anchor"/>, on the popover the engine already owns.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>This adds no mechanism.</b> Every behaviour a menu needs is already on the node: the backdrop and
-    /// the Escape claim come from <see cref="Popover"/>, a disabled row is <see cref="Node.Disabled(string)"/>
-    /// (dimmed, press swallowed with <see cref="CursorKind.NotAllowed"/>, the reason as its tooltip), the
-    /// highlight is <see cref="Node.BgHover"/>, the overflow is <see cref="Node.WithScroll"/>. What was
-    /// missing was a node to know them ON -- <c>PixelWidgetBase.RenderDropdownMenu</c> knows all of it
-    /// inside a ten-parameter method carrying the obligation "must be called LAST in the render pass",
-    /// and a caller who gets that order wrong gets a menu that paints under the chrome it belongs to and
-    /// loses its clicks, with nothing to say so.
-    /// </para>
-    /// <para>
-    /// <b>The anchor is the trigger's arranged rect, not remembered geometry.</b> The rendered path carries
-    /// <c>AnchorX</c>/<c>AnchorY</c>/<c>AnchorWidth</c> captured at the moment the menu opened, so a menu
-    /// still open across a resize hangs where the button used to be. Here placement is the engine's, and it
-    /// is re-measured with everything else.
-    /// </para>
-    /// <para>
-    /// Opening one from a button is <c>.Clickable(hit, _ =&gt; state.Popover.Toggle())</c> on the button node.
-    /// There is no dispatcher line to add and none to forget.
-    /// </para>
-    /// </remarks>
-    public static Node Dropdown<T>(RectF32 anchor, DropdownMenuState<T> state,
-        float fontSize = 14f, RGBAColor32? textColor = null, RGBAColor32? background = null,
-        RGBAColor32? highlight = null, RGBAColor32? backdrop = null,
-        float maxHeight = 0f, DockSide side = DockSide.Bottom)
-    {
-        var rowHeight = fontSize * 1.8f;
-        var rowPadding = fontSize * 0.5f;
-
-        var rows = new Node[state.Items.Length];
-        for (var i = 0; i < state.Items.Length; i++)
-        {
-            var item = state.Items[i];
-            // Captured per row. Closing over the loop variable itself would hand every row the final index.
-            var index = i;
-
-            // EVERY row declares its hit and its handler, disabled or not. .Disabled() strips the
-            // handler and marks the region; it does not create one. A disabled row declared without a hit
-            // would register nothing, so the press would fall through to the backdrop and CLOSE the menu --
-            // which reads as "it took my click and did nothing", the precise dead-end the disabled state
-            // exists to remove. TrySelect refuses a disabled index anyway, so the swallow is the point.
-            var row = Text(item.Label, fontSize, textColor)
-                .RowH(rowHeight)
-                .PadX(rowPadding)
-                .Clickable(new HitResult.ListItemHit(DropdownMenuState<T>.ListId, index),
-                    _ => state.TrySelect(index));
-
-            if (item.IsEnabled)
-            {
-                if (highlight is { } hoverColour)
-                {
-                    row = row.BgHover(hoverColour);
-                }
-
-                if (item.Tooltip is { Length: > 0 } tooltip)
-                {
-                    row = row.WithTooltip(tooltip);
-                }
-            }
-            else
-            {
-                row = row.Disabled(item.Tooltip ?? string.Empty);
-            }
-
-            rows[i] = row;
-        }
-
-        // A row is the atom, so the keyboard's EnsureVisible and the wheel's step count rows -- the
-        // engine converts it to surface units when it feeds the controller. Stated on every build for
-        // the same reason the rows are: the menu's font may have changed since the last one.
-        state.Scroll.AtomDesignUnits = rowHeight;
-        // As wide as the anchor, for a menu under its button; an anchor with no width (a point: where a context menu was
-        // pressed) gives a menu as wide as its widest entry, which the engine measures within the space the popover has,
-        // so a long entry on a small window is trimmed rather than run off the edge.
-        var list = VStack(rows).W(anchor.Size.X > 0f ? Sizing.Fixed(anchor.Size.X) : Sizing.Auto).WithScroll(state.Scroll);
-
-        if (maxHeight > 0f)
-        {
-            list = list.HClamp(0f, maxHeight);
-        }
-
-        if (background is { } menuColour)
-        {
-            list = list.Bg(menuColour);
-        }
-
-        return Popover(anchor, list, state.Popover, side, backdrop);
     }
 
     /// <summary>
