@@ -1460,7 +1460,9 @@ public static class Engine
             var used = T.Zero;
             var lineCross = lineIndex == 0 ? trailCross : T.Zero;
             var lineAvail = lineIndex == 0 ? firstLineAvail : mainAvail;
-            while (lineEnd < n)
+            // A leaf cut to the line's room ends its line: nothing is drawn after an ellipsis.
+            var lineFull = false;
+            while (lineEnd < n && !lineFull)
             {
                 // A line never opens with separation: neither the container's gap nor the child's own
                 // leading gap applies to the child that starts one.
@@ -1474,6 +1476,7 @@ public static class Engine
                     var (wideText, wideMain) = EllipsizeWrapText(wide, childMains[lineEnd], lineAvail, axis, ctx);
                     clamped[lineEnd] = wideLeaf with { Content = wide with { Value = wideText, WidthSample = null } };
                     childMains[lineEnd] = wideMain;
+                    lineFull = true;
                 }
 
                 var extra = lead + childMains[lineEnd];
@@ -1941,23 +1944,29 @@ public static class Engine
             lines = 2;
         }
 
+        // A leaf cut to its line's room ends that line, as in ArrangeWrap: the next child starts a new one.
+        var lineFull = false;
         for (var i = 0; i < n; i++)
         {
             var (main, cross) = ResolveWrapChild(children[i], axis, available, ctx);
             if (itemsInLine == 0)
             {
-                main = ClampWrapMain(wrap, children[i], main, lines == 1 ? firstLineAvail : mainAvail, axis, ctx);
+                var cut = ClampWrapMain(wrap, children[i], main, lines == 1 ? firstLineAvail : mainAvail, axis, ctx);
+                lineFull = cut != main;
+                main = cut;
             }
 
             var extra = itemsInLine == 0
                 ? main
                 : gap + ToSurfaceOn(ctx, children[i].LeadingGap, axis) + main;
-            if (itemsInLine > 0 && used + extra > (lines == 1 ? firstLineAvail : mainAvail))
+            if (itemsInLine > 0 && (lineFull || used + extra > (lines == 1 ? firstLineAvail : mainAvail)))
             {
                 maxLineMain = Max(maxLineMain, lines == 1 ? Line1Main(used, itemsInLine) : used);
                 totalCross += lineCross;
                 lines++;
-                main = ClampWrapMain(wrap, children[i], main, mainAvail, axis, ctx);
+                var cutNext = ClampWrapMain(wrap, children[i], main, mainAvail, axis, ctx);
+                lineFull = cutNext != main;
+                main = cutNext;
                 used = main;
                 lineCross = cross;
                 itemsInLine = 1;
@@ -1980,22 +1989,27 @@ public static class Engine
             var lineTop = skipFirst ? T.Zero : trailCross;
             var inLine = 0;
             var usedInLine = T.Zero;
+            var full = false;
             for (var i = 0; i < n && counted < lines; i++)
             {
                 var (main, cross) = ResolveWrapChild(children[i], axis, available, ctx);
                 if (inLine == 0)
                 {
-                    main = ClampWrapMain(wrap, children[i], main, counted == 0 ? firstLineAvail : mainAvail, axis, ctx);
+                    var cut = ClampWrapMain(wrap, children[i], main, counted == 0 ? firstLineAvail : mainAvail, axis, ctx);
+                    full = cut != main;
+                    main = cut;
                 }
 
                 var extra = inLine == 0
                     ? main
                     : gap + ToSurfaceOn(ctx, children[i].LeadingGap, axis) + main;
-                if (inLine > 0 && usedInLine + extra > (counted == 0 ? firstLineAvail : mainAvail))
+                if (inLine > 0 && (full || usedInLine + extra > (counted == 0 ? firstLineAvail : mainAvail)))
                 {
                     totalCross += lineTop;
                     counted++;
-                    main = ClampWrapMain(wrap, children[i], main, mainAvail, axis, ctx);
+                    var cutNext = ClampWrapMain(wrap, children[i], main, mainAvail, axis, ctx);
+                    full = cutNext != main;
+                    main = cutNext;
                     usedInLine = main;
                     lineTop = cross;
                     inLine = 1;

@@ -733,6 +733,35 @@ public class NotificationsLayoutTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void ALongWordNeverBreaksInsideANumber(bool cells)
+    {
+        const string text = "build-v11.95.0-release-candidate 1,024,768-frames-stacked";
+        var feed = new NotificationFeed();
+        feed.Post(Stay("job") with { Text = text }, At(0));
+        var all = Arrange(Tree(feed, new NotificationsState { Open = true }), cells);
+
+        var wrapIndex = all.FindIndex(p => p.Node is Layout.Node.Wrap);
+        var wrap = all[wrapIndex];
+        var texts = all.Skip(wrapIndex + 1)
+            .Where(p => p.Depth == wrap.Depth + 1 && p.Node is Layout.Node.Leaf { Content: Layout.Content.Text })
+            .Select(p => ((Layout.Content.Text)((Layout.Node.Leaf)p.Node).Content).Value)
+            .ToList();
+
+        // The long words still split at their dashes, but a '.' or ',' between digits holds.
+        texts.ShouldContain("v11.95.0-");
+        texts.ShouldContain("1,024,768-");
+        for (var i = 0; i + 1 < texts.Count; i++)
+        {
+            var (a, b) = (texts[i], texts[i + 1]);
+            var cutInNumber = a.Length >= 2 && a[^1] is '.' or ',' && char.IsDigit(a[^2])
+                && b.Length > 0 && char.IsDigit(b[0]);
+            cutInNumber.ShouldBeFalse($"'{a}' then '{b}'");
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void EveryToastCardAndTheOpenBarAreSurfaces_OnEitherContext(bool cells)
     {
         var feed = new NotificationFeed();
