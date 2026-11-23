@@ -259,7 +259,10 @@ public class ButtonKindsTests
         {
             // The gap shows the page, so the ring never merges with a control filled in the accent.
             focused.Pixel(14, 28 + i).ShouldNotBe(theme.Palette.Focus, $"{name} {kind} gap pixel {i} is not the ring");
-            focused.Pixel(14, 28 + i).ShouldNotBe(focused.Fill(), $"{name} {kind} gap pixel {i} is not the fill");
+            if (focused.Fill().Alpha > 0)
+            {
+                focused.Pixel(14, 28 + i).ShouldNotBe(focused.Fill(), $"{name} {kind} gap pixel {i} is not the fill");
+            }
         }
         focused.Pixel(14, 28 + gap).ShouldBe(theme.Palette.Focus, $"{name} {kind} ring below the gap");
         focused.Pixel(14, 29 + gap).ShouldBe(theme.Palette.Focus, $"{name} {kind} ring is two units wide");

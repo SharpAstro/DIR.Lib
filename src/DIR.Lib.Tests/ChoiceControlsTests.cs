@@ -651,7 +651,7 @@ public class ChoiceControlsTests
     public void Chip_focus_keeps_the_rest_fill_and_draws_a_Focus_ring_outside_the_edge(UiTheme theme, string name)
     {
         var s = theme.Controls.ChipOrDerived;
-        var rig = new Rig(theme, row: true);
+        var rig = new Rig(theme, on: true, row: true);
         // Chip 0 is on and under the cursor; the chip is 28 tall at the top left.
         rig.Fill().ShouldBe(s.OnFill, name + " fill is the rest fill");
         var gap = (int)theme.Metrics.FocusRingGap;
