@@ -322,7 +322,7 @@ public static partial class Builder
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>This adds no mechanism</b>, like <see cref="Dropdown{T}"/>: it is the segments every consumer was
+    /// <b>This adds no mechanism</b>, like <see cref="Dropdown{T}(RectF32, DropdownMenuState{T}, float, RGBAColor32?, RGBAColor32?, RGBAColor32?, RGBAColor32?, float, DockSide)"/>: it is the segments every consumer was
     /// writing by hand, with the three decisions a hand-written group gets wrong stated once.
     /// </para>
     /// <list type="bullet">

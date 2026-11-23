@@ -122,7 +122,7 @@ public class RowsAndRestylesTests
         box[0].Node.BorderStyle!.Color.ShouldBe(theme.Palette.ControlEdge, name);
         box[0].Node.CornerRadius.ShouldBe(theme.Metrics.ControlRadius, name);
         box[0].Node.Hit.ShouldBe(new HitResult.ButtonHit("Pick"));
-        box[0].Rect.Height.ShouldBe(theme.Metrics.ButtonHeight, name);
+        box[0].Bounds.Height.ShouldBe(theme.Metrics.ButtonHeight, name);
     }
 
     private static IconKind[] Carets(Node n)
