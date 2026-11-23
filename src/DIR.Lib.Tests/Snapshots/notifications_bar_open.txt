@@ -71,9 +71,11 @@
 8 Text "HFR " 53 14 4 1
 8 Text "rose " 57 14 5 1
 8 Text "from " 62 14 5 1
-8 Text "2.1 " 67 14 4 1
+8 Text "2." 67 14 2 1
+8 Text "1 " 69 14 2 1
 8 Text "to " 71 14 3 1
-8 Text "3.4 " 74 14 4 1
+8 Text "3." 74 14 2 1
+8 Text "4 " 76 14 2 1
 8 Text "px; " 78 14 4 1
 8 Text "refocus " 82 14 8 1
 8 Text "before " 53 15 7 1

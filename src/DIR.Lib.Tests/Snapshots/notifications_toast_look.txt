@@ -18,7 +18,9 @@
 9 Stack 58 3 32 1
 10 Text "Frame saved" 58 3 32 1
 9 Wrap 58 4 32 1
-10 Text "IMG_0412.fits, " 58 4 15 1
+10 Text "IMG_" 58 4 4 1
+10 Text "0412." 62 4 5 1
+10 Text "fits, " 67 4 6 1
 10 Text "120 " 73 4 4 1
 10 Text "s, " 77 4 3 1
 10 Text "gain " 80 4 5 1
@@ -45,7 +47,8 @@
 9 Wrap 58 10 32 2
 10 Text "Centre " 58 10 7 1
 10 Text "moved " 65 10 6 1
-10 Text "4.2 " 71 10 4 1
+10 Text "4." 71 10 2 1
+10 Text "2 " 73 10 2 1
 10 Text "arcmin " 75 10 7 1
 10 Text "from " 82 10 5 1
 10 Text "target." 58 11 7 1
