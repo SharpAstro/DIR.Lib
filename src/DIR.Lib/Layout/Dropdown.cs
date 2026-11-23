@@ -154,7 +154,7 @@ public static partial class Builder
             .Pad(style.PaddingX, 0f).HFixed(theme.Metrics.ButtonHeight).Radius(style.BoxRadius)
             .Bg(fill).Border(style.BoxEdge, style.EdgeWidth, style.BoxRadius)
             .Clickable(hit ?? new HitResult.ButtonHit(label), _ => state.Popover.Toggle())
-            .BgHover(fillColor is { } explicit ? RGBAColor32.Mix(explicit, theme.Palette.BodyText, HoverMix) : style.BoxHoverFill).WithCursor(CursorKind.Pointer);
+            .BgHover(fillColor is { } own ? RGBAColor32.Mix(own, theme.Palette.BodyText, HoverMix) : style.BoxHoverFill).WithCursor(CursorKind.Pointer);
         return tooltip is null ? box : box.WithTooltip(tooltip);
     }
 }
