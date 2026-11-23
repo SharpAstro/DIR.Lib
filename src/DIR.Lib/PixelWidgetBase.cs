@@ -1596,7 +1596,7 @@ namespace DIR.Lib
                         new PointInt((int)(bounds.X + bounds.Width + reach), (int)(bounds.Y + bounds.Height + reach)),
                         new PointInt((int)(bounds.X - reach), (int)(bounds.Y - reach)));
                     Renderer.DrawBorder(ringRect, ring.Color, (int)ringWidth,
-                        fillRadius > 0f ? fillRadius + reach : 0f, Layout.BorderSides.All);
+                        fillRadius > 0f ? fillRadius + reach : 0f, ring.Sides);
                 }
 
                 // The engine is the only thing that knows where the list was arranged, so it is the only

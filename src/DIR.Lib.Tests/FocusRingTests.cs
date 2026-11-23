@@ -148,4 +148,42 @@ public class FocusRingTests
         damage.Width.ShouldBe(86f);
         damage.Height.ShouldBe(46f);
     }
+
+    [Fact]
+    public void TheOffsetLeavesAGapBetweenTheEdgeAndTheRing()
+    {
+        var rows = ((Layout.Node.Stack)Rows()).Children.Select(c => c.WithFocusRing(new Layout.FocusRingStyle { Color = Ring, Width = 2f, Offset = 3f }));
+        var tree = new Layout.Node.Stack(System.Collections.Immutable.ImmutableArray.CreateRange(rows)) { Padding = 20f, Gap = 10f };
+        var r = Draw(tree, 0);
+
+        PixelAt(r, 50, 19).ShouldNotBe(Ring);   // gap: 17..19 shows the card, not the ring
+        PixelAt(r, 50, 17).ShouldNotBe(Ring);
+        PixelAt(r, 50, 16).ShouldBe(Ring);      // ring: 15..16
+        PixelAt(r, 50, 15).ShouldBe(Ring);
+        PixelAt(r, 50, 35).ShouldBe(Fill);
+    }
+
+    [Fact]
+    public void TheDamageRectGrowsByTheOffsetToo()
+    {
+        var node = Layout.Builder.Box(80, 40).WithFocusRing(new Layout.FocusRingStyle { Color = Ring, Width = 2f, Offset = 3f });
+        var arranged = new Layout.ArrangedNode<float>(node, new Rect<float>(50, 50, 80, 40));
+
+        var damage = LayoutDamage.DamageRect(LayoutDamage.Signature(arranged, null));
+
+        damage.X.ShouldBe(44f);     // 2 + 3 + 1
+        damage.Width.ShouldBe(92f);
+    }
+
+    [Fact]
+    public void ASideLeftOutPaintsNoRingThere()
+    {
+        var rows = ((Layout.Node.Stack)Rows()).Children.Select(c => c.WithFocusRing(new Layout.FocusRingStyle
+            { Color = Ring, Width = 2f, Sides = Layout.BorderSides.Top | Layout.BorderSides.Left | Layout.BorderSides.Bottom }));
+        var r = Draw(new Layout.Node.Stack(System.Collections.Immutable.ImmutableArray.CreateRange(rows)) { Padding = 20f, Gap = 10f }, 0);
+
+        PixelAt(r, 50, 19).ShouldBe(Ring);
+        PixelAt(r, 19, 35).ShouldBe(Ring);
+        PixelAt(r, 80, 35).ShouldNotBe(Ring);
+    }
 }

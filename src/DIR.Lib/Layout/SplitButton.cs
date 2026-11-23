@@ -45,21 +45,24 @@ public static partial class Builder
         if (icon is { } kindOfIcon) parts.Add(Icon(kindOfIcon, fontSize, ink));
         parts.Add(Text(label, fontSize, ink, TextAlign.Near, TextAlign.Center));
 
-        Node Face(Node cell, HitResult id, Action<InputModifier>? click, string? tip)
+        Node Face(Node cell, HitResult id, Action<InputModifier>? click, string? tip, BorderSides ringSides)
         {
             cell = cell.Clickable(id, enabled ? click : null);
             if (!enabled) return cell.Disabled(disabledReason!);
-            cell = cell.BgHover(style.HoverFill).WithFocusRing(theme.Palette.Focus, theme.Metrics.FocusRingWidth, theme.Metrics.FocusRingGap).BgPressed(style.PressedFill)
+            cell = cell.BgHover(style.HoverFill).WithFocusRing(new FocusRingStyle { Color = theme.Palette.Focus, Width = theme.Metrics.FocusRingWidth,
+                    Offset = theme.Metrics.FocusRingGap, Sides = ringSides }).BgPressed(style.PressedFill)
                 .WithCursor(CursorKind.Pointer);
             return tip is null ? cell : cell.WithTooltip(tip);
         }
 
         var left = Face(HStack([.. parts]).WithGap(IconWordGap).CrossCenter()
                 .Pad(style.PaddingX, 0f).HFixed(height).Radius(radius),
-            hit ?? new HitResult.ButtonHit(label), onPrimary, tooltip);
+            hit ?? new HitResult.ButtonHit(label), onPrimary, tooltip,
+            BorderSides.Top | BorderSides.Bottom | BorderSides.Left);
         var right = Face(HStack(Icon(IconKind.CaretRight, fontSize, ink)).CrossCenter()
                 .Pad(style.PaddingX, 0f).HFixed(height).Radius(radius),
-            detailsHit ?? new HitResult.ButtonHit(label + SplitDetailsHitSuffix), _ => onDetails(), detailsTooltip ?? label + " options");
+            detailsHit ?? new HitResult.ButtonHit(label + SplitDetailsHitSuffix), _ => onDetails(), detailsTooltip ?? label + " options",
+            BorderSides.Top | BorderSides.Bottom | BorderSides.Right);
 
         var dividerColour = lit ? controls.Accent.Ink : controls.Standard.Edge ?? controls.Standard.Ink;
         var divider = Spacer().WFixed(controls.Standard.EdgeWidth).HFixed(height).Bg(dividerColour);

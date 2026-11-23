@@ -21,4 +21,8 @@ public sealed record FocusRingStyle
     /// through it, so the ring reads on a control filled in its own colour (an accent button under an accent ring). Zero
     /// (default) touches the edge. Negative counts as zero.</summary>
     public float Offset { get; init; }
+
+    /// <summary>The sides of the ring that are drawn (default all). A part that sits against a neighbour (a split button's
+    /// two halves) leaves out the side that faces it, so the ring never reaches into the other part.</summary>
+    public BorderSides Sides { get; init; } = BorderSides.All;
 }

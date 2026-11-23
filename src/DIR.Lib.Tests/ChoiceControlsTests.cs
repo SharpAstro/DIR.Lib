@@ -438,7 +438,7 @@ public class ChoiceControlsTests
 
     private sealed class TileRig
     {
-        private readonly StubRenderer _renderer = new(300, 60);
+        private readonly StubRenderer _renderer = new(300, 120);
         private readonly TestWidget _widget;
         private readonly InputRouter _router;
         private readonly UiTheme _theme;
@@ -450,7 +450,7 @@ public class ChoiceControlsTests
         {
             _theme = theme;
             Root = Builder.HStack(Builder.ToggleTile(IconKind.Pin, label, on, Toggles.Add, theme, opens, disabledReason,
-                hit: focused ? new HitResult.ListItemHit("tiles", 0) : null)).HFixed(60f);
+                hit: focused ? new HitResult.ListItemHit("tiles", 0) : null)).HFixed(110f);
             if (focused)
             {
                 var cursor = new ListCursor();
@@ -680,6 +680,9 @@ public class ChoiceControlsTests
         rig.At(rig.LeftX, 29 + gap).ShouldBe(theme.Palette.Focus, name + " ring is two units wide");
         var rest = new SplitRig(theme);
         rest.At(rest.LeftX, 28 + gap).ShouldNotBe(theme.Palette.Focus, name + " no ring unfocused");
+        // The side facing the other part carries no ring: it never reaches into the details part.
+        var inner = (int)(rig.DividerX + theme.Controls.Standard.EdgeWidth) + 1;
+        rig.At(inner + 1, 14).ShouldNotBe(theme.Palette.Focus, name + " ring does not reach into the other part");
     }
 
     [Theory]
