@@ -320,6 +320,7 @@ public readonly record struct UiMetrics(
     private readonly float? _controlRadius;
     private readonly float? _controlEdgeWidth;
     private readonly float? _focusRingWidth;
+    private readonly float? _focusRingGap;
     private readonly float? _linkArrowGap;
     private readonly Layout.ShadowStyle? _shadow;
 
