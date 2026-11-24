@@ -9,6 +9,10 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.99
+
+- Takes `SharpAstro.Svg` 3.41 (was 3.40), the Codecs release the rest of the family ships at. Svg itself did not change, so nothing here does; the bump keeps a consumer that pins the codecs at 3.41 from resolving Svg and Vector a minor apart.
+
 ## 11.98
 
 - `Node.FocusRing` (`FocusRingStyle`, set with `WithFocusRing`): a declared stroke drawn outside a node's rounded edge while the list cursor is on its hit. It takes no layout space, it is in the damage signature, and `DamageRect` grows by the ring's width. Cells draw no ring yet; Console.Lib's cell painter is its own flight (SharpAstro/Console.Lib#107).
