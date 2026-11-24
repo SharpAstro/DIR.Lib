@@ -69,6 +69,12 @@ namespace DIR.Lib
             /// <see cref="Bounds"/> stays the node's rect; the damage a signature reports grows by this shadow's
             /// extent (see <see cref="LayoutDamage.DamageRect"/>).</summary>
             public Layout.ShadowStyle? Shadow { get; init; }
+
+            /// <summary>The node's focus ring, or null. Init-only for the same reason as <see cref="Border"/>. Signatures hold
+            /// no cursor, so focus is not resolved here (as with FocusBackground): the ring is signed as declared and the
+            /// damage rect covers it WHEN the node is damaged. Moving the cursor produces no damage by itself, so a host must
+            /// repaint when the cursor moves.</summary>
+            public Layout.FocusRingStyle? FocusRing { get; init; }
         }
 
         /// <summary>
@@ -78,13 +84,24 @@ namespace DIR.Lib
         /// </summary>
         public static Rect<float> DamageRect(in PaintSignature sig)
         {
-            if (sig.Shadow is not { Color.Alpha: > 0 } s)
+            var g = 0f;
+            if (sig.Shadow is { Color.Alpha: > 0 } s)
+            {
+                // One pixel more than the extent: the default shadow reaches n + 1 pixels out, and rounding of the offset.
+                g = MathF.Ceiling(s.Extent) + 1f;
+            }
+
+            if (sig.FocusRing is { Color.Alpha: > 0, Width: > 0f } ring)
+            {
+                // Like the shadow's extent, in design units: at a DesignScale above 1 the pixel ring is wider than this.
+                g = MathF.Max(g, MathF.Ceiling(ring.Width + MathF.Max(0f, ring.Offset)) + 1f);
+            }
+
+            if (g <= 0f)
             {
                 return sig.Bounds;
             }
 
-            // One pixel more than the extent: the default shadow reaches n + 1 pixels out, and rounding of the offset.
-            var g = MathF.Ceiling(s.Extent) + 1f;
             var b = sig.Bounds;
             return new Rect<float>(b.X - g, b.Y - g, b.Width + 2f * g, b.Height + 2f * g);
         }
@@ -157,6 +174,11 @@ namespace DIR.Lib
             if (n.BorderStyle is { } border)
             {
                 signature = signature with { Border = border };
+            }
+
+            if (n.FocusRing is { } ring)
+            {
+                signature = signature with { FocusRing = ring };
             }
 
             return n.ShadowStyle is { } shadow ? signature with { Shadow = shadow } : signature;

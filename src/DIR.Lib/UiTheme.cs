@@ -319,6 +319,8 @@ public readonly record struct UiMetrics(
     private readonly float? _cornerRadius;
     private readonly float? _controlRadius;
     private readonly float? _controlEdgeWidth;
+    private readonly float? _focusRingWidth;
+    private readonly float? _focusRingGap;
     private readonly float? _linkArrowGap;
     private readonly Layout.ShadowStyle? _shadow;
 
@@ -337,6 +339,21 @@ public readonly record struct UiMetrics(
     {
         get => _controlRadius ?? 4f;
         init => _controlRadius = value;
+    }
+
+    /// <summary>Width of the focus ring a themed control draws outside its edge, in design units (design-language: 2). Defaults to 2.</summary>
+    public float FocusRingWidth
+    {
+        get => _focusRingWidth ?? 2f;
+        init => _focusRingWidth = value;
+    }
+
+    /// <summary>Gap between a themed control's edge and its focus ring, in design units, so the ring shows on a control
+    /// filled with the accent. Defaults to 2.</summary>
+    public float FocusRingGap
+    {
+        get => _focusRingGap ?? 2f;
+        init => _focusRingGap = value;
     }
 
     /// <summary>Width of a control's edge ring, in design units. Defaults to 1.</summary>

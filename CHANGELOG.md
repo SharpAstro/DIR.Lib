@@ -9,6 +9,15 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.98
+
+- `Node.FocusRing` (`FocusRingStyle`, set with `WithFocusRing`): a declared stroke drawn outside a node's rounded edge while the list cursor is on its hit. It takes no layout space, it is in the damage signature, and `DamageRect` grows by the ring's width. Cells draw no ring yet; Console.Lib's cell painter is its own flight (SharpAstro/Console.Lib#107).
+- `FocusRingStyle.Offset` (init-only, design units, default 0, also the third argument of `WithFocusRing`): a gap between the edge and the ring, so what is behind the node shows through. Without it the ring of an accent-filled control (an Accent button, an on chip or tile) is the fill's own colour and cannot be seen. The ring's radius and `DamageRect` follow the offset. Like the shadow's extent, the damage growth is in design units; at a larger scale the pixel ring is wider than the growth.
+- `FocusRingStyle.Sides` (init-only, default all): the sides of the ring that are drawn. A part against a neighbour (a split button's two halves) leaves out the side that faces it. The ring keeps its rounded corners: it is drawn whole and clipped on each omitted side to the node's own edge, so the open end is flat at the neighbour.
+- `UiMetrics.FocusRingGap` (init-only, default 2, survives `default(UiMetrics)`): the offset the themed controls declare.
+- `UiMetrics.FocusRingWidth` (init-only, default 2, survives `default(UiMetrics)`).
+- `Button`, `Chip`, `SplitButton` and `ToggleTile` show focus as a 2-unit ring in `UiPalette.Focus` instead of painting the hover fill under the list cursor. List rows (`GroupedTreeTable`, menus) keep `BgFocus`. Settles DIR312:R1.13.
+
 ## 11.97
 
 Theme-driven Slider, Dropdown and Setting row (#314, step 3), additive. Every new member is an overload, a type or an

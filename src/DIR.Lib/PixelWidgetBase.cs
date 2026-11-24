@@ -1594,6 +1594,38 @@ namespace DIR.Lib
                     }
                 }
 
+                // The focus ring strokes OUTSIDE the edge, after the border so nothing of the node covers it, and takes
+                // no layout space. Only while the list cursor is on the node's hit, never for a disabled node.
+                if (!disabled && node.FocusRing is { Color.Alpha: > 0, Width: > 0f } ring && node.Hit is { } ringHit
+                    && CursorIsOn(ringHit) && bounds.Width > 0 && bounds.Height > 0)
+                {
+                    var ringWidth = MathF.Max(1f, MathF.Round(ctx.ToSurface(ring.Width)));
+                    // The gap (Offset) leaves the page showing between edge and ring, so the ring reads on a control
+                    // filled in the ring's own colour.
+                    var gap = ring.Offset > 0f ? MathF.Round(ctx.ToSurface(ring.Offset)) : 0f;
+                    var reach = ringWidth + gap;
+                    var ringRect = new RectInt(
+                        new PointInt((int)(bounds.X + bounds.Width + reach), (int)(bounds.Y + bounds.Height + reach)),
+                        new PointInt((int)(bounds.X - reach), (int)(bounds.Y - reach)));
+                    // DrawBorder rounds only a border on all four sides, so a ring with a side left out is drawn
+                    // whole and rounded, inside a clip trimmed on each omitted side to the node's own edge: the
+                    // corners stay round and the open end is flat at the neighbour, with no band over it.
+                    var partial = ring.Sides != Layout.BorderSides.All;
+                    if (partial)
+                    {
+                        var cl = (int)(bounds.X - reach); var ct = (int)(bounds.Y - reach);
+                        var cr = (int)(bounds.X + bounds.Width + reach); var cb = (int)(bounds.Y + bounds.Height + reach);
+                        if ((ring.Sides & Layout.BorderSides.Left) == 0) cl = (int)bounds.X;
+                        if ((ring.Sides & Layout.BorderSides.Top) == 0) ct = (int)bounds.Y;
+                        if ((ring.Sides & Layout.BorderSides.Right) == 0) cr = (int)(bounds.X + bounds.Width);
+                        if ((ring.Sides & Layout.BorderSides.Bottom) == 0) cb = (int)(bounds.Y + bounds.Height);
+                        Renderer.PushClip(new RectInt(new PointInt(cr, cb), new PointInt(cl, ct)));
+                    }
+                    Renderer.DrawBorder(ringRect, ring.Color, (int)ringWidth,
+                        fillRadius > 0f ? fillRadius + reach : 0f, Layout.BorderSides.All);
+                    if (partial) Renderer.PopClip();
+                }
+
                 // The engine is the only thing that knows where the list was arranged, so it is the only
                 // thing that can state the viewport without keeping a second copy of the rect. What the
                 // list contains stays the consumer's, through SetExtent -- and bound BEFORE the leaf

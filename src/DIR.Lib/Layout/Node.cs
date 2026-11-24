@@ -182,6 +182,12 @@ public abstract partial record Node
     /// Set via <see cref="Shadow(float, float, float, RGBAColor32)"/> or <see cref="Elevated"/>.</summary>
     public ShadowStyle? ShadowStyle { get; init; }
 
+    /// <summary>The focus ring this node declares, or null (default) for none: a stroke drawn outside the node's edge while
+    /// the list cursor is on <see cref="Hit"/>, never for a disabled node. Chrome only: arrange never sees it, so a node with
+    /// a ring occupies the rect one without would. A cell surface paints nothing. Init-only, never a constructor parameter.
+    /// Set via <see cref="WithFocusRing(RGBAColor32, float, float)"/>.</summary>
+    public FocusRingStyle? FocusRing { get; init; }
+
     /// <summary>Optional click region bound to this node's arranged rect (draw == hit by construction).
     /// Lives on the node, not the content, so a whole container (a slot row, a panel) is clickable -- not
     /// just leaves. Inner nodes registered later win the hit (top-most), so a button inside a clickable row
