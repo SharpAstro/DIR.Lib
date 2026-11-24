@@ -40,8 +40,10 @@
          that SharpAstro.Fonts 1.18 draws. 3.37 adds clips, masks, markers, paint-order, images and patterns,
          which SharpAstro.Fonts 1.19 draws; the two move together. 3.40 adds blend modes and filters, which
          SharpAstro.Fonts 2.0 draws; 2.0 is a major number because its own Rgba32 is gone (the colour type is
-         SharpAstro.Vector's, which RGBAColor32 converts to and from), not because anything here had to change. -->
-    <PackageVersion Include="SharpAstro.Svg" Version="3.40.*" />
+         SharpAstro.Vector's, which RGBAColor32 converts to and from), not because anything here had to change.
+         3.41 is the Codecs release the rest of the family ships at; nothing in Svg changed, the pin moves so
+         a consumer pinning the codecs at 3.41 does not resolve Svg and Vector a minor apart. -->
+    <PackageVersion Include="SharpAstro.Svg" Version="3.41.*" />
     <!-- The pure-managed shaping engine, consumed by the DIR.Lib.Shaping satellite (the
          ITextShaper adapter). Same Fonts.Lib CI cadence as SharpAstro.Fonts — one
          -p:Version covers the whole repo, so the two always ship the same number. -->
