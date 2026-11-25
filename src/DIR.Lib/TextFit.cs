@@ -259,12 +259,11 @@ public static class TextFit
     /// The one width oracle every branch here uses — through the fallback resolver when there is one, so a
     /// run is measured with the faces it will actually be drawn with.
     /// <para>Takes a span because the no-fallback path is the hot one (a layout paint calls it once per text
-    /// leaf per frame) and needs no allocation at all. The resolver's own API is string-based, so the
-    /// fallback path materializes one; that is the path already paying for per-codepoint coverage lookups.</para>
+    /// leaf per frame) and needs no allocation at all, the fallback path included: the resolver measures a span.</para>
     /// </summary>
     private static float Measure<TSurface>(Renderer<TSurface> renderer, ReadOnlySpan<char> text, string fontPath,
         FontFallbackResolver? fallback, float fontSize)
         => fallback is { } resolver
-            ? resolver.Measure(renderer, text.ToString(), fontSize).Width
+            ? resolver.Measure(renderer, text, fontSize).Width
             : renderer.MeasureText(text, fontPath, fontSize).Width;
 }

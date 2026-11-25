@@ -297,16 +297,41 @@ public sealed class FontFallbackResolver
 
     /// <summary>Total advance width + max height of <paramref name="text"/> across its coverage runs.</summary>
     public (float Width, float Height) Measure<TSurface>(Renderer<TSurface> renderer, string text, float fontSize)
+        => Measure(renderer, text.AsSpan(), fontSize);
+
+    /// <summary>
+    /// <see cref="Measure{TSurface}(Renderer{TSurface}, string, float)"/> over a span, and allocation-free: a text the
+    /// primary covers whole is one run measured as it is, and any other is split into a list kept per thread. It was a
+    /// list of runs, a list of (text, font) pairs and a substring per run for every measurement, and every text leaf of
+    /// a layout paint measures once a frame (traced 2026-11-25: 10 MB in 18 s of the GUI's atlas).
+    /// </summary>
+    public (float Width, float Height) Measure<TSurface>(Renderer<TSurface> renderer, ReadOnlySpan<char> text, float fontSize)
     {
-        float w = 0f, h = 0f;
-        foreach (var (runText, font) in CoverageRuns(text))
+        if (text.IsEmpty)
         {
-            var (rw, rh) = renderer.MeasureText(runText.AsSpan(), font, fontSize);
+            return (0f, 0f);
+        }
+
+        if (PrimaryCoversAll(text))
+        {
+            return renderer.MeasureText(text, _primaryFontPath, fontSize);
+        }
+
+        var runs = t_measureRuns ??= [];
+        CoverageRuns(text, runs);
+        float w = 0f, h = 0f;
+        foreach (var (start, length, font) in runs)
+        {
+            var (rw, rh) = renderer.MeasureText(text.Slice(start, length), font, fontSize);
             w += rw;
             if (rh > h) h = rh;
         }
         return (w, h);
     }
+
+    // The run split's list for Measure, one per thread: a resolver is shared by every widget of a window, and a
+    // measurement can come from a background layout as well as the render thread.
+    [ThreadStatic] private static List<FontRun>? t_measureRuns;
 
     /// <summary>
     /// Draw <paramref name="text"/> into <paramref name="rect"/> with per-run font fallback. Supports

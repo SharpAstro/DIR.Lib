@@ -130,6 +130,22 @@ public interface ITabStripSource
     /// reads the regions back. Default: none.
     /// </summary>
     Action<InputModifier>? CloseTab(int index) => null;
+
+    /// <summary>
+    /// What this source holds, for a later frame's source to be compared against (<see cref="Holds"/>), or null from
+    /// a source that cannot say.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="TabBar{TSurface}"/> keeps a strip's arranged tree for as long as the source of each frame holds what
+    /// the tree was built from, where it used to build the tree for every frame. The handlers are part of what a source
+    /// holds, and <see cref="Select"/>, <see cref="Press"/> and <see cref="CloseTab"/> may wrap a tab's own handler in
+    /// a new delegate each time they are asked, so two sources cannot be compared through those: the source compares
+    /// what it wraps. A source that leaves this null is built from every frame, as before.
+    /// </remarks>
+    object? Snapshot() => null;
+
+    /// <summary>Whether this source holds exactly what <paramref name="snapshot"/> (an earlier <see cref="Snapshot"/>) did.</summary>
+    bool Holds(object snapshot) => false;
 }
 
 /// <summary>Tabs from a list of <see cref="TabItem{T}"/>.</summary>
@@ -191,6 +207,39 @@ public readonly struct TabItemsSource<T>(IReadOnlyList<TabItem<T>> items) : ITab
         var value = items[index].Value;
         return _ => onClose(value);
     }
+
+    /// <inheritdoc/>
+    public object? Snapshot()
+    {
+        var kept = new TabItem<T>[items.Count];
+        for (var i = 0; i < kept.Length; i++)
+        {
+            kept[i] = items[i];
+        }
+
+        return kept;
+    }
+
+    /// <inheritdoc/>
+    public bool Holds(object snapshot)
+    {
+        if (snapshot is not TabItem<T>[] kept || kept.Length != items.Count)
+        {
+            return false;
+        }
+
+        // An item is a record: its label, value, glyph, tooltip, key and handlers, each by its own equality.
+        var comparer = EqualityComparer<TabItem<T>>.Default;
+        for (var i = 0; i < kept.Length; i++)
+        {
+            if (!comparer.Equals(kept[i], items[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }
 
 /// <summary>Tabs from plain titles: all selectable, none with a glyph.</summary>
@@ -207,6 +256,37 @@ public readonly struct TabTitlesSource(IReadOnlyList<string> titles) : ITabStrip
 
     /// <inheritdoc/>
     public bool Enabled(int index) => true;
+
+    /// <inheritdoc/>
+    public object? Snapshot()
+    {
+        var kept = new string[titles.Count];
+        for (var i = 0; i < kept.Length; i++)
+        {
+            kept[i] = titles[i];
+        }
+
+        return kept;
+    }
+
+    /// <inheritdoc/>
+    public bool Holds(object snapshot)
+    {
+        if (snapshot is not string[] kept || kept.Length != titles.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < kept.Length; i++)
+        {
+            if (kept[i] != titles[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }
 
 public static class TabStripTree

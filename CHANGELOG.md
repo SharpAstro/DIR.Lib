@@ -9,6 +9,23 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.100
+
+Allocation and rebuild work for a GUI's render thread, traced in TianWen's atlas (2026-11-25). Additive: two default
+interface members, a property and an overload.
+
+- `ITabStripSource.Snapshot()` and `ITabStripSource.Holds(object)` (default interface members: null and false). A
+  source that can say what it holds lets `TabBar` compare one frame's source with the last. `TabItemsSource<T>` (its
+  items by record equality) and `TabTitlesSource` implement them; a source that does not is built every frame, as before.
+- `TabBar` keeps the strip's arranged tree while its bounds, active tab, pointer, side, sizing, metrics, colours, close
+  option, font and source are what they were, where it built the tree on every frame. `TabBar.StripBuilds` counts the
+  builds, the one way to tell a kept frame from a rebuilt one.
+- `FontFallbackResolver.Measure` over a `ReadOnlySpan<char>`, which allocates nothing: a text the primary face covers is
+  measured as one run, any other is split into a per-thread list. The string overload calls it, and
+  `TextFit`'s fallback path measures its span without making a string.
+- `SdfFontAtlas` no longer allocates a closure on every glyph it is asked for (the background font load had captured
+  its parameters in the method every glyph goes through).
+
 ## 11.99
 
 - Takes `SharpAstro.Svg` 3.41 (was 3.40), the Codecs release the rest of the family ships at. Svg itself did not change, so nothing here does; the bump keeps a consumer that pins the codecs at 3.41 from resolving Svg and Vector a minor apart.

@@ -730,8 +730,15 @@ public sealed class SdfFontAtlas : IDisposable
             LoadFontEntries(cache, fontPath);
             return;
         }
-        Task.Run(() => LoadFontEntries(cache, fontPath));
+        LoadFontEntriesInBackground(cache, fontPath);
     }
+
+    // Apart from EnsureFontLoadedFromDisk, which every glyph a draw asks for comes through: a lambda that captures a
+    // parameter has its closure allocated where the method BEGINS, so with the lambda in that method each call paid
+    // for one, the common "same font as the call before" return included. Measured at 8% of everything a traced
+    // GUI's render thread allocated while panning (2026-11-25).
+    private void LoadFontEntriesInBackground(SdfGlyphDiskCache cache, string fontPath)
+        => Task.Run(() => LoadFontEntries(cache, fontPath));
 
     private void LoadFontEntries(SdfGlyphDiskCache cache, string fontPath)
     {
