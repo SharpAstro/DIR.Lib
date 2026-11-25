@@ -42,8 +42,9 @@
          SharpAstro.Fonts 2.0 draws; 2.0 is a major number because its own Rgba32 is gone (the colour type is
          SharpAstro.Vector's, which RGBAColor32 converts to and from), not because anything here had to change.
          3.41 is the Codecs release the rest of the family ships at; nothing in Svg changed, the pin moves so
-         a consumer pinning the codecs at 3.41 does not resolve Svg and Vector a minor apart. -->
-    <PackageVersion Include="SharpAstro.Svg" Version="3.41.*" />
+         a consumer pinning the codecs at 3.41 does not resolve Svg and Vector a minor apart. 3.42 likewise:
+         the Codecs release that adds JpegDecoder.DecodeGrayTo; Svg did not change. -->
+    <PackageVersion Include="SharpAstro.Svg" Version="3.42.*" />
     <!-- The pure-managed shaping engine, consumed by the DIR.Lib.Shaping satellite (the
          ITextShaper adapter). Same Fonts.Lib CI cadence as SharpAstro.Fonts — one
          -p:Version covers the whole repo, so the two always ship the same number. -->

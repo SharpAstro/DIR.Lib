@@ -9,6 +9,10 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.101
+
+- Takes `SharpAstro.Svg` 3.42 (was 3.41), the Codecs release the rest of the family ships at (it adds `JpegDecoder.DecodeGrayTo`). Svg itself did not change, so nothing here does; the bump keeps a consumer that pins the codecs at 3.42 from resolving Svg and Vector a minor apart.
+
 ## 11.100
 
 Allocation and rebuild work for a GUI's render thread, traced in TianWen's atlas (2026-11-25). Additive: two default
