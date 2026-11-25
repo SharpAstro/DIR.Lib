@@ -132,6 +132,24 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
     // every frame is an allocation for nothing.
     private Action<InputModifier>? _newTabClick;
 
+    // The strip's arranged tree and what it was built from (RenderCore).
+    private readonly record struct KeptStripKey(
+        RectF32 Bounds, int ActiveIndex, float? PointerFlow, float? PointerCross, TabStripSide Side, TabSizing Sizing,
+        TabStripMetrics Metrics, TabBarColors Colors, bool CanCloseTabs, string? FontPath);
+
+    private KeptStripKey _keptStripKey;
+    private object? _keptTabs;
+    private System.Collections.Immutable.ImmutableArray<Layout.ArrangedNode<float>> _keptStrip;
+    private int _keptHoveredIndex = -1;
+    private float _keptTabsEnd;
+    private Func<string, float>? _measureTitle;
+
+    /// <summary>
+    /// How many times the strip's tree was built. A frame that changes nothing the strip shows builds nothing, and the
+    /// frame it paints from the kept tree is the identical picture, so only this count tells the two apart.
+    /// </summary>
+    public int StripBuilds { get; private set; }
+
     /// <summary>
     /// True while whatever the + opens is what the window is showing. It then wears the accent an active
     /// tab wears — a host that puts a real page behind the + (a new-tab page) needs the strip to say so,
@@ -311,44 +329,59 @@ public sealed class TabBar<TSurface>(Renderer<TSurface> renderer) : PixelWidgetB
             }
         }
 
-        var strip = TabStripTree.Build(
-            source,
-            activeIndex,
-            pointerFlow,
-            pointerCross,
-            flowEnd - flowStart,
-            MeasureTitle,
-            new TabStripOptions
-            {
-                Side = Side,
-                Sizing = Sizing,
-                Metrics = new TabStripMetrics(
-                    Thickness: thickness,
-                    FontSize: Font,
-                    Pad: Pad,
-                    Border: Border,
-                    IconBox: IconBox,
-                    CloseBox: CloseBox,
-                    MinTabExtent: MinTabW,
-                    MaxTabExtent: MaxTabW)
+        // The strip is the same tree for every frame its tabs, its active tab, its box, its look and the pointer over
+        // it stand: a nav rail's is the same for every frame the pointer is somewhere else in the window. It was built,
+        // measured and arranged for each of them; it is kept instead, and painted, which is what registers its regions.
+        var metrics = new TabStripMetrics(
+            Thickness: thickness,
+            FontSize: Font,
+            Pad: Pad,
+            Border: Border,
+            IconBox: IconBox,
+            CloseBox: CloseBox,
+            MinTabExtent: MinTabW,
+            MaxTabExtent: MaxTabW)
+        {
+            IconSize = IconSize,
+        };
+        var key = new KeptStripKey(bounds, activeIndex, pointerFlow, pointerCross, Side, Sizing, metrics, Colors, CanCloseTabs, FontPath);
+        if (_keptTabs is null || key != _keptStripKey || !source.Holds(_keptTabs))
+        {
+            var strip = TabStripTree.Build(
+                source,
+                activeIndex,
+                pointerFlow,
+                pointerCross,
+                flowEnd - flowStart,
+                _measureTitle ??= MeasureTitle,
+                new TabStripOptions
                 {
-                    IconSize = IconSize,
-                },
-                Colors = Colors,
-                CanCloseTabs = CanCloseTabs,
-            });
+                    Side = Side,
+                    Sizing = Sizing,
+                    Metrics = metrics,
+                    Colors = Colors,
+                    CanCloseTabs = CanCloseTabs,
+                });
 
-        HoveredIndex = strip.HoveredIndex;
+            // The unit scale is the device-px escape hatch, and it is REQUIRED here: every metric above is
+            // already mapped (Font is Scale.ToSurface(BaseFont), the thickness comes from a device-px rect), so letting the
+            // engine scale design units again multiplies twice. At 1.5x that turned a 78px square cell into
+            // 78x117 -- and no test could have caught it, because they all run at unit scale where squaring
+            // the scale is the identity.
+            _keptStrip = ArrangeLayout(strip.Root, bounds, scale: DesignScale.One);
+            _keptHoveredIndex = strip.HoveredIndex;
+            _keptTabsEnd = strip.TabsEnd;
+            _keptStripKey = key;
+            // Null from a source that cannot say what it holds: built from every frame, as it always was.
+            _keptTabs = source.Snapshot();
+            StripBuilds++;
+        }
+
+        HoveredIndex = _keptHoveredIndex;
 
         PushClip(bounds.X, bounds.Y, bounds.Width, bounds.Height);
-
-        // The unit scale is the device-px escape hatch, and it is REQUIRED here: every metric above is
-        // already mapped (Font is Scale.ToSurface(BaseFont), the thickness comes from a device-px rect), so letting the
-        // engine scale design units again multiplies twice. At 1.5x that turned a 78px square cell into
-        // 78x117 -- and no test could have caught it, because they all run at unit scale where squaring
-        // the scale is the identity.
-        RenderLayout(strip.Root, bounds, scale: DesignScale.One);
-        RenderNewTabButton(strip.TabsEnd, vertical, thickness, crossStart, flowStart, flowEnd, pointerFlow);
+        PaintLayout(_keptStrip, scale: DesignScale.One);
+        RenderNewTabButton(_keptTabsEnd, vertical, thickness, crossStart, flowStart, flowEnd, pointerFlow);
         PopClip();
     }
 
