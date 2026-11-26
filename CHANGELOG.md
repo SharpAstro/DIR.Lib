@@ -9,6 +9,10 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.102
+
+- `KeptLayout<TKey>`: a widget's arranged tree, kept from one frame to the next while what it was built from stands (the widget's own key, and the bounds, scale, font and theme generation, asked for by name so none is left out). A kept tree is still painted every frame, so its regions and hover stay live; only the build, measure and arrange are skipped. Moved here from TianWen, where it took a pan's paints under 150 KB a frame; the Drawboard PDF viewer's hint bar and tool palette were rebuilt every frame of a pan for about 4.5 MB a second. `TabBar` keeps its strip the same way. `Builds` counts the builds, the observable for "a frame that changes nothing builds nothing". The theme generation is the caller's: a number its theme bumps whenever any colour changes (TianWen's was `GuiTheme.PaletteGeneration`). Additive.
+
 ## 11.101
 
 - Takes `SharpAstro.Svg` 3.42 (was 3.41), the Codecs release the rest of the family ships at (it adds `JpegDecoder.DecodeGrayTo`). Svg itself did not change, so nothing here does; the bump keeps a consumer that pins the codecs at 3.42 from resolving Svg and Vector a minor apart.
