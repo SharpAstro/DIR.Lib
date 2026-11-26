@@ -224,16 +224,14 @@
         /// it leaves the screen — and asking only the composite, or only the active child, blurs a live
         /// field every frame, which looks identical to the bug it fixes.
         /// </remarks>
-        public override List<TextInputState> GetRegisteredTextInputs()
+        public override void CollectRegisteredTextInputs(List<TextInputState> into)
         {
-            var inputs = base.GetRegisteredTextInputs();
+            base.CollectRegisteredTextInputs(into);
             var children = Children;
             for (var i = 0; i < children.Count; i++)
             {
-                inputs.AddRange(children[i].GetRegisteredTextInputs());
+                children[i].CollectRegisteredTextInputs(into);
             }
-
-            return inputs;
         }
 
         /// <summary>

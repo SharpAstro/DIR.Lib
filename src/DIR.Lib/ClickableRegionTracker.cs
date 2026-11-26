@@ -156,6 +156,18 @@ namespace DIR.Lib
         public List<TextInputState> GetRegisteredTextInputs()
         {
             var result = new List<TextInputState>();
+            CollectTextInputs(result);
+            return result;
+        }
+
+        /// <summary>
+        /// Appends the <see cref="TextInputState"/> instances registered during the last render pass to
+        /// <paramref name="into"/>, in registration order, each once among those this appends. The allocation-free
+        /// form of <see cref="GetRegisteredTextInputs"/>: the router asks every frame.
+        /// </summary>
+        public void CollectTextInputs(List<TextInputState> into)
+        {
+            var start = into.Count;
             foreach (var r in _regions)
             {
                 // An editor is a TextInputState, so Tab cycling, focus and blur-if-unpainted count it among the fields.
@@ -165,12 +177,11 @@ namespace DIR.Lib
                     HitResult.TextEditorHit { Input: { } editor } => editor,
                     _ => null,
                 };
-                if (input is not null && !result.Contains(input))
+                if (input is not null && into.IndexOf(input, start) < 0)
                 {
-                    result.Add(input);
+                    into.Add(input);
                 }
             }
-            return result;
         }
     }
 }

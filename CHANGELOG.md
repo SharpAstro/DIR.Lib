@@ -9,6 +9,25 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.103
+
+**Less render-thread garbage from a painted layout.** Traced in the PDF viewer while panning (26 s, render thread):
+- **A trimmed run builds no strings while it searches, and an unchanged one none at all.** `TextFit.TrimToWidth`
+  builds each candidate in a buffer kept per thread and measures it as a span (it was a string per candidate and a
+  closure per call: 2 MB from the viewer's tab titles), and remembers its last sixteen answers per thread, keyed by
+  the text's reference, the face, the resolver, the size, the width and the trim, so a tab title cut the same way
+  every frame is neither searched nor allocated again. `FontFallbackResolver.FitEllipsis` and
+  `TextFit.TrimMiddleToWidth` are now that one implementation (`TextTrim.End` with the resolver's primary face, and
+  `TextTrim.Middle`), so the three cannot cut differently. Same answers as before.
+- **`PaintLayout` keeps its four depth stacks between paints** (links, hit scopes, backgrounds, scrolls), taken off
+  the widget while in use so a nested paint gets its own: 0.8 MB.
+- **`IPixelWidget.CollectRegisteredTextInputs(List<TextInputState>)`** appends a widget's painted fields to the
+  caller's list, and `InputRouter.AfterPaint` uses it: a list per widget per frame was 0.8 MB. `GetRegisteredTextInputs`
+  stays (it is that, into a new list); the interface member has a default body, so an implementer outside DIR.Lib
+  builds unchanged. A composite now overrides the collect form instead.
+
+Two cref warnings fixed (`FontFallbackResolver`'s `Measure`, `KeptLayout`'s `TabBar`).
+
 ## 11.102
 
 - `KeptLayout<TKey>`: a widget's arranged tree, kept from one frame to the next while what it was built from stands (the widget's own key, and the bounds, scale, font and theme generation, asked for by name so none is left out). A kept tree is still painted every frame, so its regions and hover stay live; only the build, measure and arrange are skipped. Moved here from TianWen, where it took a pan's paints under 150 KB a frame; the Drawboard PDF viewer's hint bar and tool palette were rebuilt every frame of a pan for about 4.5 MB a second. `TabBar` keeps its strip the same way. `Builds` counts the builds, the observable for "a frame that changes nothing builds nothing". The theme generation is the caller's: a number its theme bumps whenever any colour changes (TianWen's was `GuiTheme.PaletteGeneration`). Additive.

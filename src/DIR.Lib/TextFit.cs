@@ -131,11 +131,10 @@ public static class TextFit
     /// <paramref name="text"/> truncated with an ellipsis at the <paramref name="trim"/> end so it measures
     /// no wider than <paramref name="maxWidth"/> at <paramref name="fontSize"/>.
     ///
-    /// <para>The resolver-free counterpart to <see cref="FontFallbackResolver.FitEllipsis"/>, which this
-    /// delegates to when a resolver IS supplied -- one implementation of the End case, so the fallback and
-    /// no-fallback paths cannot cut at different lengths. <see cref="TextTrim.Start"/> and
-    /// <see cref="TextTrim.Middle"/> are handled here because the resolver only ever grew the End
-    /// form; Middle has its own <see cref="TrimMiddleToWidth"/> because its search shape differs.</para>
+    /// <para>The one implementation of every trim: <see cref="FontFallbackResolver.FitEllipsis"/> is this with
+    /// the resolver's primary face and <see cref="TextTrim.End"/>, and <see cref="TrimMiddleToWidth"/> is this with
+    /// <see cref="TextTrim.Middle"/>, so the fallback and no-fallback paths cannot cut at different lengths.
+    /// (FitEllipsis used to be the implementation of the End case, and this delegated to it.)</para>
     /// </summary>
     public static string TrimToWidth<TSurface>(
         Renderer<TSurface> renderer, string text, string fontPath, FontFallbackResolver? fallback,
@@ -143,29 +142,84 @@ public static class TextFit
     {
         if (maxWidth <= 0f) return "";
         if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(fontPath)) return text;
+        if (TrimMemo.TryGet(text, fontPath, fallback, fontSize, maxWidth, trim, out var remembered)) return remembered;
         if (Measure(renderer, text, fontPath, fallback, fontSize) <= maxWidth) return text;
         if (IsSingleGrapheme(text)) return text;
 
-        if (trim is TextTrim.Middle)
-        {
-            return TrimMiddleToWidth(renderer, text, fontPath, fallback, fontSize, maxWidth);
-        }
-
-        if (trim != TextTrim.Start && fallback is { } resolver)
-        {
-            return resolver.FitEllipsis(renderer, text, fontSize, maxWidth);
-        }
-
-        // A binary search over the kept length, as TrimMiddleToWidth does: the walk down from the full run
-        // was one measurement per character cut, each over the whole candidate, so a long card detail in a
-        // narrow panel cost hundreds of measurements per line per frame and held pilot-gui's render thread
-        // busy all the time (DE1, 2026-10-28). Halving is O(log n) however far the run overflows.
-        string Cut(int len) => trim == TextTrim.Start
-            ? string.Concat("…", text.AsSpan(text.Length - len))
-            : string.Concat(text.AsSpan(0, len), "…");
-        var kept = LongestFit(text.Length - 1, len => Measure(renderer, Cut(len), fontPath, fallback, fontSize) <= maxWidth);
-        return kept == 0 ? "…" : Cut(kept);
+        // A binary search over the kept length: the walk down from the full run was one measurement per character
+        // cut, each over the whole candidate, so a long card detail in a narrow panel cost hundreds of measurements
+        // per line per frame and held pilot-gui's render thread busy all the time (DE1, 2026-10-28). Halving is
+        // O(log n) however far the run overflows. Each candidate is built in a buffer kept per thread and measured
+        // as a span, and the answer is remembered (TrimMemo), so a run cut the same way frame after frame (a tab
+        // title, traced 2026-11-26 at 1.6 MB of candidate strings in 26 s of the PDF viewer's pan) allocates
+        // nothing after its first frame.
+        var kept = LongestCut(renderer, text, fontPath, fallback, fontSize, maxWidth, trim);
+        var result = kept == 0 ? Ellipsis : string.Create(CutLength(text, kept, trim), (text, kept, trim),
+            static (into, state) => WriteCut(state.text, state.kept, state.trim, into));
+        TrimMemo.Store(text, fontPath, fallback, fontSize, maxWidth, trim, result);
+        return result;
     }
+
+    private const string Ellipsis = "…";
+
+    /// <summary>How many characters the cut of <paramref name="text"/> keeping <paramref name="kept"/> takes,
+    /// ellipsis included: <paramref name="kept"/> from each end for <see cref="TextTrim.Middle"/>.</summary>
+    private static int CutLength(string text, int kept, TextTrim trim) => (trim is TextTrim.Middle ? 2 * kept : kept) + 1;
+
+    /// <summary>Writes the cut of <paramref name="text"/> keeping <paramref name="kept"/> into
+    /// <paramref name="into"/>, which is <see cref="CutLength"/> long.</summary>
+    private static void WriteCut(string text, int kept, TextTrim trim, Span<char> into)
+    {
+        switch (trim)
+        {
+            case TextTrim.Start:
+                into[0] = '…';
+                text.AsSpan(text.Length - kept).CopyTo(into[1..]);
+                break;
+            case TextTrim.Middle:
+                text.AsSpan(0, kept).CopyTo(into);
+                into[kept] = '…';
+                text.AsSpan(text.Length - kept).CopyTo(into[(kept + 1)..]);
+                break;
+            default:
+                text.AsSpan(0, kept).CopyTo(into);
+                into[kept] = '…';
+                break;
+        }
+    }
+
+    /// <summary>
+    /// The largest number of characters <paramref name="trim"/> can keep of <paramref name="text"/> with the cut
+    /// measuring no wider than <paramref name="maxWidth"/>, or 0 when only the bare ellipsis is left: a binary
+    /// search, since a longer cut of the same run is never narrower. Candidates are built in a buffer kept per
+    /// thread and measured as spans, so the search allocates nothing.
+    /// </summary>
+    private static int LongestCut<TSurface>(Renderer<TSurface> renderer, string text, string fontPath,
+        FontFallbackResolver? fallback, float fontSize, float maxWidth, TextTrim trim)
+    {
+        // Middle keeps the same count from each end, so half the run is the most it can keep; the others keep all
+        // but one character at most (the whole run already did not fit).
+        var lo = 0;
+        var hi = trim is TextTrim.Middle ? text.Length / 2 : text.Length - 1;
+        var buffer = t_cutBuffer is { } b && b.Length >= text.Length + 1 ? b : t_cutBuffer = new char[text.Length + 1];
+        while (lo < hi)
+        {
+            var mid = (lo + hi + 1) / 2;
+            var cut = buffer.AsSpan(0, CutLength(text, mid, trim));
+            WriteCut(text, mid, trim, cut);
+            if (Measure(renderer, cut, fontPath, fallback, fontSize) <= maxWidth)
+            {
+                lo = mid;
+            }
+            else
+            {
+                hi = mid - 1;
+            }
+        }
+        return lo;
+    }
+
+    [ThreadStatic] private static char[]? t_cutBuffer;
 
     /// <summary>
     /// The largest length in 1..<paramref name="max"/> that <paramref name="fits"/>, or 0 when none does, by
@@ -209,33 +263,7 @@ public static class TextFit
     public static string TrimMiddleToWidth<TSurface>(
         Renderer<TSurface> renderer, string text, string fontPath, FontFallbackResolver? fallback,
         float fontSize, float maxWidth)
-    {
-        if (maxWidth <= 0f) return "";
-        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(fontPath)) return text;
-        if (Measure(renderer, text, fontPath, fallback, fontSize) <= maxWidth) return text;
-        if (IsSingleGrapheme(text)) return text;
-
-        const string Gap = "…";
-        var lo = 0;
-        var hi = text.Length / 2;
-        while (lo < hi)
-        {
-            var mid = (lo + hi + 1) / 2;
-            var candidate = string.Concat(text.AsSpan(0, mid), Gap, text.AsSpan(text.Length - mid));
-            if (Measure(renderer, candidate, fontPath, fallback, fontSize) <= maxWidth)
-            {
-                lo = mid;
-            }
-            else
-            {
-                hi = mid - 1;
-            }
-        }
-
-        return lo == 0
-            ? Gap
-            : string.Concat(text.AsSpan(0, lo), Gap, text.AsSpan(text.Length - lo));
-    }
+        => TrimToWidth(renderer, text, fontPath, fallback, fontSize, maxWidth, TextTrim.Middle);
 
     /// <summary>
     /// Whether <paramref name="text"/> is one user-perceived character: a letter, a letter with its
