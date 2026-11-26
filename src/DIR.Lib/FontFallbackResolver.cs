@@ -18,7 +18,7 @@ namespace DIR.Lib;
 /// the primary covers it, because a text face carrying a pictograph outline is not a reason to prefer
 /// it -- see <see cref="TryResolveFont"/>.</para>
 ///
-/// <para>Renderer-agnostic: <see cref="CoverageRuns(ReadOnlySpan{char}, List{FontRun})"/> is pure; the <see cref="Measure"/>/
+/// <para>Renderer-agnostic: <see cref="CoverageRuns(ReadOnlySpan{char}, List{FontRun})"/> is pure; the <see cref="Measure{TSurface}(Renderer{TSurface}, string, float)"/>/
 /// <see cref="Draw"/>/<see cref="FitEllipsis"/> helpers are generic over the backend's
 /// <see cref="Renderer{TSurface}"/>. Caches are concurrent; intended for render-thread UI text.</para>
 /// </summary>
@@ -372,14 +372,8 @@ public sealed class FontFallbackResolver
     /// <paramref name="maxW"/>. Measured across coverage runs, so non-Latin widths are accounted for.
     /// </summary>
     public string FitEllipsis<TSurface>(Renderer<TSurface> renderer, string text, float fontSize, float maxW)
-    {
-        if (maxW <= 0) return "";
-        if (Measure(renderer, text, fontSize).Width <= maxW) return text;
-        // One character is never swapped for an ellipsis, which is one character as wide or wider: see
-        // TextFit.IsSingleGrapheme.
-        if (TextFit.IsSingleGrapheme(text)) return text;
-        // Binary search, not a walk down one character at a time: see TextFit.TrimToWidth.
-        var kept = TextFit.LongestFit(text.Length - 1, len => Measure(renderer, string.Concat(text.AsSpan(0, len), "…"), fontSize).Width <= maxW);
-        return kept == 0 ? "…" : string.Concat(text.AsSpan(0, kept), "…");
-    }
+        // One implementation of the cut (TextFit.TrimToWidth): its binary search, its single-character rule
+        // (TextFit.IsSingleGrapheme) and its per-thread memo, so a title cut the same way every frame allocates
+        // nothing after its first.
+        => TextFit.TrimToWidth(renderer, text, _primaryFontPath, this, fontSize, maxW, TextTrim.End);
 }

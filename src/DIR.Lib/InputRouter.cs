@@ -282,7 +282,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         _fields.Clear();
         for (var i = 0; i < widgets.Count; i++)
         {
-            _fields.AddRange(widgets[i].GetRegisteredTextInputs());
+            widgets[i].CollectRegisteredTextInputs(_fields);
         }
 
         if (ui.Focus.BlurIfUnpainted(_fields))
@@ -1668,7 +1668,7 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         var fields = new List<TextInputState>();
         for (var i = 0; i < widgets.Count; i++)
         {
-            fields.AddRange(widgets[i].GetRegisteredTextInputs());
+            widgets[i].CollectRegisteredTextInputs(fields);
         }
 
         return fields;

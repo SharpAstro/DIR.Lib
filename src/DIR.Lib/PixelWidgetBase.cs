@@ -22,6 +22,13 @@ namespace DIR.Lib
         List<TextInputState> GetRegisteredTextInputs();
 
         /// <summary>
+        /// Appends what <see cref="GetRegisteredTextInputs"/> returns to <paramref name="into"/>, without a list of
+        /// its own: the router asks every frame (<see cref="InputRouter.AfterPaint"/>), and a list per widget per
+        /// frame was 0.8 MB in 26 s of the PDF viewer's pan (2026-11-26).
+        /// </summary>
+        void CollectRegisteredTextInputs(List<TextInputState> into) => into.AddRange(GetRegisteredTextInputs());
+
+        /// <summary>
         /// Which character of <paramref name="hit"/>'s field a pointer at <paramref name="pointerX"/> is
         /// over -- the pixel host's half of <see cref="TextInputInteraction.HandlePointer"/>, which takes
         /// the index this returns.
@@ -1139,7 +1146,22 @@ namespace DIR.Lib
         /// <remarks>Empty on a frame this widget did not draw, so Tab never reaches a field that is not on
         /// screen — the same rule <see cref="TextInputFocus.BlurIfUnpainted"/> applies to the focus itself.</remarks>
         public virtual List<TextInputState> GetRegisteredTextInputs()
-            => RegionsAreCurrent ? _tracker.GetRegisteredTextInputs() : [];
+        {
+            var inputs = new List<TextInputState>();
+            CollectRegisteredTextInputs(inputs);
+            return inputs;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>Nothing on a frame this widget did not draw, as <see cref="GetRegisteredTextInputs"/>.</remarks>
+        public virtual void CollectRegisteredTextInputs(List<TextInputState> into)
+        {
+            ArgumentNullException.ThrowIfNull(into);
+            if (RegionsAreCurrent)
+            {
+                _tracker.CollectTextInputs(into);
+            }
+        }
 
         /// <summary>
         /// Returns a snapshot of this widget's clickable regions from the last render pass.
@@ -1311,19 +1333,26 @@ namespace DIR.Lib
             // node pops every entry at or below its own depth (those belong to a sibling subtree), so the top
             // is always the nearest enclosing link. Console.Lib's CellLayout resolves it identically -- the
             // two painters have to agree, or the same tree means different things per surface.
-            var links = new Stack<(int Depth, string Url)>();
+            // The four depth stacks below come from scratch this widget keeps between paints: they were four
+            // stacks allocated per PaintLayout, and a widget paints its layout every frame (traced 2026-11-26: 0.8 MB
+            // in 26 s of the PDF viewer's tab bar alone). Taken off the widget while in use, so a paint nested in
+            // this one (a fill callback painting a layout) gets stacks of its own rather than these.
+            var scratch = _paintScratch ?? new PaintScratch();
+            _paintScratch = null;
+            scratch.Clear();
+            var links = scratch.Links;
 
             // The nearest enclosing node with a hit (the node itself included), by depth like the link above: a hover
             // underline (Content.Text.UnderlineOnHover) shows while the pointer is anywhere in that region, so a link's
             // trailing arrow underlines its text as the text itself does. LayoutDamage resolves it identically.
-            var hitScopes = new Stack<(int Depth, Rect<float> Bounds)>();
+            var hitScopes = scratch.HitScopes;
 
             // The nearest enclosing DISABLED node, and the background the dim is measured against, both
             // resolved by depth exactly as the link above is. Disabling reaches the subtree because that
             // is what a caller means by it: a row declared unavailable whose label stayed bright would be
             // a row that looks pressable and is not. -1 is "nothing disabled here".
             var disabledDepth = -1;
-            var backgrounds = new Stack<(int Depth, RGBAColor32 Color)>();
+            var backgrounds = scratch.Backgrounds;
 
             // A CLOSED popover's whole subtree is skipped, resolved by depth exactly as disabling is: the
             // tree was still measured and arranged (the node is inert everywhere but here), so the closed
@@ -1350,7 +1379,7 @@ namespace DIR.Lib
             // and not captured, and a child straddling its edge registers only the part that shows. That
             // last one is not cosmetic: a row arranged below the card's bottom edge is invisible, and a
             // region registered for it would take the presses aimed at whatever the card is sitting on.
-            var scrolls = new Stack<(int Depth, ListScrollController Scroll, RectF32 Clip)>();
+            var scrolls = scratch.Scrolls;
 
             // A MODAL overlay being painted: the overlay's depth, and where Top's card is still to be read off
             // the node after an Anchored Top. -1 is "not inside a modal".
@@ -1933,7 +1962,29 @@ namespace DIR.Lib
                 RegisterScrollBar(leaving);
                 PopClip();
             }
+
+            _paintScratch = scratch;
         }
+
+        /// <summary>The depth stacks <see cref="PaintLayout(ImmutableArray{Layout.ArrangedNode{float}}, PixelMeasureContext{TSurface}, Action{Layout.Content.Fill, RectF32}?)"/>
+        /// resolves enclosing links, hit scopes, backgrounds and scrolls with, kept between paints.</summary>
+        private sealed class PaintScratch
+        {
+            public readonly Stack<(int Depth, string Url)> Links = new();
+            public readonly Stack<(int Depth, Rect<float> Bounds)> HitScopes = new();
+            public readonly Stack<(int Depth, RGBAColor32 Color)> Backgrounds = new();
+            public readonly Stack<(int Depth, ListScrollController Scroll, RectF32 Clip)> Scrolls = new();
+
+            public void Clear()
+            {
+                Links.Clear();
+                HitScopes.Clear();
+                Backgrounds.Clear();
+                Scrolls.Clear();
+            }
+        }
+
+        private PaintScratch? _paintScratch;
 
         /// <summary>
         /// Registers the bar just drawn as a press region, on top of the rows registered before it, so a press

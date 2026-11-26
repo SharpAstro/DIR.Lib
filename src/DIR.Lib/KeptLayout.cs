@@ -14,7 +14,7 @@ namespace DIR.Lib;
 /// atlas, about 300 KB a frame; the Drawboard PDF viewer, about 4.5 MB a second while panning), and each collection
 /// that buys is a pause inside a paint. The painting itself is not kept: a kept tree is painted every frame
 /// (<see cref="PixelWidgetBase{TSurface}"/>'s <c>PaintLayout</c>), which is what registers its regions and resolves
-/// its hover. <see cref="TabBar"/> keeps its strip the same way.
+/// its hover. <see cref="TabBar{TSurface}"/> keeps its strip the same way.
 /// </para>
 /// <para>
 /// <b>The key is everything the build reads.</b> A value the build reads that is not in the key is a widget that shows
