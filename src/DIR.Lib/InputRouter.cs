@@ -337,6 +337,20 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
             _seenBegins.Remove(key);
         }
 
+        // A focus move (or a list that appeared or went) changes which list holds the keyboard without a press. The lists
+        // are walked again only when the painted set may have changed: some widget painted, or the widget list changed.
+        // A frame that painted nothing (an idle AfterPaint) reuses the last walk, which a press also refreshes.
+        if (anyPainted || _stale.Count > 0 || widgets.Count != _listsWalkedFor)
+        {
+            CollectDeclaredLists(widgets);
+            _listsWalkedFor = widgets.Count;
+        }
+
+        if (PublishKeyboardList(widgets))
+        {
+            requestRedraw();
+        }
+
         var settled = ui.PointerClaimSettled;
         for (var i = 0; i < widgets.Count && settled; i++)
         {
@@ -570,7 +584,10 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         widgets[w].CollectPaintedRegions(into);
         if (w == modal)
         {
-            into.RemoveRange(before, Math.Min(ui.PaintedModal!.RegionStart, into.Count - before));
+            var claim = ui.PaintedModal!;
+            var count = into.Count - before;
+            if (claim.RegionEnd < count) into.RemoveRange(before + claim.RegionEnd, count - claim.RegionEnd);
+            into.RemoveRange(before, Math.Min(claim.RegionStart, into.Count - before));
         }
     }
 
@@ -588,7 +605,10 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         widgets[w].CollectPaintedNodes(into);
         if (w == modal)
         {
-            into.RemoveRange(before, Math.Min(ui.PaintedModal!.NodeStart, into.Count - before));
+            var claim = ui.PaintedModal!;
+            var count = into.Count - before;
+            if (claim.NodeEnd < count) into.RemoveRange(before + claim.NodeEnd, count - claim.NodeEnd);
+            into.RemoveRange(before, Math.Min(claim.NodeStart, into.Count - before));
         }
     }
 
@@ -1431,6 +1451,8 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
     // arranged rect. A press anywhere else clears it. Read by DeclaredList.Active.
     private string? _pressedListId;
     private readonly List<DeclaredList> _declaredLists = [];
+    // How many widgets the last AfterPaint walk of the declared lists covered; -1 before the first.
+    private int _listsWalkedFor = -1;
     private readonly List<RectF32> _declaredBounds = [];
     private readonly List<int> _declaredOrders = [];
     private readonly List<(int Order, RectF32 Bounds)> _surfaceNodes = [];
@@ -1549,6 +1571,40 @@ public sealed class InputRouter(WindowUiSettings ui, BackgroundTaskTracker track
         {
             _pressedListId = previous;
         }
+
+        PublishKeyboardList(widgets);
+    }
+
+    // Tells every listed widget's settings which declared list holds the keyboard, for the painter's list-container ring.
+    // Returns whether it changed, so a caller after a paint can ask for the frame that shows it.
+    private bool PublishKeyboardList(IReadOnlyList<IPixelWidget> widgets)
+    {
+        string? id = null;
+        if (_declaredLists.Count > 0)
+        {
+            var focused = FocusedListId(widgets);
+            foreach (var list in _declaredLists)
+            {
+                if (focused is not null && string.Equals(list.ListId, focused, StringComparison.Ordinal)) { id = focused; break; }
+            }
+
+            if (id is null && _pressedListId is { } pressed)
+            {
+                foreach (var list in _declaredLists)
+                {
+                    if (string.Equals(list.ListId, pressed, StringComparison.Ordinal)) { id = pressed; break; }
+                }
+            }
+        }
+
+        var changed = false;
+        for (var i = 0; i < widgets.Count; i++)
+        {
+            var s = widgets[i].Ui;
+            if (!string.Equals(s.KeyboardListId, id, StringComparison.Ordinal)) { s.KeyboardListId = id; changed = true; }
+        }
+
+        return changed;
     }
 
     // Whether a declared list's container lies wholly inside the popover's claimed content.

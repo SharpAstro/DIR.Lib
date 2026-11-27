@@ -361,6 +361,89 @@ public sealed class PrototypeTreeTests
     }
 
     [Fact]
+    public void ASwitchReadsAndWritesItsBoundStateAndOnlyItsTrackIsTheHit()
+    {
+        var state = new PrototypeState();
+        var builder = new PrototypeTreeBuilder(PrototypeKit.Theme, state);
+        var screen = PrototypeKit.Screen("""{ "kind": "switch", "bind": "on", "switchSize": "small", "stateLabel": "Connected" }""");
+
+        var off = PrototypeKit.Walk(builder.Build(screen)).Single(n => n.Hit is HitResult.ButtonHit { Action: "switch:on" });
+        PrototypeKit.Texts(builder.Build(screen)).ShouldContain("Connected");
+        off.OnClick!(InputModifier.None);
+        state.GetBool("on").ShouldBeTrue();
+
+        var on = PrototypeKit.Walk(builder.Build(screen)).Single(n => n.Hit is HitResult.ButtonHit { Action: "switch:on" });
+        on.OnClick!(InputModifier.None);
+        state.GetBool("on").ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ALockedOrChangingSwitchTakesNoPress()
+    {
+        foreach (var flag in new[] { "locked", "changing" })
+        {
+            var state = new PrototypeState();
+            var tree = PrototypeKit.Build($$"""{ "kind": "switch", "bind": "on", {{"\"" + flag + "\""}}: true }""", state);
+            PrototypeKit.Walk(tree).Where(n => n.Hit is HitResult.ButtonHit { Action: "switch:on" }).ShouldAllBe(n => n.OnClick == null);
+            state.GetBool("on").ShouldBeFalse();
+        }
+    }
+
+    [Fact]
+    public void ASegmentedControlWritesTheChosenOptionToItsBoundState()
+    {
+        var state = new PrototypeState();
+        var builder = new PrototypeTreeBuilder(PrototypeKit.Theme, state);
+        var screen = PrototypeKit.Screen("""{ "kind": "segmented", "options": ["Linear", "Log"], "bind": "stretch" }""");
+
+        var pills = PrototypeKit.Walk(builder.Build(screen)).Where(n => n.Hit is HitResult.ListItemHit && n.OnClick is not null).ToArray();
+        pills.Length.ShouldBe(2);
+        pills[1].OnClick!(InputModifier.None);
+        state.Get("stretch").ShouldBe("Log");
+        PrototypeKit.Texts(builder.Build(screen)).ShouldBe(["Linear", "Log"]);
+    }
+
+    [Theory]
+    [InlineData("rest", "Solve")]
+    [InlineData("busy", "Solving…")]
+    [InlineData("stopping", "Stopping…")]
+    public void ABusyButtonIsDrawnInTheStateItNames(string state, string word)
+    {
+        var tree = PrototypeKit.Build($$"""{ "kind": "busyButton", "label": "Solve", "busyLabel": "Solving…", "state": "{{state}}", "stoppable": true, "estimate": "about 15 seconds" }""");
+        PrototypeKit.Texts(tree).ShouldContain(word);
+    }
+
+    [Fact]
+    public void ABusyButtonShowsItsEstimateAndAStopSegmentOnlyWhenStoppable()
+    {
+        var stoppable = PrototypeKit.Build("""{ "kind": "busyButton", "label": "Solve", "busyLabel": "Solving…", "state": "busy", "stoppable": true, "estimate": "step 4 of 9" }""");
+        PrototypeKit.Texts(stoppable).ShouldContain("step 4 of 9");
+        PrototypeKit.Walk(stoppable).Any(n => n.Hit is HitResult.ButtonHit { Action: var act } && act.StartsWith("busy:") && act.EndsWith("/stop")).ShouldBeTrue();
+
+        var fixedTask = PrototypeKit.Build("""{ "kind": "busyButton", "label": "Solve", "busyLabel": "Solving…", "state": "busy" }""");
+        PrototypeKit.Walk(fixedTask).Any(n => n.Hit is HitResult.ButtonHit { Action: var act } && act.StartsWith("busy:") && act.EndsWith("/stop")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TwoBusyButtonsWithOneLabelHaveTheirOwnStop()
+    {
+        const string Busy = """{ "kind": "busyButton", "label": "Solve", "busyLabel": "Solving…", "state": "busy", "stoppable": true }""";
+        var tree = PrototypeKit.Build("""{ "kind": "overlay", "children": [ """ + Busy + ", " + Busy + " ] }");
+        var stops = PrototypeKit.Walk(tree).Select(n => n.Hit).OfType<HitResult.ButtonHit>().Where(h => h.Action.EndsWith("/stop")).ToList();
+        stops.Count.ShouldBe(2);
+        stops[0].ShouldNotBe(stops[1]);
+    }
+
+    [Fact]
+    public void ADoneBusyButtonShowsItsResultAndAFailedOneItsReason()
+    {
+        PrototypeKit.Texts(PrototypeKit.Build("""{ "kind": "busyButton", "label": "Solve", "busyLabel": "Solving…", "state": "done", "result": "RA 12h" }"""))
+            .ShouldContain("RA 12h");
+        PrototypeKit.Texts(PrototypeKit.Build("""{ "kind": "busyButton", "label": "Solve", "busyLabel": "Solving…", "state": "failed", "result": "no stars" }"""))
+            .ShouldContain("no stars");
+    }
+
+    [Fact]
     public void ADropdownOpensInlineAndPicksAnOption()
     {
         var state = new PrototypeState();

@@ -12,6 +12,9 @@ public enum ButtonKind
     Standard,
     /// <summary>A quiet button: no fill at rest.</summary>
     Subtle,
+    /// <summary>A destroying action at rest: the standard button with its label in <see cref="UiPalette.Error"/>.</summary>
+    /// <remarks>Appended last so the values of the earlier members do not move.</remarks>
+    Destructive,
 }
 
 public static partial class Builder
@@ -35,6 +38,11 @@ public static partial class Builder
     /// The hit identity is <c>ButtonHit(label)</c> unless <paramref name="hit"/> says otherwise: pass one when two buttons share a label in a frame.</remarks>
     public static Node Button(string label, ButtonKind kind, Action onClick, UiTheme theme,
         IconKind? icon = null, bool opens = false, string? disabledReason = null, string? tooltip = null, HitResult? hit = null)
+        => ButtonCore(label, kind, onClick, theme, icon, opens, disabledReason, tooltip, hit, null);
+
+    // The button itself; a fixed width (design units) centres the label in it instead of sizing the button to the label.
+    internal static Node ButtonCore(string label, ButtonKind kind, Action onClick, UiTheme theme,
+        IconKind? icon, bool opens, string? disabledReason, string? tooltip, HitResult? hit, float? fixedWidth)
     {
         ArgumentNullException.ThrowIfNull(label);
         ArgumentNullException.ThrowIfNull(onClick);
@@ -44,6 +52,7 @@ public static partial class Builder
         {
             ButtonKind.Accent => controls.Accent,
             ButtonKind.Standard => controls.Standard,
+            ButtonKind.Destructive => controls.DestructiveOrDerived,
             _ => controls.Subtle,
         };
         var enabled = disabledReason is null;
@@ -57,8 +66,14 @@ public static partial class Builder
 
         // IconWordGap is the one size not taken from the theme: the icon-to-word gap Segmented and IconToggle share, kept
         // in one constant so the three controls agree. Moving it to UiMetrics is for all three at once, not this button.
+        if (fixedWidth is not null)
+        {
+            parts.Insert(0, Spacer().WStar());
+            parts.Add(Spacer().WStar());
+        }
         var cell = HStack([.. parts]).WithGap(IconWordGap).CrossCenter()
             .Pad(style.PaddingX, 0f).HFixed(theme.Metrics.ButtonHeight).Radius(style.Radius);
+        if (fixedWidth is { } fixedW) cell = cell.WFixed(fixedW);
         if (style.RestFill is { } rest) cell = cell.Bg(rest);
         if (style.Edge is { } edge) cell = cell.Border(edge, style.EdgeWidth, style.Radius);
 

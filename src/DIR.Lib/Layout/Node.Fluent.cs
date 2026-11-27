@@ -77,6 +77,10 @@ public abstract partial record Node
     /// motion; without one this is inert.</summary>
     public Node BgHover(RGBAColor32 color) => this with { HoverBackground = color };
 
+    /// <summary>Paint <paramref name="color"/> instead of <see cref="Node.Bg"/> while the pointer is over the nearest
+    /// enclosing node with a hit (see <see cref="Node.HitHoverBackground"/>).</summary>
+    public Node BgHoverWithHit(RGBAColor32 color) => this with { HitHoverBackground = color };
+
     /// <summary>
     /// Paints <paramref name="color"/> instead of the hover, focus and ordinary background while the primary button is
     /// held down on this node. See <see cref="Node.PressedBackground"/>.
@@ -328,6 +332,9 @@ public abstract partial record Node
     /// cursor, press, release, double click, wheel), while what it contains works as ever. A toast's card, an open side
     /// bar, a floating window. See <see cref="Node.IsSurface"/>.</summary>
     public Node AsSurface() => this with { IsSurface = true };
+
+    /// <summary>Marks this Box as a switch's knob, to be drawn sliding when its side changes. See <see cref="Node.Knob"/>.</summary>
+    public Node WithKnob(KnobSlide knob) => this with { Knob = knob };
 
     /// <summary>Drop this node from the arrangement entirely when a parent <see cref="Stack"/> would give
     /// it a main-axis extent below <paramref name="designUnits"/> -- the freed space redistributes to the

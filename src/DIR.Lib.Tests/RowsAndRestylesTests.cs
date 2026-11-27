@@ -313,6 +313,37 @@ public class RowsAndRestylesTests
     }
 
     [Fact]
+    public void A_row_given_no_onClick_and_a_trailing_node_is_no_hit_and_takes_no_hover_pressed_or_focus_fill()
+    {
+        var theme = ThemeOf(NotificationsRenderTests.Dark);
+        var trailing = Builder.Button("Go", ButtonKind.Standard, () => { }, theme).WFixed(60f);
+        var row = Arrange(Builder.SettingRow("Title", "Subtitle", SettingTrailing.Of(trailing), theme))[0].Node;
+        row.Hit.ShouldBeNull();
+        row.OnClick.ShouldBeNull();
+        row.HoverBackground.ShouldBeNull();
+        row.PressedBackground.ShouldBeNull();
+        row.FocusBackground.ShouldBeNull();
+        row.Cursor.ShouldBe(default);
+    }
+
+    [Fact]
+    public void A_press_on_a_row_with_no_onClick_and_a_trailing_node_does_nothing_and_the_node_still_works()
+    {
+        var theme = ThemeOf(NotificationsRenderTests.Dark);
+        var presses = 0;
+        var trailing = Builder.Button("Go", ButtonKind.Standard, () => presses++, theme).WFixed(60f);
+        var tree = Builder.SettingRow("Title", "Subtitle", SettingTrailing.Of(trailing), theme);
+        var (router, _) = Paint(tree);
+        Press(router, 3f, 10f);
+        Press(router, 150f, 10f);
+        presses.ShouldBe(0);
+        var arranged = Engine.Arrange(tree, new Rect<float>(0, 0, 300f, 80f), new FloatCtx());
+        var b = arranged.Single(a => a.Node.Hit is HitResult.ButtonHit { } h && h.Equals(new HitResult.ButtonHit("Go"))).Bounds;
+        Press(router, b.X + b.Width / 2f, b.Y + b.Height / 2f);
+        presses.ShouldBe(1);
+    }
+
+    [Fact]
     public void A_press_on_a_trailing_button_runs_the_buttons_handler_and_not_the_rows()
     {
         var theme = ThemeOf(NotificationsRenderTests.Dark);

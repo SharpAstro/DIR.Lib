@@ -61,6 +61,10 @@ namespace DIR.Lib
 
             switch (kind)
             {
+                case Layout.IconKind.Spinner:
+                    DrawSpinnerArc(rect, side, ink);
+                    break;
+
                 case Layout.IconKind.Grid:
                     var cell = unit * 2.2f;
                     var quad = cell * 2f + unit;
@@ -385,6 +389,55 @@ namespace DIR.Lib
                     var cy3 = rect.Y + rect.Height / 2f;
                     DrawLine(hx0, hy0, cx3 + far, cy3 + far, ink, (int)MathF.Round(lensPen));
                     break;
+                }
+            }
+        }
+
+        // The spinner's arc spans this many degrees; the pen is this fraction of the side, as the ring under it.
+        private const float SpinnerSweepDegrees = 100f;
+        private const float SpinnerPenFraction = 0.14f;
+        private const int SpinnerSamples = 3;
+
+        /// <summary>
+        /// The <see cref="Layout.IconKind.Spinner"/> arc: a coverage mask built here pixel by pixel (a 3 by 3 sample grid
+        /// per pixel, tested against the ring's band and the arc's angle), so it uses no triangles and reads the same on
+        /// any renderer. Its start angle follows <see cref="WindowUiSettings.MotionMilliseconds"/>, and painting it
+        /// raises <see cref="WindowUiSettings.IsMoving"/>.
+        /// </summary>
+        private void DrawSpinnerArc(RectF32 rect, float side, RGBAColor32 ink)
+        {
+            Ui.NoteMoving();
+            var turn = MotionClock.SpinnerTurn(Ui.MotionMilliseconds, Ui.ReducedMotion);
+            var startRad = turn * MathF.Tau;
+            var sweepRad = SpinnerSweepDegrees * MathF.PI / 180f;
+            var pen = MathF.Max(1.5f, side * SpinnerPenFraction);
+            var outer = side / 2f;
+            var inner = outer - pen;
+            var x0 = rect.X + (rect.Width - side) / 2f;
+            var y0 = rect.Y + (rect.Height - side) / 2f;
+            var n = (int)MathF.Ceiling(side);
+            for (var py = 0; py < n; py++)
+            {
+                for (var px = 0; px < n; px++)
+                {
+                    var hits = 0;
+                    for (var sy = 0; sy < SpinnerSamples; sy++)
+                    {
+                        for (var sx = 0; sx < SpinnerSamples; sx++)
+                        {
+                            var dx = px + (sx + 0.5f) / SpinnerSamples - outer;
+                            var dy = py + (sy + 0.5f) / SpinnerSamples - outer;
+                            var r2 = dx * dx + dy * dy;
+                            if (r2 > outer * outer || r2 < inner * inner) continue;
+                            var delta = MathF.Atan2(dy, dx) - startRad;
+                            delta -= MathF.Tau * MathF.Floor(delta / MathF.Tau);
+                            if (delta <= sweepRad) hits++;
+                        }
+                    }
+                    if (hits == 0) continue;
+                    var alpha = (byte)(ink.Alpha * hits / (SpinnerSamples * SpinnerSamples));
+                    FillRect(MathF.Round(x0 + px), MathF.Round(y0 + py), 1f, 1f,
+                        new RGBAColor32(ink.Red, ink.Green, ink.Blue, alpha));
                 }
             }
         }

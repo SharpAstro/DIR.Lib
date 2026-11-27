@@ -51,6 +51,8 @@ public static partial class Builder
     /// A themed setting row, drawn from <see cref="ControlStyles.SettingRow"/> alone: a whole card row on the panel with the
     /// control radius, a hover fill, a title, an optional subtitle and a <paramref name="trailing"/> mark. The whole row is
     /// one hit (<c>ButtonHit(title)</c> unless <paramref name="hit"/> says otherwise) running <paramref name="onClick"/>; a
+    /// row given no <paramref name="onClick"/> and a trailing node registers no hit and takes no hover, pressed or focus
+    /// fill (so <paramref name="hit"/> is ignored), and only the trailing control is the hit. A
     /// trailing node keeps its own hit, so pressing a switch or button in it does not run the row's handler. Title and
     /// subtitle end in an ellipsis at the row's width, with the whole text as tooltip. A <paramref name="disabledReason"/>
     /// makes the row flat, takes no press and shows the reason as its tooltip.
@@ -83,6 +85,10 @@ public static partial class Builder
 
         var row = HStack(block, mark).WithGap(style.Gap).CrossCenter()
             .Pad(style.PaddingX, style.PaddingY).Radius(style.Radius).Bg(style.RestFill);
+        // A row given no handler and a node at its end is not a hit at all: only that node is (a switch flips the preference,
+        // never its row), so the row registers no region and takes no hover, pressed or focus fill.
+        if (onClick is null && trailing.Kind == SettingTrailingKind.Node)
+            return enabled ? row : row.WithTooltip(disabledReason!);
         row = row.Clickable(hit ?? new HitResult.ButtonHit(title), enabled && onClick is not null ? _ => onClick() : null);
         // Disabled propagates to every descendant, so a trailing node (a switch, a button) would die with its row. The row goes
         // flat with the reason as its tooltip instead and the node keeps its own state.

@@ -1398,6 +1398,7 @@ namespace DIR.Lib
             Layout.Node.Overlay? modalOverlay = null;
             ModalClaim? modalClaim = null;
             var modalCardDepth = -1;
+            var modalTopDepth = -1;
 
             foreach (var arrangedNode in arranged)
             {
@@ -1504,6 +1505,14 @@ namespace DIR.Lib
                     continue;
                 }
 
+                if (modalClaim is { } endingClaim && modalTopDepth >= 0 && arrangedNode.Depth <= modalTopDepth)
+                {
+                    // Top's subtree ends here: what this widget registers from now on is painted after the modal.
+                    endingClaim.RegionEnd = _tracker.Regions.Length;
+                    endingClaim.NodeEnd = captured.Count;
+                    modalTopDepth = -1;
+                }
+
                 if (hiddenDepth >= 0 && arrangedNode.Depth <= hiddenDepth)
                 {
                     hiddenDepth = -1;
@@ -1555,6 +1564,7 @@ namespace DIR.Lib
                     // node is captured or registers anything, so the counts are exactly what lay beneath.
                     modalClaim = Ui.NoteModalPainted(this, _tracker.Regions.Length, captured.Count,
                         new RectF32(bounds.X, bounds.Y, bounds.Width, bounds.Height), modalOverlay.OnDismiss);
+                    modalTopDepth = arrangedNode.Depth;
                     if (node is Layout.Node.Anchored)
                     {
                         modalCardDepth = arrangedNode.Depth + 1;
@@ -1614,6 +1624,20 @@ namespace DIR.Lib
 
                 var disabled = disabledDepth >= 0;
 
+                // A switch's knob that has just changed side is drawn part way between the two: the arrangement put it at
+                // its final side, the opposite side is the mirror of that about the track's centre, and the window's
+                // motion clock says how far along it is (and raises its moving flag while it is under way).
+                if (node.Knob is { } slide && hitScopes.Count > 0)
+                {
+                    var track = hitScopes.Peek().Bounds;
+                    var progress = Ui.NoteKnob(slide.Switch, slide.On, slide.Locked);
+                    if (progress < 1f)
+                    {
+                        var otherX = track.X + (track.X + track.Width) - (bounds.X + bounds.Width);
+                        bounds = new Rect<float>(otherX + (bounds.X - otherX) * progress, bounds.Y, bounds.Width, bounds.Height);
+                    }
+                }
+
                 // CornerRadius is in design units like every other chrome measure, so it scales with DPI —
                 // through the context's axis-free mapping, the same one that resolved it at measure time.
                 var radius = ctx.ToSurface(node.CornerRadius);
@@ -1626,6 +1650,9 @@ namespace DIR.Lib
                 var nodeFill = !disabled && node.PressedBackground is { } pressed
                         && PressedWithin(bounds, openPopoverDepth >= 0, paintOrder) ? pressed
                     : !disabled && node.HoverBackground is { } hover && PointerWithin(bounds, openPopoverDepth >= 0, paintOrder) ? hover
+                    // A part of a control lights with the nearest enclosing hit (a knob with its track).
+                    : !disabled && node.HitHoverBackground is { } partHover && hitScopes.Count > 0
+                        && PointerWithin(hitScopes.Peek().Bounds, openPopoverDepth >= 0, paintOrder) ? partHover
                     // And the keyboard's own position, resolved against the node's HIT rather than
                     // against a rect -- the row already says which list and index it is.
                     : node.FocusBackground is { } focus && CursorIsOn(node.Hit) ? focus
@@ -1673,8 +1700,13 @@ namespace DIR.Lib
 
                 // The focus ring strokes OUTSIDE the edge, after the border so nothing of the node covers it, and takes
                 // no layout space. Only while the list cursor is on the node's hit, never for a disabled node.
-                if (!disabled && node.FocusRing is { Color.Alpha: > 0, Width: > 0f } ring && node.Hit is { } ringHit
-                    && CursorIsOn(ringHit) && bounds.Width > 0 && bounds.Height > 0)
+                // A container that declares a list rings while that list holds the keyboard (Ui.KeyboardListId), so a
+                // control made of several rows (a segmented control) rings as one.
+                if (!disabled && node.FocusRing is { Color.Alpha: > 0, Width: > 0f } ring
+                    && ((node.Hit is { } ringHit && CursorIsOn(ringHit))
+                        || (node.DeclaredList is { } ringList && Ui.KeyboardListId is { } kbd
+                            && string.Equals(kbd, ringList.ListId, StringComparison.Ordinal)))
+                    && bounds.Width > 0 && bounds.Height > 0)
                 {
                     var ringWidth = MathF.Max(1f, MathF.Round(ctx.ToSurface(ring.Width)));
                     // The gap (Offset) leaves the page showing between edge and ring, so the ring reads on a control

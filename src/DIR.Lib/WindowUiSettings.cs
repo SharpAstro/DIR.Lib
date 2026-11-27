@@ -182,6 +182,15 @@ public sealed class WindowUiSettings
     /// </summary>
     public bool PointerClaimSettled => PointerOwner == _carriedPointerOwner && SurfacesSettled;
 
+    /// <summary>
+    /// The id of the declared list that holds the keyboard (<see cref="DeclaredList.Active"/>'s first two rules: the list
+    /// holding the focused field, else the one the pointer last pressed), or null. Published by <see cref="InputRouter"/>
+    /// after a press and after each paint, and read by the painter for a container that declares a list AND a
+    /// <see cref="Layout.Node.FocusRing"/>, which rings while its list holds the keyboard. The "only list on the frame"
+    /// rule is not applied: a lone control nobody touched is not ringed.
+    /// </summary>
+    public string? KeyboardListId { get; set; }
+
     // ---- surfaces (Layout.Node.IsSurface) -------------------------------------------------------------------------
     //
     // The same claim, made by a node painted OVER something rather than by an open popover: within the surface's rect,
@@ -374,6 +383,9 @@ public sealed class WindowUiSettings
         _frameStartOrders[widget] = 0;
         _paintedPopovers.Clear();
         PaintedModal = null;
+        IsMoving = false;
+        _knobCycle++;
+        ForgetUnpaintedKnobs();
     }
 
     /// <summary>
@@ -439,6 +451,92 @@ public sealed class WindowUiSettings
     public long CaretPhase { get; set; }
 
     /// <summary>
+    /// The motion time of the frame being painted, in milliseconds on any monotonic clock
+    /// (<see cref="MotionClock.MillisecondsAt(TimeProvider)"/>). The host sets it once per frame, as it sets
+    /// <see cref="CaretPhase"/>; a spinner's turn and a switch knob's slide are read from it, so a frame nobody
+    /// drew advances nothing and a test sets it to a fixed value.
+    /// </summary>
+    public long MotionMilliseconds { get; set; }
+
+    /// <summary>
+    /// Whether the person asked for less motion. A spinner turns slowly and a switch knob lands at once.
+    /// </summary>
+    public bool ReducedMotion { get; set; }
+
+    /// <summary>
+    /// Whether something painted in this cycle moves with <see cref="MotionMilliseconds"/> (a spinner, a sliding
+    /// knob). A host asks for another frame while it is up and stops asking when it falls, so an idle window
+    /// costs no frames. Cleared when a new paint cycle begins (<see cref="NoteFrameBegin"/>).
+    /// </summary>
+    public bool IsMoving { get; private set; }
+
+    /// <summary>Raised by the painter when it paints something that moves.</summary>
+    public void NoteMoving() => IsMoving = true;
+
+    // The side each switch was last painted at, by its hit, and when that side began. A switch absent from a whole
+    // paint cycle is forgotten at the next boundary, so a later cycle's first paint of it is a first paint.
+    // Keyed by the hit and its ordinal among the same hits painted this cycle: a host that leaves the default hit on every
+    // switch (ButtonHit("switch")) still gets one memory per switch, in the tree's order.
+    private readonly Dictionary<(HitResult Hit, int Ordinal), KnobTrack> _knobs = new();
+    private readonly HashSet<(HitResult Hit, int Ordinal)> _knobsSeen = new();
+    private readonly Dictionary<HitResult, int> _knobOrdinals = new();
+
+    /// <summary>
+    /// The knob's slide progress for a switch painted on side <paramref name="on"/>, from 0 (at the other side) to
+    /// 1 (arrived). A first paint, a <paramref name="locked"/> switch and reduced motion are at 1; a side that
+    /// changed since the last paint starts a slide of <see cref="MotionClock.KnobSlideMilliseconds"/> and raises
+    /// <see cref="IsMoving"/> while it runs.
+    /// </summary>
+    public float NoteKnob(HitResult hit, bool on, bool locked)
+    {
+        _knobOrdinals.TryGetValue(hit, out var ordinal);
+        _knobOrdinals[hit] = ordinal + 1;
+        var key = (hit, ordinal);
+        _knobsSeen.Add(key);
+        if (!_knobs.TryGetValue(key, out var track))
+        {
+            _knobs[key] = new KnobTrack(on, long.MinValue, _knobCycle);
+            return 1f;
+        }
+        if (track.On != on)
+        {
+            track = new KnobTrack(on, locked || ReducedMotion ? long.MinValue : MotionMilliseconds, _knobCycle);
+            _knobs[key] = track;
+        }
+        if (locked || ReducedMotion || track.Since == long.MinValue) return 1f;
+        if (track.Cycle != _knobCycle && MotionMilliseconds == track.Since)
+        {
+            // A later paint cycle and the clock has not moved: the host does not run it, so a slide would never
+            // finish and the knob would sit on its old side. Land it.
+            _knobs[key] = track with { Since = long.MinValue };
+            return 1f;
+        }
+        var progress = (MotionMilliseconds - track.Since) / (float)MotionClock.KnobSlideMilliseconds;
+        if (progress >= 1f) return 1f;
+        NoteMoving();
+        return Math.Max(0f, progress);
+    }
+
+    private long _knobCycle;
+
+    private readonly record struct KnobTrack(bool On, long Since, long Cycle);
+
+    private void ForgetUnpaintedKnobs()
+    {
+        if (_knobs.Count > 0)
+        {
+            List<(HitResult Hit, int Ordinal)>? gone = null;
+            foreach (var key in _knobs.Keys)
+            {
+                if (!_knobsSeen.Contains(key)) (gone ??= []).Add(key);
+            }
+            if (gone is not null) foreach (var key in gone) _knobs.Remove(key);
+        }
+        _knobsSeen.Clear();
+        _knobOrdinals.Clear();
+    }
+
+    /// <summary>
     /// Which frame the window is on. A host bumps it once per frame, before anything draws; every widget
     /// sharing these settings then agrees on what "this frame" means.
     /// </summary>
@@ -475,6 +573,13 @@ public sealed class ModalClaim(object widget, int regionStart, int nodeStart, Re
 
     /// <summary>Painted nodes the widget held before Top painted.</summary>
     public int NodeStart { get; } = nodeStart;
+
+    /// <summary>Regions the widget held when Top's subtree ended; what it registered after belongs to nodes painted
+    /// after the modal, which the modal does not cover. int.MaxValue while Top runs to the end of the widget.</summary>
+    public int RegionEnd { get; set; } = int.MaxValue;
+
+    /// <summary>Painted nodes the widget held when Top's subtree ended (see <see cref="RegionEnd"/>).</summary>
+    public int NodeEnd { get; set; } = int.MaxValue;
 
     /// <summary>Where Top's card draws, in the surface's own coordinates. Settable because an anchored Top's card is
     /// the node after the one that begins it.</summary>

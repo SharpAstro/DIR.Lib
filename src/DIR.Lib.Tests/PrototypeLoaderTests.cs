@@ -70,6 +70,30 @@ public sealed class PrototypeLoaderTests
     }
 
     [Fact]
+    public void TheSwitchSegmentedAndBusyButtonKindsLoad()
+    {
+        Problems(Doc(Screen("a", """
+            { "kind": "vstack", "children": [
+              { "kind": "switch", "bind": "on", "switchSize": "small", "stateLabel": "On", "locked": false, "changing": false },
+              { "kind": "segmented", "options": ["a", "b"], "bind": "pick" },
+              { "kind": "busyButton", "label": "Go", "busyLabel": "Going…", "state": "overdue", "estimate": "about 15 seconds", "stoppable": true, "result": "x" } ] }
+            """))).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void ASwitchSizeOutsideItsWordsAndABusyStateOutsideItsWordsAreReported()
+    {
+        Problems(Doc(Screen("a", """{ "kind": "switch", "switchSize": "huge" }""")))
+            .ShouldNotBeEmpty();
+        Problems(Doc(Screen("a", """{ "kind": "busyButton", "label": "Go", "busyLabel": "Going…", "state": "asleep" }""")))
+            .ShouldNotBeEmpty();
+        Problems(Doc(Screen("a", """{ "kind": "busyButton", "label": "Go" }""")))
+            .ShouldNotBeEmpty();
+        Problems(Doc(Screen("a", """{ "kind": "busyButton", "label": "Go", "busyLabel": "G", "bind": "s" }""")))
+            .ShouldNotBeEmpty();
+    }
+
+    [Fact]
     public void AnUnknownPropertyIsReportedAtItsPath()
     {
         Problems(Doc(Screen("a", """{ "kind": "text", "text": "x", "colour": "Accent" }""")))
@@ -232,7 +256,7 @@ public sealed class PrototypeLoaderTests
     public void BindOnAKindWithoutOneIsReported()
     {
         Problems(Doc(Screen("a", """{ "kind": "text", "text": "x", "bind": "s" }""")))
-            .ShouldBe(["$.screens[0].root.bind: kind 'text' has no bind (only textInput, checkbox, switch, slider, buttonGroup, dropdown, tree and tabs do)"]);
+            .ShouldBe(["$.screens[0].root.bind: kind 'text' has no bind (only textInput, checkbox, switch, slider, buttonGroup, segmented, dropdown, tree and tabs do)"]);
     }
 
     [Fact]
