@@ -362,7 +362,7 @@ public sealed class PrototypeTreeBuilder
         };
         try
         {
-            var rows = new List<Node> { B.TableHeader(columns, null, null, _tableStyle, metrics.BaseFontSize).HFixed(metrics.ItemHeight) };
+            var rows = new List<Node> { B.TableHeader(columns, null, null, _tableStyle, metrics.BaseFontSize).HFixed(metrics.ItemHeight).WStar() };
             rows.AddRange(BuildChildren(n));
             return B.VStack([.. rows]).WStar();
         }
