@@ -102,10 +102,10 @@ public abstract partial record Node
         ? leaf with { Content = t with { Face = mono ? TextFace.Mono : TextFace.Ui } }
         : this;
 
-    /// <summary>Shows this node only while the pointer is in its row, or the row is selected. See <see cref="Node.RevealOnRowHover"/>.</summary>
-    public Node RevealOnRowHover() => this with { RevealOnRowHover = true };
+    /// <summary>Shows this node only while the pointer is in its row, or the row is selected. See <see cref="Node.RevealsOnRowHover"/>.</summary>
+    public Node RevealOnRowHover() => this with { RevealsOnRowHover = true };
 
-    /// <summary>Marks this node as the selected row, which keeps a <see cref="Node.RevealOnRowHover"/> node under it shown. See <see cref="Node.IsSelected"/>.</summary>
+    /// <summary>Marks this node as the selected row, which keeps a <see cref="Node.RevealsOnRowHover"/> node under it shown. See <see cref="Node.IsSelected"/>.</summary>
     public Node Selected(bool selected = true) => this with { IsSelected = selected };
 
     /// <summary>Paint <paramref name="color"/> instead of <see cref="Node.Bg"/> while the keyboard

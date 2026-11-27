@@ -168,7 +168,7 @@ public abstract partial record Node
     /// may honour it later. Init-only, set with <c>RevealOnRowHover()</c>.
     /// </para>
     /// </summary>
-    public bool RevealOnRowHover { get; init; }
+    public bool RevealsOnRowHover { get; init; }
 
     /// <summary>
     /// This node is the selected row: a node under it that <see cref="RevealOnRowHover"/> shows without the pointer

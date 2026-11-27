@@ -76,7 +76,7 @@ namespace DIR.Lib
             /// repaint when the cursor moves.</summary>
             public Layout.FocusRingStyle? FocusRing { get; init; }
 
-            /// <summary>The node is inside a hover-revealed subtree (<see cref="Layout.Node.RevealOnRowHover"/>) that is
+            /// <summary>The node is inside a hover-revealed subtree (<see cref="Layout.Node.RevealsOnRowHover"/>) that is
             /// hidden this frame, so it paints nothing. Init-only for the same reason as <see cref="Border"/>; a shown
             /// node leaves it false, so its signature is what it was before reveal existed.</summary>
             public bool Hidden { get; init; }
@@ -289,7 +289,7 @@ namespace DIR.Lib
                 }
 
                 // A hover-revealed node answers to its nearest enclosing row, as the painter resolves it.
-                if (hiddenDepth < 0 && node.Node.RevealOnRowHover
+                if (hiddenDepth < 0 && node.Node.RevealsOnRowHover
                     && !(rows.Count > 0 ? rows.Peek().Selected || Contains(rows.Peek().Bounds, pointer) : Contains(node.Bounds, pointer)))
                 {
                     hiddenDepth = node.Depth;

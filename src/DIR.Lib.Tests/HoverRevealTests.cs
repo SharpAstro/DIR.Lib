@@ -9,7 +9,7 @@ using Xunit;
 namespace DIR.Lib.Tests;
 
 /// <summary>
-/// <see cref="Node.RevealOnRowHover"/>: a node shown only while the pointer is in its row, or always while the row is
+/// <see cref="Node.RevealsOnRowHover"/>: a node shown only while the pointer is in its row, or always while the row is
 /// selected, in memory through <see cref="RgbaImageRenderer"/> (DejaVu Sans). Three rows of a tree: at rest, hovered, selected.
 /// Baseline <c>hover_reveal_rows.png</c>; <c>DIR_LIB_UPDATE_BASELINES=1</c> with a filter on this class writes it.
 /// </summary>

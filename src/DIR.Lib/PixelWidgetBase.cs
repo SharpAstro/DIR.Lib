@@ -1350,7 +1350,7 @@ namespace DIR.Lib
             // trailing arrow underlines its text as the text itself does. LayoutDamage resolves it identically.
             var hitScopes = scratch.HitScopes;
 
-            // The enclosing ROWS, by depth: the nodes a hover-revealed node (Node.RevealOnRowHover) answers to, those
+            // The enclosing ROWS, by depth: the nodes a hover-revealed node (Node.RevealsOnRowHover) answers to, those
             // with a hit, a hover background or a selection. LayoutDamage resolves it identically.
             var rowScopes = scratch.RowScopes;
 
@@ -1508,7 +1508,7 @@ namespace DIR.Lib
                     hiddenDepth = -1;
                 }
 
-                if (hiddenDepth < 0 && node.RevealOnRowHover)
+                if (hiddenDepth < 0 && node.RevealsOnRowHover)
                 {
                     // Against the nearest enclosing row, else the node's own rect. Resolved before this node's own
                     // scope is pushed below, so a revealed button that has a hit of its own answers to its ROW.
