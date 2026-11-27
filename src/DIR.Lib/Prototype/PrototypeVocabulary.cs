@@ -19,6 +19,8 @@ public enum PrototypePropertyType
     Size,
     /// <summary>An array of strings.</summary>
     StringList,
+    /// <summary>An array of sizes: each a number (fixed), <c>"auto"</c>, <c>"star"</c> or <c>"star:weight"</c>. Held as strings, a number in its invariant text.</summary>
+    SizeList,
     /// <summary>One of <see cref="PrototypeProperty.Values"/>.</summary>
     Enum,
 }
@@ -50,6 +52,12 @@ public sealed record PrototypeKind(string Name, ImmutableArray<PrototypeProperty
 
     /// <summary>True when the kind reads and writes a named state through <c>bind</c>.</summary>
     public bool SupportsBind { get; init; }
+
+    /// <summary>When set, every child must be of this kind (a tree's rows, a table's rows).</summary>
+    public string? ChildKind { get; init; }
+
+    /// <summary>When set, a node of this kind is only valid as a child of this kind (a treeRow in a tree).</summary>
+    public string? ParentKind { get; init; }
 }
 
 /// <summary>
@@ -86,10 +94,17 @@ public static class PrototypeVocabulary
         P("tooltip", PrototypePropertyType.String),
         P("side", PrototypePropertyType.Enum, values: W("left", "right", "top", "bottom")),
         Extent("size"),
+        P("hoverBackground", PrototypePropertyType.Color),
+        P("revealOnHover", PrototypePropertyType.Bool),
+        P("selectedWhen", PrototypePropertyType.String),
+        P("doubleAction", PrototypePropertyType.String),
     ];
 
     private static PrototypeKind K(string name, int min, int max, bool bind, params PrototypeProperty[] props)
         => new(name, [.. props]) { MinChildren = min, MaxChildren = max, SupportsBind = bind };
+
+    private static PrototypeKind Of(PrototypeKind k, string? childKind = null, string? parentKind = null)
+        => k with { ChildKind = childKind, ParentKind = parentKind };
 
     private static readonly PrototypeProperty Gap = Extent("gap");
     private static readonly PrototypeProperty FontSize = Extent("fontSize");
@@ -107,7 +122,23 @@ public static class PrototypeVocabulary
         K("overlay", 2, 2, false),
         K("modal", 2, 2, false, P("open", PrototypePropertyType.Bool)),
         K("text", 0, 0, false, P("text", PrototypePropertyType.String, true), FontSize, Color,
-            P("align", PrototypePropertyType.Enum, values: W("near", "center", "far"))),
+            P("align", PrototypePropertyType.Enum, values: W("near", "center", "far")),
+            P("weight", PrototypePropertyType.Enum, values: W("regular", "bold")),
+            P("face", PrototypePropertyType.Enum, values: W("ui", "mono")),
+            P("style", PrototypePropertyType.Enum, values: W("body", "heading", "label"))),
+        K("button", 0, 0, false, P("text", PrototypePropertyType.String, true),
+            P("style", PrototypePropertyType.Enum, values: W("accent", "standard", "subtle", "link")),
+            P("disabled", PrototypePropertyType.String), P("icon", PrototypePropertyType.String), P("opens", PrototypePropertyType.Bool)),
+        K("switch", 0, 0, true, P("label", PrototypePropertyType.String), P("labelBefore", PrototypePropertyType.Bool),
+            P("disabled", PrototypePropertyType.String)),
+        Of(K("tree", 0, -1, true), childKind: "treeRow"),
+        Of(K("treeRow", 0, 0, false, P("text", PrototypePropertyType.String, true), new PrototypeProperty("depth", PrototypePropertyType.Integer) { NonNegative = true },
+            P("mark", PrototypePropertyType.String), P("note", PrototypePropertyType.String),
+            P("trailingIcon", PrototypePropertyType.String), P("trailingAction", PrototypePropertyType.String)), parentKind: "tree"),
+        K("tabs", 0, 0, true, P("options", PrototypePropertyType.StringList, true)),
+        Of(K("table", 0, -1, false, P("columns", PrototypePropertyType.StringList, true),
+            P("columnWidths", PrototypePropertyType.SizeList)), childKind: "tableRow"),
+        Of(K("tableRow", 0, -1, false), parentKind: "table"),
         K("markdown", 0, 0, false, P("source", PrototypePropertyType.String, true)),
         K("icon", 0, 0, false, P("icon", PrototypePropertyType.String, true), Extent("iconSize"), Color),
         K("box", 0, 0, false, Color),

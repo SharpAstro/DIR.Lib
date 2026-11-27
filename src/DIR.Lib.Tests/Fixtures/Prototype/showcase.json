@@ -1,0 +1,52 @@
+{
+  "width": 560,
+  "height": 480,
+  "entry": "workbench",
+  "screens": [
+    {
+      "id": "workbench",
+      "title": "Workbench",
+      "root": {
+        "kind": "vstack", "gap": 10, "padding": 12, "background": "ContentBg",
+        "children": [
+          { "kind": "text", "text": "Workbench", "style": "heading" },
+          { "kind": "tabs", "options": ["Project", "Frames", "Processes"], "bind": "tab" },
+          { "kind": "text", "text": "Steps", "style": "label" },
+          { "kind": "tree", "bind": "sel", "children": [
+            { "kind": "treeRow", "key": "g", "text": "Calibrate", "mark": "CaretDown", "note": "2 steps", "doubleAction": "set:opened=g" },
+            { "kind": "treeRow", "key": "a", "text": "Remove stars with a rather long step name", "depth": 1, "note": "ready",
+              "trailingIcon": "Plus", "trailingAction": "set:ran=a" },
+            { "kind": "treeRow", "key": "b", "text": "Stack", "depth": 1, "trailingIcon": "Plus" } ] },
+          { "kind": "table", "columns": ["File", "Kind", "Exposure"], "columnWidths": [160, "star", 80], "children": [
+            { "kind": "tableRow", "selectedWhen": "pick=1", "action": "set:pick=1", "doubleAction": "goto:detail", "children": [
+              { "kind": "text", "text": "frame_0001.fits" }, { "kind": "text", "text": "light" }, { "kind": "text", "text": "300 s" } ] },
+            { "kind": "tableRow", "action": "set:pick=2", "children": [
+              { "kind": "text", "text": "dark_0001.fits" }, { "kind": "text", "text": "dark" }, { "kind": "text", "text": "300 s" } ] } ] },
+          { "kind": "hstack", "gap": 8, "children": [
+            { "kind": "button", "text": "Run", "style": "accent", "key": "run", "action": "set:ran=all" },
+            { "kind": "button", "text": "Cancel", "style": "standard", "key": "cancel", "action": "set:ran=none" },
+            { "kind": "button", "text": "More", "style": "subtle", "opens": true },
+            { "kind": "button", "text": "Docs", "style": "link" },
+            { "kind": "button", "text": "Locked", "style": "standard", "disabled": "Needs a frame" } ] },
+          { "kind": "hstack", "gap": 16, "children": [
+            { "kind": "switch", "label": "Live preview", "bind": "live" },
+            { "kind": "switch", "label": "Linked", "bind": "linked", "disabled": "Needs a mount" } ] },
+          { "kind": "text", "text": "$ siril -s stack.ssf --out=result.fit", "face": "mono", "fontSize": 12 },
+          { "kind": "text", "text": "Ran", "weight": "bold", "when": "ran=all" },
+          { "kind": "button", "text": "Selected when running", "style": "standard", "selectedWhen": "ran=all", "action": "set:ran=all" }
+        ]
+      }
+    },
+    {
+      "id": "detail",
+      "title": "Detail",
+      "root": {
+        "kind": "vstack", "gap": 8, "padding": 12, "background": "ContentBg",
+        "children": [
+          { "kind": "text", "text": "Frame detail", "style": "heading" },
+          { "kind": "button", "text": "Back", "style": "link", "action": "goto:workbench" }
+        ]
+      }
+    }
+  ]
+}

@@ -66,8 +66,12 @@ public static partial class Prototype
     public static ImmutableArray<PrototypeFinding> Check(PrototypeDocument document,
         IEnumerable<(uint Width, uint Height)> sizes, UiTheme? theme = null, WireframeOptions? options = null,
         string? fontPath = null)
+        => Check(document, sizes, FacesOf(fontPath), theme, options);
+
+    /// <summary>As the sized overload, drawing with <paramref name="faces"/> (body, bold, mono), so a bold run and a mono run are drawn in their own faces.</summary>
+    public static ImmutableArray<PrototypeFinding> Check(PrototypeDocument document,
+        IEnumerable<(uint Width, uint Height)> sizes, PrototypeFaces faces, UiTheme? theme = null, WireframeOptions? options = null)
     {
-        fontPath = ResolveFont(fontPath);
         var result = ImmutableArray.CreateBuilder<PrototypeFinding>();
         foreach (var (w, h) in sizes)
         {
@@ -76,7 +80,7 @@ public static partial class Prototype
                 foreach (var (label, name, value) in Variants(screen))
                 {
                     var renderer = new WireframeRenderer(w, h);
-                    var player = new PrototypePlayer<RgbaImage>(renderer, document, theme ?? DefaultTheme, fontPath);
+                    var player = new PrototypePlayer<RgbaImage>(renderer, document, theme ?? DefaultTheme, faces);
                     player.Goto(screen.Id);
                     if (name is not null) player.State.Set(name, value);
                     renderer.Begin();
@@ -96,8 +100,12 @@ public static partial class Prototype
     /// </summary>
     public static ImmutableArray<PrototypeFinding> Check(PrototypeDocument document, UiTheme? theme = null,
         WireframeOptions? options = null, string? fontPath = null)
+        => Check(document, FacesOf(fontPath), theme, options);
+
+    /// <summary>As the target overload, drawing with <paramref name="faces"/>.</summary>
+    public static ImmutableArray<PrototypeFinding> Check(PrototypeDocument document, PrototypeFaces faces,
+        UiTheme? theme = null, WireframeOptions? options = null)
     {
-        fontPath = ResolveFont(fontPath);
         var result = ImmutableArray.CreateBuilder<PrototypeFinding>();
         foreach (var target in document.Targets)
         {
@@ -107,7 +115,7 @@ public static partial class Prototype
                 foreach (var (label, name, value) in Variants(screen))
                 {
                     var renderer = new WireframeRenderer(w, h);
-                    var player = new PrototypePlayer<RgbaImage>(renderer, document, theme ?? DefaultTheme, fontPath)
+                    var player = new PrototypePlayer<RgbaImage>(renderer, document, theme ?? DefaultTheme, faces)
                     {
                         Target = target,
                     };
@@ -129,8 +137,12 @@ public static partial class Prototype
     /// </summary>
     public static ImmutableArray<(string Target, string Screen, RgbaImage Image)> Render(PrototypeDocument document,
         UiTheme? theme = null, string? fontPath = null)
+        => Render(document, FacesOf(fontPath), theme);
+
+    /// <summary>As the target overload, drawing with <paramref name="faces"/>.</summary>
+    public static ImmutableArray<(string Target, string Screen, RgbaImage Image)> Render(PrototypeDocument document,
+        PrototypeFaces faces, UiTheme? theme = null)
     {
-        fontPath = ResolveFont(fontPath);
         var images = ImmutableArray.CreateBuilder<(string, string, RgbaImage)>();
         foreach (var target in document.Targets)
         {
@@ -139,7 +151,7 @@ public static partial class Prototype
             {
                 var renderer = new RgbaImageRenderer(w, h);
                 renderer.Surface.Clear(new RGBAColor32(0, 0, 0, 255));
-                var player = new PrototypePlayer<RgbaImage>(renderer, document, theme ?? DefaultTheme, fontPath)
+                var player = new PrototypePlayer<RgbaImage>(renderer, document, theme ?? DefaultTheme, faces)
                 {
                     Target = target,
                 };
@@ -162,20 +174,29 @@ public static partial class Prototype
     /// <exception cref="FileNotFoundException">No font was given and the platform has none, or the given file is missing.</exception>
     public static ImmutableArray<(string Screen, RgbaImage Image)> Render(PrototypeDocument document,
         (uint Width, uint Height) size, UiTheme? theme = null, string? fontPath = null)
+        => Render(document, size, FacesOf(fontPath), theme);
+
+    /// <summary>As the sized overload, drawing with <paramref name="faces"/>.</summary>
+    public static ImmutableArray<(string Screen, RgbaImage Image)> Render(PrototypeDocument document,
+        (uint Width, uint Height) size, PrototypeFaces faces, UiTheme? theme = null)
     {
-        fontPath = ResolveFont(fontPath);
         var images = ImmutableArray.CreateBuilder<(string, RgbaImage)>();
         foreach (var screen in document.Screens)
         {
             var renderer = new RgbaImageRenderer(size.Width, size.Height);
             renderer.Surface.Clear(new RGBAColor32(0, 0, 0, 255));
-            var player = new PrototypePlayer<RgbaImage>(renderer, document, theme ?? DefaultTheme, fontPath);
+            var player = new PrototypePlayer<RgbaImage>(renderer, document, theme ?? DefaultTheme, faces);
             player.Goto(screen.Id);
             player.Render(new RectF32(0, 0, size.Width, size.Height));
             images.Add((screen.Id, renderer.Surface));
         }
         return images.ToImmutable();
     }
+
+    // A font path given draws every run in that one face (the caller named it, so the result does not depend on the
+    // machine); none given draws with the platform faces, bold and monospace included.
+    private static PrototypeFaces FacesOf(string? fontPath)
+        => string.IsNullOrEmpty(fontPath) ? PrototypeFaces.Platform() : new PrototypeFaces { Regular = ResolveFont(fontPath) };
 
     /// <summary>
     /// The font <see cref="Check(PrototypeDocument, IEnumerable{ValueTuple{uint, uint}}, UiTheme, WireframeOptions, string)"/> and <see cref="Render(PrototypeDocument, ValueTuple{uint, uint}, UiTheme, string)"/> draw with: <paramref name="fontPath"/> when given, else

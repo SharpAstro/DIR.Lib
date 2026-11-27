@@ -37,7 +37,11 @@ public sealed class PrototypeCheckTests
     [Fact]
     public void TheDocumentedTwoArgumentFormResolvesAFontAndReportsTheOverlap()
     {
-        if (FontResolver.ResolveSystemFont().Length == 0)
+        // Gate on what the two-argument form itself resolves (PrototypeFaces.Platform: Arial, else the system face), not on
+        // the system face alone: a machine with Arial and no system monospace face still resolves a font.
+        PrototypeFaces? platform = null;
+        try { platform = PrototypeFaces.Platform(); } catch (FileNotFoundException) { }
+        if (platform is null)
         {
             // A font-less image has nothing to resolve: the documented form must fail loudly there, not draw no text.
             Should.Throw<FileNotFoundException>(() => Prototype.Check(Load("overlap.json"), [(360u, 640u)]));

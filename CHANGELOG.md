@@ -9,6 +9,34 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.104
+
+**The prototype vocabulary for the workbench design (#330), and the controls under it.** Additive.
+- **`Builder.Switch`**: the themed on/off switch (#156), a track and knob with the accent track when on, drawn from
+  `UiTheme.Controls` alone.
+- **Text weight and face**: `Content.Text` takes a `Weight` (bold) and a `Face` (monospace, the DIR.Lib half of #152).
+- **Hover-reveal**: a node can show only while its row is hovered or selected (a tree row's run button).
+- **Prototype kinds and properties**: `button` by `style` (accent, standard, subtle, link), `switch`, `tree` and
+  `treeRow` (depth, mark, note, hover-revealed trailing action, selection), `tabs` (selected tab underlined in the
+  accent), `table` and `tableRow` (a header, columns that line up, row hover); `hoverBackground`, `revealOnHover`,
+  `selectedWhen`, `doubleAction` (double-click and Enter), and text `weight`, `face` and `style` (body, heading, label).
+- **Faces reach the prototype**: `PrototypeFaces` (body, bold, mono, bold mono) with new `Prototype.Check`, `Prototype.Render`
+  overloads and a `PrototypePlayer<TSurface>` constructor taking a `PrototypeFaces` (no optional parameter was added to an existing method). With no font path the platform
+  faces are used; see `prototype-format.md`. Before this a bold run and a mono run drew in the body face in every prototype
+  render.
+- **Enter reaches tree and table rows**: both are declared lists (a `ListCursor` per container, `ListItemHit` rows, a focus
+  ring), so Up, Down and Enter work; Enter runs a row's `doubleAction`, else its action. A node with a `doubleAction` and
+  no `action` now registers a hit, so its double-click works. Tree row hit ids carry the tree's path, so two trees that
+  share a key no longer share an id, and a tab no longer repeats its label as a tooltip.
+- **Behaviour changes for existing callers**: `Builder.Button(opens: true)` draws a `›` text leaf instead of the
+  `IconKind.CaretRight` icon (cell hosts now draw `›` where they drew `▶`), and a prototype `hstack` centres its
+  children vertically. `Prototype.Check`, `Prototype.Render` and a `PrototypePlayer<TSurface>` with no font path now draw the body
+  in `PrototypeFaces.Platform()` (Arial, else the system face) where they drew in the platform monospace face, so text
+  widths in an existing check run move. A tree row's name is one line that ends in an ellipsis when the row is too narrow,
+  with the whole name as the row's tooltip, where a long name was clipped at the row's edge.
+- `PrototypeShowcaseTests` loads one workbench-like prototype using all of it, checks it at every target and pins
+  baselines of rest, hover, row hover, pressed and selected on a dark and a light palette.
+
 ## 11.103
 
 **Less render-thread garbage from a painted layout.** Traced in the PDF viewer while panning (26 s, render thread):

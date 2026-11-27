@@ -34,6 +34,16 @@ public sealed class PrototypeTreeBuilder
     // Unbound inputs keep their state by node path, so a rebuild each frame does not lose what was typed or dragged.
     private readonly Dictionary<string, TextInputState> _unboundInputs = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SliderState> _unboundSliders = new(StringComparer.Ordinal);
+    // The enclosing tree's bind and table's columns, set while that container builds its rows.
+    private string? _treeBind;
+    private bool _treeReservesTrailing;
+    private TableColumn[] _tableColumns = [];
+    private TableStyle _tableStyle;
+    // The list cursor of each tree and table, by the container's path, so the keyboard position survives the per-frame
+    // rebuild; and, while a container builds its rows, the list id and the next row index (hidden rows take no index).
+    private readonly Dictionary<string, ListCursor> _cursors = new(StringComparer.Ordinal);
+    private string? _listId;
+    private int _listIndex;
 
     /// <summary>Creates a builder.</summary>
     /// <param name="theme">Supplies the colour roles and the base metrics.</param>
@@ -54,6 +64,16 @@ public sealed class PrototypeTreeBuilder
     /// this from its own design size before each build, so a value written here on a player's builder does not last.
     /// </summary>
     public (float Width, float Height)? DesignSize { get; set; }
+
+    /// <summary>
+    /// Measures a tab label's width at a font size, design units; a <see cref="PrototypePlayer{TSurface}"/> supplies
+    /// its renderer's. Null estimates a label as <see cref="TabCharEm"/> of the font size per character, which is
+    /// close for Latin text, so a tab strip built without a surface is still sized and testable.
+    /// </summary>
+    public Func<string, float, float>? MeasureLabel { get; set; }
+
+    /// <summary>The per-character width, as a fraction of the font size, a tab label is estimated at when <see cref="MeasureLabel"/> is null.</summary>
+    public const float TabCharEm = 0.6f;
 
     /// <summary>The persistent field state for a bound name, created on first use.</summary>
     public TextInputState InputFor(string name)
@@ -124,7 +144,7 @@ public sealed class PrototypeTreeBuilder
         switch (n.Kind)
         {
             case "vstack": return B.VStack(BuildChildren(n)).WithGap(Num(p, "gap", 0f));
-            case "hstack": return B.HStack(BuildChildren(n)).WithGap(Num(p, "gap", 0f));
+            case "hstack": return B.HStack(BuildChildren(n)).WithGap(Num(p, "gap", 0f)).CrossCenter();
             case "grid":
             {
                 var gap = Num(p, "gap", 0f);
@@ -158,9 +178,14 @@ public sealed class PrototypeTreeBuilder
                 }
                 return B.Modal(layer, card, ActionOf(n.Action));
             }
-            case "text":
-                return B.Text(Str(p, "text", ""), Num(p, "fontSize", 14f), Col(p, "color") ?? Palette.BodyText,
-                    Str(p, "align", "near") switch { "center" => TextAlign.Center, "far" => TextAlign.Far, _ => TextAlign.Near });
+            case "text": return BuildText(n);
+            case "button": return BuildButton(n);
+            case "switch": return BuildSwitch(n);
+            case "tree": return BuildTree(n);
+            case "treeRow": return BuildTreeRow(n);
+            case "tabs": return BuildTabs(n);
+            case "table": return BuildTable(n);
+            case "tableRow": return BuildTableRow(n);
             case "markdown": return B.Markdown(Str(p, "source", ""), MarkdownStyleOf());
             case "icon":
             {
@@ -182,6 +207,244 @@ public sealed class PrototypeTreeBuilder
                     Num(p, "fontSize", 14f), Palette.BodyText).WStar().H(Sizing.Fixed(Math.Max(1f, _theme.Metrics.ItemHeight * 0.6f)));
             default: return B.Spacer();
         }
+    }
+
+    private Node BuildText(PrototypeNode n)
+    {
+        var p = n.Properties;
+        var style = Str(p, "style", "body");
+        var metrics = _theme.Metrics;
+        var text = Str(p, "text", "");
+        float size;
+        RGBAColor32 ink = Col(p, "color") ?? Palette.BodyText;
+        var bold = false;
+        switch (style)
+        {
+            case "heading":
+                size = metrics.BaseFontSize * metrics.HeadingFontScale;
+                bold = true;
+                break;
+            case "label":
+                size = metrics.BaseFontSize * metrics.LabelFontScale;
+                text = text.ToUpperInvariant();
+                ink = Col(p, "color") ?? Palette.DimText;
+                bold = true;
+                break;
+            default:
+                size = 14f;
+                break;
+        }
+        if (p.TryGetValue("fontSize", out var fs)) size = (float)fs.Number;
+        if (p.TryGetValue("weight", out var wt)) bold = wt.Text == "bold";
+        var node = B.Text(text, size, ink,
+            Str(p, "align", "near") switch { "center" => TextAlign.Center, "far" => TextAlign.Far, _ => TextAlign.Near });
+        if (bold) node = node.Bold();
+        if (Str(p, "face", "ui") == "mono") node = node.Mono();
+        return node;
+    }
+
+    private Node BuildButton(PrototypeNode n)
+    {
+        var p = n.Properties;
+        var text = Str(p, "text", "");
+        var action = n.Action;
+        Action click = action is null ? static () => { } : () => Run(action);
+        HitResult hit = new HitResult.ButtonHit(Str(p, "key", null!) ?? action ?? text);
+        var style = Str(p, "style", "standard");
+        if (style == "link") return B.Hyperlink(text, click, _theme, hit: hit);
+        var kind = style switch { "accent" => ButtonKind.Accent, "subtle" => ButtonKind.Subtle, _ => ButtonKind.Standard };
+        IconKind? icon = null;
+        if (p.TryGetValue("icon", out var ic) && Enum.TryParse<IconKind>(ic.Text, out var parsed)) icon = parsed;
+        return B.Button(text, kind, click, _theme, icon, Flag(p, "opens", false),
+            p.TryGetValue("disabled", out var dis) ? dis.Text : null, hit: hit);
+    }
+
+    private Node BuildSwitch(PrototypeNode n)
+    {
+        var p = n.Properties;
+        var name = n.Bind;
+        Action<bool>? change = name is null ? null : v => _state.Set(name, v);
+        return B.Switch(name is not null && _state.GetBool(name), change, _theme,
+            p.TryGetValue("label", out var l) ? l.Text : null, Flag(p, "labelBefore", false),
+            p.TryGetValue("disabled", out var d) ? d.Text : null);
+    }
+
+    // ---- structured views ----
+
+    private Node BuildTree(PrototypeNode n)
+    {
+        var outer = _treeBind;
+        var outerReserve = _treeReservesTrailing;
+        var (outerList, outerIndex) = (_listId, _listIndex);
+        var listId = "prototype-tree:" + n.Path;
+        (_listId, _listIndex) = (listId, 0);
+        _treeBind = n.Bind;
+        // When any row carries a trailing action, every row keeps its room, so the notes share one right edge.
+        _treeReservesTrailing = n.Children.Any(c => c.Properties.ContainsKey("trailingIcon"));
+        try { return B.VStack(BuildChildren(n)).WStar().ListOf(Unbound(_cursors, n.Path), listId); }
+        finally { _treeBind = outer; _treeReservesTrailing = outerReserve; (_listId, _listIndex) = (outerList, outerIndex); }
+    }
+
+    /// <summary>
+    /// The ink of an unselected row's marks and notes: the dim one while it reads at 4.5:1 on every fill a row can have
+    /// (the page, the panel and the hover fill), else the body text, so a note stays legible when the pointer lights its row.
+    /// </summary>
+    private RGBAColor32 RowDimInk()
+    {
+        var dim = Palette.DimText;
+        return RGBAColor32.ContrastRatio(dim, Palette.ContentBg) >= 4.5f
+            && RGBAColor32.ContrastRatio(dim, Palette.PanelBg) >= 4.5f
+            && RGBAColor32.ContrastRatio(dim, Palette.Separator) >= 4.5f
+            ? dim : Palette.BodyText;
+    }
+
+    private Node BuildTreeRow(PrototypeNode n)
+    {
+        var p = n.Properties;
+        var metrics = _theme.Metrics;
+        var size = metrics.BaseFontSize;
+        var key = Str(p, "key", null!);
+        var bind = _treeBind;
+        var selected = bind is not null && key is not null && _state.Get(bind) == key;
+        // On the Selection fill the dim ink is too faint (about 2.7:1 in the dark palette), so a selected row's marks and
+        // notes take the selection ink, which is measured against that fill.
+        var dim = selected ? Palette.SelectionText : RowDimInk();
+        var kids = new List<Node>();
+        if (p.TryGetValue("mark", out var mark) && Enum.TryParse<IconKind>(mark.Text, out var markKind))
+            kids.Add(B.Icon(markKind, size, dim));
+        // The name is one line; when the row is too narrow for it, it ends in an ellipsis (a one-line Ellipsis wrap) and
+        // the row's tooltip holds the whole name, so it is never cut silently.
+        var text = Str(p, "text", "");
+        kids.Add(B.WrapH(B.Text(text, size, selected ? Palette.SelectionText : Palette.BodyText).WAuto())
+            .WithMaxLines(1, true).WStar());
+        if (p.TryGetValue("note", out var note))
+            kids.Add(B.Text(note.Text, size, dim));
+        if (p.TryGetValue("trailingIcon", out var ti) && Enum.TryParse<IconKind>(ti.Text, out var tiKind))
+        {
+            Node trailing = B.Icon(tiKind, size, Palette.Accent);
+            if (p.TryGetValue("trailingAction", out var ta))
+            {
+                var act = ta.Text;
+                // The tree's path is in the id: two trees can share a row key.
+                trailing = trailing.Clickable(new HitResult.ButtonHit("tree-trailing:" + n.Path), _ => Run(act), CursorKind.Pointer);
+            }
+            // Shown on hover and on the selected row; it keeps its room hidden, so nothing moves.
+            kids.Add(trailing.RevealOnRowHover());
+        }
+        else if (_treeReservesTrailing)
+        {
+            kids.Add(B.Spacer().WFixed(size).HStar());
+        }
+        // The row's own padding on the right, so a trailing action or a note is never on the edge or under the ring.
+        kids.Add(B.Spacer().WFixed(metrics.Padding).HStar());
+
+        var content = B.HStack([.. kids]).WithGap(metrics.Padding * 0.5f).CrossCenter();
+        var row = B.TreeRow((int)Num(p, "depth", 0f), false, false, null, content,
+            new TreeRowStyle(Palette.DimText), size).HFixed(metrics.ItemHeight).WStar();
+
+        var action = n.Action;
+        // A row of the tree's declared list: Up and Down move the cursor, Enter runs the row's doubleAction, else its click.
+        row = row.Clickable(RowHit("tree-row:" + n.Path), _ =>
+        {
+            if (bind is not null && key is not null) _state.Set(bind, key);
+            if (action is not null) Run(action);
+        }).WithTooltip(text).BgHover(Palette.Separator).WithFocusRing(Palette.Focus, _theme.Metrics.FocusRingWidth, _theme.Metrics.FocusRingGap);
+        if (selected)
+            row = row.Selected().Bg(Palette.Selection).Border(Palette.Accent, metrics.ControlEdgeWidth, 0f);
+        return row;
+    }
+
+    private Node BuildTabs(PrototypeNode n)
+    {
+        var metrics = _theme.Metrics;
+        var options = n.Properties.TryGetValue("options", out var o) ? o.List : [];
+        var items = new TabItem<string>[options.Length];
+        for (int i = 0; i < items.Length; i++) items[i] = new TabItem<string>(options[i], options[i]);
+        var name = n.Bind;
+        var current = name is null ? "" : _state.Get(name);
+        var active = Array.IndexOf([.. options], current);
+        // A state not set yet shows the first tab, as a real tab bar opens on one.
+        if (active < 0 && current.Length == 0 && options.Length > 0) active = 0;
+
+        var fontSize = metrics.BaseFontSize;
+        Func<string, float> measure = MeasureLabel is { } m
+            // One padding of slack: a label measured to the pixel lands exactly on its tab's edge and the
+            // text fit ellipsises it, which cut "Project" to "Proj..." with 260 px of strip to spare.
+            ? label => m(label, fontSize) + metrics.Padding
+            : label => label.Length * fontSize * TabCharEm;
+        var strip = new TabStripOptions
+        {
+            // Bottom puts the accent under the tab: the selected tab is underlined.
+            Side = TabStripSide.Bottom,
+            Metrics = new TabStripMetrics(metrics.ItemHeight, fontSize, metrics.Padding, metrics.ControlEdgeWidth, 0f, 0f, 0f, float.MaxValue),
+            Colors = TabBarColors.FromPalette(Palette) with { ActiveAccent = Palette.Accent },
+            CanCloseTabs = false,
+        };
+        var available = DesignSize?.Width ?? 1_000_000f;
+        return TabStripTree.Build(items, active, null, null, available, measure, strip,
+            i => { if (name is not null) _state.Set(name, options[i]); }).Root.HFixed(metrics.ItemHeight);
+    }
+
+    private Node BuildTable(PrototypeNode n)
+    {
+        var p = n.Properties;
+        var metrics = _theme.Metrics;
+        var titles = p.TryGetValue("columns", out var c) ? c.List : [];
+        var widths = p.TryGetValue("columnWidths", out var w) ? w.List : [];
+        var columns = new TableColumn[titles.Length];
+        for (int i = 0; i < columns.Length; i++)
+            columns[i] = new TableColumn(titles[i], i < widths.Length ? SizingOfWord(widths[i]) : Sizing.Star()) { Sortable = false };
+
+        var outerColumns = _tableColumns;
+        var outerStyle = _tableStyle;
+        var (outerList, outerIndex) = (_listId, _listIndex);
+        _tableColumns = columns;
+        _tableStyle = new TableStyle(Palette.HeaderBg, Palette.HeaderText, Palette.Separator, Palette.Accent)
+        {
+            Gap = metrics.Padding,
+            PadX = metrics.Padding,
+        };
+        try
+        {
+            var listId = "prototype-table:" + n.Path;
+            (_listId, _listIndex) = (listId, 0);
+            var rows = new List<Node> { B.TableHeader(columns, null, null, _tableStyle, metrics.BaseFontSize).HFixed(metrics.ItemHeight).WStar() };
+            rows.AddRange(BuildChildren(n));
+            return B.VStack([.. rows]).WStar().ListOf(Unbound(_cursors, n.Path), listId);
+        }
+        finally
+        {
+            (_listId, _listIndex) = (outerList, outerIndex);
+            _tableColumns = outerColumns;
+            _tableStyle = outerStyle;
+        }
+    }
+
+    private Node BuildTableRow(PrototypeNode n)
+    {
+        // The index is taken for every built row, so the rows a cursor steps over keep their places.
+        var hit = RowHit("table-row:" + n.Path);
+        var row = B.TableRow(_tableColumns, BuildChildren(n), _tableStyle).HFixed(_theme.Metrics.ItemHeight).WStar()
+            .BgHover(_tableStyle.HoverFill);
+        // A row that does something is a row of the table's declared list (Up and Down reach it, Enter runs its
+        // doubleAction, else its action); a row that does nothing is not clickable and the cursor steps over it.
+        if (n.Action is { } action) return row.Clickable(hit, _ => Run(action)).WithFocusRing(Palette.Focus, _theme.Metrics.FocusRingWidth, _theme.Metrics.FocusRingGap);
+        if (n.DoubleAction is not null) return row.Clickable(hit).WithFocusRing(Palette.Focus, _theme.Metrics.FocusRingWidth, _theme.Metrics.FocusRingGap);
+        return row;
+    }
+
+    // The hit of the next row of the container being built: a list item when it declares a list, else a plain button.
+    private HitResult RowHit(string fallback)
+        => _listId is { } id ? new HitResult.ListItemHit(id, _listIndex++) : new HitResult.ButtonHit(fallback);
+
+    private static Sizing SizingOfWord(string word)
+    {
+        if (double.TryParse(word, NumberStyles.Float, CultureInfo.InvariantCulture, out var fixedWidth)) return Sizing.Fixed((float)fixedWidth);
+        if (word == "auto") return Sizing.Auto;
+        if (word.StartsWith("star:", StringComparison.Ordinal)
+            && float.TryParse(word.AsSpan(5), NumberStyles.Float, CultureInfo.InvariantCulture, out var weight))
+            return Sizing.Star(weight);
+        return Sizing.Star();
     }
 
     private Node BuildDock(PrototypeNode n)
@@ -302,10 +565,22 @@ public sealed class PrototypeTreeBuilder
         var radius = Num(p, "borderRadius", 0f);
         if (Col(p, "border") is { } border) node = node.Border(border, Num(p, "borderWidth", 1f), radius);
         else if (radius > 0f) node = node.Radius(radius);
+        if (p.TryGetValue("hoverBackground", out _) && Col(p, "hoverBackground") is { } hover) node = node.BgHover(hover);
+        if (Flag(p, "revealOnHover", false)) node = node.RevealOnRowHover();
+        if (n.SelectedWhen is not null && _state.WhenHolds(n.SelectedWhen))
+            node = node.Selected().Bg(Palette.Selection).Border(Palette.Accent, _theme.Metrics.ControlEdgeWidth, radius);
         if (p.TryGetValue("tooltip", out var tip)) node = node.WithTooltip(tip.Text);
+        if (n.DoubleAction is { } dbl)
+        {
+            node = node.DoubleClickable(_ => Run(dbl)).Activatable(_ => Run(dbl));
+            // The painter registers a region only for a node with a hit, so a node that has a doubleAction and no
+            // click of its own is given one, or the double-click would reach nothing.
+            if (node.Hit is null && n.Kind is not ("treeRow" or "tableRow"))
+                node = node.Clickable(new HitResult.ButtonHit(Str(p, "key", null!) ?? dbl));
+        }
 
         // A modal's action is its scrim dismissal, and a bound input owns its own press.
-        if (n.Action is { } action && n.Kind != "modal" && n.Bind is null)
+        if (n.Action is { } action && n.Kind is not ("modal" or "button" or "treeRow" or "tableRow") && n.Bind is null)
         {
             node = node.Clickable(new HitResult.ButtonHit(Str(p, "key", null!) ?? action), _ => Run(action));
         }

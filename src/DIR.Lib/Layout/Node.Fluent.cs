@@ -92,6 +92,22 @@ public abstract partial record Node
         ? leaf with { Content = t with { UnderlineOnHover = true } }
         : this;
 
+    /// <summary>Sets this text leaf's weight (<see cref="Content.Text.Weight"/>); bold by default. A no-op on a node that is not a text leaf.</summary>
+    public Node Bold(bool bold = true) => this is Leaf { Content: Content.Text t } leaf
+        ? leaf with { Content = t with { Weight = bold ? TextWeight.Bold : TextWeight.Regular } }
+        : this;
+
+    /// <summary>Sets this text leaf's face (<see cref="Content.Text.Face"/>); monospace by default. A no-op on a node that is not a text leaf.</summary>
+    public Node Mono(bool mono = true) => this is Leaf { Content: Content.Text t } leaf
+        ? leaf with { Content = t with { Face = mono ? TextFace.Mono : TextFace.Ui } }
+        : this;
+
+    /// <summary>Shows this node only while the pointer is in its row, or the row is selected. See <see cref="Node.RevealsOnRowHover"/>.</summary>
+    public Node RevealOnRowHover() => this with { RevealsOnRowHover = true };
+
+    /// <summary>Marks this node as the selected row, which keeps a <see cref="Node.RevealsOnRowHover"/> node under it shown. See <see cref="Node.IsSelected"/>.</summary>
+    public Node Selected(bool selected = true) => this with { IsSelected = selected };
+
     /// <summary>Paint <paramref name="color"/> instead of <see cref="Node.Bg"/> while the keyboard
     /// cursor is on this node. See <see cref="Node.FocusBackground"/> — it resolves against this node's
     /// <see cref="Node.Hit"/>, so a row needs no state of its own to be navigable.</summary>

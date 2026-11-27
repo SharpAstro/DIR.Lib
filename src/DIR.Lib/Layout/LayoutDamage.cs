@@ -75,6 +75,11 @@ namespace DIR.Lib
             /// damage rect covers it WHEN the node is damaged. Moving the cursor produces no damage by itself, so a host must
             /// repaint when the cursor moves.</summary>
             public Layout.FocusRingStyle? FocusRing { get; init; }
+
+            /// <summary>The node is inside a hover-revealed subtree (<see cref="Layout.Node.RevealsOnRowHover"/>) that is
+            /// hidden this frame, so it paints nothing. Init-only for the same reason as <see cref="Border"/>; a shown
+            /// node leaves it false, so its signature is what it was before reveal existed.</summary>
+            public bool Hidden { get; init; }
         }
 
         /// <summary>
@@ -192,7 +197,7 @@ namespace DIR.Lib
                     // The alignments and the trim decide WHERE the run lands and how much of it
                     // survives, so two otherwise-identical runs can paint differently. WidthSample is
                     // in Aux because it changes the measured box, hence where a centred run sits.
-                    ((int)t.HAlign << 8) | ((int)t.VAlign << 4) | (int)t.Trim, 0, 0),
+                    ((int)t.Weight << 16) | ((int)t.Face << 12) | ((int)t.HAlign << 8) | ((int)t.VAlign << 4) | (int)t.Trim, 0, 0),
 
                 Layout.Content.Box b => new PaintSignature(bounds, background, cornerRadius,
                     ContentShape.Box, null, null, b.Width, b.Color, (int)b.Height, 0, 0),
@@ -263,6 +268,8 @@ namespace DIR.Lib
         {
             var signatures = new HashSet<PaintSignature>(frame.Count);
             var scopes = new Stack<(int Depth, Rect<float> Bounds)>();
+            var rows = new Stack<(int Depth, Rect<float> Bounds, bool Selected)>();
+            var hiddenDepth = -1;
             for (var i = 0; i < frame.Count; i++)
             {
                 var node = frame[i];
@@ -271,12 +278,36 @@ namespace DIR.Lib
                     scopes.Pop();
                 }
 
+                while (rows.Count > 0 && rows.Peek().Depth >= node.Depth)
+                {
+                    rows.Pop();
+                }
+
+                if (hiddenDepth >= 0 && node.Depth <= hiddenDepth)
+                {
+                    hiddenDepth = -1;
+                }
+
+                // A hover-revealed node answers to its nearest enclosing row, as the painter resolves it.
+                if (hiddenDepth < 0 && node.Node.RevealsOnRowHover
+                    && !(rows.Count > 0 ? rows.Peek().Selected || Contains(rows.Peek().Bounds, pointer) : Contains(node.Bounds, pointer)))
+                {
+                    hiddenDepth = node.Depth;
+                }
+
+                var hidden = hiddenDepth >= 0;
+                if (!hidden && (node.Node.Hit is not null || node.Node.HoverBackground is not null || node.Node.IsSelected))
+                {
+                    rows.Push((node.Depth, node.Bounds, node.Node.IsSelected));
+                }
+
                 if (node.Node.Hit is not null)
                 {
                     scopes.Push((node.Depth, node.Bounds));
                 }
 
-                signatures.Add(Signature(node, pointer, press, scopes.Count > 0 ? scopes.Peek().Bounds : node.Bounds));
+                var signed = Signature(node, pointer, press, scopes.Count > 0 ? scopes.Peek().Bounds : node.Bounds);
+                signatures.Add(hidden ? signed with { Hidden = true } : signed);
             }
 
             return signatures;

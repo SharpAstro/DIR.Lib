@@ -55,6 +55,12 @@ public sealed record PrototypeNode
     /// <summary>A state equality, <c>name=value</c>, the node is shown under; null for always.</summary>
     public string? When { get; init; }
 
+    /// <summary>A state equality, <c>name=value</c>, while which the node is drawn selected; null for never.</summary>
+    public string? SelectedWhen { get; init; }
+
+    /// <summary>What a double-click and Enter do, in the form of <see cref="Action"/>; null for none.</summary>
+    public string? DoubleAction { get; init; }
+
     /// <summary>The state name an input kind reads and writes; null for none.</summary>
     public string? Bind { get; init; }
 }

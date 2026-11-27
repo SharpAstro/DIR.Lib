@@ -16,6 +16,14 @@ public interface IMeasureContext<T> where T : INumber<T>
     /// <summary>Intrinsic size of a text run (glyph metrics for pixels, char count x 1 for cells).</summary>
     Size<T> MeasureText(ReadOnlySpan<char> text, float fontSize);
 
+    /// <summary>
+    /// Intrinsic size of a text run in a given face and weight (<see cref="Content.Text.Face"/>,
+    /// <see cref="Content.Text.Weight"/>). The default ignores both, so an existing context (a cell surface, whose
+    /// bold and monospace cost no width) measures as before; a pixel context measures against the face it will draw.
+    /// </summary>
+    Size<T> MeasureText(ReadOnlySpan<char> text, float fontSize, TextFace face, TextWeight weight)
+        => MeasureText(text, fontSize);
+
     /// <summary>Map a design-unit scalar (the pixel-base values on <see cref="Sizing"/>/<see cref="Node.Padding"/>)
     /// into surface units, with no axis in mind: pixels x DPI, or rounded character cells. Still the base
     /// mapping and the only one an isotropic surface needs -- <see cref="ToSurfaceX"/> and
@@ -78,7 +86,7 @@ public interface IMeasureContext<T> where T : INumber<T>
 
     /// <summary>
     /// A value that names everything this context's measures depend on: the metrics behind
-    /// <see cref="MeasureText"/> and the <see cref="ToSurface"/> family (scale, font, fallback). Two contexts whose keys
+    /// <see cref="MeasureText(ReadOnlySpan{char}, float)"/> and the <see cref="ToSurface"/> family (scale, font, fallback). Two contexts whose keys
     /// are <see cref="object.Equals(object?)"/> must measure every node identically. The engine keeps a pure subtree's
     /// measure across calls (keyed by node reference and available size) only while the key is equal.
     /// <para>
@@ -1556,10 +1564,10 @@ public static class Engine
         IMeasureContext<T> ctx) where T : INumber<T>
     {
         var value = text.Value.TrimEnd();
-        var oldText = ctx.MeasureText((text.WidthSample ?? text.Value).AsSpan(), text.FontSize);
+        var oldText = ctx.MeasureText((text.WidthSample ?? text.Value).AsSpan(), text.FontSize, text.Face, text.Weight);
         var overhead = oldMain - MainOf(axis, oldText);
         string Cut(int len) => string.Concat(value.AsSpan(0, len), "…");
-        T MainFor(int len) => MainOf(axis, ctx.MeasureText(Cut(len).AsSpan(), text.FontSize)) + overhead;
+        T MainFor(int len) => MainOf(axis, ctx.MeasureText(Cut(len).AsSpan(), text.FontSize, text.Face, text.Weight)) + overhead;
 
         var kept = TextFit.LongestFit(value.Length, len => MainFor(len) <= room);
         return (Cut(kept), MainFor(kept));
@@ -1570,7 +1578,7 @@ public static class Engine
     private static Size<T> MeasureContent<T>(Content content, IMeasureContext<T> ctx) where T : INumber<T>
         => content switch
         {
-            Content.Text text => ctx.MeasureText((text.WidthSample ?? text.Value).AsSpan(), text.FontSize),
+            Content.Text text => ctx.MeasureText((text.WidthSample ?? text.Value).AsSpan(), text.FontSize, text.Face, text.Weight),
             Content.Box box => new Size<T>(ctx.ToSurfaceX(box.Width), ctx.ToSurfaceY(box.Height)),
             // Square in DESIGN units, so it converts per axis like a Box rather than measuring as text --
             // an icon has no glyph metrics to ask about, and on a cell surface a per-axis conversion is what
