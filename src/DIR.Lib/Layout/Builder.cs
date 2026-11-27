@@ -342,7 +342,11 @@ public static partial class Builder
     /// </list>
     /// <para>
     /// The group is a horizontal stack sized by its parent: give it a height (<c>.HFixed</c> / <c>RowH</c> on
-    /// the row it sits in). Segments share the width equally unless the style fixes one.
+    /// the row it sits in). Segments share the width equally unless the style fixes one
+    /// (<see cref="ButtonGroupStyle.SegmentWidth"/>) or sizes them to the widest option
+    /// (<see cref="ButtonGroupStyle.EqualToWidest"/>). That last mode returns a one-row grid with an Auto
+    /// width, so the group has an intrinsic width of N x (widest content + 2 x padding) + (N-1) x gap, and
+    /// sits at Auto width in its row (a Star width would stretch it again).
     /// </para>
     /// </remarks>
     /// <param name="fontSize">Label size, and the icon size for an icon segment, in design units.</param>
@@ -363,8 +367,13 @@ public static partial class Builder
 
             var face = option.Icon is { } icon
                 ? Icon(icon, fontSize, contentColour)
-                : Text(option.Label ?? string.Empty, fontSize, contentColour, TextAlign.Center, TextAlign.Center);
+                : Text(option.Label ?? string.Empty, fontSize, contentColour, TextAlign.Center, TextAlign.Center,
+                    widthSample: option.WidthSample);
             face = face.WStar().HStar();
+            if (style.SegmentPadding > 0f)
+            {
+                face = face.PadX(style.SegmentPadding);
+            }
 
             // Background, radius and hover on the FACE, which is the whole segment or its inset band.
             var fill = option.Fill ?? (isSelected ? style.SelectedFill : style.UnselectedFill);
@@ -408,6 +417,11 @@ public static partial class Builder
             }
 
             segments[i] = cell;
+        }
+
+        if (style.EqualToWidest && style.SegmentWidth is null && segments.Length > 0)
+        {
+            return Grid(segments.Length, segments).WithGaps(0f, style.Gap);
         }
 
         return HStack(segments).WithGap(style.Gap);

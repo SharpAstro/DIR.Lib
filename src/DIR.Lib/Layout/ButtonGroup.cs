@@ -33,6 +33,12 @@ public readonly record struct ButtonGroupOption<T>(T Value, string? Label = null
     /// <summary>The background this segment takes under the pointer instead of the style's
     /// <see cref="ButtonGroupStyle.HoverFill"/>: the lit form of its own <see cref="Fill"/>.</summary>
     public RGBAColor32? HoverFill { get; init; }
+
+    /// <summary>Text measured instead of <see cref="Label"/> when the group sizes its segments
+    /// (<see cref="ButtonGroupStyle.EqualToWidest"/>), exactly as <c>Content.Text.WidthSample</c>: for a
+    /// segment whose word changes, so the group never moves. The label is still what is drawn. It decides
+    /// nothing under the equal share or a fixed <see cref="ButtonGroupStyle.SegmentWidth"/>.</summary>
+    public string? WidthSample { get; init; }
 }
 
 /// <summary>
@@ -66,4 +72,14 @@ public readonly record struct ButtonGroupStyle(
 
     /// <summary>A fixed width per segment in design units, or null to share the row equally.</summary>
     public float? SegmentWidth { get; init; }
+
+    /// <summary>When true, every segment is as wide as the widest option's measured content (its
+    /// <see cref="ButtonGroupOption{T}.WidthSample"/>, else its label, else its icon) plus
+    /// <see cref="SegmentPadding"/> either side, so the group has an intrinsic width and sits at Auto width in
+    /// its row. A disabled option counts toward the widest. A set <see cref="SegmentWidth"/> wins over this.</summary>
+    public bool EqualToWidest { get; init; }
+
+    /// <summary>Design units of padding either side of each segment's content, inside the segment's fill.
+    /// Default 0, which leaves a group that does not set it unchanged.</summary>
+    public float SegmentPadding { get; init; }
 }
