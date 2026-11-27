@@ -165,8 +165,8 @@ public class HoverRevealTests
         // Without this the assertions above cannot tell "hidden" from "never registered".
         router.Handle(new InputEvent.MouseMove(20f, RowY(0)));
         Paint();
-        router.Handle(new InputEvent.MouseDown(W - 20f, RowY(0), MouseButton.Left, InputModifier.None, 1));
-        router.Handle(new InputEvent.MouseUp(W - 20f, RowY(0), MouseButton.Left, InputModifier.None));
+        router.Handle(new InputEvent.MouseDown(W - 38f, RowY(0), MouseButton.Left, InputModifier.None, 1));
+        router.Handle(new InputEvent.MouseUp(W - 38f, RowY(0), MouseButton.Left, InputModifier.None));
         Paint();
         // The press made "hidden" the last pressed list, so Down steps it; were it not on the frame, Down would not open it.
         router.Handle(new InputEvent.KeyDown(InputKey.Down));
