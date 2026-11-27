@@ -421,7 +421,7 @@ public static partial class Builder
 
         if (style.EqualToWidest && style.SegmentWidth is null && segments.Length > 0)
         {
-            return Grid(segments.Length, segments).WithGaps(0f, style.Gap);
+            return Grid(segments.Length, segments).WithGaps(0f, style.Gap).HStar();
         }
 
         return HStack(segments).WithGap(style.Gap);
