@@ -114,8 +114,10 @@ public class HoverRevealTests
     /// frame would hold two lists ("shown" and "hidden"), <see cref="DeclaredList.Active"/> would pick neither, and Down
     /// would not reach the shown one.
     /// </summary>
-    [Fact]
-    public void AListOnAHiddenNodeIsNotOnTheFrame()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AListOnAHiddenNodeIsNotOnTheFrame(bool descendant)
     {
         var shown = new ListCursor();
         var hidden = new ListCursor();
@@ -124,6 +126,15 @@ public class HoverRevealTests
             var hiddenList = Builder.VStack(
                     Builder.Text("x", 12f, Accent).Clickable(new HitResult.ListItemHit("hidden", 0), _ => { }))
                 .WFixed(40f).ListOf(hidden, "hidden").RevealOnRowHover();
+            if (descendant)
+            {
+                // The list sits below the hidden node, not on it: hiding must reach the whole subtree.
+                hiddenList = Builder.VStack(
+                        Builder.VStack(
+                                Builder.Text("x", 12f, Accent).Clickable(new HitResult.ListItemHit("hidden", 0), _ => { }))
+                            .ListOf(hidden, "hidden"))
+                    .WFixed(40f).RevealOnRowHover();
+            }
             Node Row(int index, Node? extra) => (extra is null
                     ? Builder.HStack(Builder.Text($"Row {index}", 14f, Ink).WStar())
                     : Builder.HStack(Builder.Text($"Row {index}", 14f, Ink).WStar(), extra))

@@ -21,7 +21,7 @@ changed and why.
   accent), `table` and `tableRow` (a header, columns that line up, row hover); `hoverBackground`, `revealOnHover`,
   `selectedWhen`, `doubleAction` (double-click and Enter), and text `weight`, `face` and `style` (body, heading, label).
 - **Faces reach the prototype**: `PrototypeFaces` (body, bold, mono, bold mono) with new `Prototype.Check`, `Prototype.Render`
-  and `PrototypePlayer` overloads (no optional parameter was added to an existing method). With no font path the platform
+  overloads and a `PrototypePlayer<TSurface>` constructor taking a `PrototypeFaces` (no optional parameter was added to an existing method). With no font path the platform
   faces are used; see `prototype-format.md`. Before this a bold run and a mono run drew in the body face in every prototype
   render.
 - **Enter reaches tree and table rows**: both are declared lists (a `ListCursor` per container, `ListItemHit` rows, a focus
@@ -30,7 +30,7 @@ changed and why.
   share a key no longer share an id, and a tab no longer repeats its label as a tooltip.
 - **Behaviour changes for existing callers**: `Builder.Button(opens: true)` draws a `›` text leaf instead of the
   `IconKind.CaretRight` icon (cell hosts now draw `›` where they drew `▶`), and a prototype `hstack` centres its
-  children vertically. `Prototype.Check`, `Prototype.Render` and `PrototypePlayer` with no font path now draw the body
+  children vertically. `Prototype.Check`, `Prototype.Render` and a `PrototypePlayer<TSurface>` with no font path now draw the body
   in `PrototypeFaces.Platform()` (Arial, else the system face) where they drew in the platform monospace face, so text
   widths in an existing check run move. A tree row's name is one line that ends in an ellipsis when the row is too narrow,
   with the whole name as the row's tooltip, where a long name was clipped at the row's edge.

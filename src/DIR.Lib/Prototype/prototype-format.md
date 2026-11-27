@@ -224,6 +224,8 @@ renderer; built with no surface it is estimated at 0.6 of the font size per char
 A header row and `tableRow` children, and nothing else. The header uses the palette's `HeaderBg` and `HeaderText`;
 every row is sized by the same columns and gap, so a title sits over its values.
 
+**Known defect:** a table narrower than its fixed columns (at 240 wide, `columnWidths` of 140 and 80 leave a `star` column no room) draws its cells overlapping. Keep a table at or above the sum of its fixed columns plus a usable star column; the narrowest captured width is 320. Not yet fixed in the engine.
+
 | Property | Type | Notes |
 |---|---|---|
 | `columns` | string array | required: the column titles |
