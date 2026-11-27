@@ -277,6 +277,19 @@ public sealed class PrototypeTreeBuilder
         finally { _treeBind = outer; _treeReservesTrailing = outerReserve; }
     }
 
+    /// <summary>
+    /// The ink of an unselected row's marks and notes: the dim one while it reads at 4.5:1 on every fill a row can have
+    /// (the page, the panel and the hover fill), else the body text, so a note stays legible when the pointer lights its row.
+    /// </summary>
+    private RGBAColor32 RowDimInk()
+    {
+        var dim = Palette.DimText;
+        return RGBAColor32.ContrastRatio(dim, Palette.ContentBg) >= 4.5f
+            && RGBAColor32.ContrastRatio(dim, Palette.PanelBg) >= 4.5f
+            && RGBAColor32.ContrastRatio(dim, Palette.Separator) >= 4.5f
+            ? dim : Palette.BodyText;
+    }
+
     private Node BuildTreeRow(PrototypeNode n)
     {
         var p = n.Properties;
@@ -287,7 +300,7 @@ public sealed class PrototypeTreeBuilder
         var selected = bind is not null && key is not null && _state.Get(bind) == key;
         // On the Selection fill the dim ink is too faint (about 2.7:1 in the dark palette), so a selected row's marks and
         // notes take the selection ink, which is measured against that fill.
-        var dim = selected ? Palette.SelectionText : Palette.DimText;
+        var dim = selected ? Palette.SelectionText : RowDimInk();
         var kids = new List<Node>();
         if (p.TryGetValue("mark", out var mark) && Enum.TryParse<IconKind>(mark.Text, out var markKind))
             kids.Add(B.Icon(markKind, size, dim));

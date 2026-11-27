@@ -438,9 +438,16 @@ public sealed class PrototypeTreeTests
             state.Set("sel", "stars");
             var row = ((Node.Stack)new PrototypeTreeBuilder(theme, state).Build(PrototypeKit.Screen(Workflow))).Children[1];
             row.Background.ShouldBe(palette.Selection);
-            var note = PrototypeKit.Walk(row).Select(n => n is Node.Leaf { Content: Content.Text { Value: "12" } t } ? t : null).Single(t => t is not null)!;
-            RGBAColor32.ContrastRatio(note.Color, palette.Selection).ShouldBeGreaterThanOrEqualTo(4.5f,
+            RGBAColor32 NoteInk(Node r) => PrototypeKit.Walk(r).Select(n => n is Node.Leaf { Content: Content.Text { Value: "12" } t } ? t : null).Single(t => t is not null)!.Color;
+            RGBAColor32.ContrastRatio(NoteInk(row), palette.Selection).ShouldBeGreaterThanOrEqualTo(4.5f,
                 "the dim ink is too faint on the Selection fill, so a selected row's note takes the selection ink");
+
+            // Rest and hover: the same note on a row that is not selected, against the page, the panel and the hover fill.
+            state.Set("sel", "group");
+            var plain = ((Node.Stack)new PrototypeTreeBuilder(theme, state).Build(PrototypeKit.Screen(Workflow))).Children[1];
+            plain.HoverBackground.ShouldBe(palette.Separator);
+            foreach (var fill in new[] { palette.ContentBg, palette.PanelBg, palette.Separator })
+                RGBAColor32.ContrastRatio(NoteInk(plain), fill).ShouldBeGreaterThanOrEqualTo(4.5f, "a note reads on every fill an unselected row can have");
         }
     }
 
