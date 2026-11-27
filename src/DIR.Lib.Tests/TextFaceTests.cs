@@ -11,8 +11,8 @@ namespace DIR.Lib.Tests;
 /// <summary>
 /// <see cref="Content.Text.Weight"/> and <see cref="Content.Text.Face"/>, in memory through <see cref="RgbaImageRenderer"/>.
 /// Fixtures: DejaVuSans is the regular face, DejaVuSansMono the monospace one (every glyph one advance wide, so a test can
-/// tell it from a proportional face by widths alone), and LithosBold_subset.cff stands in for the bold face (the one bold
-/// fixture the repo keeps; a subset, so the bold sample uses only glyphs it holds). Baseline:
+/// tell it from a proportional face by widths alone), and STIX2Math.otf stands in for the bold face (the repo keeps no true bold
+/// fixture, and LithosBold_subset.cff draws nothing for ASCII; a test of routing needs only a face that is visibly another one). Baseline:
 /// <c>text_faces.png</c>; <c>DIR_LIB_UPDATE_BASELINES=1</c> with a filter on this class writes it.
 /// </summary>
 public class TextFaceTests
@@ -20,7 +20,7 @@ public class TextFaceTests
     private static readonly bool UpdateBaselines = Environment.GetEnvironmentVariable("DIR_LIB_UPDATE_BASELINES") == "1";
     private static readonly string Regular = Path.Combine(AppContext.BaseDirectory, "Fonts", "DejaVuSans.ttf");
     private static readonly string Mono = Path.Combine(AppContext.BaseDirectory, "Fonts", "DejaVuSansMono.ttf");
-    private static readonly string Bold = Path.Combine(AppContext.BaseDirectory, "Fonts", "LithosBold_subset.cff");
+    private static readonly string Bold = Path.Combine(AppContext.BaseDirectory, "Fonts", "STIX2Math.otf");
     private static readonly string BaselineDir = Path.Combine(AppContext.BaseDirectory, "Baselines");
     private static readonly string SourceBaselineDir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "Baselines");
 
