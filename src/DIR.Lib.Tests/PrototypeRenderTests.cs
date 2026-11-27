@@ -43,6 +43,9 @@ public sealed class PrototypeRenderTests
           ] } } ] }
         """;
 
+    /// <summary>The structures document with its design width set to <paramref name="width"/>.</summary>
+    private static string StructuresAt(uint width) => StructuresJson.Replace("\"width\": 480", $"\"width\": {width}");
+
     private static readonly UiTheme LightTheme = new()
     {
         Palette = NotificationsRenderTests.Light,
@@ -59,9 +62,11 @@ public sealed class PrototypeRenderTests
 
     private static RgbaImage DrawStructures(RgbaImageRenderer renderer, UiTheme theme, bool hoverRowB)
     {
-        var doc = Prototype.Load(StructuresJson);
-        doc.Problems.ShouldBeEmpty();
         var width = renderer.Surface.Width;
+        // The document is as wide as the surface: the player fits a design to its surface by scaling it, so a 480 design
+        // on a 240 surface would be the same layout at half size, never a narrow one.
+        var doc = Prototype.Load(StructuresAt(width));
+        doc.Problems.ShouldBeEmpty();
         var player = new PrototypePlayer<RgbaImage>(renderer, doc.Document!, theme, FontPath);
         player.State.Set("sel", "a");
         player.State.Set("pick", "1");
@@ -119,7 +124,7 @@ public sealed class PrototypeRenderTests
         name.ShouldStartWith(drawn[..^1]);
 
         var root = new PrototypeTreeBuilder(Prototype.DefaultTheme, new PrototypeState())
-            .Build(Prototype.Load(StructuresJson).Document!.Screens[0]);
+            .Build(Prototype.Load(StructuresAt(240)).Document!.Screens[0]);
         PrototypeKit.Walk(root).ShouldContain(n => n.Tooltip == name && n.Hit is HitResult.ListItemHit);
     }
 
