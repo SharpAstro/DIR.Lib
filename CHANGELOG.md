@@ -9,6 +9,20 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.104
+
+**The prototype vocabulary for the workbench design (#330), and the controls under it.** Additive.
+- **`Builder.Switch`**: the themed on/off switch (#156), a track and knob with the accent track when on, drawn from
+  `UiTheme.Controls` alone.
+- **Text weight and face**: `Content.Text` takes a `Weight` (bold) and a `Face` (monospace, the DIR.Lib half of #152).
+- **Hover-reveal**: a node can show only while its row is hovered or selected (a tree row's run button).
+- **Prototype kinds and properties**: `button` by `style` (accent, standard, subtle, link), `switch`, `tree` and
+  `treeRow` (depth, mark, note, hover-revealed trailing action, selection), `tabs` (selected tab underlined in the
+  accent), `table` and `tableRow` (a header, columns that line up, row hover); `hoverBackground`, `revealOnHover`,
+  `selectedWhen`, `doubleAction` (double-click and Enter), and text `weight`, `face` and `style` (body, heading, label).
+- `PrototypeShowcaseTests` loads one workbench-like prototype using all of it, checks it at every target and pins
+  baselines of rest, hover, row hover, pressed and selected on a dark and a light palette.
+
 ## 11.103
 
 **Less render-thread garbage from a painted layout.** Traced in the PDF viewer while panning (26 s, render thread):

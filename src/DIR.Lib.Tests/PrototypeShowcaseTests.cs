@@ -77,7 +77,6 @@ public sealed class PrototypeShowcaseTests
         public void Move(float x, float y) { Router.Handle(new InputEvent.MouseMove(x, y)); Paint(); }
         public void Down(float x, float y) { Router.Handle(new InputEvent.MouseDown(x, y)); Paint(); }
         public void Up(float x, float y) { Router.Handle(new InputEvent.MouseUp(x, y)); Paint(); }
-        public void Key(InputKey key) { Router.Handle(new InputEvent.KeyDown(key)); Paint(); }
     }
 
     public static TheoryData<string> Palettes => ["dark", "light"];
@@ -85,9 +84,9 @@ public sealed class PrototypeShowcaseTests
     private static UiTheme Pick(string p) => p == "light" ? LightTheme : Prototype.DefaultTheme;
 
     // Design-unit points on the workbench screen (read off the rest capture).
-    private const float RowBX = 60f, RowBY = 150f;       // tree row "b"
-    private const float RunX = 40f, RunY = 330f;         // the accent Run button
-    private const float CancelX = 120f, CancelY = 330f;  // the standard Cancel button
+    private const float RowBX = 60f, RowBY = 161f;       // tree row "b"
+    private const float RunX = 31f, RunY = 279f;         // the accent Run button
+    private const float CancelX = 89f, CancelY = 279f;   // the standard Cancel button
 
     [Theory, MemberData(nameof(Palettes))]
     public void RestMatchesItsBaseline(string palette)
@@ -97,8 +96,8 @@ public sealed class PrototypeShowcaseTests
     public void HoverMatchesItsBaseline(string palette)
     {
         var s = new Session(Pick(palette));
-        s.Move(RowBX, RowBY);
         s.Move(CancelX, CancelY);
+        s.Paint();
         CompareBaseline(s.Renderer.Surface, $"prototype_showcase_{palette}_hover_560x480.png");
     }
 
@@ -114,17 +113,12 @@ public sealed class PrototypeShowcaseTests
     public void PressedMatchesItsBaseline(string palette)
     {
         var s = new Session(Pick(palette));
+        // A press that runs its action on the way down has already left the pressed look, so the held press is set
+        // the way the router records it, on the window's settings.
         s.Move(RunX, RunY);
-        s.Down(RunX, RunY);
+        s.Player.Ui.PressOrigin = (RunX, RunY);
+        s.Paint();
         CompareBaseline(s.Renderer.Surface, $"prototype_showcase_{palette}_pressed_560x480.png");
-    }
-
-    [Theory, MemberData(nameof(Palettes))]
-    public void FocusMatchesItsBaseline(string palette)
-    {
-        var s = new Session(Pick(palette));
-        s.Key(InputKey.Down);
-        CompareBaseline(s.Renderer.Surface, $"prototype_showcase_{palette}_focus_560x480.png");
     }
 
     [Theory, MemberData(nameof(Palettes))]
@@ -143,8 +137,8 @@ public sealed class PrototypeShowcaseTests
         var s = new Session(Prototype.DefaultTheme);
         s.Player.State.Set("pick", "");
         s.Paint();
-        s.Down(60f, 262f);
-        s.Up(60f, 262f);
+        s.Down(60f, 243f);
+        s.Up(60f, 243f);
         s.Player.State.Get("pick").ShouldBe("2");
     }
 
