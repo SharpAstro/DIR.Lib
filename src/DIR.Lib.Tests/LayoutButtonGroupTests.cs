@@ -201,7 +201,7 @@ public class LayoutButtonGroupTests
         => Layout.Builder.HStack(group, Layout.Builder.Spacer().WStar()).HFixed(30f);
 
     private static Layout.ArrangedNode<float>[] Segs(Layout.Node group, float width = 400f)
-        => [.. Layout.Engine.Arrange(InRow(group), new Layout.Rect<float>(0, 0, width, 30f), new EqFloatCtx())
+        => [.. Layout.Engine.Arrange(InRow(group), new Rect<float>(0, 0, width, 30f), new EqFloatCtx())
             .Where(n => n.Node.Hit is HitResult.ButtonHit)
             .OrderBy(n => n.Bounds.X)];
 
@@ -228,7 +228,7 @@ public class LayoutButtonGroupTests
     public void EveryEqualSegmentHasOneWidthOnACellSurface()
     {
         var group = Layout.Builder.ButtonGroup<Side>(Options(), Side.Mount, _ => { }, Equal());
-        var segs = Layout.Engine.Arrange(InRow(group), new Layout.Rect<int>(0, 0, 80, 3), new EqCellCtx())
+        var segs = Layout.Engine.Arrange(InRow(group), new Rect<int>(0, 0, 80, 3), new EqCellCtx())
             .Where(n => n.Node.Hit is HitResult.ButtonHit).OrderBy(n => n.Bounds.X).ToArray();
         segs.Length.ShouldBe(3);
         segs.Select(s => s.Bounds.Width).Distinct().Count().ShouldBe(1);
@@ -247,7 +247,7 @@ public class LayoutButtonGroupTests
         var group = Layout.Builder.ButtonGroup<Side>(options, Side.Mount, _ => { }, Equal());
         Layout.Engine.Measure(group, new Layout.Size<float>(1000f, 30f), new EqFloatCtx()).Width.ShouldBe(2 * 96f + 4f);
 
-        var arranged = Layout.Engine.Arrange(InRow(group), new Layout.Rect<float>(0, 0, 400f, 30f), new EqFloatCtx());
+        var arranged = Layout.Engine.Arrange(InRow(group), new Rect<float>(0, 0, 400f, 30f), new EqFloatCtx());
         var words = arranged.Select(n => n.Node).OfType<Layout.Node.Leaf>()
             .Select(l => l.Content).OfType<Layout.Content.Text>().Select(t => t.Value).ToArray();
         words.ShouldContain("On");
@@ -292,6 +292,6 @@ public class LayoutButtonGroupTests
     {
         var group = Layout.Builder.ButtonGroup<Side>(Options(), Side.Mount, _ => { }, Style);
         Segments(group).Length.ShouldBe(3);
-        Segments(group).ShouldAllBe(c => c.Width.Kind == Layout.SizingKind.Star);
+        Segments(group).ShouldAllBe(c => c.Width.Kind == Layout.SizeKind.Star);
     }
 }
