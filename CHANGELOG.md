@@ -30,7 +30,10 @@ changed and why.
   share a key no longer share an id, and a tab no longer repeats its label as a tooltip.
 - **Behaviour changes for existing callers**: `Builder.Button(opens: true)` draws a `›` text leaf instead of the
   `IconKind.CaretRight` icon (cell hosts now draw `›` where they drew `▶`), and a prototype `hstack` centres its
-  children vertically.
+  children vertically. `Prototype.Check`, `Prototype.Render` and `PrototypePlayer` with no font path now draw the body
+  in `PrototypeFaces.Platform()` (Arial, else the system face) where they drew in the platform monospace face, so text
+  widths in an existing check run move. A tree row's name is one line that ends in an ellipsis when the row is too narrow,
+  with the whole name as the row's tooltip, where a long name was clipped at the row's edge.
 - `PrototypeShowcaseTests` loads one workbench-like prototype using all of it, checks it at every target and pins
   baselines of rest, hover, row hover, pressed and selected on a dark and a light palette.
 

@@ -109,6 +109,48 @@ public class HoverRevealTests
         rig.Runs.ShouldBe([0]);
     }
 
+    /// <summary>
+    /// A list declared on a hover-revealed node that is hidden this frame is not on the frame. Were it counted, the
+    /// frame would hold two lists ("shown" and "hidden"), <see cref="DeclaredList.Active"/> would pick neither, and Down
+    /// would not reach the shown one.
+    /// </summary>
+    [Fact]
+    public void AListOnAHiddenNodeIsNotOnTheFrame()
+    {
+        var shown = new ListCursor();
+        var hidden = new ListCursor();
+        Node Build()
+        {
+            var hiddenList = Builder.VStack(
+                    Builder.Text("x", 12f, Accent).Clickable(new HitResult.ListItemHit("hidden", 0), _ => { }))
+                .WFixed(40f).ListOf(hidden, "hidden").RevealOnRowHover();
+            Node Row(int index, Node? extra) => (extra is null
+                    ? Builder.HStack(Builder.Text($"Row {index}", 14f, Ink).WStar())
+                    : Builder.HStack(Builder.Text($"Row {index}", 14f, Ink).WStar(), extra))
+                .RowH(RowHeight).CrossCenter()
+                .Clickable(new HitResult.ListItemHit("shown", index), _ => { });
+            return Builder.VStack(Row(0, hiddenList), Row(1, null), Row(2, null)).ListOf(shown, "shown").Bg(Paper);
+        }
+
+        var renderer = new RgbaImageRenderer((uint)W, (uint)H);
+        var widget = new Widget(renderer) { FontPath = FontPath };
+        var router = new InputRouter(widget.Ui, new BackgroundTaskTracker(), static () => { }) { Widgets = () => [widget] };
+        void Paint()
+        {
+            widget.Render(Build());
+            router.AfterPaint();
+        }
+
+        // The pointer is in no row, so the node holding the "hidden" list is not drawn.
+        Paint();
+        router.Handle(new InputEvent.KeyDown(InputKey.Down));
+        Paint();
+
+        shown.ListId.ShouldBe("shown");
+        shown.Index.ShouldBe(0);
+        hidden.IsOpen.ShouldBeFalse();
+    }
+
     [Fact]
     public void ASelectedRowAlwaysShowsItsNode()
     {

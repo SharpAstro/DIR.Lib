@@ -54,11 +54,14 @@ public sealed class PrototypeRenderTests
     /// pointer sits on tree row "b", which lights it and shows its hover-revealed button, as a host's paint, settle,
     /// move, paint cycle does.
     /// </summary>
-    private static RgbaImage DrawStructures(UiTheme theme, bool hoverRowB)
+    private static RgbaImage DrawStructures(UiTheme theme, bool hoverRowB, uint width = 480)
+        => DrawStructures(new RgbaImageRenderer(width, 360), theme, hoverRowB);
+
+    private static RgbaImage DrawStructures(RgbaImageRenderer renderer, UiTheme theme, bool hoverRowB)
     {
         var doc = Prototype.Load(StructuresJson);
         doc.Problems.ShouldBeEmpty();
-        var renderer = new RgbaImageRenderer(480, 360);
+        var width = renderer.Surface.Width;
         var player = new PrototypePlayer<RgbaImage>(renderer, doc.Document!, theme, FontPath);
         player.State.Set("sel", "a");
         player.State.Set("pick", "1");
@@ -66,7 +69,7 @@ public sealed class PrototypeRenderTests
         void Paint()
         {
             renderer.Surface.Clear(new RGBAColor32(0, 0, 0, 255));
-            player.Render(new RectF32(0, 0, 480, 360));
+            player.Render(new RectF32(0, 0, width, 360));
             router.AfterPaint();
         }
         Paint();
@@ -94,6 +97,45 @@ public sealed class PrototypeRenderTests
     [Fact]
     public void TreeRowHoverInTheLightPaletteMatchesItsBaseline()
         => CompareBaseline(DrawStructures(LightTheme, true), "prototype_structures_light_hover_480x360.png");
+
+    [Fact]
+    public void TreeTabsAndTableAtANarrowWidthMatchTheirBaseline()
+        => CompareBaseline(DrawStructures(Prototype.DefaultTheme, false, 240), "prototype_structures_240x360.png");
+
+    /// <summary>
+    /// At 240 wide the long step name does not fit its row: it is drawn ending in an ellipsis, never cut, and the row's
+    /// tooltip holds the whole name.
+    /// </summary>
+    [Fact]
+    public void ALongTreeRowNameEndsInAnEllipsisWithTheWholeNameOnHover()
+    {
+        const string name = "Remove stars with a very long step name";
+        var renderer = new TextRecordingRenderer(240, 360);
+        DrawStructures(renderer, Prototype.DefaultTheme, false);
+
+        renderer.Texts.ShouldNotContain(name);
+        var drawn = renderer.Texts.Single(t => t.StartsWith("Remove", StringComparison.Ordinal));
+        drawn.ShouldEndWith("…");
+        name.ShouldStartWith(drawn[..^1]);
+
+        var root = new PrototypeTreeBuilder(Prototype.DefaultTheme, new PrototypeState())
+            .Build(Prototype.Load(StructuresJson).Document!.Screens[0]);
+        PrototypeKit.Walk(root).ShouldContain(n => n.Tooltip == name && n.Hit is HitResult.ListItemHit);
+    }
+
+    /// <summary>An <see cref="RgbaImageRenderer"/> that also keeps every string it was told to draw.</summary>
+    private sealed class TextRecordingRenderer(uint width, uint height) : RgbaImageRenderer(width, height)
+    {
+        public List<string> Texts { get; } = [];
+
+        public override void DrawText(ReadOnlySpan<char> text, string fontFamily, float fontSize,
+            RGBAColor32 fontColor, in RectInt layout,
+            TextAlign horizAlignment = TextAlign.Center, TextAlign vertAlignment = TextAlign.Near)
+        {
+            Texts.Add(text.ToString());
+            base.DrawText(text, fontFamily, fontSize, fontColor, layout, horizAlignment, vertAlignment);
+        }
+    }
 
     [Fact]
     public void RenderReturnsOneImagePerScreenInDocumentOrder()

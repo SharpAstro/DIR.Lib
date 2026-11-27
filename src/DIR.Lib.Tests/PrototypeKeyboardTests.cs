@@ -66,6 +66,12 @@ public sealed class PrototypeKeyboardTests
         public ClickableRegion Region(Func<HitResult, bool> match)
             => Player.GetRegisteredRegions().First(r => r.Result is { } hit && match(hit));
 
+        public void Hover(ClickableRegion r)
+        {
+            Router.Handle(new InputEvent.MouseMove(r.X + r.Width / 2f, r.Y + r.Height / 2f));
+            Paint();
+        }
+
         public void Press(ClickableRegion r, int clicks)
         {
             var x = r.X + r.Width / 2f;
@@ -108,17 +114,17 @@ public sealed class PrototypeKeyboardTests
     }
 
     [Fact]
-    public void TheRowUnderTheCursorShowsFocus()
+    public void TreeRowsAreTheRowsOfOneDeclaredList()
     {
+        // The focus ring itself is pinned by PrototypeShowcaseTests' keyboard focus baselines; this pins the list the
+        // arrows step: one declared list on the tree container whose rows are ListItemHits.
         var rig = new Rig(TreeOnly);
         rig.Key(InputKey.Down);
         rig.Key(InputKey.Down);
-        var tree = rig.Player.BuildTree();
-        // The cursor is a declared list on the tree container, and its rows are ListItemHits.
         var rows = rig.Player.GetRegisteredRegions().Where(r => r.Result is HitResult.ListItemHit).ToArray();
         rows.Length.ShouldBe(3);
         rows.ShouldAllBe(r => ((HitResult.ListItemHit)r.Result!).ListId.StartsWith("prototype-tree:"));
-        tree.ShouldNotBeNull();
+        rows.Select(r => ((HitResult.ListItemHit)r.Result!).ListId).Distinct().Count().ShouldBe(1);
     }
 
     [Fact]
@@ -161,18 +167,31 @@ public sealed class PrototypeKeyboardTests
     }
 
     [Fact]
-    public void TwoTreesThatShareARowKeyDoNotShareAHitId()
+    public void TwoTreesWhoseRowsLookAlikeDoNotShareAHitId()
     {
+        // The loader refuses one key twice on a screen, so the rows that could collide are rows with NO key, each the
+        // first row of its tree: an id built from the row's key, its text or its index in the tree would be equal.
         const string two = """
             { "width": 300, "height": 200, "entry": "s", "screens": [ { "id": "s", "root": {
               "kind": "vstack", "children": [
-                { "kind": "tree", "children": [ { "kind": "treeRow", "key": "k", "text": "A", "trailingIcon": "Plus", "trailingAction": "set:x=1" } ] },
-                { "kind": "tree", "children": [ { "kind": "treeRow", "key": "k2", "text": "B", "trailingIcon": "Plus", "trailingAction": "set:x=2" } ] } ] } } ] }
+                { "kind": "tree", "children": [ { "kind": "treeRow", "text": "A", "trailingIcon": "Plus", "trailingAction": "set:x=1" } ] },
+                { "kind": "tree", "children": [ { "kind": "treeRow", "text": "A", "trailingIcon": "Plus", "trailingAction": "set:x=2" } ] } ] } } ] }
             """;
         var rig = new Rig(two);
-        var ids = rig.Player.GetRegisteredRegions().Select(r => r.Result).OfType<HitResult.ButtonHit>()
-            .Select(h => h.Action).Where(a => a.StartsWith("tree-trailing:")).ToArray();
-        ids.Length.ShouldBe(ids.Distinct().Count());
+        var rows = rig.Player.GetRegisteredRegions().Where(r => r.Result is HitResult.ListItemHit).ToArray();
+        rows.Length.ShouldBe(2);
+
+        // A trailing action shows (and registers) only on its hovered row, so hover each row in turn.
+        var ids = new List<string>();
+        foreach (var row in rows)
+        {
+            rig.Hover(row);
+            ids.AddRange(rig.Player.GetRegisteredRegions().Select(r => r.Result).OfType<HitResult.ButtonHit>()
+                .Select(h => h.Action).Where(a => a.StartsWith("tree-trailing:", StringComparison.Ordinal)));
+        }
+
+        ids.Count.ShouldBe(2);
+        ids[0].ShouldNotBe(ids[1]);
     }
 
     [Fact]

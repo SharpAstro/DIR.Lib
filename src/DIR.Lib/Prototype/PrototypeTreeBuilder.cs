@@ -312,7 +312,11 @@ public sealed class PrototypeTreeBuilder
         var kids = new List<Node>();
         if (p.TryGetValue("mark", out var mark) && Enum.TryParse<IconKind>(mark.Text, out var markKind))
             kids.Add(B.Icon(markKind, size, dim));
-        kids.Add(B.Text(Str(p, "text", ""), size, selected ? Palette.SelectionText : Palette.BodyText).WStar().HStar());
+        // The name is one line; when the row is too narrow for it, it ends in an ellipsis (a one-line Ellipsis wrap) and
+        // the row's tooltip holds the whole name, so it is never cut silently.
+        var text = Str(p, "text", "");
+        kids.Add(B.WrapH(B.Text(text, size, selected ? Palette.SelectionText : Palette.BodyText).WAuto())
+            .WithMaxLines(1, true).WStar());
         if (p.TryGetValue("note", out var note))
             kids.Add(B.Text(note.Text, size, dim));
         if (p.TryGetValue("trailingIcon", out var ti) && Enum.TryParse<IconKind>(ti.Text, out var tiKind))
@@ -344,7 +348,7 @@ public sealed class PrototypeTreeBuilder
         {
             if (bind is not null && key is not null) _state.Set(bind, key);
             if (action is not null) Run(action);
-        }).BgHover(Palette.Separator).WithFocusRing(Palette.Focus, _theme.Metrics.FocusRingWidth, _theme.Metrics.FocusRingGap);
+        }).WithTooltip(text).BgHover(Palette.Separator).WithFocusRing(Palette.Focus, _theme.Metrics.FocusRingWidth, _theme.Metrics.FocusRingGap);
         if (selected)
             row = row.Selected().Bg(Palette.Selection).Border(Palette.Accent, metrics.ControlEdgeWidth, 0f);
         return row;
