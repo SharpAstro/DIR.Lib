@@ -181,18 +181,32 @@ public class SwitchTests
 
     [Theory]
     [MemberData(nameof(Themes))]
-    public void The_knob_reads_on_its_track_and_the_edge_on_the_panel_at_3_to_1(UiTheme theme, string name)
+    public void A_palette_theme_draws_the_DSN1_v4_roles_and_on_and_off_differ_by_more_than_the_knob(UiTheme theme, string name)
     {
+        // 11.105 restyled the switch to DSN-1 v4 (the person's choice over the 11.104 3:1 knob rule): on is the accent
+        // track, off the header track with the strong separator as its edge, and the knob's side and the track's fill tell
+        // them apart, so the knob's own contrast is the design's, not a rule here.
         var s = theme.Controls.SwitchOrDerived;
-        foreach (var track in new[] { s.OnFill, s.OnHoverFill, s.OnPressedFill })
-        {
-            RGBAColor32.ContrastRatio(s.OnKnob, track).ShouldBeGreaterThanOrEqualTo(3f, name + " on knob");
-        }
-        foreach (var track in new[] { s.OffFill, s.OffHoverFill, s.OffPressedFill })
-        {
-            RGBAColor32.ContrastRatio(s.OffKnob, track).ShouldBeGreaterThanOrEqualTo(3f, name + " off knob");
-        }
-        RGBAColor32.ContrastRatio(s.OffEdge!.Value, theme.Palette.PanelBg).ShouldBeGreaterThanOrEqualTo(3f, name + " edge");
+        var p = theme.Palette;
+        s.OnFill.ShouldBe(p.Accent, name);
+        s.OffFill.ShouldBe(p.HeaderBg, name);
+        s.OffEdge.ShouldBe(p.SeparatorStrong, name);
+        s.OnFill.ShouldNotBe(s.OffFill, name);
+        s.RefusedEdgeOrDerived.ShouldBe(p.Error, name);
+        s.AskingRingOrDerived.ShouldBe(p.Warn, name);
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void The_on_track_and_the_off_edge_stay_visible_on_the_panel(UiTheme theme, string name)
+    {
+        // 11.104 pinned 3:1 for the knob and the edge. DSN-1 v4 draws a light knob on a HeaderBg track and a SeparatorStrong
+        // edge, which measure 1.08:1 to 1.7:1 in the shipped themes, so 3:1 would contradict the design. What is pinned
+        // instead are the floors the v4 roles measure today, so a palette-derived theme cannot lose the on track or the
+        // off edge against the panel without a test saying so. Any stricter floor is the owner's call.
+        var s = theme.Controls.SwitchOrDerived;
+        RGBAColor32.ContrastRatio(s.OnFill, theme.Palette.PanelBg).ShouldBeGreaterThanOrEqualTo(1.5f, name + " on track");
+        RGBAColor32.ContrastRatio(s.OffEdge!.Value, theme.Palette.PanelBg).ShouldBeGreaterThanOrEqualTo(1.4f, name + " off edge");
     }
 
     [Fact]

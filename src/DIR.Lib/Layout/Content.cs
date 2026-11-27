@@ -602,4 +602,12 @@ public enum IconKind
 
     /// <summary>Compare mode "changes": two opposed arrows, before and after. Embedded SVG outline.</summary>
     CompareChanges,
+
+    /// <summary>
+    /// A short arc that turns: "this is working". Drawn by the pixel painter from the window's motion clock
+    /// (<see cref="WindowUiSettings.MotionMilliseconds"/>), about one turn a second and slower under
+    /// <see cref="WindowUiSettings.ReducedMotion"/>, and it raises <see cref="WindowUiSettings.IsMoving"/> while it is
+    /// painted. Appended last so the values of the earlier members do not move.
+    /// </summary>
+    Spinner,
 }

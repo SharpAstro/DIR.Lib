@@ -112,6 +112,7 @@ public static class IconGlyphs
         Layout.IconKind.CompareOverlay => '❐',
         Layout.IconKind.CompareSlider => '↔',
         Layout.IconKind.CompareChanges => '⇄',
+        Layout.IconKind.Spinner => '◌',
         _ => '?',
     };
 }

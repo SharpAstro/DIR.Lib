@@ -40,7 +40,7 @@ public class ButtonKindsTests
     private static UiTheme ThemeOf(UiPalette p) => new() { Palette = p, Metrics = new UiMetrics(14f, 6f, 28f, 24f, 28f) };
 
     private static ButtonStyle StyleOf(UiTheme t, ButtonKind k)
-        => k switch { ButtonKind.Accent => t.Controls.Accent, ButtonKind.Standard => t.Controls.Standard, _ => t.Controls.Subtle };
+        => k switch { ButtonKind.Accent => t.Controls.Accent, ButtonKind.Standard => t.Controls.Standard, ButtonKind.Destructive => t.Controls.DestructiveOrDerived, _ => t.Controls.Subtle };
 
     // ---- contrast ----
 
@@ -63,6 +63,38 @@ public class ButtonKindsTests
         RGBAColor32.ContrastRatio(theme.Controls.Hyperlink.Color, theme.Palette.PanelBg).ShouldBeGreaterThanOrEqualTo(4.5f, name);
         RGBAColor32.ContrastRatio(theme.Controls.Hyperlink.Color, theme.Palette.ContentBg).ShouldBeGreaterThanOrEqualTo(4.5f, name);
         RGBAColor32.ContrastRatio(theme.Palette.ControlEdge, theme.Palette.PanelBg).ShouldBeGreaterThanOrEqualTo(3f, name);
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void Destructive_is_the_standard_button_with_its_label_in_Error(UiTheme theme, string name)
+    {
+        var d = theme.Controls.DestructiveOrDerived;
+        // Error itself where it reads on the button's fills; a palette whose Error does not is stepped towards BodyText.
+        foreach (var fill in new[] { d.RestFill!.Value, d.HoverFill, d.PressedFill })
+        {
+            RGBAColor32.ContrastRatio(d.Ink, fill).ShouldBeGreaterThanOrEqualTo(4.5f, name);
+        }
+
+        (d.Ink == theme.Palette.Error || RGBAColor32.ContrastRatio(theme.Palette.Error, d.PressedFill) < 4.5f).ShouldBeTrue(name);
+        d.RestFill.ShouldBe(theme.Controls.Standard.RestFill, name);
+        d.Edge.ShouldBe(theme.Controls.Standard.Edge, name);
+        d.HoverFill.ShouldBe(theme.Controls.Standard.HoverFill, name);
+    }
+
+    [Fact]
+    public void A_ControlStyles_written_without_a_Destructive_style_still_compiles_and_falls_back_to_Standard()
+    {
+        var theme = ThemeOf(NotificationsRenderTests.Dark);
+        var bare = new ControlStyles
+        {
+            Accent = theme.Controls.Accent, Standard = theme.Controls.Standard, Subtle = theme.Controls.Subtle, Hyperlink = theme.Controls.Hyperlink,
+        };
+        bare.Destructive.ShouldBeNull();
+        bare.DestructiveOrDerived.ShouldBe(bare.Standard);
+        var button = Builder.Button("Remove", ButtonKind.Destructive, () => { }, theme with { Controls = bare });
+        button.ShouldNotBeNull();
+        ((int)ButtonKind.Destructive).ShouldBe(3, "appended after Subtle, so the earlier values do not move");
     }
 
     [Theory]

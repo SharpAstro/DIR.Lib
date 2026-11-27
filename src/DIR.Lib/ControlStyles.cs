@@ -220,6 +220,107 @@ public sealed record SwitchStyle
     /// <summary>Gap between the track edge and the knob, in design units. Defaults to 3.</summary>
     public float KnobInset { get; init; } = 3f;
 
+    // DSN-1 v4 (11.105): the states the sized switch draws. Init-only and optional, so a style written against 11.104 still
+    // compiles; each falls back as its OrDerived accessor says, and ControlStyles.For sets them all from palette roles.
+
+    /// <summary>Knob of an off switch while the pointer is over its track; null keeps <see cref="OffKnob"/>.</summary>
+    public RGBAColor32? OffHoverKnob { get; init; }
+
+    /// <summary>Outline of the off knob; null draws none (a light palette outlines it).</summary>
+    public RGBAColor32? OffKnobEdge { get; init; }
+
+    /// <summary>Track of a locked switch that is on; null is <see cref="OffFill"/> (flat, as a disabled switch is).</summary>
+    public RGBAColor32? LockedOnFill { get; init; }
+
+    /// <summary>Knob of a locked switch that is on; null is the disabled ink.</summary>
+    public RGBAColor32? LockedOnKnob { get; init; }
+
+    /// <summary>Track of a locked switch that is off; null is <see cref="OffFill"/>.</summary>
+    public RGBAColor32? LockedOffFill { get; init; }
+
+    /// <summary>Edge of a locked switch that is off; null is <see cref="OffEdge"/>.</summary>
+    public RGBAColor32? LockedOffEdge { get; init; }
+
+    /// <summary>Knob of a locked switch that is off; null is the disabled ink.</summary>
+    public RGBAColor32? LockedOffKnob { get; init; }
+
+    /// <summary>Edge (and mark) of a switch whose last change was refused; null is <see cref="LabelInk"/>.</summary>
+    public RGBAColor32? RefusedEdge { get; init; }
+
+    /// <summary>The ring of a switch that is asking for confirmation; null is <see cref="LabelInk"/>.</summary>
+    public RGBAColor32? AskingRing { get; init; }
+
+    /// <summary>The disabled knob and label ink: <see cref="DisabledInk"/>, else <see cref="OffKnob"/> halfway to <see cref="OffFill"/>.</summary>
+    public RGBAColor32 DisabledInkOrDerived => DisabledInk ?? RGBAColor32.Mix(OffKnob, OffFill, 0.5f);
+
+    /// <summary><see cref="OffHoverKnob"/>, else <see cref="OffKnob"/>.</summary>
+    public RGBAColor32 OffHoverKnobOrDerived => OffHoverKnob ?? OffKnob;
+
+    /// <summary><see cref="LockedOnFill"/>, else <see cref="OffFill"/>.</summary>
+    public RGBAColor32 LockedOnFillOrDerived => LockedOnFill ?? OffFill;
+
+    /// <summary><see cref="LockedOnKnob"/>, else the disabled ink.</summary>
+    public RGBAColor32 LockedOnKnobOrDerived => LockedOnKnob ?? DisabledInkOrDerived;
+
+    /// <summary><see cref="LockedOffFill"/>, else <see cref="OffFill"/>.</summary>
+    public RGBAColor32 LockedOffFillOrDerived => LockedOffFill ?? OffFill;
+
+    /// <summary><see cref="LockedOffEdge"/>, else <see cref="OffEdge"/>.</summary>
+    public RGBAColor32? LockedOffEdgeOrDerived => LockedOffEdge ?? OffEdge;
+
+    /// <summary><see cref="LockedOffKnob"/>, else the disabled ink.</summary>
+    public RGBAColor32 LockedOffKnobOrDerived => LockedOffKnob ?? DisabledInkOrDerived;
+
+    /// <summary><see cref="RefusedEdge"/>, else <see cref="LabelInk"/>.</summary>
+    public RGBAColor32 RefusedEdgeOrDerived => RefusedEdge ?? LabelInk;
+
+    /// <summary><see cref="AskingRing"/>, else <see cref="LabelInk"/>.</summary>
+    public RGBAColor32 AskingRingOrDerived => AskingRing ?? LabelInk;
+
+    /// <summary>
+    /// The DSN-1 v4 switch from palette roles: on is the accent track with the lighter of body text and page as knob, off a
+    /// <see cref="UiPalette.HeaderBg"/> track with a <see cref="UiPalette.SeparatorStrong"/> edge, the off knob lightening
+    /// under the pointer, locked dimmed with its side kept, refused in Error and asking in Warn. The pressed fills come from
+    /// the button styles.
+    /// </summary>
+    internal static SwitchStyle For(UiPalette p, ButtonStyle accent, ButtonStyle standard, float edgeWidth)
+    {
+        // The lighter of BodyText and ContentBg, unless that colour is chromatic (a one-hue palette), then the darker.
+        var lighter = p.BodyText.RelativeLuminance >= p.ContentBg.RelativeLuminance ? p.BodyText : p.ContentBg;
+        var darker = lighter == p.BodyText ? p.ContentBg : p.BodyText;
+        var onKnob = p.IsOneHue ? darker : lighter;
+        var offTrack = p.HeaderBg;
+        // DSN-1 v4 wins over the 11.104 3:1 knob rule (the person's choice, 11.105): white on tianwen's orange is about
+        // 2.9:1, and on and off are told apart by the knob's side and the track's fill, never by the knob's colour alone.
+        return From(accent, standard) with
+        {
+            OnFill = p.Accent,
+            OnHoverFill = RGBAColor32.Mix(p.Accent, onKnob, V4HoverStep),
+            OnKnob = onKnob,
+            OffFill = offTrack,
+            OffHoverFill = RGBAColor32.Mix(offTrack, p.SeparatorStrong, V4OffHoverStep),
+            OffEdge = p.SeparatorStrong,
+            OffKnob = p.IsDark ? p.DimText : onKnob,
+            OffHoverKnob = onKnob,
+            OffKnobEdge = p.IsDark ? null : p.SeparatorStrong,
+            LockedOnFill = RGBAColor32.Mix(p.Accent, p.PanelBg, V4LockedMix),
+            LockedOnKnob = p.DimText,
+            LockedOffFill = p.PanelBg,
+            LockedOffEdge = p.Separator,
+            LockedOffKnob = p.SeparatorStrong,
+            RefusedEdge = p.Error,
+            AskingRing = p.Warn,
+            EdgeWidth = edgeWidth,
+            LabelInk = p.BodyText,
+            DisabledInk = p.DimText,
+        };
+    }
+
+    // Fractions of the way to the other colour, not colours.
+    private const float V4HoverStep = 0.12f;
+    private const float V4OffHoverStep = 0.4f;
+    private const float V4LockedMix = 0.55f;
+
     /// <summary>Derives a switch style from the accent and standard button styles.</summary>
     public static SwitchStyle From(ButtonStyle accent, ButtonStyle standard) => new()
     {
@@ -393,6 +494,16 @@ public sealed record ControlStyles
     public required HyperlinkStyle Hyperlink { get; init; }
 
     /// <summary>
+    /// A destroying action's rest look: the standard button with its label in <see cref="UiPalette.Error"/>. Init-only and
+    /// not required, so an existing <c>new ControlStyles { ... }</c> still compiles; when unset, <see cref="DestructiveOrDerived"/>
+    /// is <see cref="Standard"/> (a bare <c>ControlStyles</c> has no Error role to colour it with). <see cref="For"/> sets it.
+    /// </summary>
+    public ButtonStyle? Destructive { get; init; }
+
+    /// <summary>The destroying button style: <see cref="Destructive"/> when set, else <see cref="Standard"/>.</summary>
+    public ButtonStyle DestructiveOrDerived => Destructive ?? Standard;
+
+    /// <summary>
     /// The filter chip. Init-only and not required, so a <c>new ControlStyles { Accent, Standard, Subtle, Hyperlink }</c>
     /// written before chips existed still compiles; when unset, <see cref="ChipOrDerived"/> derives it from
     /// <see cref="Accent"/> and <see cref="Standard"/>, and <c>Builder.Chip</c> takes the radius from the metrics.
@@ -493,6 +604,7 @@ public sealed record ControlStyles
                 DisabledInk = palette.DimText,
             },
             Hyperlink = new HyperlinkStyle { Color = LinkColor(palette), ArrowGap = metrics.LinkArrowGap },
+            Destructive = standardStyle with { Ink = ErrorInk(palette, standardStyle) },
             Chip = new ChipStyle
             {
                 OnFill = palette.Accent,
@@ -510,7 +622,7 @@ public sealed record ControlStyles
                 DisabledInk = palette.DimText,
             },
             Tile = DeriveTile(accentStyle, standardStyle, TileSideScale, standardStyle.PaddingX / 2f, palette.BodyText),
-            Switch = SwitchStyle.From(accentStyle, standardStyle) with { LabelInk = palette.BodyText },
+            Switch = SwitchStyle.For(palette, accentStyle, standardStyle, metrics.ControlEdgeWidth),
             Slider = new SliderStyle
             {
                 Fill = palette.Accent,
@@ -596,6 +708,22 @@ public sealed record ControlStyles
         }
         return LeastContrast(c, p) < LinkMinContrast ? p.BodyText : c;
     }
+
+    // Error as the label of a destroying button, when it reaches 4.5:1 on the button's three fills, else stepped towards
+    // BodyText until it does (bounded; BodyText itself is the last resort), as LinkColor does for the accent.
+    private static RGBAColor32 ErrorInk(UiPalette p, ButtonStyle standard)
+    {
+        var c = p.Error;
+        for (int i = 0; i < LinkMaxSteps && LeastContrast(c, standard) < LinkMinContrast; i++)
+        {
+            c = RGBAColor32.Mix(c, p.BodyText, LinkStep);
+        }
+        return LeastContrast(c, standard) < LinkMinContrast ? p.BodyText : c;
+    }
+
+    private static float LeastContrast(RGBAColor32 c, ButtonStyle s)
+        => MathF.Min(RGBAColor32.ContrastRatio(c, s.RestFill ?? s.HoverFill),
+            MathF.Min(RGBAColor32.ContrastRatio(c, s.HoverFill), RGBAColor32.ContrastRatio(c, s.PressedFill)));
 
     private static float LeastContrast(RGBAColor32 c, UiPalette p)
         => MathF.Min(RGBAColor32.ContrastRatio(c, p.PanelBg), RGBAColor32.ContrastRatio(c, p.ContentBg));

@@ -125,6 +125,15 @@ public abstract partial record Node
     public RGBAColor32? HoverBackground { get; init; }
 
     /// <summary>
+    /// Fill painted instead of <see cref="Background"/> while the pointer is inside the rect of the nearest node at or above
+    /// this one that carries a <see cref="Hit"/>, so a part of a control (a switch's knob, a Stop square) lights with the whole
+    /// control rather than only when the pointer is on the part itself. Null (default) is inert; a disabled node never lights;
+    /// <see cref="HoverBackground"/> on the same node wins. The enclosing hit should itself declare a hover fill, so a move
+    /// into it already damages its rect, which holds this node.
+    /// </summary>
+    public RGBAColor32? HitHoverBackground { get; init; }
+
+    /// <summary>
     /// Background to paint instead of <see cref="HoverBackground"/>, <see cref="FocusBackground"/> and
     /// <see cref="Background"/> while the primary button is HELD down on this node: the press went down inside
     /// the node's arranged rect (not on a surface, popover backdrop or modal that took it) and the pointer is still
@@ -503,6 +512,14 @@ public abstract partial record Node
     /// nothing costs nothing, and no existing tree changes behaviour until it says so. Init-only (11.86).</para>
     /// </remarks>
     public bool IsSurface { get; init; }
+
+    /// <summary>
+    /// Marks a switch's knob (a Box leaf inside the track whose <see cref="Hit"/> is <see cref="KnobSlide.Switch"/>): the
+    /// pixel painter then draws it part way between the two sides while the side has just changed
+    /// (<see cref="WindowUiSettings.NoteKnob"/>), so <c>Builder.Switch</c> stays stateless. Arrangement is
+    /// untouched: the knob is always laid out at its final side. Init-only.
+    /// </summary>
+    public KnobSlide? Knob { get; init; }
 
     /// <summary>Children laid out sequentially along <paramref name="Axis"/>, separated by <paramref name="Gap"/> design units.</summary>
     public sealed record Stack(ImmutableArray<Node> Children, Axis Axis = Axis.Vertical, float Gap = 0f) : Node;

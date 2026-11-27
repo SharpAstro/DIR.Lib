@@ -19,7 +19,7 @@ public readonly record struct ButtonGroupOption<T>(T Value, string? Label = null
     public string? DisabledReason { get; init; }
 
     /// <summary>A key that chooses this segment, matched against the painted tree like any node's shortcut
-    /// (<see cref="Node.WithShortcut(KeyChord)"/>). Used by <see cref="Builder.Segmented{T}"/>.</summary>
+    /// (<see cref="Node.WithShortcut(KeyChord)"/>). Used by <see cref="Builder.Segmented{T}(ReadOnlySpan{ButtonGroupOption{T}}, T, Action{T}, UiTheme, ListCursor, string, float)"/>.</summary>
     public KeyChord? Shortcut { get; init; }
 
     /// <summary>Hover text for an enabled segment.</summary>

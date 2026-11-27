@@ -463,7 +463,7 @@ public static partial class Prototype
             var b = v.GetString()!;
             if (!IsName(b)) Add(path, "a state name is letters, digits and underscores, not starting with a digit");
             else if (b == PrototypeTargets.StateName) Add(path, "'target' is read-only state; a node cannot bind it");
-            if (kind is { SupportsBind: false }) Add(path, $"kind '{kindName}' has no bind (only textInput, checkbox, switch, slider, buttonGroup, dropdown, tree and tabs do)");
+            if (kind is { SupportsBind: false }) Add(path, $"kind '{kindName}' has no bind (only textInput, checkbox, switch, slider, buttonGroup, segmented, dropdown, tree and tabs do)");
             return b;
         }
 

@@ -1392,4 +1392,29 @@ public class InputRouterTests
         harness.Press(75f, 10f);
         heard.ShouldBe(["front"], "two overlapping containers: the one painted last takes the press");
     }
+
+    [Fact]
+    public void AnIdleAfterPaintKeepsTheKeyboardListThePaintedFramePublished()
+    {
+        // AfterPaint walks the declared lists only when a widget painted since the last call (or the widget list changed);
+        // an idle call reuses the last walk. The list the keyboard holds must survive that, and a new paint must refresh it.
+        var harness = new Harness();
+        var cursor = new ListCursor();
+        cursor.Open("rows", 0);
+        harness.Paint(front: Layout.Builder.HStack(Layout.Builder.Box(50f, 20f).Clickable(new HitResult.ListItemHit("rows", 0), _ => { }))
+            .ListOf(cursor, "rows").WFixed(50f).HFixed(20f));
+
+        harness.Router.AfterPaint();
+        harness.Press(10f, 10f);
+        harness.Router.AfterPaint();
+        harness.Front.Ui.KeyboardListId.ShouldBe("rows", "the pressed list holds the keyboard after a painted frame");
+
+        harness.Router.AfterPaint();
+        harness.Router.AfterPaint();
+        harness.Front.Ui.KeyboardListId.ShouldBe("rows", "idle calls (nothing painted) reuse the walk and publish the same list");
+
+        harness.Paint(front: Layout.Builder.Spacer());
+        harness.Router.AfterPaint();
+        harness.Front.Ui.KeyboardListId.ShouldBeNull("a painted frame without the list walks again and the list is gone");
+    }
 }

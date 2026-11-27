@@ -11,7 +11,7 @@ using Xunit;
 namespace DIR.Lib.Tests;
 
 /// <summary>
-/// <see cref="Builder.Segmented{T}"/>: icon and word per segment, every word dropping at once when the control does not
+/// <see cref="Builder.Segmented{T}(ReadOnlySpan{ButtonGroupOption{T}}, T, Action{T}, UiTheme, ListCursor, string, float)"/>: icon and word per segment, every word dropping at once when the control does not
 /// fit (measured, never a host constant), Left/Right and press choosing, disabled segments, and the contrast of its
 /// ink in a dark, a light and a one-hue palette. Pixel baselines segmented_wide.png and segmented_narrow.png.
 /// </summary>
@@ -96,6 +96,8 @@ public class SegmentedControlTests
 
     private sealed class Widget(Renderer<RgbaImage> renderer) : PixelWidgetBase<RgbaImage>(renderer)
     {
+        public RgbaImage Surface => ((RgbaImageRenderer)Renderer).Surface;
+
         public Node Tree { get; set; } = Builder.Box(0, 0);
 
         public void Render(float width, float height)
@@ -115,9 +117,12 @@ public class SegmentedControlTests
         private readonly float _width;
         private readonly ButtonGroupOption<Mode>[] _options;
 
-        public Rig(float width = 900f, ButtonGroupOption<Mode>[]? options = null)
+        private readonly float _pad;
+
+        public Rig(float width = 900f, ButtonGroupOption<Mode>[]? options = null, float pad = 0f)
         {
             _width = width;
+            _pad = pad;
             _options = options ?? Options();
             var renderer = new RgbaImageRenderer((uint)width, 60u);
             Widget = new Widget(renderer) { FontPath = FontPath };
@@ -127,7 +132,9 @@ public class SegmentedControlTests
 
         public void Paint()
         {
-            Widget.Tree = Builder.Segmented<Mode>(_options, Selected, m => { Chosen.Add(m); Selected = m; }, Dark, Cursor, "mode");
+            var seg = Builder.Segmented<Mode>(_options, Selected, m => { Chosen.Add(m); Selected = m; }, Dark, Cursor, "mode");
+            Widget.Tree = _pad > 0f ? Builder.VStack(seg).Pad(_pad) : seg;
+            Widget.Surface.Clear(Dark.Palette.ContentBg);
             Widget.Render(_width, 60f);
             Router.AfterPaint();
         }
@@ -262,27 +269,124 @@ public class SegmentedControlTests
 
     [Theory]
     [MemberData(nameof(Palettes))]
-    public void The_chosen_ink_reads_on_the_accent_and_icons_read_on_their_ground(string name)
+    public void The_chosen_ink_reads_on_the_neutral_pill_and_the_others_on_the_track(string name)
     {
         var p = PaletteNamed(name);
-        RGBAColor32.ContrastRatio(p.InkOn(p.Accent), p.Accent).ShouldBeGreaterThanOrEqualTo(4.5f);
-        // The unchosen icon sits on the container's RaisedBg, and on the hover fill under the pointer.
-        RGBAColor32.ContrastRatio(p.BodyText, p.RaisedBg).ShouldBeGreaterThanOrEqualTo(3f);
-        RGBAColor32.ContrastRatio(p.BodyText, p.Selection).ShouldBeGreaterThanOrEqualTo(3f);
+        RGBAColor32.ContrastRatio(p.BodyText, p.SeparatorStrong).ShouldBeGreaterThanOrEqualTo(3f);
+        // The unchosen word sits on the track, and on the faint hover pill under the pointer.
+        RGBAColor32.ContrastRatio(p.DimText, p.HeaderBg).ShouldBeGreaterThanOrEqualTo(3f);
+        RGBAColor32.ContrastRatio(p.DimText, p.Separator).ShouldBeGreaterThanOrEqualTo(2.5f);
     }
 
     [Theory]
     [MemberData(nameof(Palettes))]
-    public void The_painted_chosen_segment_uses_the_ink_the_palette_names(string name)
+    public void The_painted_chosen_segment_is_a_SeparatorStrong_pill_in_BodyText_and_never_the_accent(string name)
     {
         var p = PaletteNamed(name);
         var arranged = Arrange(Build(ThemeOf(p), Mode.Side, _ => { }), 2000f);
         var chosen = arranged.First(n => n.Node.Hit is HitResult.ListItemHit { Index: 1 });
-        chosen.Node.Background.ShouldBe(p.Accent);
-        var ink = arranged.Where(n => n.Node is Node.Leaf { Content: Content.Text } && n.Bounds.X >= chosen.Bounds.X
-            && n.Bounds.X < chosen.Bounds.X + chosen.Bounds.Width).Select(n => ((Content.Text)((Node.Leaf)n.Node).Content).Color).ToArray();
-        ink.Length.ShouldBe(1);
-        ink[0].ShouldBe(p.InkOn(p.Accent));
+        chosen.Node.Background.ShouldBe(p.SeparatorStrong);
+        chosen.Node.Background.ShouldNotBe(p.Accent);
+        InkOf(arranged, chosen).ShouldBe([p.BodyText]);
+
+        var other = arranged.First(n => n.Node.Hit is HitResult.ListItemHit { Index: 0 });
+        other.Node.Background.ShouldBeNull();
+        other.Node.HoverBackground.ShouldBe(p.Separator);
+        InkOf(arranged, other).ShouldBe([p.DimText]);
+    }
+
+    private static RGBAColor32[] InkOf(List<ArrangedNode<float>> arranged, ArrangedNode<float> cell)
+        => [.. arranged.Where(n => n.Node is Node.Leaf { Content: Content.Text } && n.Bounds.X >= cell.Bounds.X
+            && n.Bounds.X < cell.Bounds.X + cell.Bounds.Width).Select(n => ((Content.Text)((Node.Leaf)n.Node).Content).Color)];
+
+    [Fact]
+    public void The_track_is_one_rounded_HeaderBg_holder_with_no_edge()
+    {
+        var p = Dark.Palette;
+        var tree = Build(Dark, Mode.Single, _ => { });
+        tree.Background.ShouldBe(p.HeaderBg);
+        tree.CornerRadius.ShouldBe(9f);
+        tree.BorderStyle.ShouldBeNull();
+    }
+
+    // ---- the old signature, for callers compiled against it ----
+
+    [Fact]
+    public void The_original_Segmented_signature_still_exists_beside_the_lockedReason_one()
+    {
+        var methods = typeof(Builder).GetMethods().Where(m => m.Name == "Segmented").ToArray();
+        methods.Length.ShouldBe(3);
+        // (ReadOnlySpan<ButtonGroupOption<T>>, T, Action<T>?, UiTheme, ListCursor, string, float): the shape a build against 11.x compiled.
+        methods.ShouldContain(m => m.GetParameters().Length == 7 && m.GetParameters()[5].ParameterType == typeof(string)
+            && m.GetParameters()[6].ParameterType == typeof(float) && m.GetParameters()[4].ParameterType == typeof(ListCursor));
+        methods.ShouldContain(m => m.GetParameters().Length == 8 && m.GetParameters()[6].ParameterType == typeof(string)
+            && m.GetParameters()[7].ParameterType == typeof(float));
+    }
+
+    // ---- locked ----
+
+    [Fact]
+    public void A_locked_control_takes_no_press_no_key_and_gives_its_reason_on_every_segment()
+    {
+        var chosen = new List<Mode>();
+        var cursor = new ListCursor();
+        var tree = Builder.Segmented<Mode>(Options(), Mode.Single, chosen.Add, Dark, cursor, "mode", "A session is running");
+        cursor.IsOpen.ShouldBeFalse();
+        tree.DeclaredList.ShouldBeNull();
+        tree.NarrowForm!.DeclaredList.ShouldBeNull();
+        var cells = Arrange(tree, 900f).Where(n => n.Node.Hit is HitResult.ListItemHit).ToArray();
+        cells.Length.ShouldBe(4);
+        cells.ShouldAllBe(c => c.Node.DisabledReason == "A session is running");
+        tree.Background.ShouldBe(Dark.Palette.PanelBg);
+        tree.BorderStyle.ShouldNotBeNull().Color.ShouldBe(Dark.Palette.Separator);
+    }
+
+    // ---- focus ring ----
+
+    private static RGBAColor32 PixelAt(RgbaImage img, int x, int y)
+    {
+        var i = (y * img.Width + x) * 4;
+        return new RGBAColor32(img.Pixels[i], img.Pixels[i + 1], img.Pixels[i + 2], img.Pixels[i + 3]);
+    }
+
+    // The y of a pixel in the ring's band above the first segment (the track is 2 units above it; ring gap 2, width 2).
+    private static int RingBandY(ClickableRegion first) => (int)first.Y - 2 - 3;
+
+    [Fact]
+    public void The_track_is_ringed_while_its_list_holds_the_keyboard_and_not_otherwise()
+    {
+        var rig = new Rig(pad: 12f);
+        var ring = Dark.Palette.Focus;
+        var x = (int)rig.Region(0).X + 10;
+        var y = RingBandY(rig.Region(0));
+
+        PixelAt(rig.Widget.Surface, x, y).ShouldNotBe(ring);   // untouched: no ring, the list is only the one on the frame
+
+        rig.Click(1);                                          // a press in the list gives it the keyboard
+        PixelAt(rig.Widget.Surface, x, y).ShouldBe(ring);
+
+        rig.Key(InputKey.Right).ShouldBeTrue();                // and the arrows keep it
+        PixelAt(rig.Widget.Surface, x, y).ShouldBe(ring);
+
+        rig.Router.Handle(new InputEvent.MouseDown(1f, 1f, MouseButton.Left, InputModifier.None, 1)); // a press elsewhere
+        rig.Router.Handle(new InputEvent.MouseUp(1f, 1f, MouseButton.Left, InputModifier.None));
+        rig.Paint();
+        PixelAt(rig.Widget.Surface, x, y).ShouldNotBe(ring);
+    }
+
+    [Fact]
+    public void A_locked_control_never_rings()
+    {
+        var rig = new Rig(pad: 12f);
+        rig.Click(1);
+        var ring = Dark.Palette.Focus;
+        var x = (int)rig.Region(0).X + 10;
+        var y = RingBandY(rig.Region(0));
+        PixelAt(rig.Widget.Surface, x, y).ShouldBe(ring);
+        rig.Widget.Tree = Builder.VStack(Builder.Segmented<Mode>(Options(), Mode.Side, _ => { }, Dark, rig.Cursor, "mode", "Locked")).Pad(12f);
+        rig.Widget.Surface.Clear(Dark.Palette.ContentBg);
+        rig.Widget.Render(900f, 60f);
+        PixelAt(rig.Widget.Surface, x, y).ShouldNotBe(ring);
     }
 
     // ---- baselines ----
@@ -303,6 +407,74 @@ public class SegmentedControlTests
     [Fact] public void Wide() => CompareBaseline(Draw(Dark, 640f), "segmented_wide.png");
 
     [Fact] public void Narrow() => CompareBaseline(Draw(Dark, 232f), "segmented_narrow.png");
+
+    // ---- the segments screen: States panel and tianwen's rows ----
+
+    private static ButtonGroupOption<string>[] Of(params string[] words) => [.. words.Select(w => new ButtonGroupOption<string>(w, w))];
+
+    // tianwen's Dark palette as the segments screen draws it (its focus ring is the accent orange).
+    private static RGBAColor32 Hex(int rgb) => new((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb, 0xff);
+
+    private static readonly UiTheme Tianwen = ThemeOf(new UiPalette
+    {
+        ContentBg = Hex(0x101318), PanelBg = Hex(0x171b22), HeaderBg = Hex(0x1e232c), Separator = Hex(0x2a3039),
+        SeparatorStrong = Hex(0x3c444f), BodyText = Hex(0xe2e6ec), DimText = Hex(0x8b939f), Accent = Hex(0xff5e00),
+        Selection = Hex(0x302820), Info = Hex(0x7cc4ff), Warn = Hex(0xccac18), Error = Hex(0xff7a70), Focus = Hex(0xff5e00),
+        Success = Hex(0x4cc38a),
+    });
+
+    private static Node Seg(UiTheme t, string[] words, string chosen, string listId, string? locked = null, bool fill = false)
+        => Builder.Segmented<string>(Of(words), chosen, _ => { }, t, new ListCursor(), listId, locked, fillTrack: fill, fontSize: 14f).HFixed(30f);
+
+    private static Node StateCard(UiTheme t, Node seg, string caption)
+        => Builder.VStack(seg, Builder.Text(caption, 12f, t.Palette.DimText, TextAlign.Center).WStar())
+            .WithGap(10f).Pad(12f).WFixed(250f).HFixed(84f).Bg(t.Palette.PanelBg).Radius(8f);
+
+    private static Node SettingRow(UiTheme t, string title, string sub, Node seg)
+        => Builder.HStack(
+                Builder.VStack(Builder.Text(title, 14f, t.Palette.BodyText), Builder.Text(sub, 12f, t.Palette.DimText)).WithGap(2f).WFixed(304f),
+                Builder.VStack(Builder.Spacer().Stretch(), seg.WStar(), Builder.Spacer().Stretch()).WFixed(300f))
+            .WithGap(12f).Pad(12f).HFixed(56f);
+
+    private static Node TianwenRows(UiTheme t)
+        => Builder.VStack(
+                SettingRow(t, "Stretch", "Frame preview", Seg(t, ["Linear", "Auto STF", "Histogram"], "Linear", "stretch", fill: true)),
+                Builder.Spacer().HFixed(1f).Bg(t.Palette.Separator),
+                SettingRow(t, "Recenter", "Planetary capture", Seg(t, ["Off", "Auto", "Manual"], "Off", "recenter", fill: true)),
+                Builder.Spacer().HFixed(1f).Bg(t.Palette.Separator),
+                SettingRow(t, "Theme", "Home board header", Seg(t, ["Light", "Dark", "Night", "System"], "Dark", "theme", fill: true)))
+            .Bg(t.Palette.PanelBg).Radius(8f).WFixed(640f).HFixed(56f * 3 + 2f);
+
+    private static RgbaImage DrawPanel(UiTheme theme, Node tree, int width, int height, string? hoverList = null, string? keyboardList = null)
+    {
+        var renderer = new RgbaImageRenderer((uint)width, (uint)height);
+        renderer.Surface.Clear(theme.Palette.ContentBg);
+        var widget = new Widget(renderer) { FontPath = FontPath };
+        widget.Ui.KeyboardListId = keyboardList;
+        widget.Tree = Builder.VStack(tree).Pad(20f);
+        widget.Render(width, height);
+        if (hoverList is not null)
+        {
+            var regions = new List<ClickableRegion>();
+            widget.CollectPaintedRegions(regions);
+            var auto = regions.First(r => r.Result is HitResult.ListItemHit h && h.ListId == hoverList && h.Index == 1);
+            widget.Pointer = (auto.X + auto.Width / 2f, auto.Y + auto.Height / 2f);
+            renderer.Surface.Clear(theme.Palette.ContentBg);
+            widget.Render(width, height);
+        }
+
+        return renderer.Surface;
+    }
+
+    [Fact]
+    public void States_panel() => CompareBaseline(DrawPanel(Tianwen, Builder.HStack(
+            StateCard(Tianwen, Seg(Tianwen, ["Off", "Auto", "Manual"], "Manual", "hover"), "Hover on Auto"),
+            StateCard(Tianwen, Seg(Tianwen, ["Off", "Auto", "Manual"], "Auto", "locked", "A session is running"), "Locked"),
+            StateCard(Tianwen, Seg(Tianwen, ["Off", "Auto", "Manual"], "Auto", "focus"), "Keyboard focus (← → move)")).WithGap(10f).HFixed(84f),
+        830, 124, hoverList: "hover", keyboardList: "focus"), "segmented_states.png");
+
+    [Fact]
+    public void Tianwen_rows() => CompareBaseline(DrawPanel(Tianwen, TianwenRows(Tianwen), 680, 208), "segmented_tianwen_rows.png");
 
     private static void CompareBaseline(RgbaImage img, string name)
     {

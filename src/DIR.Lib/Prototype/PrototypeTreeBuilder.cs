@@ -199,6 +199,8 @@ public sealed class PrototypeTreeBuilder
             case "textInput": return BuildTextInput(n);
             case "checkbox": return BuildCheckbox(n);
             case "buttonGroup": return BuildButtonGroup(n);
+            case "segmented": return BuildSegmented(n);
+            case "busyButton": return BuildBusyButton(n);
             case "dropdown": return BuildDropdown(n);
             case "slider": return BuildSlider(n);
             case "progress":
@@ -264,6 +266,10 @@ public sealed class PrototypeTreeBuilder
         var p = n.Properties;
         var name = n.Bind;
         Action<bool>? change = name is null ? null : v => _state.Set(name, v);
+        // A DSN-1 v4 property (a size, the state in words, locked or changing) draws the sized switch; otherwise the
+        // switch with its label as part of the hit, as 11.104 drew it.
+        if (p.ContainsKey("switchSize") || p.ContainsKey("stateLabel") || p.ContainsKey("locked") || p.ContainsKey("changing"))
+            return BuildSizedSwitch(n);
         return B.Switch(name is not null && _state.GetBool(name), change, _theme,
             p.TryGetValue("label", out var l) ? l.Text : null, Flag(p, "labelBefore", false),
             p.TryGetValue("disabled", out var d) ? d.Text : null);
@@ -506,6 +512,50 @@ public sealed class PrototypeTreeBuilder
         Action<string>? select = name is null ? null : v => _state.Set(name, v);
         var selected = name is null ? "" : _state.Get(name);
         return B.ButtonGroup<string>(items, selected, select, style).WStar().HFixed(_theme.Metrics.ButtonHeight);
+    }
+
+    private Node BuildSizedSwitch(PrototypeNode n)
+    {
+        var p = n.Properties;
+        var name = n.Bind;
+        var on = name is not null && _state.GetBool(name);
+        Action<bool>? toggle = name is null ? null : v => _state.Set(name, v);
+        var size = Str(p, "switchSize", "regular") == "small" ? SwitchSize.Small : SwitchSize.Regular;
+        var locked = p.TryGetValue("disabled", out var d) ? d.Text : Flag(p, "locked", false) ? "Locked" : null;
+        return B.Switch(on, toggle, _theme, size, p.TryGetValue("stateLabel", out var l) ? l.Text : null,
+            locked, Flag(p, "changing", false),
+            hit: new HitResult.ButtonHit("switch:" + (name ?? n.Path)));
+    }
+
+    private Node BuildSegmented(PrototypeNode n)
+    {
+        var options = n.Properties.TryGetValue("options", out var o) ? o.List : [];
+        var items = new ButtonGroupOption<string>[options.Length];
+        for (int i = 0; i < items.Length; i++) items[i] = new ButtonGroupOption<string>(options[i], options[i]);
+        var name = n.Bind;
+        Action<string>? select = name is null ? null : v => _state.Set(name, v);
+        var selected = name is null ? "" : _state.Get(name);
+        var id = name ?? n.Path;
+        if (!_cursors.TryGetValue("segmented:" + id, out var cursor)) _cursors["segmented:" + id] = cursor = new ListCursor();
+        return B.Segmented<string>(items, selected, select, _theme, cursor, "segmented:" + id);
+    }
+
+    private Node BuildBusyButton(PrototypeNode n)
+    {
+        var p = n.Properties;
+        var result = p.TryGetValue("result", out var r) ? r.Text : null;
+        var state = Str(p, "state", "rest") switch
+        {
+            "busy" => BusyState.Busy,
+            "overdue" => BusyState.Overdue,
+            "stopping" => BusyState.Stopping,
+            "done" => BusyState.Done(result),
+            "failed" => BusyState.Failed(result ?? ""),
+            _ => BusyState.Rest,
+        };
+        return B.BusyButton(Str(p, "label", ""), Str(p, "busyLabel", ""), state, p.TryGetValue("estimate", out var e) ? e.Text : null,
+            Flag(p, "stoppable", false) ? () => { } : null, () => { }, _theme,
+            hit: new HitResult.ButtonHit("busy:" + Str(p, "key", n.Path)));
     }
 
     private Node BuildDropdown(PrototypeNode n)

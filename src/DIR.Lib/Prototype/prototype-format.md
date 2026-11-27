@@ -57,7 +57,7 @@ A node is an object with `kind` (required), the kind's properties, the common pr
 - `when`: `<name>=<value>`; the node is shown only while that state equals the value (equality only).
 - `selectedWhen`: `<name>=<value>`, validated like `when`; while it holds the node is drawn selected (the `Selection` fill and an `Accent` edge).
 - `doubleAction`: an action in the form of `action`, run on a double-click. A node with a `doubleAction` and no `action` is still clickable, so the double-click reaches it. **Enter** reaches only the rows of a `tree` and a `table`: each is a declared list (Up and Down move a cursor that shows a focus ring, Enter runs the row's `doubleAction`, else its `action`). Enter does nothing on any other node, because no other kind is a list the keyboard can be in. A `tableRow` with neither an `action` nor a `doubleAction` is not clickable and the cursor steps over it.
-- `bind`: a state name, for `textInput`, `checkbox`, `switch`, `slider`, `buttonGroup` and `dropdown`.
+- `bind`: a state name, for `textInput`, `checkbox`, `switch`, `slider`, `buttonGroup`, `segmented` and `dropdown`.
 
 State names are letters, digits and underscores, not starting with a digit. A `key` is unique within its screen.
 
@@ -181,13 +181,20 @@ The themed button; its `action` runs on a press.
 
 ### `switch`
 
-Takes `bind`: the state holds true or false.
+Takes `bind`: the state holds `true` or `false`, and a press flips it. The themed switch (`Builder.Switch`). With none of
+`switchSize`, `stateLabel`, `locked` and `changing` it is the switch whose `label` is part of its press. With any of them it
+is the DSN-1 v4 sized switch: only the switch itself is the press, never the words or row beside it. The size is
+`switchSize` and not `size`, which is the common property of a docked child.
 
 | Property | Type | Notes |
 |---|---|---|
-| `label` | string | |
+| `label` | string | beside the track and part of its press (not the sized switch) |
 | `labelBefore` | bool | the label before the track |
-| `disabled` | string | the reason, shown as the tooltip |
+| `disabled` | string | the reason, shown as the tooltip; the switch is flat (locked, on the sized switch) and does nothing |
+| `switchSize` | enum | `regular` (default, 40 by 22) or `small` (30 by 16) |
+| `stateLabel` | string | the state in words beside the sized switch, which takes no press |
+| `locked` | bool | dimmed with its value kept, and it takes no press |
+| `changing` | bool | the knob parked in the middle, and it takes no press |
 
 ### `tree`
 
@@ -295,6 +302,29 @@ Takes `bind`: the state holds the chosen option.
 | Property | Type | Notes |
 |---|---|---|
 | `options` | string array | required |
+
+### `segmented`
+
+Takes `bind`: the state holds the chosen option. The themed segmented control (`Builder.Segmented`): one rounded track,
+the chosen option a raised pill, Left and Right moving the choice while it has the keyboard.
+
+| Property | Type | Notes |
+|---|---|---|
+| `options` | string array | required |
+
+### `busyButton`
+
+The themed button for a long task (`Builder.BusyButton`), drawn in the one state its `state` names; a press does nothing
+here, the player has no task to run.
+
+| Property | Type | Notes |
+|---|---|---|
+| `label` | string | required: the button at rest |
+| `busyLabel` | string | required: the verb in progress, such as "Solving…" |
+| `state` | enum | `rest` (default), `busy`, `overdue` (busy and past its estimate), `stopping`, `done` or `failed` |
+| `estimate` | string | beside the button: words ("about 15 seconds") or a count ("step 4 of 9") |
+| `stoppable` | bool | a Stop segment grows out of the button's left edge while busy |
+| `result` | string | beside a done button the result, beside a failed one the reason |
 
 ### `dropdown`
 

@@ -639,6 +639,40 @@ public class LayoutIconTests
         }
     }
 
+    private static (byte[] Pixels, bool Moving) PaintSpinner(long motionMs, bool reduced = false)
+    {
+        var renderer = new RgbaImageRenderer(Surface, Surface);
+        var widget = new IconWidget(renderer);
+        widget.Ui.MotionMilliseconds = motionMs;
+        widget.Ui.ReducedMotion = reduced;
+        widget.Render(Layout.Builder.Icon(Layout.IconKind.Spinner, Surface, Ink), new RectF32(0, 0, Surface, Surface));
+        return ([.. renderer.Surface.Pixels], widget.Ui.IsMoving);
+    }
+
+    [Fact]
+    public void TheSpinnerArcTurnsWithTheMotionClock_AndRaisesTheMovingFlag()
+    {
+        var (a, movingA) = PaintSpinner(0);
+        var (b, _) = PaintSpinner(250);
+        var (c, _) = PaintSpinner(1000);
+
+        movingA.ShouldBeTrue("painting a spinner must raise the moving flag");
+        a.ShouldNotBe(b, "a quarter turn later the arc is somewhere else");
+        a.ShouldBe(c, "one turn a second: the same arc a whole turn later");
+        a.Any(p => p != 0).ShouldBeTrue("the arc is inked");
+    }
+
+    [Fact]
+    public void TheSpinnerTurnsSlowerUnderReducedMotion_AndAnIdleWindowIsNotMoving()
+    {
+        PaintSpinner(250).Pixels.ShouldNotBe(PaintSpinner(250, reduced: true).Pixels, "reduced motion has turned less at 250 ms");
+        PaintSpinner(1000, reduced: true).Pixels.ShouldNotBe(PaintSpinner(0, reduced: true).Pixels, "it still turns");
+
+        var widget = new IconWidget(new RgbaImageRenderer(Surface, Surface));
+        widget.Render(Layout.Builder.Icon(Layout.IconKind.Grid, Surface, Ink), new RectF32(0, 0, Surface, Surface));
+        widget.Ui.IsMoving.ShouldBeFalse();
+    }
+
     private sealed class TriangleCountingRenderer(uint width, uint height) : RgbaImageRenderer(width, height)
     {
         public int Triangles { get; private set; }
