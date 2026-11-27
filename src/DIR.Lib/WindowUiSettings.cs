@@ -49,6 +49,15 @@ public sealed class WindowUiSettings
     /// <summary>The primary text face. Empty means "no font configured", and the text helpers then draw nothing rather than throwing.</summary>
     public string FontPath { get; set; } = string.Empty;
 
+    /// <summary>The bold Ui face, for <see cref="Layout.TextWeight.Bold"/> runs. Null draws them in <see cref="FontPath"/>, as before.</summary>
+    public string? BoldFontPath { get; set; }
+
+    /// <summary>The monospace face, for <see cref="Layout.TextFace.Mono"/> runs. Null draws them in <see cref="FontPath"/>, as before.</summary>
+    public string? MonoFontPath { get; set; }
+
+    /// <summary>The bold monospace face; null draws bold mono runs in <see cref="MonoFontPath"/>.</summary>
+    public string? MonoBoldFontPath { get; set; }
+
     /// <summary>The emoji face, for callers with a dedicated emoji path rather than coverage-driven fallback.</summary>
     public string? EmojiFontPath { get; set; }
 

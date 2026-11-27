@@ -1286,6 +1286,9 @@ namespace DIR.Lib
                 // still has an emoji face. In practice they agree here, because the chain is BUILT from
                 // this same path.
                 EmojiFontPath = EmojiFontPath,
+                BoldFontPath = Ui.BoldFontPath,
+                MonoFontPath = Ui.MonoFontPath,
+                MonoBoldFontPath = Ui.MonoBoldFontPath,
             };
 
         /// <summary>
@@ -1347,6 +1350,14 @@ namespace DIR.Lib
             // trailing arrow underlines its text as the text itself does. LayoutDamage resolves it identically.
             var hitScopes = scratch.HitScopes;
 
+            // The enclosing ROWS, by depth: the nodes a hover-revealed node (Node.RevealOnRowHover) answers to, those
+            // with a hit, a hover background or a selection. LayoutDamage resolves it identically.
+            var rowScopes = scratch.RowScopes;
+
+            // A hover-revealed node that is hidden this frame: its whole subtree is stepped over, as a closed
+            // popover's is (the room stays reserved, nothing is painted, captured or registered). -1 is "none".
+            var hiddenDepth = -1;
+
             // The nearest enclosing DISABLED node, and the background the dim is measured against, both
             // resolved by depth exactly as the link above is. Disabling reaches the subtree because that
             // is what a caller means by it: a row declared unavailable whose label stayed bright would be
@@ -1401,6 +1412,11 @@ namespace DIR.Lib
                 while (hitScopes.Count > 0 && hitScopes.Peek().Depth >= arrangedNode.Depth)
                 {
                     hitScopes.Pop();
+                }
+
+                while (rowScopes.Count > 0 && rowScopes.Peek().Depth >= arrangedNode.Depth)
+                {
+                    rowScopes.Pop();
                 }
 
                 while (scrolls.Count > 0 && scrolls.Peek().Depth >= arrangedNode.Depth)
@@ -1487,6 +1503,30 @@ namespace DIR.Lib
                     continue;
                 }
 
+                if (hiddenDepth >= 0 && arrangedNode.Depth <= hiddenDepth)
+                {
+                    hiddenDepth = -1;
+                }
+
+                if (hiddenDepth < 0 && node.RevealOnRowHover)
+                {
+                    // Against the nearest enclosing row, else the node's own rect. Resolved before this node's own
+                    // scope is pushed below, so a revealed button that has a hit of its own answers to its ROW.
+                    var shown = rowScopes.Count > 0
+                        ? rowScopes.Peek().Selected
+                            || PointerWithin(rowScopes.Peek().Bounds, openPopoverDepth >= 0, rowScopes.Peek().Order)
+                        : PointerWithin(bounds, openPopoverDepth >= 0, int.MaxValue);
+                    if (!shown)
+                    {
+                        hiddenDepth = arrangedNode.Depth;
+                    }
+                }
+
+                if (hiddenDepth >= 0)
+                {
+                    continue;
+                }
+
                 if (modalDepth >= 0 && arrangedNode.Depth <= modalDepth)
                 {
                     modalDepth = -1;
@@ -1530,6 +1570,11 @@ namespace DIR.Lib
                 // The node's place in the cycle's paint order, which a surface painted after it is compared against
                 // (WindowUiSettings.IsCoveredBySurface), and the surface's own note when it is one.
                 var paintOrder = Ui.NotePaintedNode();
+
+                if (node.Hit is not null || node.HoverBackground is not null || node.IsSelected)
+                {
+                    rowScopes.Push((arrangedNode.Depth, bounds, node.IsSelected, paintOrder));
+                }
 
                 // The pointer owner is the popover's CONTENT rect, and it cannot be read off the Anchored
                 // node: ArrangeNode records every node against the rect it was GIVEN, so the Anchored node's
@@ -1781,8 +1826,14 @@ namespace DIR.Lib
                             // whichever surface sizes happened not to fit. The engine owns the rect; only
                             // the run knows which half of itself carries the meaning, which is why the
                             // policy travels with the run rather than living here.
+                            //
+                            // The run's own face and weight, resolved by the context that measured it. A run in
+                            // another face than the regular one is fitted and drawn with that face alone: the
+                            // fallback chain is built around the regular face, as the measure already assumed.
+                            var runPath = ctx.ResolveFontPath(text.Face, text.Weight);
+                            var runFallback = ReferenceEquals(runPath, fp) ? ctx.Fallback : null;
                             var (value, fontSize) = TextFit.ForWidth(
-                                Renderer, text.Value, fp, ctx.Fallback,
+                                Renderer, text.Value, runPath, runFallback,
                                 text.FontSize * ctx.FontScale, bounds.Width, text.Trim);
                             //
                             // Text under a LinkHit goes out as a selectable run carrying an Href, which is
@@ -1800,14 +1851,14 @@ namespace DIR.Lib
                             var runColor = disabled ? DimTowards(text.Color, behind) : text.Color;
                             if (links.Count > 0 || text.Selectable)
                             {
-                                DrawSelectableText(value, fp, ctx.Fallback,
+                                DrawSelectableText(value, runPath, runFallback,
                                     bounds.X, bounds.Y, bounds.Width, bounds.Height,
                                     fontSize, runColor, text.HAlign, text.VAlign,
                                     links.Count > 0 ? links.Peek().Url : null);
                             }
                             else
                             {
-                                DrawText(value.AsSpan(), fp, ctx.Fallback,
+                                DrawText(value.AsSpan(), runPath, runFallback,
                                     bounds.X, bounds.Y, bounds.Width, bounds.Height,
                                     fontSize, runColor, text.HAlign, text.VAlign);
                             }
@@ -1817,7 +1868,7 @@ namespace DIR.Lib
                                 && PointerWithin(hitScopes.Count > 0 ? hitScopes.Peek().Bounds : bounds,
                                     openPopoverDepth >= 0, paintOrder))
                             {
-                                var run = Renderer.MeasureText(value.AsSpan(), fp, fontSize);
+                                var run = Renderer.MeasureText(value.AsSpan(), runPath, fontSize);
                                 var runW = MathF.Min(run.Width, bounds.Width);
                                 var runX = text.HAlign switch
                                 {
@@ -1972,6 +2023,7 @@ namespace DIR.Lib
         {
             public readonly Stack<(int Depth, string Url)> Links = new();
             public readonly Stack<(int Depth, Rect<float> Bounds)> HitScopes = new();
+            public readonly Stack<(int Depth, Rect<float> Bounds, bool Selected, int Order)> RowScopes = new();
             public readonly Stack<(int Depth, RGBAColor32 Color)> Backgrounds = new();
             public readonly Stack<(int Depth, ListScrollController Scroll, RectF32 Clip)> Scrolls = new();
 
@@ -1979,6 +2031,7 @@ namespace DIR.Lib
             {
                 Links.Clear();
                 HitScopes.Clear();
+                RowScopes.Clear();
                 Backgrounds.Clear();
                 Scrolls.Clear();
             }

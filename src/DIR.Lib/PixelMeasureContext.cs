@@ -114,7 +114,38 @@ public sealed class PixelMeasureContext<TSurface>(Renderer<TSurface> renderer, s
     /// </para>
     /// </summary>
     public Layout.Size<float> MeasureText(ReadOnlySpan<char> text, float fontSize)
+        => MeasureText(text, fontSize, Layout.TextFace.Ui, Layout.TextWeight.Regular);
+
+    /// <summary>The bold Ui face (<see cref="WindowUiSettings.BoldFontPath"/>); null draws bold runs in <see cref="FontPath"/>.</summary>
+    public string? BoldFontPath { get; init; }
+
+    /// <summary>The monospace face (<see cref="WindowUiSettings.MonoFontPath"/>); null draws mono runs in <see cref="FontPath"/>.</summary>
+    public string? MonoFontPath { get; init; }
+
+    /// <summary>The bold monospace face; null falls back to <see cref="MonoFontPath"/>.</summary>
+    public string? MonoBoldFontPath { get; init; }
+
+    /// <summary>
+    /// The font file a run of this face and weight is measured and drawn with: the face the context was given for it, else
+    /// the regular <see cref="FontPath"/>, so a host that supplies none draws every run as it always did. The one place
+    /// that rule lives, read by measure and paint alike.
+    /// </summary>
+    public string ResolveFontPath(Layout.TextFace face, Layout.TextWeight weight)
     {
+        var bold = weight == Layout.TextWeight.Bold;
+        var resolved = face == Layout.TextFace.Mono
+            ? (bold ? MonoBoldFontPath : null) ?? MonoFontPath
+            : bold ? BoldFontPath : null;
+        return string.IsNullOrEmpty(resolved) ? fontPath : resolved;
+    }
+
+    /// <summary>
+    /// As <see cref="MeasureText(ReadOnlySpan{char}, float)"/>, in the face and weight the run will be drawn with. A run in
+    /// a face other than the regular one is measured against that face alone (no fallback runs), as it is drawn.
+    /// </summary>
+    public Layout.Size<float> MeasureText(ReadOnlySpan<char> text, float fontSize, Layout.TextFace face, Layout.TextWeight weight)
+    {
+        var runPath = ResolveFontPath(face, weight);
         var px = fontSize * FontScale;
         var lineHeight = px * LineHeightFactor;
 
@@ -127,7 +158,7 @@ public sealed class PixelMeasureContext<TSurface>(Renderer<TSurface> renderer, s
 
         // Only split when the primary can't draw the whole run — PrimaryCoversAll is
         // allocation-free and true for essentially all chrome, so the common path is unchanged.
-        if (Fallback is { } fallback && !fallback.PrimaryCoversAll(text))
+        if (Fallback is { } fallback && ReferenceEquals(runPath, fontPath) && !fallback.PrimaryCoversAll(text))
         {
             var runs = _runs ??= [];
             fallback.CoverageRuns(text, runs);
@@ -139,7 +170,7 @@ public sealed class PixelMeasureContext<TSurface>(Renderer<TSurface> renderer, s
             return new Layout.Size<float>(w, lineHeight);
         }
 
-        var width = renderer.MeasureText(text, fontPath, px).Width;
+        var width = renderer.MeasureText(text, runPath, px).Width;
         return new Layout.Size<float>(width, lineHeight);
     }
 
@@ -177,5 +208,5 @@ public sealed class PixelMeasureContext<TSurface>(Renderer<TSurface> renderer, s
     /// The fallback resolver and renderer count by reference, so a resolver whose coverage changes in place must be
     /// replaced, not mutated.
     /// </summary>
-    public object? MeasureKey => _measureKey ??= (renderer, fontPath, scaleX, scaleY, LineHeightFactor, Fallback, EmojiFontPath);
+    public object? MeasureKey => _measureKey ??= (renderer, fontPath, scaleX, scaleY, LineHeightFactor, Fallback, EmojiFontPath, BoldFontPath, MonoFontPath, MonoBoldFontPath);
 }

@@ -78,6 +78,24 @@ public abstract record Content
         /// region, a trailing arrow included, underlines its text. For a hyperlink. The pixel painter honours it; Console.Lib's cell painter does not yet.
         /// </summary>
         public bool UnderlineOnHover { get; init; }
+
+        /// <summary>
+        /// The weight of the run: <see cref="TextWeight.Regular"/> (the default, drawn exactly as before) or
+        /// <see cref="TextWeight.Bold"/>, for a heading or a section label. The pixel painter resolves it to
+        /// the bold face the widget was given (<see cref="WindowUiSettings.BoldFontPath"/>) and measures with it,
+        /// and falls back to the regular face when none is set, so a host that supplies no bold face draws and
+        /// measures as it always did. Console.Lib's cell painter may map it to SGR bold; init-only, so the
+        /// record's constructor keeps its shape.
+        /// </summary>
+        public TextWeight Weight { get; init; } = TextWeight.Regular;
+
+        /// <summary>
+        /// The face of the run: <see cref="TextFace.Ui"/> (the default) or <see cref="TextFace.Mono"/>, for a
+        /// command line, a path or a code sample (<see cref="WindowUiSettings.MonoFontPath"/>; falls back to the
+        /// regular face when none is set). A non-Ui face is drawn with that face alone: the widget's fallback
+        /// chain is built around the Ui face and is not applied to it.
+        /// </summary>
+        public TextFace Face { get; init; } = TextFace.Ui;
     }
 
     /// <summary>A fixed-size piece (icon, swatch, separator, spacer) -- intrinsic size is <paramref name="Width"/> x <paramref name="Height"/> design units. The painter fills it only when <see cref="Color"/> is non-transparent, so a transparent Box is a pure spacer.</summary>
@@ -373,6 +391,26 @@ public abstract record Content
     /// </para>
     /// </summary>
     public sealed record Fill(float MinWidth = 0f, float MinHeight = 0f, string? Key = null) : Content;
+}
+
+/// <summary>The weight of a <see cref="Content.Text"/> run.</summary>
+public enum TextWeight
+{
+    /// <summary>The ordinary weight of the face.</summary>
+    Regular = 0,
+
+    /// <summary>Bold: a heading or a section label.</summary>
+    Bold,
+}
+
+/// <summary>The face of a <see cref="Content.Text"/> run.</summary>
+public enum TextFace
+{
+    /// <summary>The interface face the widget draws its text with.</summary>
+    Ui = 0,
+
+    /// <summary>A monospace face: a command line, a path, a code sample.</summary>
+    Mono,
 }
 
 /// <summary>

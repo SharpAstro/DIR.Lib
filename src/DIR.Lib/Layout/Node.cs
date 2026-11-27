@@ -155,6 +155,28 @@ public abstract partial record Node
     /// </summary>
     public RGBAColor32? FocusBackground { get; init; }
 
+    /// <summary>
+    /// This node, and everything under it, is painted and hit ONLY while the pointer is inside the nearest
+    /// enclosing ROW (the nearest ancestor with a <see cref="Hit"/>, a <see cref="HoverBackground"/> or
+    /// <see cref="IsSelected"/>; this node's own rect when it has no such ancestor), or always while that row
+    /// <see cref="IsSelected"/>. For a tree row's run button, shown on hover. The node still takes its room when
+    /// hidden, so nothing moves when it appears, and a hidden node registers no region, so it cannot be pressed
+    /// unseen. A disabled row is no different: the node's own disabled state is what it is.
+    /// <para>
+    /// Resolved at paint time like <see cref="HoverBackground"/>, and signed into <see cref="LayoutDamage"/> so the
+    /// hover edge repaints. Pixel painter only; Console.Lib's cell painter, SdlVulkan.Renderer and WebGl.Renderer
+    /// may honour it later. Init-only, set with <c>RevealOnRowHover()</c>.
+    /// </para>
+    /// </summary>
+    public bool RevealOnRowHover { get; init; }
+
+    /// <summary>
+    /// This node is the selected row: a node under it that <see cref="RevealOnRowHover"/> shows without the pointer
+    /// being near. Paints nothing itself; draw the selection with <see cref="Background"/>. Init-only, set with
+    /// <c>Selected()</c>.
+    /// </summary>
+    public bool IsSelected { get; init; }
+
     /// <summary>Corner radius in design units for this node's <see cref="Background"/> (and a
     /// <see cref="Content.Box"/> leaf's own fill). 0 (default) is a square corner and paints exactly as
     /// before, so this is inert until asked for.
