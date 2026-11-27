@@ -300,8 +300,8 @@ public sealed class PrototypeLoaderTests
             .ShouldBe([
                 "$.screens[0].root.children[0].depth: wrong value type: expected a whole number that is not negative",
                 "$.screens[0].root.children[0].mark: unknown icon 'Nope' (an IconKind name)",
-                "$.screens[0].root.children[0].trailingAction: goto names screen 'zz', which does not exist",
                 "$.screens[0].root.children[0].trailingAction: needs 'trailingIcon': the icon the action is pressed on",
+                "$.screens[0].root.children[0].trailingAction: goto names screen 'zz', which does not exist",
             ]);
     }
 
