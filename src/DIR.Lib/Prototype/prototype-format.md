@@ -35,6 +35,19 @@ target, so `target` follows the target's design width. A finding names its targe
 as `@name` in its text) and a render returns `(Target, Screen, Image)`. The sized overloads draw at a size and leave
 the target name empty. `Check` never uses `target` as a state variant: it comes from the size.
 
+## Faces
+
+A bold run (`weight: bold`, the heading and label styles) and a mono run (`face: mono`) are drawn in a face of their own
+only when the host gives one. `PrototypeFaces` names them (`Regular`, `Bold`, `Mono`, `MonoBold`); `Prototype.Check`,
+`Prototype.Render` and `PrototypePlayer` take it in a new overload. What a face falls back to:
+
+- **A face left null** draws in the face the painter falls back to: bold in `Regular`, mono in `Regular`, bold mono in `Mono`.
+- **A `fontPath` given** (the older overloads, and the player constructor taking a path) names the one face every run
+  draws in, so the result does not depend on the machine: bold and mono are the same face as the body.
+- **No `fontPath` and no faces** (`Check` and `Render` with a null path) use `PrototypeFaces.Platform()`: Arial as the body
+  face with its bold where installed (else the platform's default face), and the platform's monospace face from
+  `FontResolver.ResolveSystemFont`. A platform without a default face throws, as before.
+
 ## Nodes
 
 A node is an object with `kind` (required), the kind's properties, the common properties, and:
@@ -43,7 +56,7 @@ A node is an object with `kind` (required), the kind's properties, the common pr
 - `action`: what a click does. `goto:<screen>`, `set:<name>=<value>` or `toggle:<name>`.
 - `when`: `<name>=<value>`; the node is shown only while that state equals the value (equality only).
 - `selectedWhen`: `<name>=<value>`, validated like `when`; while it holds the node is drawn selected (the `Selection` fill and an `Accent` edge).
-- `doubleAction`: an action in the form of `action`, run on a double-click and on Enter.
+- `doubleAction`: an action in the form of `action`, run on a double-click. A node with a `doubleAction` and no `action` is still clickable, so the double-click reaches it. **Enter** reaches only the rows of a `tree` and a `table`: each is a declared list (Up and Down move a cursor that shows a focus ring, Enter runs the row's `doubleAction`, else its `action`). Enter does nothing on any other node, because no other kind is a list the keyboard can be in. A `tableRow` with neither an `action` nor a `doubleAction` is not clickable and the cursor steps over it.
 - `bind`: a state name, for `textInput`, `checkbox`, `switch`, `slider`, `buttonGroup` and `dropdown`.
 
 State names are letters, digits and underscores, not starting with a digit. A `key` is unique within its screen.
@@ -68,7 +81,7 @@ Accepted by every kind.
 | `hoverBackground` | colour | `BgHover`: the fill while the pointer is over the node |
 | `revealOnHover` | bool | the node shows only while its row is hovered or selected |
 | `selectedWhen` | string | `<name>=<value>`: drawn selected while the state equals the value |
-| `doubleAction` | string | an action run on double-click and on Enter |
+| `doubleAction` | string | an action run on double-click, and on Enter for a tree row or a table row |
 
 ## Numbers
 
@@ -95,7 +108,7 @@ Children top to bottom (`Builder.VStack`).
 
 ### `hstack`
 
-Children left to right (`Builder.HStack`).
+Children left to right (`Builder.HStack`), centred on the row's vertical middle (since 11.104; before it every child sat at the top, so a row of mixed heights laid out differently).
 
 | Property | Type | Notes |
 |---|---|---|
@@ -150,8 +163,8 @@ Exactly two children: the layer, then the modal card. `action` runs when the scr
 | `fontSize` | number | default 14 |
 | `color` | colour | |
 | `align` | enum | `near`, `center`, `far` |
-| `weight` | enum | `regular` or `bold` |
-| `face` | enum | `ui` (default) or `mono` |
+| `weight` | enum | `regular` or `bold`; drawn in the bold face (see Faces) |
+| `face` | enum | `ui` (default) or `mono`; drawn in the monospace face (see Faces) |
 | `style` | enum | `body` (default), `heading` (bold, larger) or `label` (small, upper-case, `DimText`); sizes come from the theme's metrics |
 
 ### `button`

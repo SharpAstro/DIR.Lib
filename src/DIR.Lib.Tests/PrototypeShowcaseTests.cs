@@ -14,7 +14,11 @@ namespace DIR.Lib.Tests;
 public sealed class PrototypeShowcaseTests
 {
     private static readonly string FontPath = Path.Combine(AppContext.BaseDirectory, "Fonts", "DejaVuSans.ttf");
+    private static readonly string BoldFontPath = Path.Combine(AppContext.BaseDirectory, "Fonts", "DejaVuSans-Bold.ttf");
     private static readonly string MonoFontPath = Path.Combine(AppContext.BaseDirectory, "Fonts", "DejaVuSansMono.ttf");
+
+    // The faces a host gives the prototype: body, bold (headings, labels, weight: bold) and mono (face: mono).
+    private static readonly PrototypeFaces Faces = new() { Regular = FontPath, Bold = BoldFontPath, Mono = MonoFontPath };
     private static readonly string BaselineDir = Path.Combine(AppContext.BaseDirectory, "Baselines");
     private static readonly string SourceBaselineDir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "Baselines");
     private static readonly bool UpdateBaselines = Environment.GetEnvironmentVariable("DIR_LIB_UPDATE_BASELINES") == "1";
@@ -38,18 +42,27 @@ public sealed class PrototypeShowcaseTests
 
     [Fact]
     public void ItChecksCleanAtEveryTarget()
-        => Prototype.Check(Showcase(), Prototype.DefaultTheme, fontPath: FontPath).ShouldBeEmpty();
+        => Prototype.Check(Showcase(), Faces, Prototype.DefaultTheme).ShouldBeEmpty();
 
     [Fact]
     public void ItChecksCleanInTheLightPalette()
-        => Prototype.Check(Showcase(), LightTheme, fontPath: FontPath).ShouldBeEmpty();
+        => Prototype.Check(Showcase(), Faces, LightTheme).ShouldBeEmpty();
 
     [Fact]
     public void EachScreenRenders()
     {
-        var images = Prototype.Render(Showcase(), Prototype.DefaultTheme, FontPath);
+        var images = Prototype.Render(Showcase(), Faces, Prototype.DefaultTheme);
         images.Select(i => i.Screen).ShouldBe(["workbench", "detail"]);
         images.ShouldAllBe(i => i.Image.Width == 560 && i.Image.Height == 480);
+    }
+
+    // Item 8 of #330: a bold run and a mono run reach the painter through Render, not only through a hand-set Ui.
+    [Fact]
+    public void RenderDrawsBoldAndMonoRunsInTheirOwnFaces()
+    {
+        var plain = Prototype.Render(Showcase(), Prototype.DefaultTheme, FontPath);
+        var faced = Prototype.Render(Showcase(), Faces, Prototype.DefaultTheme);
+        faced[0].Image.Pixels.AsSpan().SequenceEqual(plain[0].Image.Pixels).ShouldBeFalse();
     }
 
     private sealed class Session
@@ -60,8 +73,7 @@ public sealed class PrototypeShowcaseTests
 
         public Session(UiTheme theme)
         {
-            Player = new PrototypePlayer<RgbaImage>(Renderer, Showcase(), theme, FontPath);
-            Player.Ui.MonoFontPath = MonoFontPath;
+            Player = new PrototypePlayer<RgbaImage>(Renderer, Showcase(), theme, Faces);
             Player.State.Set("sel", "a");
             Player.State.Set("pick", "1");
             Player.State.Set("live", true);

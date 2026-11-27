@@ -39,6 +39,11 @@ public sealed class PrototypeTreeBuilder
     private bool _treeReservesTrailing;
     private TableColumn[] _tableColumns = [];
     private TableStyle _tableStyle;
+    // The list cursor of each tree and table, by the container's path, so the keyboard position survives the per-frame
+    // rebuild; and, while a container builds its rows, the list id and the next row index (hidden rows take no index).
+    private readonly Dictionary<string, ListCursor> _cursors = new(StringComparer.Ordinal);
+    private string? _listId;
+    private int _listIndex;
 
     /// <summary>Creates a builder.</summary>
     /// <param name="theme">Supplies the colour roles and the base metrics.</param>
@@ -270,11 +275,14 @@ public sealed class PrototypeTreeBuilder
     {
         var outer = _treeBind;
         var outerReserve = _treeReservesTrailing;
+        var (outerList, outerIndex) = (_listId, _listIndex);
+        var listId = "prototype-tree:" + n.Path;
+        (_listId, _listIndex) = (listId, 0);
         _treeBind = n.Bind;
         // When any row carries a trailing action, every row keeps its room, so the notes share one right edge.
         _treeReservesTrailing = n.Children.Any(c => c.Properties.ContainsKey("trailingIcon"));
-        try { return B.VStack(BuildChildren(n)).WStar(); }
-        finally { _treeBind = outer; _treeReservesTrailing = outerReserve; }
+        try { return B.VStack(BuildChildren(n)).WStar().ListOf(Unbound(_cursors, n.Path), listId); }
+        finally { _treeBind = outer; _treeReservesTrailing = outerReserve; (_listId, _listIndex) = (outerList, outerIndex); }
     }
 
     /// <summary>
@@ -313,7 +321,8 @@ public sealed class PrototypeTreeBuilder
             if (p.TryGetValue("trailingAction", out var ta))
             {
                 var act = ta.Text;
-                trailing = trailing.Clickable(new HitResult.ButtonHit("tree-trailing:" + (Str(p, "key", null!) ?? n.Path)), _ => Run(act), CursorKind.Pointer);
+                // The tree's path is in the id: two trees can share a row key.
+                trailing = trailing.Clickable(new HitResult.ButtonHit("tree-trailing:" + n.Path), _ => Run(act), CursorKind.Pointer);
             }
             // Shown on hover and on the selected row; it keeps its room hidden, so nothing moves.
             kids.Add(trailing.RevealOnRowHover());
@@ -330,11 +339,12 @@ public sealed class PrototypeTreeBuilder
             new TreeRowStyle(Palette.DimText), size).HFixed(metrics.ItemHeight).WStar();
 
         var action = n.Action;
-        row = row.Clickable(new HitResult.ButtonHit("tree-row:" + (key ?? n.Path)), _ =>
+        // A row of the tree's declared list: Up and Down move the cursor, Enter runs the row's doubleAction, else its click.
+        row = row.Clickable(RowHit("tree-row:" + n.Path), _ =>
         {
             if (bind is not null && key is not null) _state.Set(bind, key);
             if (action is not null) Run(action);
-        }).BgHover(Palette.Separator);
+        }).BgHover(Palette.Separator).WithFocusRing(Palette.Focus, _theme.Metrics.FocusRingWidth, _theme.Metrics.FocusRingGap);
         if (selected)
             row = row.Selected().Bg(Palette.Selection).Border(Palette.Accent, metrics.ControlEdgeWidth, 0f);
         return row;
@@ -345,7 +355,7 @@ public sealed class PrototypeTreeBuilder
         var metrics = _theme.Metrics;
         var options = n.Properties.TryGetValue("options", out var o) ? o.List : [];
         var items = new TabItem<string>[options.Length];
-        for (int i = 0; i < items.Length; i++) items[i] = new TabItem<string>(options[i], options[i]) { Tooltip = options[i] };
+        for (int i = 0; i < items.Length; i++) items[i] = new TabItem<string>(options[i], options[i]);
         var name = n.Bind;
         var current = name is null ? "" : _state.Get(name);
         var active = Array.IndexOf([.. options], current);
@@ -383,6 +393,7 @@ public sealed class PrototypeTreeBuilder
 
         var outerColumns = _tableColumns;
         var outerStyle = _tableStyle;
+        var (outerList, outerIndex) = (_listId, _listIndex);
         _tableColumns = columns;
         _tableStyle = new TableStyle(Palette.HeaderBg, Palette.HeaderText, Palette.Separator, Palette.Accent)
         {
@@ -391,20 +402,36 @@ public sealed class PrototypeTreeBuilder
         };
         try
         {
+            var listId = "prototype-table:" + n.Path;
+            (_listId, _listIndex) = (listId, 0);
             var rows = new List<Node> { B.TableHeader(columns, null, null, _tableStyle, metrics.BaseFontSize).HFixed(metrics.ItemHeight).WStar() };
             rows.AddRange(BuildChildren(n));
-            return B.VStack([.. rows]).WStar();
+            return B.VStack([.. rows]).WStar().ListOf(Unbound(_cursors, n.Path), listId);
         }
         finally
         {
+            (_listId, _listIndex) = (outerList, outerIndex);
             _tableColumns = outerColumns;
             _tableStyle = outerStyle;
         }
     }
 
     private Node BuildTableRow(PrototypeNode n)
-        => B.TableRow(_tableColumns, BuildChildren(n), _tableStyle).HFixed(_theme.Metrics.ItemHeight).WStar()
+    {
+        // The index is taken for every built row, so the rows a cursor steps over keep their places.
+        var hit = RowHit("table-row:" + n.Path);
+        var row = B.TableRow(_tableColumns, BuildChildren(n), _tableStyle).HFixed(_theme.Metrics.ItemHeight).WStar()
             .BgHover(_tableStyle.HoverFill);
+        // A row that does something is a row of the table's declared list (Up and Down reach it, Enter runs its
+        // doubleAction, else its action); a row that does nothing is not clickable and the cursor steps over it.
+        if (n.Action is { } action) return row.Clickable(hit, _ => Run(action)).WithFocusRing(Palette.Focus, _theme.Metrics.FocusRingWidth, _theme.Metrics.FocusRingGap);
+        if (n.DoubleAction is not null) return row.Clickable(hit).WithFocusRing(Palette.Focus, _theme.Metrics.FocusRingWidth, _theme.Metrics.FocusRingGap);
+        return row;
+    }
+
+    // The hit of the next row of the container being built: a list item when it declares a list, else a plain button.
+    private HitResult RowHit(string fallback)
+        => _listId is { } id ? new HitResult.ListItemHit(id, _listIndex++) : new HitResult.ButtonHit(fallback);
 
     private static Sizing SizingOfWord(string word)
     {
@@ -540,10 +567,16 @@ public sealed class PrototypeTreeBuilder
             node = node.Selected().Bg(Palette.Selection).Border(Palette.Accent, _theme.Metrics.ControlEdgeWidth, radius);
         if (p.TryGetValue("tooltip", out var tip)) node = node.WithTooltip(tip.Text);
         if (n.DoubleAction is { } dbl)
+        {
             node = node.DoubleClickable(_ => Run(dbl)).Activatable(_ => Run(dbl));
+            // The painter registers a region only for a node with a hit, so a node that has a doubleAction and no
+            // click of its own is given one, or the double-click would reach nothing.
+            if (node.Hit is null && n.Kind is not ("treeRow" or "tableRow"))
+                node = node.Clickable(new HitResult.ButtonHit(Str(p, "key", null!) ?? dbl));
+        }
 
         // A modal's action is its scrim dismissal, and a bound input owns its own press.
-        if (n.Action is { } action && n.Kind is not ("modal" or "button" or "treeRow") && n.Bind is null)
+        if (n.Action is { } action && n.Kind is not ("modal" or "button" or "treeRow" or "tableRow") && n.Bind is null)
         {
             node = node.Clickable(new HitResult.ButtonHit(Str(p, "key", null!) ?? action), _ => Run(action));
         }

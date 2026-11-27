@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Runtime.InteropServices;
@@ -1402,7 +1402,8 @@ namespace DIR.Lib
             foreach (var arrangedNode in arranged)
             {
                 var (node, bounds) = arrangedNode;
-                if (node.DeclaredList is { } declaredList) _declaredLists.Add(declaredList);
+                // A list inside a hover-revealed subtree that is hidden this frame is not a list on the frame (see below).
+                if (node.DeclaredList is { } declaredList && (hiddenDepth < 0 || arrangedNode.Depth <= hiddenDepth)) _declaredLists.Add(declaredList);
 
                 while (links.Count > 0 && links.Peek().Depth >= arrangedNode.Depth)
                 {
@@ -1519,6 +1520,8 @@ namespace DIR.Lib
                     if (!shown)
                     {
                         hiddenDepth = arrangedNode.Depth;
+                        // The hidden root's own list was noted at the top of this iteration, before it was known hidden.
+                        if (node.DeclaredList is { } hiddenList) _declaredLists.Remove(hiddenList);
                     }
                 }
 

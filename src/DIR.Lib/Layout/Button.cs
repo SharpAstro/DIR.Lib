@@ -26,8 +26,8 @@ public static partial class Builder
     /// A themed text button, drawn from <see cref="UiTheme.Controls"/> alone (fills, edge, radius, padding, ink), at
     /// <see cref="UiMetrics.ButtonHeight"/>. Hover, pressed and keyboard focus are declared fills
     /// (<see cref="Node.BgHover"/>, <see cref="Node.BgPressed"/>, <see cref="Node.FocusRing"/>), so the look follows the
-    /// pointer with no state of the caller's. <paramref name="opens"/> adds a trailing <see cref="IconKind.CaretRight"/>
-    /// ("this opens something behind it"). A <paramref name="disabledReason"/> makes the button flat (no hover, no pressed), dims
+    /// pointer with no state of the caller's. <paramref name="opens"/> adds a trailing small chevron, a `›` text leaf in the button's ink
+    /// ("this opens something behind it"; design-language.md section 4. Until 11.104 it was the <see cref="IconKind.CaretRight"/> icon, so a cell host now draws `›` where it drew `▶`). A <paramref name="disabledReason"/> makes the button flat (no hover, no pressed), dims
     /// the ink, takes no press and shows the reason as its tooltip with the not-allowed cursor.
     /// </summary>
     /// <remarks>Keyboard focus shows only for a button in a declared list (<see cref="Node.ListOf(ListCursor, string)"/>) whose <paramref name="hit"/>

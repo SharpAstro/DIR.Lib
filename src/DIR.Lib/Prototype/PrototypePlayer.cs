@@ -23,11 +23,23 @@ public sealed class PrototypePlayer<TSurface> : PixelWidgetBase<TSurface>
 
     /// <summary>Creates a player on the document's entry screen.</summary>
     public PrototypePlayer(Renderer<TSurface> renderer, PrototypeDocument document, UiTheme theme, string fontPath)
+        : this(renderer, document, theme, new PrototypeFaces { Regular = fontPath })
+    {
+    }
+
+    /// <summary>
+    /// Creates a player on the document's entry screen that draws with <paramref name="faces"/>: a bold run and a
+    /// monospace run take their own faces, so a heading, a label and a command line differ from body text.
+    /// With only a font path (the other constructor) every run draws in that one face.
+    /// </summary>
+    public PrototypePlayer(Renderer<TSurface> renderer, PrototypeDocument document, UiTheme theme, PrototypeFaces faces)
         : base(renderer)
     {
         Document = document;
         Theme = theme;
-        FontPath = fontPath;
+        Faces = faces;
+        FontPath = faces.Regular;
+        faces.ApplyTo(Ui);
         State = new PrototypeState();
         _builder = new PrototypeTreeBuilder(theme, State, OnAction)
         {
@@ -36,6 +48,9 @@ public sealed class PrototypePlayer<TSurface> : PixelWidgetBase<TSurface>
         };
         _screen = Find(document.Entry) ?? document.Screens[0];
     }
+
+    /// <summary>The faces the prototype draws with.</summary>
+    public PrototypeFaces Faces { get; }
 
     /// <summary>The document being played.</summary>
     public PrototypeDocument Document { get; }
