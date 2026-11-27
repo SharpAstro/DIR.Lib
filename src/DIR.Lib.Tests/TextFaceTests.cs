@@ -93,9 +93,9 @@ public class TextFaceTests
     public void TheEngineMeasuresALeafInItsOwnFace()
     {
         var ctx = Context(withFaces: true);
-        var bounds = new Rect<float>(0, 0, 400, 40);
-        var plain = Engine.Arrange(Builder.Text("iiii iiii").WAuto(), bounds, ctx)[0].Bounds.Width;
-        var mono = Engine.Arrange(Builder.Text("iiii iiii").Mono().WAuto(), bounds, ctx)[0].Bounds.Width;
+        var available = new Size<float>(400f, 40f);
+        var plain = Engine.Measure(Builder.Text("iiii iiii").WAuto(), available, ctx).Width;
+        var mono = Engine.Measure(Builder.Text("iiii iiii").Mono().WAuto(), available, ctx).Width;
         mono.ShouldBeGreaterThan(plain + 1f);
     }
 
@@ -124,7 +124,7 @@ public class TextFaceTests
     {
         var tree = Builder.VStack(
                 Builder.Text("Regular heading", 18f, Ink),
-                Builder.Text("0123456789", 18f, Ink).Bold(),
+                Builder.Text("Bold ABCabc 0123 .,-", 18f, Ink).Bold(),
                 Builder.Text("$ dotnet test --filter iiWW", 14f, Ink).Mono(),
                 Builder.Text("iiiiiiiiii", 14f, Ink).Mono(),
                 Builder.Text("WWWWWWWWWW", 14f, Ink).Mono())
