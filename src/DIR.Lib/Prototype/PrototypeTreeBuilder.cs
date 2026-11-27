@@ -36,6 +36,7 @@ public sealed class PrototypeTreeBuilder
     private readonly Dictionary<string, SliderState> _unboundSliders = new(StringComparer.Ordinal);
     // The enclosing tree's bind and table's columns, set while that container builds its rows.
     private string? _treeBind;
+    private bool _treeReservesTrailing;
     private TableColumn[] _tableColumns = [];
     private TableStyle _tableStyle;
 
@@ -268,9 +269,12 @@ public sealed class PrototypeTreeBuilder
     private Node BuildTree(PrototypeNode n)
     {
         var outer = _treeBind;
+        var outerReserve = _treeReservesTrailing;
         _treeBind = n.Bind;
+        // When any row carries a trailing action, every row keeps its room, so the notes share one right edge.
+        _treeReservesTrailing = n.Children.Any(c => c.Properties.ContainsKey("trailingIcon"));
         try { return B.VStack(BuildChildren(n)).WStar(); }
-        finally { _treeBind = outer; }
+        finally { _treeBind = outer; _treeReservesTrailing = outerReserve; }
     }
 
     private Node BuildTreeRow(PrototypeNode n)
@@ -295,6 +299,10 @@ public sealed class PrototypeTreeBuilder
             // Shown on hover and on the selected row; it keeps its room hidden, so nothing moves.
             kids.Add(trailing.RevealOnRowHover());
         }
+        else if (_treeReservesTrailing)
+        {
+            kids.Add(B.Spacer().WFixed(size).HStar());
+        }
 
         var content = B.HStack([.. kids]).WithGap(metrics.Padding * 0.5f).CrossCenter();
         var row = B.TreeRow((int)Num(p, "depth", 0f), false, false, null, content,
@@ -318,7 +326,7 @@ public sealed class PrototypeTreeBuilder
         var metrics = _theme.Metrics;
         var options = n.Properties.TryGetValue("options", out var o) ? o.List : [];
         var items = new TabItem<string>[options.Length];
-        for (int i = 0; i < items.Length; i++) items[i] = new TabItem<string>(options[i], options[i]);
+        for (int i = 0; i < items.Length; i++) items[i] = new TabItem<string>(options[i], options[i]) { Tooltip = options[i] };
         var name = n.Bind;
         var current = name is null ? "" : _state.Get(name);
         var active = Array.IndexOf([.. options], current);
@@ -327,7 +335,9 @@ public sealed class PrototypeTreeBuilder
 
         var fontSize = metrics.BaseFontSize;
         Func<string, float> measure = MeasureLabel is { } m
-            ? label => m(label, fontSize)
+            // One padding of slack: a label measured to the pixel lands exactly on its tab's edge and the
+            // text fit ellipsises it, which cut "Project" to "Proj..." with 260 px of strip to spare.
+            ? label => m(label, fontSize) + metrics.Padding
             : label => label.Length * fontSize * TabCharEm;
         var strip = new TabStripOptions
         {

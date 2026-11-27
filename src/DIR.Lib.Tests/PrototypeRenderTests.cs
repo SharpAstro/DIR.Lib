@@ -43,14 +43,57 @@ public sealed class PrototypeRenderTests
           ] } } ] }
         """;
 
-    [Fact]
-    public void TreeTabsAndTableMatchTheirBaseline()
+    private static readonly UiTheme LightTheme = new()
+    {
+        Palette = NotificationsRenderTests.Light,
+        Metrics = Prototype.DefaultTheme.Metrics,
+    };
+
+    /// <summary>
+    /// Draws the structures screen with row "a" selected and table row 1 picked; with <paramref name="hoverRowB"/> the
+    /// pointer sits on tree row "b", which lights it and shows its hover-revealed button, as a host's paint, settle,
+    /// move, paint cycle does.
+    /// </summary>
+    private static RgbaImage DrawStructures(UiTheme theme, bool hoverRowB)
     {
         var doc = Prototype.Load(StructuresJson);
         doc.Problems.ShouldBeEmpty();
-        var image = Prototype.Render(doc.Document!, (480u, 360u), Prototype.DefaultTheme, FontPath).Single().Image;
-        CompareBaseline(image, "prototype_structures_480x360.png");
+        var renderer = new RgbaImageRenderer(480, 360);
+        var player = new PrototypePlayer<RgbaImage>(renderer, doc.Document!, theme, FontPath);
+        player.State.Set("sel", "a");
+        player.State.Set("pick", "1");
+        var router = new InputRouter(player.Ui, new BackgroundTaskTracker(), static () => { }) { Widgets = () => [player] };
+        void Paint()
+        {
+            renderer.Surface.Clear(new RGBAColor32(0, 0, 0, 255));
+            player.Render(new RectF32(0, 0, 480, 360));
+            router.AfterPaint();
+        }
+        Paint();
+        if (hoverRowB)
+        {
+            // Row b: padding 12 + tabs 28 + gap 12 puts the tree at y 52, and each row is 28 tall.
+            router.Handle(new InputEvent.MouseMove(60f, 122f));
+            Paint();
+        }
+        return renderer.Surface;
     }
+
+    [Fact]
+    public void TreeTabsAndTableMatchTheirBaseline()
+        => CompareBaseline(DrawStructures(Prototype.DefaultTheme, false), "prototype_structures_480x360.png");
+
+    [Fact]
+    public void TreeRowHoverMatchesItsBaseline()
+        => CompareBaseline(DrawStructures(Prototype.DefaultTheme, true), "prototype_structures_hover_480x360.png");
+
+    [Fact]
+    public void TreeTabsAndTableInTheLightPaletteMatchTheirBaseline()
+        => CompareBaseline(DrawStructures(LightTheme, false), "prototype_structures_light_480x360.png");
+
+    [Fact]
+    public void TreeRowHoverInTheLightPaletteMatchesItsBaseline()
+        => CompareBaseline(DrawStructures(LightTheme, true), "prototype_structures_light_hover_480x360.png");
 
     [Fact]
     public void RenderReturnsOneImagePerScreenInDocumentOrder()
