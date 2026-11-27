@@ -72,8 +72,8 @@ public sealed class PrototypeRenderTests
         Paint();
         if (hoverRowB)
         {
-            // Row b: padding 12 + tabs 28 + gap 12 puts the tree at y 52, and each row is 28 tall.
-            router.Handle(new InputEvent.MouseMove(60f, 122f));
+            // Row b is the third row of the tree; the rows are 24 tall and its middle is at y 107.
+            router.Handle(new InputEvent.MouseMove(60f, 107f));
             Paint();
         }
         return renderer.Surface;
