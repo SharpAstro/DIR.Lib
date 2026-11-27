@@ -145,6 +145,19 @@ public sealed class PrototypeShowcaseTests
         CompareBaseline(s.Renderer.Surface, $"prototype_showcase_{palette}_selected_560x480.png");
     }
 
+    // The keyboard's place: a press on row b opens the tree's cursor there, Up moves it to row a, and the pointer is
+    // taken away so the ring is the only thing lit besides the selection.
+    [Theory, MemberData(nameof(Palettes))]
+    public void KeyboardFocusMatchesItsBaseline(string palette)
+    {
+        var s = new Session(Pick(palette));
+        s.Down(RowBX, RowBY);
+        s.Up(RowBX, RowBY);
+        s.Router.Handle(new InputEvent.KeyDown(InputKey.Up));
+        s.Move(540f, 470f);
+        CompareBaseline(s.Renderer.Surface, $"prototype_showcase_{palette}_focus_560x480.png");
+    }
+
     [Fact]
     public void APressOnATableRowPicksIt()
     {
