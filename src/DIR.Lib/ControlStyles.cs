@@ -168,6 +168,77 @@ public sealed record ToggleTileStyle
 }
 
 /// <summary>
+/// How a themed on/off switch looks: a rounded track and a round knob. On the track is the accent with the knob at the
+/// end; off it is the neutral control fill with the control edge ring and the knob at the start. The track is
+/// <see cref="HeightScale"/> times <see cref="UiMetrics.ButtonHeight"/> high and <see cref="WidthScale"/> times its own
+/// height wide, so it lines up with a button beside it. Values are palette colours and design units, never literals.
+/// </summary>
+public sealed record SwitchStyle
+{
+    /// <summary>Track fill when on.</summary>
+    public required RGBAColor32 OnFill { get; init; }
+
+    /// <summary>Track fill when on, under the pointer.</summary>
+    public required RGBAColor32 OnHoverFill { get; init; }
+
+    /// <summary>Track fill when on, while pressed.</summary>
+    public required RGBAColor32 OnPressedFill { get; init; }
+
+    /// <summary>Knob colour when on: the ink that reads on <see cref="OnFill"/>.</summary>
+    public required RGBAColor32 OnKnob { get; init; }
+
+    /// <summary>Track fill when off.</summary>
+    public required RGBAColor32 OffFill { get; init; }
+
+    /// <summary>Track fill when off, under the pointer.</summary>
+    public required RGBAColor32 OffHoverFill { get; init; }
+
+    /// <summary>Track fill when off, while pressed.</summary>
+    public required RGBAColor32 OffPressedFill { get; init; }
+
+    /// <summary>Knob colour when off.</summary>
+    public required RGBAColor32 OffKnob { get; init; }
+
+    /// <summary>Ring colour of the off track; null draws none.</summary>
+    public RGBAColor32? OffEdge { get; init; }
+
+    /// <summary>Width of the ring in design units.</summary>
+    public required float EdgeWidth { get; init; }
+
+    /// <summary>Colour of the label beside the switch.</summary>
+    public required RGBAColor32 LabelInk { get; init; }
+
+    /// <summary>Knob and label colour when disabled; null means the host dims them itself.</summary>
+    public RGBAColor32? DisabledInk { get; init; }
+
+    /// <summary>Track height as a multiple of <see cref="UiMetrics.ButtonHeight"/>. Defaults to 0.75.</summary>
+    public float HeightScale { get; init; } = 0.75f;
+
+    /// <summary>Track width as a multiple of its height. Defaults to 1.8.</summary>
+    public float WidthScale { get; init; } = 1.8f;
+
+    /// <summary>Gap between the track edge and the knob, in design units. Defaults to 3.</summary>
+    public float KnobInset { get; init; } = 3f;
+
+    /// <summary>Derives a switch style from the accent and standard button styles.</summary>
+    public static SwitchStyle From(ButtonStyle accent, ButtonStyle standard) => new()
+    {
+        OnFill = accent.RestFill ?? accent.HoverFill,
+        OnHoverFill = accent.HoverFill,
+        OnPressedFill = accent.PressedFill,
+        OnKnob = accent.Ink,
+        OffFill = standard.RestFill ?? standard.HoverFill,
+        OffHoverFill = standard.HoverFill,
+        OffPressedFill = standard.PressedFill,
+        OffKnob = standard.Edge ?? standard.Ink,
+        OffEdge = standard.Edge,
+        EdgeWidth = standard.EdgeWidth,
+        LabelInk = standard.Ink,
+        DisabledInk = standard.DisabledInk,
+    };
+}
+
+/// <summary>
 /// How a themed slider looks: the part of the track up to the thumb (<see cref="Fill"/>), the rest of the track
 /// (<see cref="Track"/>) and a round thumb with an accent centre and a ring. Values are palette colours and design units.
 /// </summary>
@@ -325,6 +396,15 @@ public sealed record ControlStyles
     public SliderStyle? Slider { get; init; }
 
     /// <summary>
+    /// The on/off switch. Init-only and not required; when unset, <see cref="SwitchOrDerived"/> derives it from
+    /// <see cref="Accent"/> and <see cref="Standard"/>. <see cref="For"/> sets it.
+    /// </summary>
+    public SwitchStyle? Switch { get; init; }
+
+    /// <summary>The switch style: <see cref="Switch"/> when set, else derived from <see cref="Accent"/> and <see cref="Standard"/>.</summary>
+    public SwitchStyle SwitchOrDerived => Switch ?? SwitchStyle.From(Accent, Standard);
+
+    /// <summary>
     /// The dropdown. Init-only and not required; when unset, <see cref="DropdownOrDerived"/> derives it from
     /// <see cref="Standard"/> and its host's raised surface is the panel. <see cref="For"/> sets it.
     /// </summary>
@@ -413,6 +493,7 @@ public sealed record ControlStyles
                 DisabledInk = palette.DimText,
             },
             Tile = DeriveTile(accentStyle, standardStyle, TileSideScale, standardStyle.PaddingX / 2f, palette.BodyText),
+            Switch = SwitchStyle.From(accentStyle, standardStyle) with { LabelInk = palette.BodyText },
             Slider = new SliderStyle
             {
                 Fill = palette.Accent,

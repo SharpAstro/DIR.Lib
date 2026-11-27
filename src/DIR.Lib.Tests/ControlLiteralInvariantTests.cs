@@ -24,6 +24,7 @@ public class ControlLiteralInvariantTests
     [InlineData("src/DIR.Lib/Layout/Chip.cs")]
     [InlineData("src/DIR.Lib/Layout/SplitButton.cs")]
     [InlineData("src/DIR.Lib/Layout/ToggleTile.cs")]
+    [InlineData("src/DIR.Lib/Layout/Switch.cs")]
     [InlineData("src/DIR.Lib/Layout/Slider.cs")]
     [InlineData("src/DIR.Lib/Layout/Dropdown.cs")]
     [InlineData("src/DIR.Lib/Layout/SettingRow.cs")]
