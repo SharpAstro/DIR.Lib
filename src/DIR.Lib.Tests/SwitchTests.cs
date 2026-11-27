@@ -50,13 +50,14 @@ public class SwitchTests
         public Rig(UiTheme theme, bool on = false, string? disabledReason = null, string? label = null)
         {
             _theme = theme;
-            Root = Builder.Switch(on, Asked.Add, theme, label, disabledReason: disabledReason);
+            Root = Builder.HStack(Builder.Switch(on, Asked.Add, theme, label, disabledReason: disabledReason)).HFixed(28f);
             _widget = new TestWidget(_renderer);
             _router = new InputRouter(_widget.Ui, new BackgroundTaskTracker(), static () => { }) { Widgets = () => [_widget] };
             Paint();
         }
 
-        public Node Track => ((Node.Stack)Root).Children[0];
+        public Node.Stack Switch => (Node.Stack)((Node.Stack)Root).Children[0];
+        public Node Track => Switch.Children[0];
 
         public void Paint()
         {
@@ -109,7 +110,7 @@ public class SwitchTests
         rig.Asked.ShouldBeEmpty(name);
         rig.Track.DisabledReason.ShouldBe("Needs a camera", name);
         rig.Track.OnActivate.ShouldBeNull(name);
-        ((Node.Stack)rig.Root).Children[1].DisabledReason.ShouldBe("Needs a camera", name + " label");
+        rig.Switch.Children[1].DisabledReason.ShouldBe("Needs a camera", name + " label");
     }
 
     [Fact]
@@ -118,7 +119,7 @@ public class SwitchTests
         var theme = ThemeOf(NotificationsRenderTests.Dark);
         var rig = new Rig(theme, on: true, label: "Cooling");
         rig.Track.OnActivate.ShouldNotBeNull();
-        ((Node.Stack)rig.Root).Children[1].OnActivate.ShouldNotBeNull();
+        rig.Switch.Children[1].OnActivate.ShouldNotBeNull();
         rig.Track.OnActivate!(InputModifier.None);
         rig.Asked.ShouldBe([false]);
         rig.Track.Cursor.ShouldBe(CursorKind.Pointer);

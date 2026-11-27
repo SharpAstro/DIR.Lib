@@ -223,6 +223,7 @@ public sealed record SwitchStyle
     /// <summary>Derives a switch style from the accent and standard button styles.</summary>
     public static SwitchStyle From(ButtonStyle accent, ButtonStyle standard) => new()
     {
+        OffKnob = OffKnobFor(standard),
         OnFill = accent.RestFill ?? accent.HoverFill,
         OnHoverFill = accent.HoverFill,
         OnPressedFill = accent.PressedFill,
@@ -230,12 +231,28 @@ public sealed record SwitchStyle
         OffFill = standard.RestFill ?? standard.HoverFill,
         OffHoverFill = standard.HoverFill,
         OffPressedFill = standard.PressedFill,
-        OffKnob = standard.Edge ?? standard.Ink,
         OffEdge = standard.Edge,
         EdgeWidth = standard.EdgeWidth,
         LabelInk = standard.Ink,
         DisabledInk = standard.DisabledInk,
     };
+
+    // The control edge, stepped towards the ink until it keeps 3:1 on the off track at rest, hovered and pressed
+    // (the edge alone can fall just short on the hover fill). Bounded; the ink itself is the last resort.
+    private static RGBAColor32 OffKnobFor(ButtonStyle standard)
+    {
+        var knob = standard.Edge ?? standard.Ink;
+        var rest = standard.RestFill ?? standard.HoverFill;
+        for (int i = 0; i < 10 && Least(knob, rest, standard) < 3f; i++)
+        {
+            knob = RGBAColor32.Mix(knob, standard.Ink, 0.1f);
+        }
+        return Least(knob, rest, standard) < 3f ? standard.Ink : knob;
+    }
+
+    private static float Least(RGBAColor32 knob, RGBAColor32 rest, ButtonStyle standard)
+        => MathF.Min(RGBAColor32.ContrastRatio(knob, rest),
+            MathF.Min(RGBAColor32.ContrastRatio(knob, standard.HoverFill), RGBAColor32.ContrastRatio(knob, standard.PressedFill)));
 }
 
 /// <summary>
