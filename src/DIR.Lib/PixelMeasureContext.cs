@@ -4,7 +4,7 @@ namespace DIR.Lib;
 
 /// <summary>
 /// The pixel-surface implementation of <see cref="Layout.IMeasureContext{T}"/>: text intrinsic width comes from
-/// <see cref="Renderer{TSurface}.MeasureText"/> and its height is the face's line box (see <see cref="MeasureText"/>),
+/// <see cref="Renderer{TSurface}.MeasureText"/> and its height is the face's line box (see <see cref="MeasureText(ReadOnlySpan{char}, float)"/>),
 /// and design-unit scalars (padding, gaps, fixed/font sizes)
 /// scale into device pixels. So the arranged rects come back in device pixels; the painter must
 /// draw text at <c>fontSize * FontScale</c> to match what was measured — which is why the painter should be
@@ -21,7 +21,7 @@ namespace DIR.Lib;
 /// on either surface.
 /// </para>
 /// </summary>
-/// <param name="renderer">The renderer whose glyph metrics answer <see cref="MeasureText"/>.</param>
+/// <param name="renderer">The renderer whose glyph metrics answer <see cref="MeasureText(ReadOnlySpan{char}, float)"/>.</param>
 /// <param name="fontPath">The font the text will be drawn with, so measure and paint agree on metrics.</param>
 /// <param name="scaleX">Device pixels spanned by one design unit horizontally.</param>
 /// <param name="scaleY">Device pixels spanned by one design unit vertically.</param>
@@ -202,7 +202,7 @@ public sealed class PixelMeasureContext<TSurface>(Renderer<TSurface> renderer, s
     private object? _measureKey;
 
     /// <summary>
-    /// Everything <see cref="MeasureText"/> and the <c>ToSurface</c> family read, as one value-equal key: the renderer
+    /// Everything <see cref="MeasureText(ReadOnlySpan{char}, float)"/> and the <c>ToSurface</c> family read, as one value-equal key: the renderer
     /// instance, the font, both scales, the line-height factor, the fallback chain and the emoji face. A context made
     /// afresh each frame over the same inputs has an equal key, so a pure subtree's measure survives the frame.
     /// The fallback resolver and renderer count by reference, so a resolver whose coverage changes in place must be

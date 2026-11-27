@@ -86,7 +86,7 @@ public interface IMeasureContext<T> where T : INumber<T>
 
     /// <summary>
     /// A value that names everything this context's measures depend on: the metrics behind
-    /// <see cref="MeasureText"/> and the <see cref="ToSurface"/> family (scale, font, fallback). Two contexts whose keys
+    /// <see cref="MeasureText(ReadOnlySpan{char}, float)"/> and the <see cref="ToSurface"/> family (scale, font, fallback). Two contexts whose keys
     /// are <see cref="object.Equals(object?)"/> must measure every node identically. The engine keeps a pure subtree's
     /// measure across calls (keyed by node reference and available size) only while the key is equal.
     /// <para>
