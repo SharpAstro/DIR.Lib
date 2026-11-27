@@ -53,7 +53,7 @@ public class SwitchRenderTests
 
         var renderer = new RgbaImageRenderer((uint)W, (uint)H);
         renderer.Surface.Clear(theme.Palette.PanelBg);
-        var widget = new Widget(renderer);
+        var widget = new Widget(renderer) { FontPath = FontPath };
         var router = new InputRouter(widget.Ui, new BackgroundTaskTracker(), static () => { }) { Widgets = () => [widget] };
         widget.Render(tree);
         router.AfterPaint();
