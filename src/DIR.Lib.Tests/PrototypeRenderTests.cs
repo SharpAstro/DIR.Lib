@@ -44,7 +44,7 @@ public sealed class PrototypeRenderTests
         """;
 
     /// <summary>The structures document with its design width set to <paramref name="width"/>.</summary>
-    private static string StructuresAt(uint width) => StructuresJson.Replace("\"width\": 480", $"\"width\": {width}");
+    private static string StructuresAt(int width) => StructuresJson.Replace("\"width\": 480", $"\"width\": {width}");
 
     private static readonly UiTheme LightTheme = new()
     {
