@@ -14,6 +14,7 @@ namespace DIR.Lib.Tests;
 public sealed class PrototypeShowcaseTests
 {
     private static readonly string FontPath = Path.Combine(AppContext.BaseDirectory, "Fonts", "DejaVuSans.ttf");
+    private static readonly string MonoFontPath = Path.Combine(AppContext.BaseDirectory, "Fonts", "DejaVuSansMono.ttf");
     private static readonly string BaselineDir = Path.Combine(AppContext.BaseDirectory, "Baselines");
     private static readonly string SourceBaselineDir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "Baselines");
     private static readonly bool UpdateBaselines = Environment.GetEnvironmentVariable("DIR_LIB_UPDATE_BASELINES") == "1";
@@ -60,6 +61,7 @@ public sealed class PrototypeShowcaseTests
         public Session(UiTheme theme)
         {
             Player = new PrototypePlayer<RgbaImage>(Renderer, Showcase(), theme, FontPath);
+            Player.Ui.MonoFontPath = MonoFontPath;
             Player.State.Set("sel", "a");
             Player.State.Set("pick", "1");
             Player.State.Set("live", true);

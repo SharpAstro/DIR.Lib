@@ -19,6 +19,9 @@ public static partial class Builder
     // Fraction of the way from the ink to the ground when a style names no disabled ink.
     private const float DisabledInkMix = 0.5f;
 
+    /// <summary>The disclosure mark of a button that opens something: the small chevron at the text's size (design language), not the large filled caret icon.</summary>
+    internal const string OpensChevron = "›";
+
     /// <summary>
     /// A themed text button, drawn from <see cref="UiTheme.Controls"/> alone (fills, edge, radius, padding, ink), at
     /// <see cref="UiMetrics.ButtonHeight"/>. Hover, pressed and keyboard focus are declared fills
@@ -50,7 +53,7 @@ public static partial class Builder
         var parts = new List<Node>(3);
         if (icon is { } kindOfIcon) parts.Add(Icon(kindOfIcon, fontSize, ink));
         parts.Add(Text(label, fontSize, ink, TextAlign.Near, TextAlign.Center));
-        if (opens) parts.Add(Icon(IconKind.CaretRight, fontSize, ink));
+        if (opens) parts.Add(Text(OpensChevron, fontSize, ink, TextAlign.Near, TextAlign.Center));
 
         // IconWordGap is the one size not taken from the theme: the icon-to-word gap Segmented and IconToggle share, kept
         // in one constant so the three controls agree. Moving it to UiMetrics is for all three at once, not this button.

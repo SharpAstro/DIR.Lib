@@ -139,7 +139,7 @@ public sealed class PrototypeTreeBuilder
         switch (n.Kind)
         {
             case "vstack": return B.VStack(BuildChildren(n)).WithGap(Num(p, "gap", 0f));
-            case "hstack": return B.HStack(BuildChildren(n)).WithGap(Num(p, "gap", 0f));
+            case "hstack": return B.HStack(BuildChildren(n)).WithGap(Num(p, "gap", 0f)).CrossCenter();
             case "grid":
             {
                 var gap = Num(p, "gap", 0f);
