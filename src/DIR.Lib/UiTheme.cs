@@ -322,6 +322,8 @@ public readonly record struct UiMetrics(
     private readonly float? _focusRingWidth;
     private readonly float? _focusRingGap;
     private readonly float? _linkArrowGap;
+    private readonly float? _headingFontScale;
+    private readonly float? _labelFontScale;
     private readonly Layout.ShadowStyle? _shadow;
 
     /// <summary>The toast's key shadow: no offset across, 1 down, blur 2, black at 55%.</summary>
@@ -368,6 +370,20 @@ public readonly record struct UiMetrics(
     {
         get => _linkArrowGap ?? 2f;
         init => _linkArrowGap = value;
+    }
+
+    /// <summary>A heading's font size as a multiple of <see cref="BaseFontSize"/>. Defaults to 1.2.</summary>
+    public float HeadingFontScale
+    {
+        get => _headingFontScale ?? 1.2f;
+        init => _headingFontScale = value;
+    }
+
+    /// <summary>A section label's font size as a multiple of <see cref="BaseFontSize"/>. Defaults to 0.8.</summary>
+    public float LabelFontScale
+    {
+        get => _labelFontScale ?? 0.8f;
+        init => _labelFontScale = value;
     }
 
     /// <summary>

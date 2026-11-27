@@ -86,6 +86,10 @@ public static class PrototypeVocabulary
         P("tooltip", PrototypePropertyType.String),
         P("side", PrototypePropertyType.Enum, values: W("left", "right", "top", "bottom")),
         Extent("size"),
+        P("hoverBackground", PrototypePropertyType.Color),
+        P("revealOnHover", PrototypePropertyType.Bool),
+        P("selectedWhen", PrototypePropertyType.String),
+        P("doubleAction", PrototypePropertyType.String),
     ];
 
     private static PrototypeKind K(string name, int min, int max, bool bind, params PrototypeProperty[] props)
@@ -107,7 +111,15 @@ public static class PrototypeVocabulary
         K("overlay", 2, 2, false),
         K("modal", 2, 2, false, P("open", PrototypePropertyType.Bool)),
         K("text", 0, 0, false, P("text", PrototypePropertyType.String, true), FontSize, Color,
-            P("align", PrototypePropertyType.Enum, values: W("near", "center", "far"))),
+            P("align", PrototypePropertyType.Enum, values: W("near", "center", "far")),
+            P("weight", PrototypePropertyType.Enum, values: W("regular", "bold")),
+            P("face", PrototypePropertyType.Enum, values: W("ui", "mono")),
+            P("style", PrototypePropertyType.Enum, values: W("body", "heading", "label"))),
+        K("button", 0, 0, false, P("text", PrototypePropertyType.String, true),
+            P("style", PrototypePropertyType.Enum, values: W("accent", "standard", "subtle", "link")),
+            P("disabled", PrototypePropertyType.String), P("icon", PrototypePropertyType.String), P("opens", PrototypePropertyType.Bool)),
+        K("switch", 0, 0, true, P("label", PrototypePropertyType.String), P("labelBefore", PrototypePropertyType.Bool),
+            P("disabled", PrototypePropertyType.String)),
         K("markdown", 0, 0, false, P("source", PrototypePropertyType.String, true)),
         K("icon", 0, 0, false, P("icon", PrototypePropertyType.String, true), Extent("iconSize"), Color),
         K("box", 0, 0, false, Color),

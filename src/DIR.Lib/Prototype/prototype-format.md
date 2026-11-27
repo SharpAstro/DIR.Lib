@@ -42,7 +42,9 @@ A node is an object with `kind` (required), the kind's properties, the common pr
 - `children`: an array of nodes, for the kinds that take them.
 - `action`: what a click does. `goto:<screen>`, `set:<name>=<value>` or `toggle:<name>`.
 - `when`: `<name>=<value>`; the node is shown only while that state equals the value (equality only).
-- `bind`: a state name, for `textInput`, `checkbox`, `slider`, `buttonGroup` and `dropdown`.
+- `selectedWhen`: `<name>=<value>`, validated like `when`; while it holds the node is drawn selected (the `Selection` fill and an `Accent` edge).
+- `doubleAction`: an action in the form of `action`, run on a double-click and on Enter.
+- `bind`: a state name, for `textInput`, `checkbox`, `switch`, `slider`, `buttonGroup` and `dropdown`.
 
 State names are letters, digits and underscores, not starting with a digit. A `key` is unique within its screen.
 
@@ -63,6 +65,10 @@ Accepted by every kind.
 | `tooltip` | string | `WithTooltip` |
 | `side` | enum | `left`, `right`, `top`, `bottom`: pins a child of a `dock` |
 | `size` | number | extent of a docked child along its dock axis |
+| `hoverBackground` | colour | `BgHover`: the fill while the pointer is over the node |
+| `revealOnHover` | bool | the node shows only while its row is hovered or selected |
+| `selectedWhen` | string | `<name>=<value>`: drawn selected while the state equals the value |
+| `doubleAction` | string | an action run on double-click and on Enter |
 
 ## Numbers
 
@@ -144,6 +150,31 @@ Exactly two children: the layer, then the modal card. `action` runs when the scr
 | `fontSize` | number | default 14 |
 | `color` | colour | |
 | `align` | enum | `near`, `center`, `far` |
+| `weight` | enum | `regular` or `bold` |
+| `face` | enum | `ui` (default) or `mono` |
+| `style` | enum | `body` (default), `heading` (bold, larger) or `label` (small, upper-case, `DimText`); sizes come from the theme's metrics |
+
+### `button`
+
+The themed button; its `action` runs on a press.
+
+| Property | Type | Notes |
+|---|---|---|
+| `text` | string | required |
+| `style` | enum | `accent`, `standard` (default), `subtle` or `link` (a hyperlink) |
+| `disabled` | string | the reason, shown as the tooltip; the button is flat and does nothing |
+| `icon` | string | an `IconKind` name |
+| `opens` | bool | adds a right-pointing caret |
+
+### `switch`
+
+Takes `bind`: the state holds true or false.
+
+| Property | Type | Notes |
+|---|---|---|
+| `label` | string | |
+| `labelBefore` | bool | the label before the track |
+| `disabled` | string | the reason, shown as the tooltip |
 
 ### `markdown`
 

@@ -190,10 +190,49 @@ public sealed class PrototypeLoaderTests
     }
 
     [Fact]
+    public void ButtonSwitchAndTheNewCommonPropertiesLoad()
+    {
+        var r = Prototype.Load(Doc(Screen("a", """
+            { "kind": "vstack", "children": [
+              { "kind": "button", "text": "Go", "style": "accent", "action": "goto:a", "disabled": "why", "icon": "CaretRight", "opens": true,
+                "hoverBackground": "Separator", "revealOnHover": true, "selectedWhen": "m=1", "doubleAction": "set:m=2" },
+              { "kind": "switch", "bind": "dark", "label": "Dark", "labelBefore": true, "disabled": "no" },
+              { "kind": "text", "text": "x", "weight": "bold", "face": "mono", "style": "label" } ] }
+            """)));
+        r.Problems.ShouldBeEmpty();
+        var button = r.Document!.Screens[0].Root.Children[0];
+        button.SelectedWhen.ShouldBe("m=1");
+        button.DoubleAction.ShouldBe("set:m=2");
+    }
+
+    [Fact]
+    public void RejectedValuesOfTheNewKindsNameTheirPath()
+    {
+        Problems(Doc(Screen("a", """
+            { "kind": "vstack", "children": [
+              { "kind": "button", "text": "Go", "style": "huge" },
+              { "kind": "button" },
+              { "kind": "button", "text": "x", "icon": "Nope" },
+              { "kind": "text", "text": "x", "weight": "heavy", "face": "serif", "style": "big" },
+              { "kind": "spacer", "selectedWhen": "nope", "doubleAction": "jump:x" } ] }
+            """))).ShouldBe(
+        [
+            "$.screens[0].root.children[0].style: " + Problems(Doc(Screen("a", """{ "kind": "button", "text": "Go", "style": "huge" }"""))).Single().Split(": ", 2)[1],
+            "$.screens[0].root.children[1].text: missing: 'text' is required for kind 'button'",
+            "$.screens[0].root.children[2].icon: unknown icon 'Nope' (an IconKind name)",
+            "$.screens[0].root.children[3].weight: " + Problems(Doc(Screen("a", """{ "kind": "text", "text": "x", "weight": "heavy" }"""))).Single().Split(": ", 2)[1],
+            "$.screens[0].root.children[3].face: " + Problems(Doc(Screen("a", """{ "kind": "text", "text": "x", "face": "serif" }"""))).Single().Split(": ", 2)[1],
+            "$.screens[0].root.children[3].style: " + Problems(Doc(Screen("a", """{ "kind": "text", "text": "x", "style": "big" }"""))).Single().Split(": ", 2)[1],
+            "$.screens[0].root.children[4].selectedWhen: when is a state equality: <name>=<value>",
+            "$.screens[0].root.children[4].doubleAction: unknown action 'jump:x': use goto:<screen>, set:<name>=<value> or toggle:<name>",
+        ]);
+    }
+
+    [Fact]
     public void BindOnAKindWithoutOneIsReported()
     {
         Problems(Doc(Screen("a", """{ "kind": "text", "text": "x", "bind": "s" }""")))
-            .ShouldBe(["$.screens[0].root.bind: kind 'text' has no bind (only textInput, checkbox, slider, buttonGroup and dropdown do)"]);
+            .ShouldBe(["$.screens[0].root.bind: kind 'text' has no bind (only textInput, checkbox, switch, slider, buttonGroup and dropdown do)"]);
     }
 
     [Fact]

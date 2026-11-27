@@ -158,9 +158,9 @@ public sealed class PrototypeTreeBuilder
                 }
                 return B.Modal(layer, card, ActionOf(n.Action));
             }
-            case "text":
-                return B.Text(Str(p, "text", ""), Num(p, "fontSize", 14f), Col(p, "color") ?? Palette.BodyText,
-                    Str(p, "align", "near") switch { "center" => TextAlign.Center, "far" => TextAlign.Far, _ => TextAlign.Near });
+            case "text": return BuildText(n);
+            case "button": return BuildButton(n);
+            case "switch": return BuildSwitch(n);
             case "markdown": return B.Markdown(Str(p, "source", ""), MarkdownStyleOf());
             case "icon":
             {
@@ -182,6 +182,66 @@ public sealed class PrototypeTreeBuilder
                     Num(p, "fontSize", 14f), Palette.BodyText).WStar().H(Sizing.Fixed(Math.Max(1f, _theme.Metrics.ItemHeight * 0.6f)));
             default: return B.Spacer();
         }
+    }
+
+    private Node BuildText(PrototypeNode n)
+    {
+        var p = n.Properties;
+        var style = Str(p, "style", "body");
+        var metrics = _theme.Metrics;
+        var text = Str(p, "text", "");
+        float size;
+        RGBAColor32 ink = Col(p, "color") ?? Palette.BodyText;
+        var bold = false;
+        switch (style)
+        {
+            case "heading":
+                size = metrics.BaseFontSize * metrics.HeadingFontScale;
+                bold = true;
+                break;
+            case "label":
+                size = metrics.BaseFontSize * metrics.LabelFontScale;
+                text = text.ToUpperInvariant();
+                ink = Col(p, "color") ?? Palette.DimText;
+                bold = true;
+                break;
+            default:
+                size = 14f;
+                break;
+        }
+        if (p.TryGetValue("fontSize", out var fs)) size = (float)fs.Number;
+        if (p.TryGetValue("weight", out var wt)) bold = wt.Text == "bold";
+        var node = B.Text(text, size, ink,
+            Str(p, "align", "near") switch { "center" => TextAlign.Center, "far" => TextAlign.Far, _ => TextAlign.Near });
+        if (bold) node = node.Bold();
+        if (Str(p, "face", "ui") == "mono") node = node.Mono();
+        return node;
+    }
+
+    private Node BuildButton(PrototypeNode n)
+    {
+        var p = n.Properties;
+        var text = Str(p, "text", "");
+        var action = n.Action;
+        Action click = action is null ? static () => { } : () => Run(action);
+        HitResult hit = new HitResult.ButtonHit(Str(p, "key", null!) ?? action ?? text);
+        var style = Str(p, "style", "standard");
+        if (style == "link") return B.Hyperlink(text, click, _theme, hit: hit);
+        var kind = style switch { "accent" => ButtonKind.Accent, "subtle" => ButtonKind.Subtle, _ => ButtonKind.Standard };
+        IconKind? icon = null;
+        if (p.TryGetValue("icon", out var ic) && Enum.TryParse<IconKind>(ic.Text, out var parsed)) icon = parsed;
+        return B.Button(text, kind, click, _theme, icon, Flag(p, "opens", false),
+            p.TryGetValue("disabled", out var dis) ? dis.Text : null, hit: hit);
+    }
+
+    private Node BuildSwitch(PrototypeNode n)
+    {
+        var p = n.Properties;
+        var name = n.Bind;
+        Action<bool>? change = name is null ? null : v => _state.Set(name, v);
+        return B.Switch(name is not null && _state.GetBool(name), change, _theme,
+            p.TryGetValue("label", out var l) ? l.Text : null, Flag(p, "labelBefore", false),
+            p.TryGetValue("disabled", out var d) ? d.Text : null);
     }
 
     private Node BuildDock(PrototypeNode n)
@@ -302,10 +362,16 @@ public sealed class PrototypeTreeBuilder
         var radius = Num(p, "borderRadius", 0f);
         if (Col(p, "border") is { } border) node = node.Border(border, Num(p, "borderWidth", 1f), radius);
         else if (radius > 0f) node = node.Radius(radius);
+        if (p.TryGetValue("hoverBackground", out _) && Col(p, "hoverBackground") is { } hover) node = node.BgHover(hover);
+        if (Flag(p, "revealOnHover", false)) node = node.RevealOnRowHover();
+        if (n.SelectedWhen is not null && _state.WhenHolds(n.SelectedWhen))
+            node = node.Selected().Bg(Palette.Selection).Border(Palette.Accent, _theme.Metrics.ControlEdgeWidth, radius);
         if (p.TryGetValue("tooltip", out var tip)) node = node.WithTooltip(tip.Text);
+        if (n.DoubleAction is { } dbl)
+            node = node.DoubleClickable(_ => Run(dbl)).Activatable(_ => Run(dbl));
 
         // A modal's action is its scrim dismissal, and a bound input owns its own press.
-        if (n.Action is { } action && n.Kind != "modal" && n.Bind is null)
+        if (n.Action is { } action && n.Kind is not ("modal" or "button") && n.Bind is null)
         {
             node = node.Clickable(new HitResult.ButtonHit(Str(p, "key", null!) ?? action), _ => Run(action));
         }

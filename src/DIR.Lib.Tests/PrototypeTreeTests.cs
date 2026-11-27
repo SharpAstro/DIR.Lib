@@ -188,6 +188,82 @@ public sealed class PrototypeTreeTests
     }
 
     [Fact]
+    public void TextWeightFaceAndStyleBuildTheRun()
+    {
+        Content.Text Run(string json) => PrototypeKit.Build(json).ShouldBeOfType<Node.Leaf>().Content.ShouldBeOfType<Content.Text>();
+        var m = PrototypeKit.Theme.Metrics;
+        var bold = Run("""{ "kind": "text", "text": "a", "weight": "bold", "face": "mono" }""");
+        bold.Weight.ShouldBe(TextWeight.Bold);
+        bold.Face.ShouldBe(TextFace.Mono);
+        Run("""{ "kind": "text", "text": "a" }""").Weight.ShouldBe(TextWeight.Regular);
+        var heading = Run("""{ "kind": "text", "text": "a", "style": "heading" }""");
+        heading.Weight.ShouldBe(TextWeight.Bold);
+        heading.FontSize.ShouldBe(m.BaseFontSize * m.HeadingFontScale);
+        var label = Run("""{ "kind": "text", "text": "Section", "style": "label" }""");
+        label.Value.ShouldBe("SECTION");
+        label.FontSize.ShouldBe(m.BaseFontSize * m.LabelFontScale);
+        label.Color.ShouldBe(PrototypeKit.Theme.Palette.DimText);
+    }
+
+    [Fact]
+    public void ButtonKindsBuildThroughBuilderAndRunTheirAction()
+    {
+        var state = new PrototypeState();
+        var theme = PrototypeKit.Theme;
+        var tree = (Node.Stack)new PrototypeTreeBuilder(theme, state).Build(PrototypeKit.Screen("""
+            { "kind": "vstack", "children": [
+              { "kind": "button", "text": "Go", "style": "accent", "action": "set:m=1" },
+              { "kind": "button", "text": "Link", "style": "link", "action": "set:m=2" },
+              { "kind": "button", "text": "Off", "disabled": "Not now", "action": "set:m=3" } ] }
+            """));
+        tree.Children[0].Background.ShouldBe(Builder.Button("Go", ButtonKind.Accent, () => { }, theme).Background);
+        tree.Children[0].OnClick!(InputModifier.None);
+        state.Get("m").ShouldBe("1");
+        tree.Children[1].OnClick!(InputModifier.None);
+        state.Get("m").ShouldBe("2");
+        tree.Children[2].OnClick?.Invoke(InputModifier.None);
+        state.Get("m").ShouldBe("2", "a disabled button runs nothing");
+    }
+
+    [Fact]
+    public void ASwitchReadsAndWritesItsBind()
+    {
+        var state = new PrototypeState();
+        var builder = new PrototypeTreeBuilder(PrototypeKit.Theme, state);
+        var screen = PrototypeKit.Screen("""{ "kind": "switch", "bind": "dark", "label": "Dark" }""");
+        var off = builder.Build(screen);
+        off.Background.ShouldBe(Builder.Switch(false, _ => { }, PrototypeKit.Theme, "Dark").Background);
+        PrototypeKit.Walk(off).First(x => x.OnClick is not null).OnClick!(InputModifier.None);
+        state.GetBool("dark").ShouldBeTrue();
+        PrototypeKit.Walk(builder.Build(screen)).Count(x => x.OnClick is not null).ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
+    public void HoverRevealSelectedWhenAndDoubleActionApply()
+    {
+        var state = new PrototypeState();
+        var pal = PrototypeKit.Theme.Palette;
+        var root = """{ "kind": "text", "text": "a", "hoverBackground": "Separator", "revealOnHover": true, "selectedWhen": "sel=a", "doubleAction": "set:opened=yes" }""";
+        var builder = new PrototypeTreeBuilder(PrototypeKit.Theme, state);
+        var screen = PrototypeKit.Screen(root);
+        var plain = builder.Build(screen);
+        plain.HoverBackground.ShouldBe(pal.Separator);
+        plain.RevealsOnRowHover.ShouldBeTrue();
+        plain.IsSelected.ShouldBeFalse();
+        plain.Background.ShouldBeNull();
+        state.Set("sel", "a");
+        var chosen = builder.Build(screen);
+        chosen.IsSelected.ShouldBeTrue();
+        chosen.Background.ShouldBe(pal.Selection);
+        chosen.BorderStyle.ShouldNotBeNull().Color.ShouldBe(pal.Accent);
+        chosen.OnDoubleClick!(InputModifier.None);
+        state.Get("opened").ShouldBe("yes");
+        state.Set("opened", "");
+        chosen.OnActivate!(InputModifier.None);
+        state.Get("opened").ShouldBe("yes");
+    }
+
+    [Fact]
     public void AnActionIsAClickableThatRunsAgainstTheState()
     {
         var state = new PrototypeState();

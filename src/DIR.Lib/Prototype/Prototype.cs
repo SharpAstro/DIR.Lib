@@ -293,7 +293,7 @@ public static partial class Prototype
 
             var props = ImmutableDictionary.CreateBuilder<string, PrototypeValue>();
             var children = ImmutableArray.CreateBuilder<PrototypeNode>();
-            string? action = null, when = null, bind = null;
+            string? action = null, when = null, bind = null, selectedWhen = null, doubleAction = null;
             int childCount = 0;
 
             foreach (var p in el.EnumerateObject())
@@ -320,6 +320,12 @@ public static partial class Prototype
                     case "when":
                         when = ReadWhen(p.Value, pp);
                         break;
+                    case "selectedWhen":
+                        selectedWhen = ReadWhen(p.Value, pp);
+                        break;
+                    case "doubleAction":
+                        doubleAction = ReadAction(p.Value, pp);
+                        break;
                     case "bind":
                         bind = ReadBind(p.Value, pp, kind, kindName);
                         break;
@@ -334,7 +340,7 @@ public static partial class Prototype
                         var value = ReadValue(p.Value, pp, prop);
                         if (value is not null)
                         {
-                            if (kindName == "icon" && p.Name == "icon" && !Enum.TryParse<IconKind>(value.Text, out _))
+                            if (kindName is "icon" or "button" && p.Name == "icon" && !Enum.TryParse<IconKind>(value.Text, out _))
                                 Add(pp, $"unknown icon '{value.Text}' (an IconKind name)");
                             props[p.Name] = value;
                             if (p.Name == "key") CheckKey(value.Text, pp);
@@ -368,6 +374,8 @@ public static partial class Prototype
                 Action = action,
                 When = when,
                 Bind = bind,
+                SelectedWhen = selectedWhen,
+                DoubleAction = doubleAction,
             };
         }
 
@@ -438,7 +446,7 @@ public static partial class Prototype
             var b = v.GetString()!;
             if (!IsName(b)) Add(path, "a state name is letters, digits and underscores, not starting with a digit");
             else if (b == PrototypeTargets.StateName) Add(path, "'target' is read-only state; a node cannot bind it");
-            if (kind is { SupportsBind: false }) Add(path, $"kind '{kindName}' has no bind (only textInput, checkbox, slider, buttonGroup and dropdown do)");
+            if (kind is { SupportsBind: false }) Add(path, $"kind '{kindName}' has no bind (only textInput, checkbox, switch, slider, buttonGroup and dropdown do)");
             return b;
         }
 
