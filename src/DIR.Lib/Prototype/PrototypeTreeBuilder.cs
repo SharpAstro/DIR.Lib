@@ -312,11 +312,16 @@ public sealed class PrototypeTreeBuilder
         var kids = new List<Node>();
         if (p.TryGetValue("mark", out var mark) && Enum.TryParse<IconKind>(mark.Text, out var markKind))
             kids.Add(B.Icon(markKind, size, dim));
-        // The name is one line; when the row is too narrow for it, it ends in an ellipsis (a one-line Ellipsis wrap) and
-        // the row's tooltip holds the whole name, so it is never cut silently.
+        // The name is one line; when the row is too narrow for it, it ends in an ellipsis and the row's tooltip holds the
+        // whole name, so it is never cut silently. Its words are the leaves of a one-line Ellipsis wrap (as
+        // NotificationsLayout does it): one leaf would make the whole name the wrap's minimum, and the row would give it that.
         var text = Str(p, "text", "");
-        kids.Add(B.WrapH(B.Text(text, size, selected ? Palette.SelectionText : Palette.BodyText).WAuto())
-            .WithMaxLines(1, true).WStar());
+        var ink = selected ? Palette.SelectionText : Palette.BodyText;
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var leaves = new Node[words.Length];
+        for (var i = 0; i < words.Length; i++)
+            leaves[i] = B.Text(i < words.Length - 1 ? words[i] + " " : words[i], size, ink).WAuto();
+        kids.Add(B.WrapH(leaves).WithMaxLines(1, true).WStar());
         if (p.TryGetValue("note", out var note))
             kids.Add(B.Text(note.Text, size, dim));
         if (p.TryGetValue("trailingIcon", out var ti) && Enum.TryParse<IconKind>(ti.Text, out var tiKind))
