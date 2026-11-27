@@ -113,15 +113,10 @@ public sealed class PrototypeRenderTests
         var renderer = new TextRecordingRenderer(240, 360);
         DrawStructures(renderer, Prototype.DefaultTheme, false);
 
-        // The name is drawn word by word up to the run that ends in the ellipsis; the rest of it is not drawn.
-        var start = renderer.Texts.IndexOf("Remove ");
-        start.ShouldBeGreaterThanOrEqualTo(0);
-        var end = renderer.Texts.FindIndex(start, t => t.EndsWith('…'));
-        end.ShouldBeGreaterThanOrEqualTo(start);
-        var drawn = string.Concat(renderer.Texts.Skip(start).Take(end - start + 1));
-        drawn.Length.ShouldBeLessThan(name.Length);
-        name.ShouldStartWith(drawn[..^1].TrimEnd());
-        renderer.Texts.ShouldNotContain("name");
+        renderer.Texts.ShouldNotContain(name);
+        var drawn = renderer.Texts.Single(t => t.StartsWith("Remove", StringComparison.Ordinal));
+        drawn.ShouldEndWith("…");
+        name.ShouldStartWith(drawn[..^1]);
 
         var root = new PrototypeTreeBuilder(Prototype.DefaultTheme, new PrototypeState())
             .Build(Prototype.Load(StructuresJson).Document!.Screens[0]);
