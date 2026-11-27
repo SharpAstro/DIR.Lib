@@ -98,7 +98,7 @@ public class ButtonKindsTests
         plain.Any(n => n.Node is Node.Leaf { Content: Content.Icon }).ShouldBeFalse();
 
         var opens = Arrange(Builder.Button("Save", ButtonKind.Standard, () => { }, Dark, opens: true));
-        opens.Count(n => n.Node is Node.Leaf { Content: Content.Text { Text: "›" } }).ShouldBe(1);
+        opens.Count(n => n.Node is Node.Leaf { Content: Content.Text { Value: "›" } }).ShouldBe(1);
 
         var withIcon = Arrange(Builder.Button("Pin", ButtonKind.Subtle, () => { }, Dark, icon: IconKind.Pin));
         withIcon.Any(n => n.Node is Node.Leaf { Content: Content.Icon { Kind: IconKind.Pin } }).ShouldBeTrue();
