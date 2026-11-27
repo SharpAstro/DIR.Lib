@@ -74,7 +74,7 @@ Accepted by every kind.
 
 A number that measures something drawn may not be below zero, and one that is is a load problem at its path:
 `padding`, `borderWidth`, `borderRadius`, `size`, `gap`, `firstExtent`, `fontSize`, `iconSize`, `minWidth`,
-`minHeight`, and a `width` or `height` given as a number. Zero is accepted. A slider's `min` and `max` and a
+`minHeight`, a `treeRow`'s `depth` (a whole number), and a `width` or `height` given as a number. Zero is accepted. A slider's `min` and `max` and a
 progress `value` are values, not extents, and may be any number.
 
 ## Colours
@@ -175,6 +175,51 @@ Takes `bind`: the state holds true or false.
 | `label` | string | |
 | `labelBefore` | bool | the label before the track |
 | `disabled` | string | the reason, shown as the tooltip |
+
+### `tree`
+
+A column of `treeRow` children, and nothing else. Takes `bind`: the state holds the `key` of the selected row.
+
+### `treeRow`
+
+Only valid directly inside a `tree`. A row of the tree: indent, an optional mark, the text, a note and a trailing
+icon. A press on the row sets the tree's `bind` to the row's `key` and runs its `action`; the row is selected, with
+the theme's selection fill and an accent edge, while the bind equals its `key` (a row with no `key` is never
+selected). The row lights on hover.
+
+| Property | Type | Notes |
+|---|---|---|
+| `text` | string | required |
+| `depth` | integer | indent levels, not below zero; default 0 |
+| `mark` | string | an `IconKind` name drawn before the text (a state mark) |
+| `note` | string | dim text after the text |
+| `trailingIcon` | string | an `IconKind` name drawn at the end, shown only while the row is hovered or selected |
+| `trailingAction` | string | an action run when the trailing icon is pressed; needs `trailingIcon` |
+
+### `tabs`
+
+A tab strip with the selected tab underlined in the `Accent`. Takes `bind`: the state holds the chosen option;
+unset, the first tab is shown. A press on a tab sets the bind. A tab's width is its label measured by the player's
+renderer; built with no surface it is estimated at 0.6 of the font size per character.
+
+| Property | Type | Notes |
+|---|---|---|
+| `options` | string array | required: the tab labels |
+
+### `table`
+
+A header row and `tableRow` children, and nothing else. The header uses the palette's `HeaderBg` and `HeaderText`;
+every row is sized by the same columns and gap, so a title sits over its values.
+
+| Property | Type | Notes |
+|---|---|---|
+| `columns` | string array | required: the column titles |
+| `columnWidths` | size array | one per column: a number, `"auto"`, `"star"` or `"star:<weight>"`; default all `"star"` |
+
+### `tableRow`
+
+Only valid directly inside a `table`. Its children are its cells, in column order; extra cells are dropped and
+missing ones left empty. A row lights on hover, and takes `selectedWhen`, `action` and `doubleAction`.
 
 ### `markdown`
 

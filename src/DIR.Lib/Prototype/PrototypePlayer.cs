@@ -29,7 +29,11 @@ public sealed class PrototypePlayer<TSurface> : PixelWidgetBase<TSurface>
         Theme = theme;
         FontPath = fontPath;
         State = new PrototypeState();
-        _builder = new PrototypeTreeBuilder(theme, State, OnAction) { DesignSize = (document.Width, document.Height) };
+        _builder = new PrototypeTreeBuilder(theme, State, OnAction)
+        {
+            DesignSize = (document.Width, document.Height),
+            MeasureLabel = (text, fontSize) => Renderer.MeasureText(text.AsSpan(), FontPath, fontSize).Width,
+        };
         _screen = Find(document.Entry) ?? document.Screens[0];
     }
 

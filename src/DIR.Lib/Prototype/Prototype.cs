@@ -255,7 +255,7 @@ public static partial class Prototype
                         break;
                     case "root":
                         hasRoot = true;
-                        root = ReadNode(p.Value, pp);
+                        root = ReadNode(p.Value, pp, null);
                         break;
                     default:
                         Add(pp, $"unknown property '{p.Name}' (a screen has id, title and root)");
@@ -269,7 +269,7 @@ public static partial class Prototype
             return root is null ? null : new PrototypeScreen { Id = id, Title = title, Root = root };
         }
 
-        private PrototypeNode? ReadNode(JsonElement el, string path)
+        private PrototypeNode? ReadNode(JsonElement el, string path, PrototypeKind? parent)
         {
             if (el.ValueKind != JsonValueKind.Object)
             {
@@ -291,6 +291,15 @@ public static partial class Prototype
             }
             else Add(path + ".kind", "missing: the node kind");
 
+            // Child-kind rules: a tree holds treeRows, a table tableRows, and those rows live nowhere else.
+            if (kind is not null)
+            {
+                if (parent?.ChildKind is { } wanted && kindName != wanted)
+                    Add(path + ".kind", $"a '{parent.Name}' takes only '{wanted}' children, not '{kindName}'");
+                else if (kind.ParentKind is { } owner && parent?.Name != owner)
+                    Add(path + ".kind", $"kind '{kindName}' is only valid directly inside a '{owner}'");
+            }
+
             var props = ImmutableDictionary.CreateBuilder<string, PrototypeValue>();
             var children = ImmutableArray.CreateBuilder<PrototypeNode>();
             string? action = null, when = null, bind = null, selectedWhen = null, doubleAction = null;
@@ -308,7 +317,7 @@ public static partial class Prototype
                         int i = 0;
                         foreach (var c in p.Value.EnumerateArray())
                         {
-                            var node = ReadNode(c, $"{pp}[{i}]");
+                            var node = ReadNode(c, $"{pp}[{i}]", kind);
                             if (node is not null) children.Add(node);
                             i++;
                         }
@@ -340,8 +349,11 @@ public static partial class Prototype
                         var value = ReadValue(p.Value, pp, prop);
                         if (value is not null)
                         {
-                            if (kindName is "icon" or "button" && p.Name == "icon" && !Enum.TryParse<IconKind>(value.Text, out _))
+                            if ((kindName is "icon" or "button" && p.Name == "icon"
+                                    || kindName == "treeRow" && p.Name is "mark" or "trailingIcon")
+                                && !Enum.TryParse<IconKind>(value.Text, out _))
                                 Add(pp, $"unknown icon '{value.Text}' (an IconKind name)");
+                            if (kindName == "treeRow" && p.Name == "trailingAction") ReadAction(p.Value, pp);
                             props[p.Name] = value;
                             if (p.Name == "key") CheckKey(value.Text, pp);
                         }
@@ -363,6 +375,11 @@ public static partial class Prototype
                         : $"kind '{kindName}' takes at least {kind.MinChildren} children, found {childCount}");
 
                 if (kindName == "dock") CheckDock(children, path);
+                if (kindName == "treeRow" && props.ContainsKey("trailingAction") && !props.ContainsKey("trailingIcon"))
+                    Add(path + ".trailingAction", "needs 'trailingIcon': the icon the action is pressed on");
+                if (kindName == "table" && props.TryGetValue("columns", out var cols) && props.TryGetValue("columnWidths", out var widths)
+                    && cols.List.Length != widths.List.Length)
+                    Add(path + ".columnWidths", $"needs one size per column: {cols.List.Length} columns, {widths.List.Length} sizes");
             }
 
             return new PrototypeNode
@@ -446,7 +463,7 @@ public static partial class Prototype
             var b = v.GetString()!;
             if (!IsName(b)) Add(path, "a state name is letters, digits and underscores, not starting with a digit");
             else if (b == PrototypeTargets.StateName) Add(path, "'target' is read-only state; a node cannot bind it");
-            if (kind is { SupportsBind: false }) Add(path, $"kind '{kindName}' has no bind (only textInput, checkbox, switch, slider, buttonGroup and dropdown do)");
+            if (kind is { SupportsBind: false }) Add(path, $"kind '{kindName}' has no bind (only textInput, checkbox, switch, slider, buttonGroup, dropdown, tree and tabs do)");
             return b;
         }
 
@@ -470,7 +487,11 @@ public static partial class Prototype
                     if (prop.NonNegative && d < 0) return Wrong(path, "a number that is not negative");
                     return Num(d);
                 case PrototypePropertyType.Integer:
-                    if (v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n)) return Num(n);
+                    if (v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n))
+                    {
+                        if (prop.NonNegative && n < 0) return Wrong(path, "a whole number that is not negative");
+                        return Num(n);
+                    }
                     return Wrong(path, "a whole number");
                 case PrototypePropertyType.Bool:
                     if (v.ValueKind is JsonValueKind.True or JsonValueKind.False)
@@ -494,6 +515,17 @@ public static partial class Prototype
                             List = [.. v.EnumerateArray().Select(e => e.GetString()!)],
                         };
                     return Wrong(path, "an array of strings");
+                case PrototypePropertyType.SizeList:
+                    if (v.ValueKind == JsonValueKind.Array && v.EnumerateArray().All(e =>
+                            e.ValueKind == JsonValueKind.Number && e.TryGetDouble(out var f) && f >= 0
+                            || e.ValueKind == JsonValueKind.String && IsSizeWord(e.GetString()!)))
+                        return new PrototypeValue
+                        {
+                            Kind = PrototypeValueKind.StringList,
+                            List = [.. v.EnumerateArray().Select(e => e.ValueKind == JsonValueKind.Number
+                                ? e.GetDouble().ToString("R", CultureInfo.InvariantCulture) : e.GetString()!)],
+                        };
+                    return Wrong(path, "an array of sizes (a number that is not negative, \"auto\", \"star\" or \"star:<weight>\")");
                 default:
                     return null;
             }

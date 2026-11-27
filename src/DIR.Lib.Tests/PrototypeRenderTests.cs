@@ -26,6 +26,32 @@ public sealed class PrototypeRenderTests
         CompareBaseline(image, $"prototype_sample_{screenId}_360x640.png");
     }
 
+    private const string StructuresJson = """
+        { "width": 480, "height": 360, "entry": "s", "screens": [ { "id": "s", "root": {
+          "kind": "vstack", "gap": 12, "padding": 12, "background": "ContentBg", "children": [
+            { "kind": "tabs", "options": ["Project", "Frames", "Processes"], "bind": "tab" },
+            { "kind": "tree", "bind": "sel", "children": [
+              { "kind": "treeRow", "key": "g", "text": "Calibrate", "mark": "CaretDown", "note": "2 steps" },
+              { "kind": "treeRow", "key": "a", "text": "Remove stars with a very long step name", "depth": 1, "note": "ready",
+                "trailingIcon": "Plus", "trailingAction": "set:ran=a" },
+              { "kind": "treeRow", "key": "b", "text": "Stack", "depth": 1, "trailingIcon": "Plus" } ] },
+            { "kind": "table", "columns": ["File", "Kind", "Exposure"], "columnWidths": [140, "star", 80], "children": [
+              { "kind": "tableRow", "selectedWhen": "pick=1", "children": [
+                { "kind": "text", "text": "frame_0001.fits" }, { "kind": "text", "text": "light" }, { "kind": "text", "text": "300 s" } ] },
+              { "kind": "tableRow", "children": [
+                { "kind": "text", "text": "dark_0001.fits" }, { "kind": "text", "text": "dark" }, { "kind": "text", "text": "300 s" } ] } ] }
+          ] } } ] }
+        """;
+
+    [Fact]
+    public void TreeTabsAndTableMatchTheirBaseline()
+    {
+        var doc = Prototype.Load(StructuresJson);
+        doc.Problems.ShouldBeEmpty();
+        var image = Prototype.Render(doc.Document!, (480u, 360u), Prototype.DefaultTheme, FontPath).Single().Image;
+        CompareBaseline(image, "prototype_structures_480x360.png");
+    }
+
     [Fact]
     public void RenderReturnsOneImagePerScreenInDocumentOrder()
     {

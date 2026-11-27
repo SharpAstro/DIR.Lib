@@ -390,4 +390,140 @@ public sealed class PrototypeTreeTests
             builder.Build(screen).ShouldNotBeNull();
         }
     }
+
+    private const string Workflow = """
+        { "kind": "tree", "bind": "sel", "children": [
+          { "kind": "treeRow", "key": "group", "text": "Group" },
+          { "kind": "treeRow", "key": "stars", "text": "Remove stars", "depth": 2, "mark": "Plus", "note": "12",
+            "trailingIcon": "Plus", "trailingAction": "set:ran=stars", "action": "set:opened=stars" } ] }
+        """;
+
+    [Fact]
+    public void ATreeRowIndentsByDepthAndSelectionFollowsTheBind()
+    {
+        var state = new PrototypeState();
+        var builder = new PrototypeTreeBuilder(PrototypeKit.Theme, state);
+        var screen = PrototypeKit.Screen(Workflow);
+        var pal = PrototypeKit.Theme.Palette;
+
+        var rows = builder.Build(screen).ShouldBeOfType<Node.Stack>().Children;
+        rows.ShouldAllBe(r => !r.IsSelected);
+
+        // Depth is the first (indent) spacer of the row's stack: depth * the tree row style's indent.
+        ((Node.Stack)rows[1]).Children[0].Width.Value.ShouldBe(2 * new TreeRowStyle(pal.DimText).Indent);
+        ((Node.Stack)rows[0]).Children[0].Width.Value.ShouldBe(0f);
+
+        rows[1].OnClick!(InputModifier.None);
+        state.Get("sel").ShouldBe("stars");
+        state.Get("opened").ShouldBe("stars", "the row's action ran too");
+
+        var after = builder.Build(screen).ShouldBeOfType<Node.Stack>().Children;
+        after[0].IsSelected.ShouldBeFalse();
+        after[1].IsSelected.ShouldBeTrue();
+        after[1].Background.ShouldBe(pal.Selection);
+
+        state.Set("sel", "group");
+        var moved = builder.Build(screen).ShouldBeOfType<Node.Stack>().Children;
+        moved[0].IsSelected.ShouldBeTrue();
+        moved[1].IsSelected.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ATreeRowsTrailingIconIsRevealedOnHoverAndRunsItsAction()
+    {
+        var state = new PrototypeState();
+        var builder = new PrototypeTreeBuilder(PrototypeKit.Theme, state);
+        var row = ((Node.Stack)builder.Build(PrototypeKit.Screen(Workflow))).Children[1];
+
+        row.HoverBackground.ShouldBe(PrototypeKit.Theme.Palette.Separator);
+        PrototypeKit.Walk(row).Count(n => n.RevealsOnRowHover).ShouldBe(1);
+        var trailing = PrototypeKit.Walk(row).Single(n => n.RevealsOnRowHover);
+        trailing.OnClick!(InputModifier.None);
+        state.Get("ran").ShouldBe("stars");
+        state.Get("sel").ShouldBe("", "the trailing press is its own, not a row selection");
+        PrototypeKit.Texts(row).ShouldBe(["Remove stars", "12"]);
+    }
+
+    [Fact]
+    public void ATabsSelectedTabIsUnderlinedInTheAccentAndAPressSetsTheBind()
+    {
+        var state = new PrototypeState();
+        var builder = new PrototypeTreeBuilder(PrototypeKit.Theme, state);
+        var screen = PrototypeKit.Screen("""{ "kind": "tabs", "options": ["Project", "Frames", "Processes"], "bind": "tab" }""");
+        var accent = PrototypeKit.Theme.Palette.Accent;
+
+        var tree = builder.Build(screen);
+        PrototypeKit.Texts(tree).ShouldBe(["Project", "Frames", "Processes"]);
+        // Unset: the first tab is shown, and exactly one accent band underlines it.
+        PrototypeKit.Walk(tree).Count(n => n.Background == accent).ShouldBe(1);
+
+        var tabs = PrototypeKit.Walk(tree).Where(n => n.Hit is HitResult.ListItemHit && n.OnClick is not null).ToArray();
+        tabs.Length.ShouldBe(3);
+        tabs[2].OnClick!(InputModifier.None);
+        state.Get("tab").ShouldBe("Processes");
+
+        PrototypeKit.Walk(builder.Build(screen)).Count(n => n.Background == accent).ShouldBe(1);
+        state.Set("tab", "nowhere");
+        PrototypeKit.Walk(builder.Build(screen)).Count(n => n.Background == accent).ShouldBe(0, "a state naming no tab underlines none");
+    }
+
+    [Fact]
+    public void ATabsWidthsComeFromTheMeasureDelegateOrTheDocumentedEstimate()
+    {
+        var screen = PrototypeKit.Screen("""{ "kind": "tabs", "options": ["Abcd"], "bind": "tab" }""");
+        float Extent(PrototypeTreeBuilder b)
+            => PrototypeKit.Walk(b.Build(screen)).First(n => n.Hit is HitResult.ListItemHit).Width.Value;
+
+        var estimated = new PrototypeTreeBuilder(PrototypeKit.Theme, new PrototypeState());
+        var pad = PrototypeKit.Theme.Metrics.Padding;
+        Extent(estimated).ShouldBe(4 * PrototypeKit.Theme.Metrics.BaseFontSize * PrototypeTreeBuilder.TabCharEm + 2 * pad);
+
+        var measured = new PrototypeTreeBuilder(PrototypeKit.Theme, new PrototypeState()) { MeasureLabel = (_, _) => 100f };
+        Extent(measured).ShouldBe(100f + 2 * pad);
+    }
+
+    private const string Files = """
+        { "kind": "table", "columns": ["File", "Kind", "Exposure"], "columnWidths": [120, "star", 60], "children": [
+          { "kind": "tableRow", "key": "r1", "selectedWhen": "pick=r1", "action": "set:pick=r1", "children": [
+            { "kind": "text", "text": "a.fits" }, { "kind": "text", "text": "light" }, { "kind": "text", "text": "30s" } ] },
+          { "kind": "tableRow", "key": "r2", "selectedWhen": "pick=r2", "children": [ { "kind": "text", "text": "b.fits" } ] } ] }
+        """;
+
+    [Fact]
+    public void ATablesHeaderAndRowsShareColumnsGapAndPadding()
+    {
+        var table = PrototypeKit.Build(Files).ShouldBeOfType<Node.Stack>();
+        table.Children.Length.ShouldBe(3, "a header and two rows");
+        var header = PrototypeKit.Walk(table.Children[0]).OfType<Node.Stack>().First();
+        PrototypeKit.Texts(header).ShouldBe(["File", "Kind", "Exposure"]);
+
+        foreach (var row in table.Children.Skip(1).Cast<Node.Stack>())
+        {
+            row.Children.Length.ShouldBe(3, "a missing cell is left empty");
+            row.Gap.ShouldBe(header.Gap);
+            row.Padding.ShouldBe(header.Padding);
+            for (var i = 0; i < 3; i++) row.Children[i].Width.ShouldBe(header.Children[i].Width, $"column {i}");
+        }
+        header.Children[0].Width.ShouldBe(Sizing.Fixed(120f));
+        header.Children[1].Width.ShouldBe(Sizing.Star());
+    }
+
+    [Fact]
+    public void ATableRowLightsOnHoverAndTakesSelectedWhen()
+    {
+        var state = new PrototypeState();
+        var builder = new PrototypeTreeBuilder(PrototypeKit.Theme, state);
+        var screen = PrototypeKit.Screen(Files);
+        var pal = PrototypeKit.Theme.Palette;
+
+        var rows = builder.Build(screen).ShouldBeOfType<Node.Stack>().Children;
+        rows[1].HoverBackground.ShouldBe(pal.Separator);
+        rows[1].IsSelected.ShouldBeFalse();
+
+        rows[1].OnClick!(InputModifier.None);
+        var after = builder.Build(screen).ShouldBeOfType<Node.Stack>().Children;
+        after[1].IsSelected.ShouldBeTrue();
+        after[1].Background.ShouldBe(pal.Selection);
+        after[2].IsSelected.ShouldBeFalse();
+    }
 }

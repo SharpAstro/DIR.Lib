@@ -232,7 +232,7 @@ public sealed class PrototypeLoaderTests
     public void BindOnAKindWithoutOneIsReported()
     {
         Problems(Doc(Screen("a", """{ "kind": "text", "text": "x", "bind": "s" }""")))
-            .ShouldBe(["$.screens[0].root.bind: kind 'text' has no bind (only textInput, checkbox, switch, slider, buttonGroup and dropdown do)"]);
+            .ShouldBe(["$.screens[0].root.bind: kind 'text' has no bind (only textInput, checkbox, switch, slider, buttonGroup, dropdown, tree and tabs do)"]);
     }
 
     [Fact]
@@ -264,5 +264,85 @@ public sealed class PrototypeLoaderTests
     {
         var r = Prototype.Load(Doc(Screen("a", """{ "kind": "blob" }""")));
         r.ProblemsToJson().ShouldContain("$.screens[0].root.kind");
+    }
+
+    private const string TreeOk = """
+        { "kind": "tree", "bind": "sel", "children": [
+          { "kind": "treeRow", "key": "a", "text": "Stars", "depth": 1, "mark": "Plus", "note": "3", "trailingIcon": "Plus", "trailingAction": "set:ran=a" } ] }
+        """;
+
+    [Fact]
+    public void ATreeAndItsRowsLoad()
+    {
+        var root = Prototype.Load(Doc(Screen("a", TreeOk))).Document!.Screens[0].Root;
+        root.Kind.ShouldBe("tree");
+        root.Bind.ShouldBe("sel");
+        var row = root.Children.Single();
+        row.Properties["depth"].Number.ShouldBe(1d);
+        row.Properties["trailingAction"].Text.ShouldBe("set:ran=a");
+    }
+
+    [Fact]
+    public void ATreeRowOutsideATreeAndAForeignChildOfATreeAreReported()
+    {
+        Problems(Doc(Screen("a", """{ "kind": "treeRow", "text": "x" }""")))
+            .ShouldBe(["$.screens[0].root.kind: kind 'treeRow' is only valid directly inside a 'tree'"]);
+        Problems(Doc(Screen("a", """{ "kind": "vstack", "children": [ { "kind": "treeRow", "text": "x" } ] }""")))
+            .ShouldBe(["$.screens[0].root.children[0].kind: kind 'treeRow' is only valid directly inside a 'tree'"]);
+        Problems(Doc(Screen("a", """{ "kind": "tree", "children": [ { "kind": "text", "text": "x" } ] }""")))
+            .ShouldBe(["$.screens[0].root.children[0].kind: a 'tree' takes only 'treeRow' children, not 'text'"]);
+    }
+
+    [Fact]
+    public void ATreeRowsPropertiesAreChecked()
+    {
+        Problems(Doc(Screen("a", """{ "kind": "tree", "children": [ { "kind": "treeRow", "text": "x", "depth": -1, "mark": "Nope", "trailingAction": "goto:zz" } ] }""")))
+            .ShouldBe([
+                "$.screens[0].root.children[0].depth: wrong value type: expected a whole number that is not negative",
+                "$.screens[0].root.children[0].mark: unknown icon 'Nope' (an IconKind name)",
+                "$.screens[0].root.children[0].trailingAction: goto names screen 'zz', which does not exist",
+                "$.screens[0].root.children[0].trailingAction: needs 'trailingIcon': the icon the action is pressed on",
+            ]);
+    }
+
+    [Fact]
+    public void TabsLoadAndNeedOptions()
+    {
+        Prototype.Load(Doc(Screen("a", """{ "kind": "tabs", "options": ["A", "B"], "bind": "t" }"""))).Problems.ShouldBeEmpty();
+        Problems(Doc(Screen("a", """{ "kind": "tabs", "bind": "t" }""")))
+            .ShouldBe(["$.screens[0].root.options: missing: 'options' is required for kind 'tabs'"]);
+    }
+
+    [Fact]
+    public void ATableLoadsWithNumberAndWordWidths()
+    {
+        var r = Prototype.Load(Doc(Screen("a", """
+            { "kind": "table", "columns": ["File", "Kind"], "columnWidths": [120, "star:2"], "children": [
+              { "kind": "tableRow", "children": [ { "kind": "text", "text": "a" }, { "kind": "text", "text": "b" } ] } ] }
+            """)));
+        r.Problems.ShouldBeEmpty();
+        r.Document!.Screens[0].Root.Properties["columnWidths"].List.ShouldBe(["120", "star:2"]);
+    }
+
+    [Fact]
+    public void ATableRowOutsideATableAndATableWithOtherChildrenAreReported()
+    {
+        Problems(Doc(Screen("a", """{ "kind": "tableRow" }""")))
+            .ShouldBe(["$.screens[0].root.kind: kind 'tableRow' is only valid directly inside a 'table'"]);
+        Problems(Doc(Screen("a", """{ "kind": "table", "columns": ["A"], "children": [ { "kind": "treeRow", "text": "x" } ] }""")))
+            .ShouldBe(["$.screens[0].root.children[0].kind: a 'table' takes only 'tableRow' children, not 'treeRow'"]);
+    }
+
+    [Fact]
+    public void TableWidthsMustMatchTheColumnsAndBeSizes()
+    {
+        Problems(Doc(Screen("a", """{ "kind": "table", "columns": ["A", "B"], "columnWidths": [10] }""")))
+            .ShouldBe(["$.screens[0].root.columnWidths: needs one size per column: 2 columns, 1 sizes"]);
+        Problems(Doc(Screen("a", """{ "kind": "table", "columns": ["A"], "columnWidths": [-1] }""")))
+            .Single().ShouldStartWith("$.screens[0].root.columnWidths: wrong value type: expected an array of sizes");
+        Problems(Doc(Screen("a", """{ "kind": "table", "columns": ["A"], "columnWidths": ["wide"] }""")))
+            .Single().ShouldStartWith("$.screens[0].root.columnWidths: wrong value type");
+        Problems(Doc(Screen("a", """{ "kind": "table" }""")))
+            .ShouldBe(["$.screens[0].root.columns: missing: 'columns' is required for kind 'table'"]);
     }
 }
