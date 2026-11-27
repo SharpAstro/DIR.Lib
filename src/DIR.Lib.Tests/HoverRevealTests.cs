@@ -168,6 +168,9 @@ public class HoverRevealTests
         router.Handle(new InputEvent.MouseDown(W - 20f, RowY(0), MouseButton.Left, InputModifier.None, 1));
         router.Handle(new InputEvent.MouseUp(W - 20f, RowY(0), MouseButton.Left, InputModifier.None));
         Paint();
+        // The press made "hidden" the last pressed list, so Down steps it; were it not on the frame, Down would not open it.
+        router.Handle(new InputEvent.KeyDown(InputKey.Down));
+        Paint();
         hidden.IsOpen.ShouldBeTrue();
         hidden.ListId.ShouldBe("hidden");
     }
