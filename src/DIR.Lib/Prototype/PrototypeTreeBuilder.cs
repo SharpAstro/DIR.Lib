@@ -282,12 +282,18 @@ public sealed class PrototypeTreeBuilder
         var p = n.Properties;
         var metrics = _theme.Metrics;
         var size = metrics.BaseFontSize;
+        var key = Str(p, "key", null!);
+        var bind = _treeBind;
+        var selected = bind is not null && key is not null && _state.Get(bind) == key;
+        // On the Selection fill the dim ink is too faint (about 2.7:1 in the dark palette), so a selected row's marks and
+        // notes take the selection ink, which is measured against that fill.
+        var dim = selected ? Palette.SelectionText : Palette.DimText;
         var kids = new List<Node>();
         if (p.TryGetValue("mark", out var mark) && Enum.TryParse<IconKind>(mark.Text, out var markKind))
-            kids.Add(B.Icon(markKind, size, Palette.DimText));
-        kids.Add(B.Text(Str(p, "text", ""), size, Palette.BodyText).WStar().HStar());
+            kids.Add(B.Icon(markKind, size, dim));
+        kids.Add(B.Text(Str(p, "text", ""), size, selected ? Palette.SelectionText : Palette.BodyText).WStar().HStar());
         if (p.TryGetValue("note", out var note))
-            kids.Add(B.Text(note.Text, size, Palette.DimText));
+            kids.Add(B.Text(note.Text, size, dim));
         if (p.TryGetValue("trailingIcon", out var ti) && Enum.TryParse<IconKind>(ti.Text, out var tiKind))
         {
             Node trailing = B.Icon(tiKind, size, Palette.Accent);
@@ -303,20 +309,20 @@ public sealed class PrototypeTreeBuilder
         {
             kids.Add(B.Spacer().WFixed(size).HStar());
         }
+        // The row's own padding on the right, so a trailing action or a note is never on the edge or under the ring.
+        kids.Add(B.Spacer().WFixed(metrics.Padding).HStar());
 
         var content = B.HStack([.. kids]).WithGap(metrics.Padding * 0.5f).CrossCenter();
         var row = B.TreeRow((int)Num(p, "depth", 0f), false, false, null, content,
             new TreeRowStyle(Palette.DimText), size).HFixed(metrics.ItemHeight).WStar();
 
-        var key = Str(p, "key", null!);
-        var bind = _treeBind;
         var action = n.Action;
         row = row.Clickable(new HitResult.ButtonHit("tree-row:" + (key ?? n.Path)), _ =>
         {
             if (bind is not null && key is not null) _state.Set(bind, key);
             if (action is not null) Run(action);
         }).BgHover(Palette.Separator);
-        if (bind is not null && key is not null && _state.Get(bind) == key)
+        if (selected)
             row = row.Selected().Bg(Palette.Selection).Border(Palette.Accent, metrics.ControlEdgeWidth, 0f);
         return row;
     }

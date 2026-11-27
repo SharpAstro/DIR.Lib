@@ -429,6 +429,22 @@ public sealed class PrototypeTreeTests
     }
 
     [Fact]
+    public void ANoteAndMarkOnASelectedRowReadAgainstTheSelectionFill()
+    {
+        foreach (var palette in new[] { PrototypeKit.Theme.Palette, Prototype.DefaultTheme.Palette, NotificationsRenderTests.Light })
+        {
+            var theme = new UiTheme { Palette = palette, Metrics = PrototypeKit.Theme.Metrics };
+            var state = new PrototypeState();
+            state.Set("sel", "stars");
+            var row = ((Node.Stack)new PrototypeTreeBuilder(theme, state).Build(PrototypeKit.Screen(Workflow))).Children[1];
+            row.Background.ShouldBe(palette.Selection);
+            var note = PrototypeKit.Walk(row).Select(n => n is Node.Leaf { Content: Content.Text { Value: "12" } t } ? t : null).Single(t => t is not null)!;
+            RGBAColor32.ContrastRatio(note.Color, palette.Selection).ShouldBeGreaterThanOrEqualTo(4.5f,
+                "the dim ink is too faint on the Selection fill, so a selected row's note takes the selection ink");
+        }
+    }
+
+    [Fact]
     public void ATreeRowsTrailingIconIsRevealedOnHoverAndRunsItsAction()
     {
         var state = new PrototypeState();
