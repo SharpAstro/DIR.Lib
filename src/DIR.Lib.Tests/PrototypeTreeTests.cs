@@ -479,7 +479,8 @@ public sealed class PrototypeTreeTests
         Extent(estimated).ShouldBe(4 * PrototypeKit.Theme.Metrics.BaseFontSize * PrototypeTreeBuilder.TabCharEm + 2 * pad);
 
         var measured = new PrototypeTreeBuilder(PrototypeKit.Theme, new PrototypeState()) { MeasureLabel = (_, _) => 100f };
-        Extent(measured).ShouldBe(100f + 2 * pad);
+        // The measured label plus one padding of slack, so a label never lands exactly on its tab edge, plus the tab's own padding.
+        Extent(measured).ShouldBe(100f + pad + 2 * pad);
     }
 
     private const string Files = """
