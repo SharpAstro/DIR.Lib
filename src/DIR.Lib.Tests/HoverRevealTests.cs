@@ -160,6 +160,16 @@ public class HoverRevealTests
         shown.ListId.ShouldBe("shown");
         shown.Index.ShouldBe(0);
         hidden.IsOpen.ShouldBeFalse();
+
+        // Positive control: with the pointer in row 0 the same node is revealed, and pressing its row reaches that list.
+        // Without this the assertions above cannot tell "hidden" from "never registered".
+        router.Handle(new InputEvent.MouseMove(20f, RowY(0)));
+        Paint();
+        router.Handle(new InputEvent.MouseDown(W - 20f, RowY(0), MouseButton.Left, InputModifier.None, 1));
+        router.Handle(new InputEvent.MouseUp(W - 20f, RowY(0), MouseButton.Left, InputModifier.None));
+        Paint();
+        hidden.IsOpen.ShouldBeTrue();
+        hidden.ListId.ShouldBe("hidden");
     }
 
     [Fact]
