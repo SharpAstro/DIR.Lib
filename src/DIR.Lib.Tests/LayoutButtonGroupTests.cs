@@ -314,25 +314,27 @@ public class LayoutButtonGroupTests
     [Fact]
     public void SegmentPaddingOutsideEqualToWidestLeavesTheLabelThatMuchLessRoomEachSide()
     {
-        static (float[] Segments, float[] Labels) Widths(Layout.Node group)
+        // Padding is inner: the label's bounds stay the segment's, and the room its text gets is the bounds
+        // less Padding either side. So the segments and bounds match, and the padded labels carry the 6.
+        static (float[] Segments, (float Width, float Padding)[] Labels) Widths(Layout.Node group)
         {
             var arranged = Layout.Engine.Arrange(Layout.Builder.HStack(group.WFixed(300f)).HFixed(30f), new Rect<float>(0, 0, 400f, 30f), new EqFloatCtx());
             var segs = arranged.Where(n => n.Node.Hit is HitResult.ButtonHit).OrderBy(n => n.Bounds.X)
                 .Select(n => n.Bounds.Width).ToArray();
             var labels = arranged.Where(n => n.Node is Layout.Node.Leaf { Content: Layout.Content.Text })
-                .OrderBy(n => n.Bounds.X).Select(n => n.Bounds.Width).ToArray();
+                .OrderBy(n => n.Bounds.X).Select(n => (n.Bounds.Width, n.Node.Padding)).ToArray();
             return (segs, labels);
         }
 
         var plain = Widths(Layout.Builder.ButtonGroup<Side>(Options(), Side.Mount, _ => { }, Style));
         var padded = Widths(Layout.Builder.ButtonGroup<Side>(Options(), Side.Mount, _ => { }, Style with { SegmentPadding = 6f }));
 
+        plain.Segments.ShouldAllBe(w => w > 0f);
         padded.Segments.ShouldBe(plain.Segments);
-        padded.Labels.Length.ShouldBe(plain.Labels.Length);
-        for (var i = 0; i < plain.Labels.Length; i++)
-        {
-            padded.Labels[i].ShouldBe(plain.Labels[i] - 12f);
-        }
+        plain.Labels.Length.ShouldBe(3);
+        plain.Labels.ShouldAllBe(l => l.Padding == 0f);
+        padded.Labels.ShouldAllBe(l => l.Padding == 6f);
+        padded.Labels.Select(l => l.Width).ShouldBe(plain.Labels.Select(l => l.Width));
     }
 
     [Fact]
