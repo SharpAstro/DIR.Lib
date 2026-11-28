@@ -315,4 +315,32 @@ public class ScrolledStackKeptExtentsTests(ITestOutputHelper output)
         var plain = Layout.Engine.Measure(List(rows, NewScroll()), room, new FloatContext(keyed: false));
         repeatSize.ShouldBe(plain, "the kept measure is the one the ordinary resolve gives");
     }
+
+    [Fact]
+    public void ACollapsedChildOnTheOrdinaryPathDoesNotShortenTheScrollExtent()
+    {
+        // No MeasureKey: the stack takes the ordinary path, which counts included children across its two passes
+        // (the second runs because the bar shows). A collapsed child must be counted once, not once per pass.
+        static ListScrollController Total(bool withCollapsing)
+        {
+            var kids = new List<Layout.Node>();
+            for (var i = 0; i < 40; i++)
+            {
+                kids.Add(Layout.Builder.Text("row", Font).HFixed(30f));
+                if (withCollapsing && i == 10)
+                {
+                    kids.Add(Layout.Builder.Text("x", Font).HFixed(5f).CollapseBelow(20f));
+                }
+            }
+
+            var scroll = NewScroll(ScrollBarMode.Interactive);
+            var list = Layout.Builder.VStack([.. kids]).WithGap(4f).WStar().HStar().WithScroll(scroll);
+            var ctx = new FloatContext(keyed: false);
+            Arrange(list, new Rect<float>(0f, 0f, 300f, 200f), ctx);
+            Arrange(list, new Rect<float>(0f, 0f, 300f, 200f), ctx);
+            return scroll;
+        }
+
+        Total(true).TotalAtoms.ShouldBe(Total(false).TotalAtoms);
+    }
 }

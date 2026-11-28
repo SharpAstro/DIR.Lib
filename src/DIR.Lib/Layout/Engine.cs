@@ -789,6 +789,7 @@ public static class Engine
             {
                 Array.Fill(included, true);
                 Array.Clear(measured!);
+                includedCount = n;
             }
 
             while (keep is null)
