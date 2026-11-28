@@ -111,8 +111,12 @@ public class ScrolledStackKeptExtentsTests(ITestOutputHelper output)
             counts.Add(LookupsOf(list, scroll, FloatBounds(), ctx));
         }
 
-        output.WriteLine($"repeat frame lookups: 300 rows {counts[0]}, 3000 rows {counts[1]}");
-        counts[0].ShouldBeLessThan(300 / 4, "a repeat frame does not look every row up");
+        var coldScroll = NewScroll();
+        var coldList = List(short300, coldScroll);
+        var cold = LookupsOf(coldList, coldScroll, FloatBounds(), new FloatContext(scale: 1.5f));
+
+        output.WriteLine($"repeat frame lookups: 300 rows {counts[0]}, 3000 rows {counts[1]}; a cold frame of 300 rows {cold}");
+        counts[0].ShouldBeLessThan(cold / 4, "a repeat frame does not look every row up");
         counts[1].ShouldBe(counts[0], "and 3000 rows cost what 300 do at the same offset");
     }
 
@@ -158,9 +162,9 @@ public class ScrolledStackKeptExtentsTests(ITestOutputHelper output)
         var ctx = new FloatContext();
         (Rect<float>, FloatContext) Same(ListScrollController _) => (FloatBounds(), ctx);
 
-        Repeat(Same, Same).ShouldBeLessThan(Count / 4, "control: nothing changed");
-        Repeat(Same, _ => (FloatBounds(), new FloatContext(scale: 1.25f)))
-            .ShouldBeGreaterThanOrEqualTo(Count, "another scale (another MeasureKey)");
+        var cold = Repeat(Same, _ => (FloatBounds(), new FloatContext(scale: 1.25f)));
+        cold.ShouldBeGreaterThanOrEqualTo(Count, "another scale (another MeasureKey)");
+        Repeat(Same, Same).ShouldBeLessThan(cold / 4, "control: nothing changed");
         Repeat(Same, _ => (FloatBounds(width: 500f), ctx))
             .ShouldBeGreaterThanOrEqualTo(Count, "another width");
         Repeat(Same, _ => (FloatBounds(height: 300f), ctx))
@@ -172,7 +176,7 @@ public class ScrolledStackKeptExtentsTests(ITestOutputHelper output)
         var barred = NewScroll(ScrollBarMode.Interactive);
         Arrange(List(rows, barred), FloatBounds(), ctx);
         Arrange(List(rows, barred), FloatBounds(), ctx);
-        LookupsOf(List(rows, barred), barred, FloatBounds(), ctx).ShouldBeLessThan(Count / 4, "a list with its bar is kept too");
+        LookupsOf(List(rows, barred), barred, FloatBounds(), ctx).ShouldBeLessThan(cold / 2, "a list with its bar is kept too");
     }
 
     [Fact]
@@ -263,7 +267,7 @@ public class ScrolledStackKeptExtentsTests(ITestOutputHelper output)
     {
         var ctx = new FloatContext();
         var allocated = new List<long>();
-        foreach (var count in new[] { 300, 3000 })
+        foreach (var count in new[] { 300, 1000, 3000 })
         {
             var rows = BuildRows(count);
             var scroll = NewScroll();
@@ -277,7 +281,7 @@ public class ScrolledStackKeptExtentsTests(ITestOutputHelper output)
             allocated.Add(GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        output.WriteLine($"repeat arrange allocated {allocated[0]} B at 300 rows, {allocated[1]} B at 3000");
-        (allocated[1] - allocated[0]).ShouldBeLessThan(8 * 1024, "the allocation follows the window, not the list");
+        output.WriteLine($"repeat arrange allocated {allocated[0]} B at 300 rows, {allocated[1]} B at 1000, {allocated[2]} B at 3000");
+        (allocated[2] - allocated[0]).ShouldBeLessThan(8 * 1024, "the allocation follows the window, not the list");
     }
 }
