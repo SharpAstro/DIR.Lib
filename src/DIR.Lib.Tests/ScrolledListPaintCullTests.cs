@@ -178,7 +178,6 @@ public class ScrolledListPaintCullTests(ITestOutputHelper output)
     private static List<int> VisibleRows(Layout.Node[] rows, float offset)
     {
         var room = new Layout.Size<float>(Width - 2 * Pad, ViewportH - 2 * Pad);
-        var measurer = new Widget(new CountingRenderer(1, 1));
         var tops = new float[rows.Length];
         var heights = new float[rows.Length];
         var at = Pad;
@@ -189,7 +188,6 @@ public class ScrolledListPaintCullTests(ITestOutputHelper output)
             at += heights[i] + RowGap;
         }
 
-        GC.KeepAlive(measurer);
         return [.. Enumerable.Range(0, rows.Length).Where(i => tops[i] - offset + heights[i] > 0f && tops[i] - offset < ViewportH)];
     }
 

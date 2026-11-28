@@ -645,11 +645,11 @@ public static class Engine
 
     /// <summary>
     /// Resolves, for one pass, the children whose node is not the one the pass kept: what <see cref="ResolveStackMains"/>
-    /// gives a Fixed or Auto child, and what <see cref="MeasureStack"/> takes from it for the stack's own measure. A child
+    /// gives a Fixed or Auto child, or, for the measure pass, what <see cref="MeasureStack"/> takes from it. A child
     /// with an unchanged node does no measure at all. Only pure subtrees are kept, as the measure memo keeps them.
     /// </summary>
     private static void ResolveKept<T>(ImmutableArray<Node> children, Axis axis, Size<T> availSize,
-        IMeasureContext<T> ctx, StackKeep<T>.Pass pass) where T : INumber<T>
+        IMeasureContext<T> ctx, StackKeep<T>.Pass pass, bool forMeasure = false) where T : INumber<T>
     {
         var crossAvail = CrossOf(axis, availSize);
         for (var i = 0; i < children.Length; i++)
@@ -661,26 +661,36 @@ public static class Engine
             }
 
             var sizing = MainSizing(axis, child);
-            T main;
-            Size<T> size;
-            T measureMain;
-            if (sizing.IsFixed)
+            if (forMeasure)
             {
-                main = Extent(ctx, child, sizing.Value, axis, ExtentKind.Fixed);
-                size = Measure(child, Compose(axis, main, crossAvail), ctx);
-                measureMain = MainOf(axis, size);
-            }
-            else
-            {
-                var content = Measure(child, availSize, ctx);
-                measureMain = MainOf(axis, content);
-                main = Clamp(measureMain, sizing, ctx, axis);
-                size = measureMain == main ? content : Measure(child, Compose(axis, main, crossAvail), ctx);
+                // As MeasureStack takes a child unkept: a Fixed child measured at its extent, an Auto one at the whole
+                // main and again at its clamped main when that differs.
+                Size<T> size;
+                T measureMain;
+                if (sizing.IsFixed)
+                {
+                    size = Measure(child, Compose(axis, Extent(ctx, child, sizing.Value, axis, ExtentKind.Fixed), crossAvail), ctx);
+                    measureMain = MainOf(axis, size);
+                }
+                else
+                {
+                    var content = Measure(child, availSize, ctx);
+                    measureMain = MainOf(axis, content);
+                    var clamped = Clamp(measureMain, sizing, ctx, axis);
+                    size = clamped == measureMain ? content : Measure(child, Compose(axis, clamped, crossAvail), ctx);
+                }
+
+                pass.MeasureMain[i] = measureMain;
+                pass.MeasureCross[i] = CrossOf(axis, size);
+                pass.Nodes[i] = MeasurePurity.IsPure(child) ? child : null;
+                continue;
             }
 
+            var main = sizing.IsFixed
+                ? Extent(ctx, child, sizing.Value, axis, ExtentKind.Fixed)
+                : Clamp(MainOf(axis, Measure(child, availSize, ctx)), sizing, ctx, axis);
+
             pass.Mains[i] = main;
-            pass.MeasureMain[i] = measureMain;
-            pass.MeasureCross[i] = CrossOf(axis, size);
             pass.Nodes[i] = MeasurePurity.IsPure(child) ? child : null;
         }
     }
@@ -694,6 +704,7 @@ public static class Engine
         {
             return;
         }
+
         var axis = stack.Axis;
         var gap = ToSurfaceOn(ctx, stack.Gap, axis);
         var scroll = stack.Scroll;
@@ -753,21 +764,14 @@ public static class Engine
             // the controller's offset: the rect it was given is its viewport, not the room its children get.
             // The room is the larger of the two, so a list shorter than its viewport still hands its Star
             // children the slack, and a longer one is laid out as if the viewport were as tall as it is.
-            T layoutMain;
+            // The kept path has no Star main, so no layout main is read: only the ordinary resolve needs one.
+            var layoutMain = mainAvail;
             if (keep is not null)
             {
                 var pass = reserve > T.Zero ? keep.Second : keep.First;
                 pass.Bind(n, availSize, key!, axis);
                 ResolveKept(children, axis, availSize, ctx, pass);
                 mains = pass.Mains;
-                includedCount = n;
-                var natural = gap * T.CreateChecked(Math.Max(0, n - 1));
-                for (var i = 0; i < n; i++)
-                {
-                    natural += pass.MeasureMain[i];
-                }
-
-                layoutMain = Max(mainAvail, natural);
             }
             else
             {
@@ -785,7 +789,6 @@ public static class Engine
             {
                 Array.Fill(included, true);
                 Array.Clear(measured!);
-                includedCount = n;
             }
 
             while (keep is null)
@@ -1776,6 +1779,22 @@ public static class Engine
         // 2026-10-28). Collapse thresholds are left out: a collapsed sibling only widens the others.
         // Each child is measured once where it can be: the resolve measures Auto and content-capped children at the whole
         // main (to learn their main), and that measure is kept; a child given exactly that main needs no second one.
+        if (stack.Scroll is { } scroll && KeepFor(scroll, stack.Children, axis, ctx) is { } keep)
+        {
+            // A scrolled stack of self-contained rows keeps what each contributes, so a parent that measures it every
+            // frame asks about the rows whose node changed only (#338).
+            var pass = keep.Measure;
+            pass.Bind(n, available, ctx.MeasureKey!, axis, measuring: true);
+            ResolveKept(stack.Children, axis, available, ctx, pass, forMeasure: true);
+            for (var i = 0; i < n; i++)
+            {
+                main += pass.MeasureMain[i];
+                cross = Max(cross, pass.MeasureCross[i]);
+            }
+
+            return Compose(axis, main + ToSurfaceOn(ctx, stack.Gap, axis) * T.CreateChecked(Math.Max(0, n - 1)), cross);
+        }
+
         var mains = new T[n];
         var measured = new Size<T>?[n];
         if (n > 0)

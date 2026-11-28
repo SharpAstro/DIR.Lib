@@ -5,8 +5,8 @@ namespace DIR.Lib.Layout;
 
 /// <summary>
 /// What a scrolled stack's <see cref="ListScrollController"/> keeps between frames so a repeat arrange resolves only the
-/// rows whose node changed (DIR.Lib #338): per child, the node it was resolved for, the main extent it takes, the main
-/// and cross it contributes to the stack's own measure, all valid for one available size, one context key and one axis.
+/// rows whose node changed (DIR.Lib #338): per child, the node it was resolved for, the main extent it takes (and, for
+/// the measure pass, what it contributes to the stack's own measure), all valid for one available size, one context key and one axis.
 /// </summary>
 /// <remarks>
 /// Two passes are kept because a bar that shows re-resolves every row at a narrower cross extent. A child is kept only
@@ -24,11 +24,13 @@ internal sealed class StackKeep<T> where T : INumber<T>
         public Axis Axis;
         public Node?[] Nodes = [];
         public T[] Mains = [];
+
+        /// <summary>Only the measure pass fills these: what each child contributes to the stack's own measure.</summary>
         public T[] MeasureMain = [];
         public T[] MeasureCross = [];
 
         /// <summary>Makes the pass answer for this request, dropping every kept child when the request differs.</summary>
-        public void Bind(int count, Size<T> available, object key, Axis axis)
+        public void Bind(int count, Size<T> available, object key, Axis axis, bool measuring = false)
         {
             if (!Valid || Nodes.Length != count || Axis != axis || Available.Width != available.Width
                 || Available.Height != available.Height || !key.Equals(Key))
@@ -37,8 +39,8 @@ internal sealed class StackKeep<T> where T : INumber<T>
                 {
                     Nodes = new Node?[count];
                     Mains = new T[count];
-                    MeasureMain = new T[count];
-                    MeasureCross = new T[count];
+                    MeasureMain = measuring ? new T[count] : [];
+                    MeasureCross = measuring ? new T[count] : [];
                 }
                 else
                 {
@@ -55,6 +57,9 @@ internal sealed class StackKeep<T> where T : INumber<T>
 
     public readonly Pass First = new();
     public readonly Pass Second = new();
+
+    /// <summary>The pass a parent's measure of the stack resolves at the size it was asked for.</summary>
+    public readonly Pass Measure = new();
     public bool[] Included = [];
 
     public bool[] AllIncluded(int count)

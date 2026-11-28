@@ -236,7 +236,9 @@ public class ScrolledStackKeptExtentsTests(ITestOutputHelper output)
                 _ => 0,
             };
 
-            // The first is a kept frame, the second the ordinary path (no key, so nothing is kept).
+            // Two kept frames, so the second is a repeat that takes the kept mains (the first resolves them at this offset's
+            // context), then the ordinary path (no key, so nothing is kept and the next offset starts cold again).
+            Arrange(List(rows, scroll), bounds, keyed);
             foreach (var (path, ctx) in new[] { ("kept", keyed), ("unkept", keyless) })
             {
                 var arranged = Arrange(List(rows, scroll), bounds, ctx);
