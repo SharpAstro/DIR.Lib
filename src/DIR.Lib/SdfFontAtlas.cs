@@ -219,6 +219,15 @@ public sealed class SdfFontAtlas : IDisposable
     /// this is the placement granularity, not a glyph cap. Power-of-two so a glyph's page index
     /// can be recovered exactly from its virtual V coordinate (see <see cref="InsertRasterized"/>
     /// and <see cref="DecodePage"/>).
+    /// <para>
+    /// Tiny-app recipe (a resident app with one UI face and about a hundred glyphs at three or four sizes,
+    /// such as pilot-buddy): pass <c>initialPageDim: 512</c> and <c>maxPages: 4</c>. Staging is
+    /// pages x dim x dim x <see cref="BytesPerTexel"/>, held for each page's life (see <see cref="Footprint"/>):
+    /// the first page costs 1 MiB at 512 against 4 MiB at the 1024 default (3 MiB saved while one page
+    /// holds the set; 256 gives 256 KiB, 3.75 MiB saved, but the buddy set of 56 glyphs takes three pages there, 768 KiB). Four 512
+    /// pages are at most 4 MiB, the cost of the default's single page, against 64 MiB for the default
+    /// 16 pages. Passing these is the host's choice (SdlVulkan.Renderer and the app), not a default here.
+    /// </para>
     /// </summary>
     public const int DefaultInitialAtlasDim = (int)SdfRasterSize * 16; // 1024 (64px raster × 16)
 
@@ -273,6 +282,10 @@ public sealed class SdfFontAtlas : IDisposable
     private long _lastPageAppendTick = -1;
 
     public int PageCount => _pages.Count;
+
+    /// <summary>What the atlas keeps on the CPU side, read without allocating (see <see cref="AtlasFootprint"/>).</summary>
+    public AtlasFootprint Footprint =>
+        new(_pages.Count, _pageDim, (long)_pages.Count * _pageDim * _pageDim * BytesPerTexel, _glyphs.Count);
 
     private long _pageStamps;
 
@@ -1235,3 +1248,9 @@ public sealed class SdfFontAtlas : IDisposable
         _activePageIdx = 0;
     }
 }
+
+/// <summary>
+/// What an <see cref="SdfFontAtlas"/> keeps: pages resident, the page edge in texels, the CPU staging bytes
+/// (pages times edge squared times four, held for each page's life) and the glyph entries (blanks included).
+/// </summary>
+public readonly record struct AtlasFootprint(int Pages, int PageDimension, long StagingBytes, int Glyphs);

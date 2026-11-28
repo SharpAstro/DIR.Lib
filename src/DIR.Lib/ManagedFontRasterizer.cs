@@ -43,8 +43,35 @@ public sealed class ManagedFontRasterizer : IDisposable
     // cached: an unregistered "mem:" font racing its first draw resolves to default and must
     // re-resolve once the bytes land, not pin a permanent blank. RegisterType1Encoding
     // invalidates its font's entries — /Differences overrides win over the built-in encoding
-    // and may be registered after a glyph was already resolved.
-    private readonly ConcurrentDictionary<(string Font, int Codepoint, int CharCode, GlyphMapHint Hint), GlyphIdentity> _identityMemo = new();
+    // and may be registered after a glyph was already resolved (BoundedCache has no per-key remove, and
+    // the call is rare, so it clears the whole memo: the next draw re-resolves what it needs).
+    // Bounded by IdentityMemoMaxEntries; an eviction only costs a re-resolve, never a wrong answer.
+    private volatile BoundedCache<(string Font, int Codepoint, int CharCode, GlyphMapHint Hint), GlyphIdentity> _identityMemo
+        = NewIdentityMemo(DefaultIdentityMemoMaxEntries);
+    private int _identityMemoMaxEntries = DefaultIdentityMemoMaxEntries;
+
+    /// <summary>The default for <see cref="IdentityMemoMaxEntries"/>: far above what a document page resolves.</summary>
+    public const int DefaultIdentityMemoMaxEntries = 1 << 20;
+
+    private static BoundedCache<(string Font, int Codepoint, int CharCode, GlyphMapHint Hint), GlyphIdentity> NewIdentityMemo(int maxEntries) =>
+        new(maxEntries, maxEntries * (BoundedCache<int, int>.EntryOverheadBytes + 64L), _ => 0);
+
+    /// <summary>
+    /// The most entries the glyph identity memo (<see cref="ResolveGlyphIdentity"/>) keeps; the oldest
+    /// generation is dropped past it, and a dropped identity is simply resolved again. Default
+    /// <see cref="DefaultIdentityMemoMaxEntries"/>, so nothing changes for an app that sets nothing. A tiny
+    /// app drawing one face can set it to a few hundred. Setting it empties the memo; at least 2.
+    /// </summary>
+    public int IdentityMemoMaxEntries
+    {
+        get => _identityMemoMaxEntries;
+        set
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 2);
+            _identityMemoMaxEntries = value;
+            _identityMemo = NewIdentityMemo(value);
+        }
+    }
 
     /// <summary>
     /// Glyphs rasterized by <see cref="RasterizeGlyph"/> and <see cref="RasterizeGlyphTopSnapped"/>, kept
@@ -136,6 +163,16 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// <summary>Entries the glyph and stretched-glyph caches hold (both zero for a rasterizer without them).</summary>
     internal (int Glyphs, long GlyphBytes, int Stretchy, long StretchyBytes) RasterCacheSize =>
         (_glyphRasters?.Count ?? 0, _glyphRasters?.Bytes ?? 0, _stretchyRasters?.Count ?? 0, _stretchyRasters?.Bytes ?? 0);
+
+    /// <summary>
+    /// What this rasterizer keeps in managed memory, read without allocating: see <see cref="RasterizerFootprint"/>.
+    /// SharpAstro.Fonts does not expose the byte length of a loaded <see cref="OpenTypeFont"/> (only its
+    /// tables, one at a time), so fonts are counted, not weighed.
+    /// </summary>
+    public RasterizerFootprint Footprint =>
+        new(_fonts.Count, _type1Fonts.Count, _pdfEncoding.Count, _identityMemo.Count,
+            _glyphRasters?.Count ?? 0, _glyphRasters?.Bytes ?? 0,
+            _stretchyRasters?.Count ?? 0, _stretchyRasters?.Bytes ?? 0);
 
     /// <summary><see cref="_glyphRasters"/>, or null where there is none or the test switch bypasses it.</summary>
     private BoundedCache<GlyphRasterKey, GlyphRaster>? GlyphRasters =>
@@ -1085,9 +1122,8 @@ public sealed class ManagedFontRasterizer : IDisposable
         _pdfEncoding[fontId] = encoding;
         // The overrides change what a char code resolves to for this font — drop its memoized
         // identities so earlier built-in-encoding resolutions can't shadow the /Differences names.
-        foreach (var key in _identityMemo.Keys)
-            if (key.Font == fontId)
-                _identityMemo.TryRemove(key, out _);
+        // (The memo is bounded and has no per-key remove, so the whole memo is cleared.)
+        _identityMemo.Clear();
     }
 
     /// <inheritdoc cref="RegisterPdfEncoding"/>
@@ -1180,19 +1216,22 @@ public sealed class ManagedFontRasterizer : IDisposable
     /// lookup → same glyph as the rasterize methods produce: this moves <em>where</em> resolution
     /// happens (to the cache-key boundary), not the resolution itself.</para>
     ///
-    /// <para>Resolved identities are memoized per (font, codepoint, charCode, hint) — session-
-    /// stable, unlike an atlas cache that evicts. Misses are not memoized (see
-    /// <c>_identityMemo</c>), and <see cref="RegisterType1Encoding"/> invalidates its font's
-    /// entries.</para>
+    /// <para>Resolved identities are memoized per (font, codepoint, charCode, hint), bounded by
+    /// <see cref="IdentityMemoMaxEntries"/> (default <see cref="DefaultIdentityMemoMaxEntries"/>): past the
+    /// cap the oldest entries are dropped, which only costs a re-resolve, never a different answer.
+    /// Misses are not memoized (see <c>_identityMemo</c>), and <see cref="RegisterPdfEncoding"/> clears
+    /// the whole memo, not only that font's entries, so a host that registers encodings lazily, font by
+    /// font, re-resolves the other fonts' glyphs after each registration.</para>
     /// </summary>
     public GlyphIdentity ResolveGlyphIdentity(string fontPath, Rune codepoint, int charCode, GlyphMapHint hint)
     {
         var memoKey = (fontPath, codepoint.Value, charCode, hint);
-        if (_identityMemo.TryGetValue(memoKey, out var memoized)) return memoized;
+        var memo = _identityMemo;
+        if (memo.TryGet(memoKey, out var memoized)) return memoized;
 
         var id = ResolveGlyphIdentityUncached(fontPath, codepoint, charCode, hint);
         if (id.Gid != 0 || id.Type1Name is not null)
-            _identityMemo.TryAdd(memoKey, id);
+            memo.Add(memoKey, id);
         return id;
     }
 
@@ -1749,3 +1788,13 @@ public sealed class ManagedFontRasterizer : IDisposable
         return new MtsdfGlyphBitmap(mtsdf.Rgba, mtsdf.Width, mtsdf.Height, mtsdf.Left, mtsdf.Top, AdvanceX: 0f, spread);
     }
 }
+
+/// <summary>
+/// What a <see cref="ManagedFontRasterizer"/> holds: SFNT faces and Type1 fonts loaded (their bytes are not
+/// readable from SharpAstro.Fonts, so counted only), PDF encodings registered, entries in the glyph identity
+/// memo, and the entries and bitmap bytes of the two raster caches (zero unless it was made with
+/// <c>cacheRasters</c>).
+/// </summary>
+public readonly record struct RasterizerFootprint(
+    int Fonts, int Type1Fonts, int PdfEncodings, int IdentityMemoEntries,
+    int GlyphRasters, long GlyphRasterBytes, int StretchyRasters, long StretchyRasterBytes);
