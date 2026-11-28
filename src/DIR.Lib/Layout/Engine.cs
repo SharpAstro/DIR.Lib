@@ -685,6 +685,7 @@ public static class Engine
         }
     }
 
+    internal static readonly long[] Probe = new long[4]; //PROBE
     private static void ArrangeStack<T>(Node.Stack stack, Rect<T> rect, Rect<T> inner, IMeasureContext<T> ctx,
         ImmutableArray<ArrangedNode<T>>.Builder output, int depth) where T : INumber<T>
     {
@@ -694,7 +695,7 @@ public static class Engine
         {
             return;
         }
-
+        Probe[0] = GC.GetAllocatedBytesForCurrentThread(); //PROBE
         var axis = stack.Axis;
         var gap = ToSurfaceOn(ctx, stack.Gap, axis);
         var scroll = stack.Scroll;
@@ -737,6 +738,7 @@ public static class Engine
         var included = keep is null ? new bool[n] : keep.AllIncluded(n);
         var mains = keep is null ? new T[n] : [];
         var measured = keep is null ? new Size<T>?[n] : null;
+        Probe[1] = GC.GetAllocatedBytesForCurrentThread(); //PROBE
         var includedCount = n;
         T crossAvail;
         T rows = T.Zero;
@@ -913,6 +915,7 @@ public static class Engine
             }
         }
 
+        Probe[2] = GC.GetAllocatedBytesForCurrentThread(); //PROBE
         // Final pass: resolve cross-axis size + position each surviving child along the main axis.
         var cursor = axis == Axis.Vertical ? inner.Y : inner.X;
 
@@ -1016,6 +1019,7 @@ public static class Engine
 
             cursor += mains[i] + gap;
         }
+        Probe[3] = GC.GetAllocatedBytesForCurrentThread(); //PROBE
     }
 
     /// <summary>

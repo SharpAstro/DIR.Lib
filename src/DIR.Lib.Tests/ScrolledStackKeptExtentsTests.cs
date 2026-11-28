@@ -36,8 +36,8 @@ public class ScrolledStackKeptExtentsTests(ITestOutputHelper output)
 
     private static Layout.Node[] BuildRows(int count) => [.. Enumerable.Range(0, count).Select(i => Row(i))];
 
-    private static Layout.Node List(IReadOnlyList<Layout.Node> rows, ListScrollController scroll)
-        => Layout.Builder.VStack([.. rows]).WithGap(RowGap).WStar().HClamp(0f, ViewportH).Pad(Pad).WithScroll(scroll);
+    private static Layout.Node List(IReadOnlyList<Layout.Node> rows, ListScrollController scroll, float listPad = Pad)
+        => Layout.Builder.VStack([.. rows]).WithGap(RowGap).WStar().HClamp(0f, ViewportH).Pad(listPad).WithScroll(scroll);
 
     private static int CountNodes(Layout.Node node) => node switch
     {
@@ -169,14 +169,17 @@ public class ScrolledStackKeptExtentsTests(ITestOutputHelper output)
             .ShouldBeGreaterThanOrEqualTo(Count, "another width");
         Repeat(Same, _ => (FloatBounds(height: 300f), ctx))
             .ShouldBeGreaterThanOrEqualTo(Count, "another viewport height");
-        Repeat(Same, Same, thenMode: ScrollBarMode.Interactive)
+        // The bar's column is reserved only beyond the stack's own padding (6 units, as wide as the bar), so this list has none.
+        var barScroll = NewScroll();
+        Arrange(List(rows, barScroll, 0f), FloatBounds(), ctx);
+        Arrange(List(rows, barScroll, 0f), FloatBounds(), ctx);
+        barScroll.Mode = ScrollBarMode.Interactive;
+        LookupsOf(List(rows, barScroll, 0f), barScroll, FloatBounds(), ctx)
             .ShouldBeGreaterThanOrEqualTo(Count, "the bar appearing resolves the rows at the narrower extent");
+        barScroll.ContentCrossExtentPx.ShouldBeLessThan(Width, "the bar shows");
 
         // And with the bar up the next frame is kept again, both passes.
-        var barred = NewScroll(ScrollBarMode.Interactive);
-        Arrange(List(rows, barred), FloatBounds(), ctx);
-        Arrange(List(rows, barred), FloatBounds(), ctx);
-        LookupsOf(List(rows, barred), barred, FloatBounds(), ctx).ShouldBeLessThan(cold / 2, "a list with its bar is kept too");
+        LookupsOf(List(rows, barScroll, 0f), barScroll, FloatBounds(), ctx).ShouldBeLessThan(cold / 2, "a list with its bar is kept too");
     }
 
     [Fact]
@@ -279,6 +282,7 @@ public class ScrolledStackKeptExtentsTests(ITestOutputHelper output)
             var before = GC.GetAllocatedBytesForCurrentThread();
             Arrange(list, FloatBounds(), ctx);
             allocated.Add(GC.GetAllocatedBytesForCurrentThread() - before);
+            var pr = Layout.Engine.Probe; output.WriteLine($"PROBE {count}: pre {pr[0]-before} keep {pr[1]-pr[0]} passes {pr[2]-pr[1]} place {pr[3]-pr[2]}"); //PROBE
         }
 
         output.WriteLine($"repeat arrange allocated {allocated[0]} B at 300 rows, {allocated[1]} B at 1000, {allocated[2]} B at 3000");
