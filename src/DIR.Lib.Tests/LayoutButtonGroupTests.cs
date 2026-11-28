@@ -331,7 +331,7 @@ public class LayoutButtonGroupTests
         padded.Labels.Length.ShouldBe(plain.Labels.Length);
         for (var i = 0; i < plain.Labels.Length; i++)
         {
-            padded.Labels[i].ShouldBe(plain.Labels[i] - 12f);
+            padded.Labels[i].ShouldBe(plain.Labels[i] - 12f, $"plain [{string.Join(',', plain.Labels)}] padded [{string.Join(',', padded.Labels)}] segs [{string.Join(',', plain.Segments)}]");
         }
     }
 
