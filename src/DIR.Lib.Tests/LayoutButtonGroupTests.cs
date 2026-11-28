@@ -316,7 +316,7 @@ public class LayoutButtonGroupTests
     {
         static (float[] Segments, float[] Labels) Widths(Layout.Node group)
         {
-            var arranged = Layout.Engine.Arrange(InRow(group), new Rect<float>(0, 0, 400f, 30f), new EqFloatCtx());
+            var arranged = Layout.Engine.Arrange(Layout.Builder.HStack(group.WFixed(300f)).HFixed(30f), new Rect<float>(0, 0, 400f, 30f), new EqFloatCtx());
             var segs = arranged.Where(n => n.Node.Hit is HitResult.ButtonHit).OrderBy(n => n.Bounds.X)
                 .Select(n => n.Bounds.Width).ToArray();
             var labels = arranged.Where(n => n.Node is Layout.Node.Leaf { Content: Layout.Content.Text })
@@ -331,7 +331,7 @@ public class LayoutButtonGroupTests
         padded.Labels.Length.ShouldBe(plain.Labels.Length);
         for (var i = 0; i < plain.Labels.Length; i++)
         {
-            padded.Labels[i].ShouldBe(plain.Labels[i] - 12f, $"plain [{string.Join(',', plain.Labels)}] padded [{string.Join(',', padded.Labels)}] segs [{string.Join(',', plain.Segments)}]");
+            padded.Labels[i].ShouldBe(plain.Labels[i] - 12f);
         }
     }
 
