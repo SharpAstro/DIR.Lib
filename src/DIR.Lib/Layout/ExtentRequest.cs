@@ -108,10 +108,23 @@ internal sealed class ExtentFacts
                 break;
             default:
                 var vertical = node is Node.Stack { Axis: Axis.Vertical };
+
+                // A scrolled stack is built afresh around the same rows every frame, so its own facts are never cached,
+                // and walking its rows asks the cache about every one: its controller keeps what the rows held (#338).
+                var keptOn = node is Node.Stack { Scroll: { } controller } ? controller : null;
+                if (keptOn?.KeptChildFacts is { } kept && kept.Matches(((Node.Stack)node).Children, vertical))
+                {
+                    fill |= kept.HasFill;
+                    has = kept.HasContent;
+                    lines = kept.Lines;
+                    break;
+                }
+
+                var childFill = false;
                 foreach (var child in ChildrenOf(node))
                 {
                     var f = Of(child);
-                    fill |= f.HasFill;
+                    childFill |= f.HasFill;
                     mutable |= f.ReadsMutable;
                     if (!f.HasContent)
                     {
@@ -120,6 +133,12 @@ internal sealed class ExtentFacts
 
                     has = true;
                     lines = vertical ? lines + f.Lines : Math.Max(lines, f.Lines);
+                }
+
+                fill |= childFill;
+                if (keptOn is not null && !mutable)
+                {
+                    keptOn.KeptChildFacts = new KeptChildFacts(((Node.Stack)node).Children, vertical, has, lines, childFill);
                 }
 
                 break;
@@ -164,5 +183,32 @@ internal sealed class ExtentFacts
 
         b.Add(d.Fill);
         return b.ToImmutable();
+    }
+}
+
+/// <summary>What the rows of a scrolled stack held when its facts were last worked out, so the next frame's stack around the
+/// same rows (by reference) takes them without asking the cache about each row.</summary>
+internal sealed class KeptChildFacts(ImmutableArray<Node> children, bool vertical, bool hasContent, int lines, bool hasFill)
+{
+    public bool HasContent { get; } = hasContent;
+    public int Lines { get; } = lines;
+    public bool HasFill { get; } = hasFill;
+
+    public bool Matches(ImmutableArray<Node> other, bool otherVertical)
+    {
+        if (vertical != otherVertical || children.Length != other.Length)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < other.Length; i++)
+        {
+            if (!ReferenceEquals(children[i], other[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

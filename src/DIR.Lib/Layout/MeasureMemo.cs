@@ -160,8 +160,13 @@ internal static class MeasureMemo<T> where T : INumber<T>
         }
     }
 
+    /// <summary>A test seam: how many times this thread has asked the memo for a measure. Not public API.</summary>
+    [ThreadStatic]
+    internal static int Lookups;
+
     public static bool TryGet(Node node, Size<T> available, IMeasureContext<T> ctx, out Size<T> size, out object? key)
     {
+        Lookups++;
         key = ctx.MeasureKey;
         if (_call is { } call && call.TryGetValue(new CallKey(node, ctx, available), out size))
         {
@@ -176,7 +181,7 @@ internal static class MeasureMemo<T> where T : INumber<T>
                 {
                     ref var slot = ref entry.Slots[i];
                     if (slot.Available.Width == available.Width && slot.Available.Height == available.Height
-                        && key.Equals(slot.Key))
+                        && (ReferenceEquals(key, slot.Key) || key.Equals(slot.Key)))
                     {
                         size = slot.Result;
                         return true;
@@ -217,7 +222,7 @@ internal static class MeasureMemo<T> where T : INumber<T>
             {
                 ref var slot = ref entry.Slots[i];
                 if (slot.Available.Width == available.Width && slot.Available.Height == available.Height
-                    && key.Equals(slot.Key))
+                    && (ReferenceEquals(key, slot.Key) || key.Equals(slot.Key)))
                 {
                     at = i;
                     break;
