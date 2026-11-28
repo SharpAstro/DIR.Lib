@@ -1,0 +1,283 @@
+using System.Collections.Immutable;
+using System.Numerics;
+using DIR.Lib;
+using Shouldly;
+
+namespace DIR.Lib.Tests;
+
+/// <summary>
+/// A repeat arrange of a scrolled stack resolves only the rows whose node changed, so its cost and its allocation follow
+/// the arranged window and not the list's length (DIR.Lib #338). The rows are the shape <see cref="LayoutScrollCullTests"/>
+/// uses, built once and kept between frames, with a fresh stack built around them every frame.
+/// </summary>
+public class ScrolledStackKeptExtentsTests(ITestOutputHelper output)
+{
+    private const float Width = 600f;
+    private const float ViewportH = 400f;
+    private const float Pad = 6f;
+    private const float RowGap = 4f;
+    private const float Font = 10f;
+    private const string ListId = "chat";
+
+    private static Layout.Node Row(int i, int extraWords = 0)
+    {
+        var words = new Layout.Node[4 + (i * 7) % 61 + extraWords];
+        for (var k = 0; k < words.Length; k++)
+        {
+            words[k] = Layout.Builder.Text(new string((char)('a' + (i + k) % 26), 3 + (i + k) % 5), Font);
+        }
+
+        return Layout.Builder.HStack(
+                Layout.Builder.Text("user", Font),
+                Layout.Builder.WrapH(words).WithGap(4f).WithLineGap(2f).WStar().HAuto())
+            .WithGap(8f).Pad(Pad).WStar().HAuto()
+            .Clickable(new HitResult.ListItemHit(ListId, i), _ => { });
+    }
+
+    private static Layout.Node[] BuildRows(int count) => [.. Enumerable.Range(0, count).Select(i => Row(i))];
+
+    private static Layout.Node List(IReadOnlyList<Layout.Node> rows, ListScrollController scroll)
+        => Layout.Builder.VStack([.. rows]).WithGap(RowGap).WStar().HClamp(0f, ViewportH).Pad(Pad).WithScroll(scroll);
+
+    private static int CountNodes(Layout.Node node) => node switch
+    {
+        Layout.Node.Stack s => 1 + s.Children.Sum(CountNodes),
+        Layout.Node.Wrap w => 1 + w.Children.Sum(CountNodes),
+        _ => 1,
+    };
+
+    private static int ScaledAtoms(float total) => (int)MathF.Ceiling(total);
+
+    /// <summary>Whole pixels, and a key that names the scale, as a pixel host's context does.</summary>
+    private sealed class FloatContext(float scale = 1f, bool keyed = true) : Layout.IMeasureContext<float>
+    {
+        public object? MeasureKey => keyed ? ("float", scale) : null;
+
+        public Layout.Size<float> MeasureText(ReadOnlySpan<char> text, float fontSize)
+            => new(text.Length * fontSize * scale, fontSize * scale);
+
+        public float ToSurface(float designUnits) => designUnits * scale;
+    }
+
+    /// <summary>A cell surface: a design unit is a fraction of a cell, rounded, as Console.Lib's is.</summary>
+    private sealed class CellContext(float unitsPerCell = 6f, bool keyed = true) : Layout.IMeasureContext<int>
+    {
+        public object? MeasureKey => keyed ? ("cell", unitsPerCell) : null;
+
+        public Layout.Size<int> MeasureText(ReadOnlySpan<char> text, float fontSize) => new(text.Length, 1);
+
+        public int ToSurface(float designUnits) => (int)MathF.Round(designUnits / unitsPerCell);
+    }
+
+    private static ImmutableArray<Layout.ArrangedNode<T>> Arrange<T>(Layout.Node list, Rect<T> bounds,
+        Layout.IMeasureContext<T> ctx) where T : INumber<T>
+        => Layout.Engine.Arrange(list, bounds, ctx);
+
+    private static Rect<float> FloatBounds(float width = Width, float height = ViewportH) => new(0f, 0f, width, height);
+
+    private static Rect<int> CellBounds => new(0, 0, 100, 67);
+
+    private static ListScrollController NewScroll(ScrollBarMode mode = ScrollBarMode.None)
+        => new() { Mode = mode };
+
+    /// <summary>The number of memo lookups the arrange of an already built list costs this thread.</summary>
+    private static int LookupsOf(Layout.Node list, ListScrollController scroll, Rect<float> bounds, FloatContext ctx)
+    {
+        var before = Layout.MeasureMemo<float>.Lookups;
+        Arrange(list, bounds, ctx);
+        return Layout.MeasureMemo<float>.Lookups - before;
+    }
+
+    private static void SetUp(ListScrollController scroll, IReadOnlyList<Layout.Node> rows, Rect<float> bounds,
+        FloatContext ctx, int offset)
+    {
+        Arrange(List(rows, scroll), bounds, ctx);
+        scroll.AtomOffset = offset;
+        Arrange(List(rows, scroll), bounds, ctx);
+    }
+
+    [Fact]
+    public void ARepeatFrameDoesTheSameLookupsWhateverTheListLength()
+    {
+        var short300 = BuildRows(300);
+        var long3000 = BuildRows(3000);
+        var ctx = new FloatContext();
+        var counts = new List<int>();
+        foreach (var rows in new[] { short300, long3000 })
+        {
+            var scroll = NewScroll();
+            SetUp(scroll, rows, FloatBounds(), ctx, 1000);
+            var list = List(rows, scroll);
+            counts.Add(LookupsOf(list, scroll, FloatBounds(), ctx));
+        }
+
+        output.WriteLine($"repeat frame lookups: 300 rows {counts[0]}, 3000 rows {counts[1]}");
+        counts[0].ShouldBeLessThan(300 / 4, "a repeat frame does not look every row up");
+        counts[1].ShouldBe(counts[0], "and 3000 rows cost what 300 do at the same offset");
+    }
+
+    [Fact]
+    public void ReplacingOneRowFarFromTheWindowAddsThatRowsLookupsOnly()
+    {
+        var rows = BuildRows(3000);
+        var scroll = NewScroll();
+        var ctx = new FloatContext();
+        SetUp(scroll, rows, FloatBounds(), ctx, 1000);
+        var baseline = LookupsOf(List(rows, scroll), scroll, FloatBounds(), ctx);
+
+        var replacement = Row(2500, extraWords: 40);
+        rows[2500] = replacement;
+        var list = List(rows, scroll);
+        var after = LookupsOf(list, scroll, FloatBounds(), ctx);
+
+        output.WriteLine($"baseline {baseline}, with one row replaced {after} ({CountNodes(replacement)} nodes in it)");
+        (after - baseline).ShouldBeGreaterThan(0, "the new row is resolved");
+        (after - baseline).ShouldBeLessThanOrEqualTo(4 * CountNodes(replacement), "and no other row is");
+
+        LookupsOf(List(rows, scroll), scroll, FloatBounds(), ctx).ShouldBe(baseline, "the next frame keeps it too");
+    }
+
+    [Fact]
+    public void AnotherKeyAvailableSizeOrTheBarResolvesEveryRowAgain()
+    {
+        const int Count = 600;
+        var rows = BuildRows(Count);
+
+        int Repeat(Func<ListScrollController, (Rect<float>, FloatContext)> first, Func<ListScrollController, (Rect<float>, FloatContext)> then,
+            ScrollBarMode firstMode = ScrollBarMode.None, ScrollBarMode thenMode = ScrollBarMode.None)
+        {
+            var scroll = NewScroll(firstMode);
+            var (b1, c1) = first(scroll);
+            Arrange(List(rows, scroll), b1, c1);
+            Arrange(List(rows, scroll), b1, c1);
+            scroll.Mode = thenMode;
+            var (b2, c2) = then(scroll);
+            return LookupsOf(List(rows, scroll), scroll, b2, c2);
+        }
+
+        var ctx = new FloatContext();
+        (Rect<float>, FloatContext) Same(ListScrollController _) => (FloatBounds(), ctx);
+
+        Repeat(Same, Same).ShouldBeLessThan(Count / 4, "control: nothing changed");
+        Repeat(Same, _ => (FloatBounds(), new FloatContext(scale: 1.25f)))
+            .ShouldBeGreaterThanOrEqualTo(Count, "another scale (another MeasureKey)");
+        Repeat(Same, _ => (FloatBounds(width: 500f), ctx))
+            .ShouldBeGreaterThanOrEqualTo(Count, "another width");
+        Repeat(Same, _ => (FloatBounds(height: 300f), ctx))
+            .ShouldBeGreaterThanOrEqualTo(Count, "another viewport height");
+        Repeat(Same, Same, thenMode: ScrollBarMode.Interactive)
+            .ShouldBeGreaterThanOrEqualTo(Count, "the bar appearing resolves the rows at the narrower extent");
+
+        // And with the bar up the next frame is kept again, both passes.
+        var barred = NewScroll(ScrollBarMode.Interactive);
+        Arrange(List(rows, barred), FloatBounds(), ctx);
+        Arrange(List(rows, barred), FloatBounds(), ctx);
+        LookupsOf(List(rows, barred), barred, FloatBounds(), ctx).ShouldBeLessThan(Count / 4, "a list with its bar is kept too");
+    }
+
+    [Fact]
+    public void AControllerHandedToAnotherStackKeepsNothingStale()
+    {
+        var scroll = NewScroll();
+        var ctx = new FloatContext();
+        var first = BuildRows(400);
+        var second = Enumerable.Range(0, 400).Select(i => Row(i + 1000)).ToArray();
+        Arrange(List(first, scroll), FloatBounds(), ctx);
+        Arrange(List(first, scroll), FloatBounds(), ctx);
+
+        Arrange(List(second, scroll), FloatBounds(), ctx);
+        var plain = NewScroll();
+        Arrange(List(second, plain), FloatBounds(), new FloatContext(keyed: false));
+        scroll.TotalAtoms.ShouldBe(plain.TotalAtoms, "the other stack's rows are measured, not the first stack's kept mains");
+    }
+
+    private readonly record struct Geometry(float[] Tops, float[] Heights, float Total);
+
+    private static Geometry Reference<T>(IReadOnlyList<Layout.Node> rows, Rect<T> bounds, Layout.IMeasureContext<T> keyless)
+        where T : INumber<T>
+    {
+        var pad = keyless.ToSurface(Pad);
+        var gap = keyless.ToSurface(RowGap);
+        var room = new Layout.Size<T>(bounds.Width - pad - pad, bounds.Height - pad - pad);
+        var heights = new float[rows.Count];
+        var tops = new float[rows.Count];
+        var at = float.CreateChecked(pad);
+        for (var i = 0; i < rows.Count; i++)
+        {
+            heights[i] = float.CreateChecked(Layout.Engine.Measure(rows[i], room, keyless).Height);
+            tops[i] = at;
+            at += heights[i] + float.CreateChecked(gap);
+        }
+
+        return new Geometry(tops, heights, at - float.CreateChecked(gap) + float.CreateChecked(pad));
+    }
+
+    private void ShouldMatchTheReference<T>(string label, IReadOnlyList<Layout.Node> rows, Rect<T> bounds,
+        Layout.IMeasureContext<T> keyed, Layout.IMeasureContext<T> keyless) where T : INumber<T>
+    {
+        var reference = Reference(rows, bounds, keyless);
+        var scroll = NewScroll();
+        Arrange(List(rows, scroll), bounds, keyed);
+        scroll.TotalAtoms.ShouldBe(ScaledAtoms(reference.Total), $"{label}: the extent");
+
+        foreach (var where in new[] { "top", "middle", "end" })
+        {
+            scroll.AtomOffset = where switch
+            {
+                "middle" => (int)(scroll.MaxOffset / 2f),
+                "end" => (int)scroll.MaxOffset,
+                _ => 0,
+            };
+
+            // The first is a kept frame, the second the ordinary path (no key, so nothing is kept).
+            foreach (var (path, ctx) in new[] { ("kept", keyed), ("unkept", keyless) })
+            {
+                var arranged = Arrange(List(rows, scroll), bounds, ctx);
+                scroll.TotalAtoms.ShouldBe(ScaledAtoms(reference.Total), $"{label} {where} {path}: TotalAtoms");
+
+                var offset = MathF.Truncate(scroll.Offset);
+                var seen = 0;
+                foreach (var a in arranged.Where(a => a.Node.Hit is HitResult.ListItemHit))
+                {
+                    var i = ((HitResult.ListItemHit)a.Node.Hit!).Index;
+                    float.CreateChecked(a.Bounds.Y).ShouldBe(reference.Tops[i] - offset, 0.01f, $"{label} {where} {path}: row {i} Y");
+                    float.CreateChecked(a.Bounds.Height).ShouldBe(reference.Heights[i], 0.01f, $"{label} {where} {path}: row {i} height");
+                    seen++;
+                }
+
+                seen.ShouldBeGreaterThan(2, $"{label} {where} {path}: rows are arranged");
+            }
+        }
+    }
+
+    [Fact]
+    public void ArrangedRowsAreWhereTheirOwnMeasuresPutThem_Float()
+        => ShouldMatchTheReference("float", BuildRows(300), FloatBounds(), new FloatContext(), new FloatContext(keyed: false));
+
+    [Fact]
+    public void ArrangedRowsAreWhereTheirOwnMeasuresPutThem_Cells()
+        => ShouldMatchTheReference("cells", BuildRows(300), CellBounds, new CellContext(), new CellContext(keyed: false));
+
+    [Fact]
+    public void ARepeatFrameAllocatesNoMoreForALongListThanForAShortOne()
+    {
+        var ctx = new FloatContext();
+        var allocated = new List<long>();
+        foreach (var count in new[] { 300, 3000 })
+        {
+            var rows = BuildRows(count);
+            var scroll = NewScroll();
+            SetUp(scroll, rows, FloatBounds(), ctx, 1000);
+            Arrange(List(rows, scroll), FloatBounds(), ctx);
+
+            // The stack around the rows is built before the count starts: that is the host's, and a list of rows is its length.
+            var list = List(rows, scroll);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            Arrange(list, FloatBounds(), ctx);
+            allocated.Add(GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        output.WriteLine($"repeat arrange allocated {allocated[0]} B at 300 rows, {allocated[1]} B at 3000");
+        (allocated[1] - allocated[0]).ShouldBeLessThan(8 * 1024, "the allocation follows the window, not the list");
+    }
+}

@@ -111,6 +111,9 @@ public sealed class ListScrollController
     // Tap-on-release row select.
     private int? _pendingTap;
 
+    /// <summary>The resolved row extents of the stack this controller scrolls, kept across frames by <c>Engine.ArrangeStack</c> (a <c>StackKeep&lt;T&gt;</c>); null keeps nothing.</summary>
+    internal object? KeptExtents;
+
     /// <summary>Which end the list rests against. Set before the first <see cref="SetExtent"/>.</summary>
     public ScrollAnchor Anchor { get; set; } = ScrollAnchor.Top;
 

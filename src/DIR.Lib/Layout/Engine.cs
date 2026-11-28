@@ -612,6 +612,79 @@ public static class Engine
         };
     }
 
+    /// <summary>
+    /// The kept state of a scrolled stack, or null (and nothing kept) when the stack cannot use it: a context with no
+    /// <see cref="IMeasureContext{T}.MeasureKey"/>, or a child whose main depends on its siblings (a Star main, a
+    /// collapse threshold, a separator), which takes the ordinary resolve.
+    /// </summary>
+    private static StackKeep<T>? KeepFor<T>(ListScrollController scroll, ImmutableArray<Node> children, Axis axis,
+        IMeasureContext<T> ctx) where T : INumber<T>
+    {
+        var eligible = ctx.MeasureKey is not null;
+        for (var i = 0; eligible && i < children.Length; i++)
+        {
+            var child = children[i];
+            eligible = !child.Separator && child.CollapseThreshold <= 0f && !MainSizing(axis, child).IsStar;
+        }
+
+        if (!eligible)
+        {
+            scroll.KeptExtents = null;
+            return null;
+        }
+
+        if (scroll.KeptExtents is StackKeep<T> keep)
+        {
+            return keep;
+        }
+
+        keep = new StackKeep<T>();
+        scroll.KeptExtents = keep;
+        return keep;
+    }
+
+    /// <summary>
+    /// Resolves, for one pass, the children whose node is not the one the pass kept: what <see cref="ResolveStackMains"/>
+    /// gives a Fixed or Auto child, and what <see cref="MeasureStack"/> takes from it for the stack's own measure. A child
+    /// with an unchanged node does no measure at all. Only pure subtrees are kept, as the measure memo keeps them.
+    /// </summary>
+    private static void ResolveKept<T>(ImmutableArray<Node> children, Axis axis, Size<T> availSize,
+        IMeasureContext<T> ctx, StackKeep<T>.Pass pass) where T : INumber<T>
+    {
+        var crossAvail = CrossOf(axis, availSize);
+        for (var i = 0; i < children.Length; i++)
+        {
+            var child = children[i];
+            if (ReferenceEquals(pass.Nodes[i], child))
+            {
+                continue;
+            }
+
+            var sizing = MainSizing(axis, child);
+            T main;
+            Size<T> size;
+            T measureMain;
+            if (sizing.IsFixed)
+            {
+                main = Extent(ctx, child, sizing.Value, axis, ExtentKind.Fixed);
+                size = Measure(child, Compose(axis, main, crossAvail), ctx);
+                measureMain = MainOf(axis, size);
+            }
+            else
+            {
+                var content = Measure(child, availSize, ctx);
+                measureMain = MainOf(axis, content);
+                main = Clamp(measureMain, sizing, ctx, axis);
+                size = measureMain == main ? content : Measure(child, Compose(axis, main, crossAvail), ctx);
+            }
+
+            pass.Mains[i] = main;
+            pass.MeasureMain[i] = measureMain;
+            pass.MeasureCross[i] = CrossOf(axis, size);
+            pass.Nodes[i] = MeasurePurity.IsPure(child) ? child : null;
+        }
+    }
+
     private static void ArrangeStack<T>(Node.Stack stack, Rect<T> rect, Rect<T> inner, IMeasureContext<T> ctx,
         ImmutableArray<ArrangedNode<T>>.Builder output, int depth) where T : INumber<T>
     {
@@ -657,10 +730,14 @@ public static class Engine
         // but an unscrolled stack never does.
         var offsetOnEntry = 0f;
         var reserve = T.Zero;
-        var included = new bool[n];
-        var mains = new T[n];
-        var measured = new Size<T>?[n];
-        int includedCount;
+        // A scrolled stack whose children's mains depend on nothing but themselves keeps those mains on its controller,
+        // so a repeat frame resolves only the children whose node changed (#338). The arrays are the kept ones then.
+        var keep = scroll is null ? null : KeepFor(scroll, children, axis, ctx);
+        var key = keep is null ? null : ctx.MeasureKey;
+        var included = keep is null ? new bool[n] : keep.AllIncluded(n);
+        var mains = keep is null ? new T[n] : [];
+        var measured = keep is null ? new Size<T>?[n] : null;
+        var includedCount = n;
         T crossAvail;
         T rows = T.Zero;
         T padStart = T.Zero;
@@ -677,19 +754,42 @@ public static class Engine
             // the controller's offset: the rect it was given is its viewport, not the room its children get.
             // The room is the larger of the two, so a list shorter than its viewport still hands its Star
             // children the slack, and a longer one is laid out as if the viewport were as tall as it is.
-            var layoutMain = scroll is null
-                ? mainAvail
-                : Max(mainAvail, MainOf(axis, MeasureStack(stack, availSize, ctx)));
+            T layoutMain;
+            if (keep is not null)
+            {
+                var pass = reserve > T.Zero ? keep.Second : keep.First;
+                pass.Bind(n, availSize, key!, axis);
+                ResolveKept(children, axis, availSize, ctx, pass);
+                mains = pass.Mains;
+                includedCount = n;
+                var natural = gap * T.CreateChecked(Math.Max(0, n - 1));
+                for (var i = 0; i < n; i++)
+                {
+                    natural += pass.MeasureMain[i];
+                }
+
+                layoutMain = Max(mainAvail, natural);
+            }
+            else
+            {
+                layoutMain = scroll is null
+                    ? mainAvail
+                    : Max(mainAvail, MainOf(axis, MeasureStack(stack, availSize, ctx)));
+            }
 
             // Collapse loop: resolve every child's main extent, then drop any child whose CollapseThreshold
             // undercuts its resolved extent and re-resolve so the freed space (extent + gap) redistributes.
             // Survivor extents only ever grow when a sibling collapses (Fixed/Auto are space-independent,
             // Star shares grow with the leftover), so no survivor can newly violate; each extra pass removes
             // at least one child, terminating in <= n passes (one, in practice).
-            Array.Fill(included, true);
-            Array.Clear(measured);
-            includedCount = n;
-            while (true)
+            if (keep is null)
+            {
+                Array.Fill(included, true);
+                Array.Clear(measured!);
+                includedCount = n;
+            }
+
+            while (keep is null)
             {
                 includedCount = ApplySeparators(children, included, includedCount);
                 if (includedCount == 0)
@@ -887,7 +987,7 @@ public static class Engine
                 // Auto, and a content-capped Star: its content at the main extent it was given, never more than the
                 // axis holds. Measured at the stack's whole main, a wrapping text asked for fewer lines than it takes.
                 // The resolve already measured it at the whole main; when that is the main it was given, that is the answer.
-                _ => Min(crossAvail, CrossOf(axis, measured[i] is { } known && MainOf(axis, known) == mains[i]
+                _ => Min(crossAvail, CrossOf(axis, measured?[i] is { } known && MainOf(axis, known) == mains[i]
                     ? known
                     : Measure(children[i], Compose(axis, mains[i], crossAvail), ctx))),
             };
