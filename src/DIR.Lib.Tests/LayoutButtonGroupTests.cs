@@ -261,6 +261,9 @@ public class LayoutButtonGroupTests
     [Fact]
     public void EqualSegmentsOnACellSurfaceAreExactlyTheWidestWordAndMeasureAsAWhole()
     {
+        // The 4-unit gap is 0 cells here: ToSurfaceX(4f) = round(4 / 8) = round(0.5) = 0 (to even). The widths
+        // below (7 x 3 = 21, and segment N + 1 starting 7 cells on) rely on that, so it is asserted first.
+        new EqCellCtx().ToSurfaceX(4f).ShouldBe(0);
         var group = Layout.Builder.ButtonGroup<Side>(Options(), Side.Mount, _ => { }, Equal());
         Layout.Engine.Measure(group, new Layout.Size<int>(80, 3), new EqCellCtx()).Width.ShouldBe(21);
         var segs = Layout.Engine.Arrange(InRow(group), new Rect<int>(0, 0, 80, 3), new EqCellCtx())
@@ -306,6 +309,30 @@ public class LayoutButtonGroupTests
         group.ShouldBeOfType<Layout.Node.Stack>();
         Segments(group).Length.ShouldBe(3);
         Segments(group).ShouldAllBe(c => c.Width.Kind == Layout.SizeKind.Star);
+    }
+
+    [Fact]
+    public void SegmentPaddingOutsideEqualToWidestLeavesTheLabelThatMuchLessRoomEachSide()
+    {
+        static (float[] Segments, float[] Labels) Widths(Layout.Node group)
+        {
+            var arranged = Layout.Engine.Arrange(InRow(group), new Rect<float>(0, 0, 400f, 30f), new EqFloatCtx());
+            var segs = arranged.Where(n => n.Node.Hit is HitResult.ButtonHit).OrderBy(n => n.Bounds.X)
+                .Select(n => n.Bounds.Width).ToArray();
+            var labels = arranged.Where(n => n.Node is Layout.Node.Leaf { Content: Layout.Content.Text })
+                .OrderBy(n => n.Bounds.X).Select(n => n.Bounds.Width).ToArray();
+            return (segs, labels);
+        }
+
+        var plain = Widths(Layout.Builder.ButtonGroup<Side>(Options(), Side.Mount, _ => { }, Style));
+        var padded = Widths(Layout.Builder.ButtonGroup<Side>(Options(), Side.Mount, _ => { }, Style with { SegmentPadding = 6f }));
+
+        padded.Segments.ShouldBe(plain.Segments);
+        padded.Labels.Length.ShouldBe(plain.Labels.Length);
+        for (var i = 0; i < plain.Labels.Length; i++)
+        {
+            padded.Labels[i].ShouldBe(plain.Labels[i] - 12f);
+        }
     }
 
     [Fact]
