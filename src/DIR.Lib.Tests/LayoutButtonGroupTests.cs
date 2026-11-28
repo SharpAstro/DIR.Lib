@@ -225,19 +225,6 @@ public class LayoutButtonGroupTests
     }
 
     [Fact]
-    public void EveryEqualSegmentHasOneWidthOnACellSurface()
-    {
-        var group = Layout.Builder.ButtonGroup<Side>(Options(), Side.Mount, _ => { }, Equal());
-        var segs = Layout.Engine.Arrange(InRow(group), new Rect<int>(0, 0, 80, 3), new EqCellCtx())
-            .Where(n => n.Node.Hit is HitResult.ButtonHit).OrderBy(n => n.Bounds.X).ToArray();
-        segs.Length.ShouldBe(3);
-        segs.Select(s => s.Bounds.Width).Distinct().Count().ShouldBe(1);
-        segs[0].Bounds.Width.ShouldBeGreaterThanOrEqualTo(7);
-        // The 4-unit gap rounds to 0 cells here, so only adjacency is asserted.
-        segs[1].Bounds.X.ShouldBeGreaterThanOrEqualTo(segs[0].Bounds.X + segs[0].Bounds.Width);
-    }
-
-    [Fact]
     public void AWidthSampleWiderThanEveryLabelSetsTheWidthAndTheLabelIsStillDrawn()
     {
         Layout.ButtonGroupOption<Side>[] options =
@@ -255,28 +242,52 @@ public class LayoutButtonGroupTests
         words.ShouldNotContain("Stopping now");
     }
 
-    [Fact]
-    public void AnIconOptionCountsTowardTheWidest()
+    [Theory]
+    [InlineData(0f, 14f)]
+    [InlineData(5f, 24f)]
+    public void AnIconOptionCountsTowardTheWidest(float padding, float segment)
     {
+        // The icon (14 wide) is wider than the one-character label (8 wide), so it alone sets the width.
         Layout.ButtonGroupOption<Side>[] options =
         [
             new(Side.Mount, Icon: Layout.IconKind.Spinner),
-            new(Side.Profile, "ab"),
+            new(Side.Profile, "a"),
         ];
-        var group = Layout.Builder.ButtonGroup<Side>(options, Side.Mount, _ => { }, Equal());
-        var width = Layout.Engine.Measure(group, new Layout.Size<float>(1000f, 30f), new EqFloatCtx()).Width;
-        var segs = Segs(group);
-        segs.Select(s => s.Bounds.Width).Distinct().Count().ShouldBe(1);
-        width.ShouldBe(2 * segs[0].Bounds.Width + 4f);
-        segs[0].Bounds.Width.ShouldBeGreaterThanOrEqualTo(16f);
+        var group = Layout.Builder.ButtonGroup<Side>(options, Side.Mount, _ => { }, Equal(padding));
+        Layout.Engine.Measure(group, new Layout.Size<float>(1000f, 30f), new EqFloatCtx()).Width.ShouldBe(2 * segment + 4f);
+        Segs(group).Select(s => s.Bounds.Width).Distinct().ShouldBe([segment]);
+    }
+
+    [Fact]
+    public void EqualSegmentsOnACellSurfaceAreExactlyTheWidestWordAndMeasureAsAWhole()
+    {
+        var group = Layout.Builder.ButtonGroup<Side>(Options(), Side.Mount, _ => { }, Equal());
+        Layout.Engine.Measure(group, new Layout.Size<int>(80, 3), new EqCellCtx()).Width.ShouldBe(21);
+        var segs = Layout.Engine.Arrange(InRow(group), new Rect<int>(0, 0, 80, 3), new EqCellCtx())
+            .Where(n => n.Node.Hit is HitResult.ButtonHit).OrderBy(n => n.Bounds.X).ToArray();
+        segs.Select(s => s.Bounds.Width).ShouldBe([7, 7, 7]);
+        segs[1].Bounds.X.ShouldBe(segs[0].Bounds.X + 7);
+    }
+
+    [Fact]
+    public void PaddingOnACellSurfaceRoundsToWholeCells()
+    {
+        // 5 design units are 1 cell a side (5 / 8 rounds up), so 7 + 2 = 9.
+        var group = Layout.Builder.ButtonGroup<Side>(Options(), Side.Mount, _ => { }, Equal(5f));
+        var segs = Layout.Engine.Arrange(InRow(group), new Rect<int>(0, 0, 80, 3), new EqCellCtx())
+            .Where(n => n.Node.Hit is HitResult.ButtonHit).OrderBy(n => n.Bounds.X).ToArray();
+        segs.Select(s => s.Bounds.Width).ShouldBe([9, 9, 9]);
     }
 
     [Fact]
     public void AnInsetLookKeepsEqualWidthsAndTheHitCoversTheWholeCellHeight()
     {
+        // The width comes from the face, not from the spacers: 3 x 56 + 2 x 4 = 176.
         var style = Equal() with { InsetFraction = 0.7f, CornerRadius = 6f };
-        var segs = Segs(Layout.Builder.ButtonGroup<Side>(Options(), Side.Mount, _ => { }, style));
-        segs.Select(s => s.Bounds.Width).Distinct().Count().ShouldBe(1);
+        var group = Layout.Builder.ButtonGroup<Side>(Options(), Side.Mount, _ => { }, style);
+        Layout.Engine.Measure(group, new Layout.Size<float>(1000f, 30f), new EqFloatCtx()).Width.ShouldBe(176f);
+        var segs = Segs(group);
+        segs.Select(s => s.Bounds.Width).ShouldBe([56f, 56f, 56f]);
         segs.ShouldAllBe(s => s.Bounds.Height == 30f);
     }
 
@@ -286,6 +297,15 @@ public class LayoutButtonGroupTests
         var group = Layout.Builder.ButtonGroup<Side>(Options(), Side.Mount, _ => { }, Equal() with { SegmentWidth = 20f });
         group.ShouldBeOfType<Layout.Node.Stack>();
         Segs(group).Select(s => s.Bounds.Width).Distinct().ShouldBe([20f]);
+    }
+
+    [Fact]
+    public void SegmentPaddingOutsideEqualToWidestStillBuildsStarSegments()
+    {
+        var group = Layout.Builder.ButtonGroup<Side>(Options(), Side.Mount, _ => { }, Style with { SegmentPadding = 6f });
+        group.ShouldBeOfType<Layout.Node.Stack>();
+        Segments(group).Length.ShouldBe(3);
+        Segments(group).ShouldAllBe(c => c.Width.Kind == Layout.SizeKind.Star);
     }
 
     [Fact]
