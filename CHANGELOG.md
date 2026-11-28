@@ -9,6 +9,14 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.106
+
+**`Builder.ButtonGroup` can size every segment to the widest option.** Additive.
+- **`ButtonGroupStyle.EqualToWidest`, `ButtonGroupStyle.SegmentPadding` and `ButtonGroupOption<T>.WidthSample`**, all init-only, so no constructor changes shape. With `EqualToWidest` every segment is as wide as the widest option's measured content (its `WidthSample`, else its label, else its icon) plus `SegmentPadding` either side, so the group has an intrinsic width that the engine measures and arranges alike on a float and a cell surface. A disabled option counts toward the widest. `WidthSample` is for a segment whose word changes, so the group never moves; the label is still what is drawn.
+- **A set `SegmentWidth` wins** over `EqualToWidest`. An equal-to-widest group is a one-row `Grid` at Auto width; every other group builds the same tree as before.
+- **Baseline**: `button_group_equal_to_widest.png` (the words Off / Errors and safety / All warnings, full height with the first chosen, and inset 0.7 with radius 4 and the middle chosen), pinned by `ButtonGroupRenderTests`.
+- **Left to consumer flights**: tianwen's `SkyMapTab.BuildModeSwitch`, the transport bar's view switch (its changing stage words through `WidthSample`) and `NotificationsTab.AlertChoiceFit` drop their `Engine.Measure` and the `SegmentWidth` they thread through. The alert choice keeps its own shrink-when-narrow rule, which `EqualToWidest` does not do.
+
 ## 11.105
 
 **DSN-1 v4, Apple-style switches: a switch, a confirm in place, a busy button, a restyled segmented control, and the two screens that compose them.** Additive, with two deliberate restyles of public controls (`Builder.Segmented`, and the 11.104 `Builder.Switch` in the v4 colours).
