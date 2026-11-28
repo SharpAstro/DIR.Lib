@@ -21,7 +21,7 @@ internal static class MeasurePurity
         public readonly bool Pure = pure;
     }
 
-    private static readonly ConditionalWeakTable<Node, Box> Cache = new();
+    private static readonly NodeFacts<Box> Cache = new();
 
     /// <summary>True when nothing under <paramref name="node"/> measures from mutable state. Computed once per node.</summary>
     public static bool IsPure(Node node)
@@ -32,7 +32,7 @@ internal static class MeasurePurity
         }
 
         var pure = Compute(node);
-        return Cache.GetValue(node, _ => new Box(pure)).Pure;
+        return Cache.GetValue(node, new Box(pure)).Pure;
     }
 
     private static bool Compute(Node node)
@@ -98,8 +98,9 @@ internal static class MeasurePurity
 /// per-thread table keyed by node reference, available size and context reference, so no child is measured twice at
 /// the same available size in one pass (the state cannot change during a pass).</item>
 /// <item>Across calls, only when the context names a <see cref="IMeasureContext{T}.MeasureKey"/> and the subtree is
-/// pure (<see cref="MeasurePurity"/>): a small ring of (available, key, result) slots per node in a
-/// <see cref="ConditionalWeakTable{TKey, TValue}"/>, so an entry dies with its node.</item>
+/// pure (<see cref="MeasurePurity"/>): a small ring of (available, key, result) slots per node in a <see cref="NodeFacts{TValue}"/>,
+/// kept while the node goes on being measured (SharpAstro/DIR.Lib#341: a weak table's GC handles, one per node of every frame of a
+/// tree built per frame, were most of such a consumer's CPU).</item>
 /// </list>
 /// Nodes are keyed by REFERENCE, never by record equality, which would walk the whole subtree and equate two
 /// distinct nodes that merely look alike.
@@ -124,7 +125,7 @@ internal static class MeasureMemo<T> where T : INumber<T>
         public int Next;
     }
 
-    private static readonly ConditionalWeakTable<Node, Entry> Kept = new();
+    private static readonly NodeFacts<Entry> Kept = new();
 
     private readonly struct CallKey(Node node, IMeasureContext<T> ctx, Size<T> available) : IEquatable<CallKey>
     {
@@ -200,8 +201,7 @@ internal static class MeasureMemo<T> where T : INumber<T>
 
         if (!Kept.TryGetValue(node, out var entry))
         {
-            var created = new Entry(MeasurePurity.IsPure(node));
-            entry = Kept.GetValue(node, _ => created);
+            entry = Kept.GetValue(node, new Entry(MeasurePurity.IsPure(node)));
         }
 
         if (!entry.Pure)

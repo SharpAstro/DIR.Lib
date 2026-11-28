@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Immutable;
-using System.Runtime.CompilerServices;
 
 namespace DIR.Lib.Layout;
 
@@ -55,7 +54,7 @@ public readonly record struct ExtentRequest
 /// subtree that holds a text editor, which is computed on every call (see <see cref="ExtentFacts.Of"/>).</summary>
 internal sealed class ExtentFacts
 {
-    private static readonly ConditionalWeakTable<Node, ExtentFacts> Cache = new();
+    private static readonly NodeFacts<ExtentFacts> Cache = new();
 
     public bool HasContent { get; private init; }
     public int Lines { get; private init; }
@@ -75,7 +74,7 @@ internal sealed class ExtentFacts
         }
 
         var facts = Compute(node);
-        return facts.ReadsMutable ? facts : Cache.GetValue(node, _ => facts);
+        return facts.ReadsMutable ? facts : Cache.GetValue(node, facts);
     }
 
     private static ExtentFacts Compute(Node node)
