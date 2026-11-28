@@ -46,10 +46,11 @@ public sealed class RadicalScratchPoolTests
         {
             var sizes = ((IEnumerable)entry.GetType().GetField("Sizes")!.GetValue(entry)!).Cast<object>().ToList();
             var renderer = (RgbaImageRenderer)entry.GetType().GetField("Renderer")!.GetValue(entry)!;
-            var glyphs = (ICollection)typeof(RgbaImageRenderer).GetField("_glyphCache", BindingFlags.NonPublic | BindingFlags.Instance)!
-                .GetValue(renderer)!;
+            // The glyph cache is a BoundedCache since DIR335, not a dictionary: its Count is read by name.
+            var cache = typeof(RgbaImageRenderer).GetField("_glyphCache", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(renderer)!;
+            var glyphs = (int)cache.GetType().GetProperty("Count")!.GetValue(cache)!;
             sizes.Count.ShouldBeLessThanOrEqualTo(SqrtBox.InkScratchSizesKept, "sizes a pooled scratch renderer has measured at");
-            glyphs.Count.ShouldBeLessThanOrEqualTo(SqrtBox.InkScratchSizesKept * distinctRunes, "glyphs a pooled scratch renderer keeps");
+            glyphs.ShouldBeLessThanOrEqualTo(SqrtBox.InkScratchSizesKept * distinctRunes, "glyphs a pooled scratch renderer keeps");
         }
     }
 
