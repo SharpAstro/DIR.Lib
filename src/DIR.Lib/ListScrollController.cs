@@ -114,6 +114,9 @@ public sealed class ListScrollController
     /// <summary>The resolved row extents of the stack this controller scrolls, kept across frames by <c>Engine.ArrangeStack</c> (a <c>StackKeep&lt;T&gt;</c>); null keeps nothing.</summary>
     internal object? KeptExtents;
 
+    /// <summary>What the scrolled stack's rows held for <c>ExtentFacts</c>, kept across frames; null keeps nothing.</summary>
+    internal Layout.KeptChildFacts? KeptChildFacts;
+
     /// <summary>Which end the list rests against. Set before the first <see cref="SetExtent"/>.</summary>
     public ScrollAnchor Anchor { get; set; } = ScrollAnchor.Top;
 
