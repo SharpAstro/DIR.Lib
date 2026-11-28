@@ -12,37 +12,69 @@ namespace DIR.Lib.Layout;
 /// <para>
 /// Two generations of strong references, not a <see cref="System.Runtime.CompilerServices.ConditionalWeakTable{TKey, TValue}"/>.
 /// Each entry of a weak table is a dependent GC handle, so a consumer that builds its tree anew every frame added and dropped
-/// handles for every node of every frame, and paid for it in the collector and the finalizer: on pilot-gui's Ideas page
-/// (DE1's data, 2026-11-28) 36 % of the sampled CPU was the table's container finalizers and 21 % the GC polls behind them,
-/// with 2.5 to 3.5 s of collection pause in every 5 s (SharpAstro/DIR.Lib#341).
+/// handles for every node of every frame, and paid for it in the collector and the finalizer: on pilot-gui's Ideas page (DE1's
+/// data, 2026-11-28) the same window took 0.93 cores and 46 s of collection pause in 85 s with the weak tables, 0.36 cores and
+/// 11 s with this (SharpAstro/DIR.Lib#341).
 /// </para>
 /// <para>
-/// New facts go into the current generation. Once it holds <see cref="GenerationSize"/> entries it becomes the previous one and a
-/// fresh one begins; whatever was in the previous one before is let go. A lookup that finds a node in the previous generation
-/// moves it to the current one. So a node that is asked about again and again (a tree a consumer keeps, a kept row inside a
-/// rebuilt tree) keeps its facts, and the facts of a tree that was built once and dropped go within two turns, held by nothing
-/// but these two tables until then: at most twice <see cref="GenerationSize"/> nodes, and no handle for the collector to scan.
+/// New facts go into the current generation. It becomes the previous one at <see cref="GenerationSize"/> entries, or once it is
+/// <see cref="TurnAfter"/> old, at the next lookup; whatever was in the previous one before is let go. A lookup that finds a node in
+/// the previous generation moves it to the current one. So a node read at least once per generation keeps its facts (a kept tree,
+/// a kept row inside a rebuilt tree), and one nobody reads goes within two. The count lets go of the trees a host built once and
+/// dropped; the age lets go of them in a host that still reads but no longer builds, so a node held only here (with what its
+/// handlers capture, and a measure key's renderer) lives at most two generations past its last read while the host draws. A host
+/// that draws nothing reads nothing, and its last facts stay until it draws again. A kept tree of more than
+/// <see cref="GenerationSize"/> distinct nodes, read whole each frame, turns a generation every frame and measures part of itself
+/// again; the windows these apps draw hold a few thousand.
 /// </para>
-/// <para>Safe from any thread: one lock, held for a lookup or an insert, never while a fact is computed.</para>
+/// <para>
+/// Plain dictionaries swapped and cleared at a turn, under one lock held for a lookup or an insert and never while a fact is
+/// computed. A lock-free <see cref="BoundedCache{TKey, TValue}"/> (concurrent dictionaries, a new one at every turn) was measured
+/// in its place on the same window and was slower: 0.52 to 0.65 cores and 53 MB a frame against 0.28 to 0.37 and 44, the tree's
+/// thousands of inserts a frame outweighing the lock on its reads.
+/// </para>
 /// </remarks>
 internal sealed class NodeFacts<TValue>
     where TValue : class
 {
     /// <summary>How many entries a generation holds before the next one begins.</summary>
-    public const int GenerationSize = 16_384;
+    public const int GenerationSize = 32_768;
+
+    /// <summary>How old a generation grows before the next one begins, whatever it holds.</summary>
+    public static readonly TimeSpan TurnAfter = TimeSpan.FromSeconds(10);
 
     private readonly Lock _gate = new();
+    private readonly TimeProvider _time;
+    private readonly long _turnAfter;
     private Dictionary<Node, TValue> _current = new(ReferenceEqualityComparer.Instance);
     private Dictionary<Node, TValue> _previous = new(ReferenceEqualityComparer.Instance);
+    private long _currentSince;
 
-    /// <summary>How many times a generation turned over: what a test reads to see the bound hold.</summary>
-    internal int Turns { get; private set; }
+    public NodeFacts(TimeProvider? time = null)
+    {
+        _time = time ?? TimeProvider.System;
+        _turnAfter = (long)(TurnAfter.TotalSeconds * _time.TimestampFrequency);
+        _currentSince = _time.GetTimestamp();
+    }
+
+    /// <summary>Entries held, both generations together: what a test reads to see the bound hold.</summary>
+    internal int Count
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _current.Count + _previous.Count;
+            }
+        }
+    }
 
     /// <summary>The facts kept for <paramref name="node"/>, when there are any.</summary>
     public bool TryGetValue(Node node, out TValue value)
     {
         lock (_gate)
         {
+            TurnIfOldLocked();
             if (_current.TryGetValue(node, out value!))
             {
                 return true;
@@ -65,6 +97,7 @@ internal sealed class NodeFacts<TValue>
     {
         lock (_gate)
         {
+            TurnIfOldLocked();
             if (_current.TryGetValue(node, out var known))
             {
                 return known;
@@ -79,14 +112,28 @@ internal sealed class NodeFacts<TValue>
         }
     }
 
+    private void TurnIfOldLocked()
+    {
+        if (_time.GetTimestamp() - _currentSince >= _turnAfter)
+        {
+            TurnLocked();
+        }
+    }
+
     private void AddLocked(Node node, TValue value)
     {
         if (_current.Count >= GenerationSize)
         {
-            (_previous, _current) = (_current, _previous);
-            _current.Clear();
-            Turns++;
+            TurnLocked();
         }
         _current[node] = value;
+    }
+
+    // The current generation becomes the previous one; the previous one's entries go, its table is reused.
+    private void TurnLocked()
+    {
+        (_previous, _current) = (_current, _previous);
+        _current.Clear();
+        _currentSince = _time.GetTimestamp();
     }
 }
