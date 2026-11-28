@@ -9,6 +9,13 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.108
+
+**#338: a scrolled list of ~300 rows cost ~95 ms to arrange and draw; a host can now keep its rows.** Additive.
+- **Paint already drew only what touches the viewport.** `PaintLayout` skips, registers and captures only nodes that intersect the scroll clip; `ScrolledListPaintCullTests` pins it, so a frame's draw cost is the visible rows' cost whatever the list's length (a full screen of Markdown painted in 5 to 11 ms flat at 30, 300 and 3000 rows).
+- **A repeat arrange measures only changed rows.** A scrolled stack keeps each child's resolved main extent on its `ListScrollController`, keyed by node reference, the available size and the context's `MeasureKey`, so unchanged rows take no measure-memo lookup and no per-pass arrays are allocated. Before: arrange grew 1.9, 3.3, 17 and 50 ms at 30, 300, 3000 rows with 330 KB a frame at 300 rows and 525 KB at 3000. After: the lookups and allocation follow the arranged window (`ScrolledStackKeptExtentsTests`).
+- **`KeptRows<TId, TKey>`** keeps each row's `Layout.Node` while its key stands (`Row`, `EndFrame`, `Forget`, `Builds`), so a host that rebuilds its tree every frame still hits the memo and the kept extents. Rebuilt rows measured 385 to 423 ms and 42,800 `MeasureText` calls a frame at 300 Markdown rows, against 3 to 4 ms kept. The key is everything the build reads, including the theme generation.
+
 ## 11.107
 
 **Text-stack footprint counters and host-settable caps, for a tiny always-resident app.** Additive; every default is unchanged, so an app that sets nothing behaves as before.
