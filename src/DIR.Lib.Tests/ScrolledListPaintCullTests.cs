@@ -89,7 +89,10 @@ public class ScrolledListPaintCullTests(ITestOutputHelper output)
             base.DrawBorder(rect, color, width, radius, sides);
         }
 
-        public IEnumerable<RectInt> AllRects => TextRects.Concat(RectFills).Concat(RoundedFills).Concat(Borders);
+        /// <summary>The calls PaintLayout itself makes. FillRectangle is left out: the base renderer's rounded fill and
+        /// border decompose into scanline FillRectangle calls, and a row straddling the edge has scanlines above it
+        /// (the renderer clips them), so those are checked against the rounded and border rects instead.</summary>
+        public IEnumerable<RectInt> AllRects => TextRects.Concat(RoundedFills).Concat(Borders);
 
         public void Reset()
         {
@@ -190,6 +193,27 @@ public class ScrolledListPaintCullTests(ITestOutputHelper output)
         return [.. Enumerable.Range(0, rows.Length).Where(i => tops[i] - offset + heights[i] > 0f && tops[i] - offset < ViewportH)];
     }
 
+    /// <summary>Rows whose Fill leaf (placed by arranging the row alone) touches the viewport: a row straddling an edge
+    /// by its padding only has no leaf on screen, so this is narrower than the rows that touch.</summary>
+    private static List<int> FillRowsTouching(Layout.Node[] rows, float offset)
+    {
+        var room = new Layout.Size<float>(Width - 2 * Pad, ViewportH - 2 * Pad);
+        var widget = new DeclarationWidget(new DeclarationStubRenderer(1, 1));
+        var result = new List<int>();
+        var at = Pad;
+        for (var i = 0; i < rows.Length; i++)
+        {
+            var h = widget.Measure(rows[i], room).Height;
+            var alone = Layout.Engine.Arrange(rows[i], new Rect<float>(0f, 0f, room.Width, h), widget.Context());
+            var leaf = alone.Single(a => a.Node is Layout.Node.Leaf { Content: Layout.Content.Fill });
+            var top = at + leaf.Bounds.Y - offset;
+            if (top + leaf.Bounds.Height > 0f && top < ViewportH) result.Add(i);
+            at += h + RowGap;
+        }
+
+        return result;
+    }
+
     private static float MeasureRow(Layout.Node row, Layout.Size<float> room)
         => new DeclarationWidget(new DeclarationStubRenderer(1, 1)).Measure(row, room).Height;
 
@@ -200,6 +224,15 @@ public class ScrolledListPaintCullTests(ITestOutputHelper output)
             var x = Math.Min(r.UpperLeft.X, r.LowerRight.X);
             var y = Math.Min(r.UpperLeft.Y, r.LowerRight.Y);
             Touches(x, y, r.Width, r.Height).ShouldBeTrue($"a draw call at {r} lies outside the viewport");
+        }
+
+        // A scanline lies within the rect of the rounded fill or border that made it, and those touch the viewport.
+        var parents = rig.Renderer.RoundedFills.Concat(rig.Renderer.Borders).ToList();
+        foreach (var r in rig.Renderer.RectFills)
+        {
+            var y = Math.Min(r.UpperLeft.Y, r.LowerRight.Y);
+            parents.Any(p => y >= Math.Min(p.UpperLeft.Y, p.LowerRight.Y) && y <= Math.Max(p.UpperLeft.Y, p.LowerRight.Y))
+                .ShouldBeTrue($"a FillRectangle at {r} belongs to no rounded fill or border");
         }
 
         foreach (var region in rig.Widget.GetRegisteredRegions())
@@ -266,7 +299,9 @@ public class ScrolledListPaintCullTests(ITestOutputHelper output)
         var visible = VisibleRows(rig.Rows, rig.Scroll.Offset);
         visible.Count.ShouldBeGreaterThan(2);
         PaintedRows(rig.Widget).ShouldBe(visible, $"the rows painted at the {where} are the rows that touch the viewport");
-        rig.Widget.FilledRows.Order().ToList().ShouldBe(visible, "drawFill runs exactly for the visible rows' Fill leaves");
+        rig.Widget.FilledRows.Order().ToList().ShouldBe(FillRowsTouching(rig.Rows, rig.Scroll.Offset),
+            "drawFill runs exactly for the Fill leaves that touch the viewport");
+        rig.Widget.FilledRows.ShouldBeSubsetOf(visible);
         ShouldAllTouchTheViewport(rig);
         output.WriteLine($"{where}: {visible.Count} of 3000 rows painted, {rig.Widget.Painted().Count} nodes captured");
     }
