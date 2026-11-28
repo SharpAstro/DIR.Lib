@@ -111,10 +111,10 @@ public sealed class ListScrollController
     // Tap-on-release row select.
     private int? _pendingTap;
 
-    /// <summary>The resolved row extents of the stack this controller scrolls, kept across frames by <c>Engine.ArrangeStack</c> (a <c>StackKeep&lt;T&gt;</c>); null keeps nothing.</summary>
+    /// <summary>The resolved row extents of the stack this controller scrolls, kept across frames by <c>Engine.ArrangeStack</c> and <c>MeasureStack</c> (a <c>StackKeep&lt;T&gt;</c>); null keeps nothing. It holds the last frame's row nodes by reference, so they live as long as the controller does (one frame's rows, replaced by the next arrange, dropped when the stack stops being eligible).</summary>
     internal object? KeptExtents;
 
-    /// <summary>What the scrolled stack's rows held for <c>ExtentFacts</c>, kept across frames; null keeps nothing.</summary>
+    /// <summary>What the scrolled stack's rows held for <c>ExtentFacts</c>, kept across frames; null keeps nothing. Holds the last frame's row nodes like <see cref="KeptExtents"/>.</summary>
     internal Layout.KeptChildFacts? KeptChildFacts;
 
     /// <summary>Which end the list rests against. Set before the first <see cref="SetExtent"/>.</summary>

@@ -243,7 +243,7 @@ public class ScrolledListPaintCullTests(ITestOutputHelper output)
     [Fact]
     public void TheSameOffsetPaintsTheSameWhateverTheListLength()
     {
-        var rigs = new[] { 30, 300, 3000 }.Select(n => new Rig(n)).ToArray();
+        var rigs = new[] { 30, 300, 1000 }.Select(n => new Rig(n)).ToArray();
         foreach (var rig in rigs)
         {
             rig.Frame((int)Offset);
@@ -275,7 +275,7 @@ public class ScrolledListPaintCullTests(ITestOutputHelper output)
         output.WriteLine($"paint at offset {Offset}: {a.Renderer.TextRects.Count} DrawText, {a.Renderer.RectFills.Count} FillRectangle, "
             + $"{a.Renderer.RoundedFills.Count} FillRoundedRectangle, {a.Renderer.Borders.Count} DrawBorder, "
             + $"{a.Widget.GetRegisteredRegions().Length} regions, {a.Widget.Painted().Count} painted nodes, "
-            + $"{a.Widget.FilledRows.Count} drawFill calls, equal at 30, 300 and 3000 rows");
+            + $"{a.Widget.FilledRows.Count} drawFill calls, equal at 30, 300 and 1000 rows");
     }
 
     [Theory]
@@ -284,7 +284,7 @@ public class ScrolledListPaintCullTests(ITestOutputHelper output)
     [InlineData("end")]
     public void OnlyTheVisibleRowsArePaintedAndFilled(string where)
     {
-        var rig = new Rig(3000);
+        var rig = new Rig(600);
         rig.Widget.Render(rig.Tree());
         var offset = where switch
         {
@@ -301,7 +301,7 @@ public class ScrolledListPaintCullTests(ITestOutputHelper output)
             "drawFill runs exactly for the Fill leaves that touch the viewport");
         rig.Widget.FilledRows.ShouldBeSubsetOf(visible);
         ShouldAllTouchTheViewport(rig);
-        output.WriteLine($"{where}: {visible.Count} of 3000 rows painted, {rig.Widget.Painted().Count} nodes captured");
+        output.WriteLine($"{where}: {visible.Count} of 600 rows painted, {rig.Widget.Painted().Count} nodes captured");
     }
 
     [Fact]

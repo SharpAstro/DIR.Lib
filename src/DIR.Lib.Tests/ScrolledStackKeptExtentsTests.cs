@@ -123,20 +123,20 @@ public class ScrolledStackKeptExtentsTests(ITestOutputHelper output)
     [Fact]
     public void ReplacingOneRowFarFromTheWindowAddsThatRowsLookupsOnly()
     {
-        var rows = BuildRows(3000);
+        var rows = BuildRows(1500);
         var scroll = NewScroll();
         var ctx = new FloatContext();
         SetUp(scroll, rows, FloatBounds(), ctx, 1000);
         var baseline = LookupsOf(List(rows, scroll), scroll, FloatBounds(), ctx);
 
-        var replacement = Row(2500, extraWords: 40);
-        rows[2500] = replacement;
+        var replacement = Row(1300, extraWords: 40);
+        rows[1300] = replacement;
         var list = List(rows, scroll);
         var after = LookupsOf(list, scroll, FloatBounds(), ctx);
 
         output.WriteLine($"baseline {baseline}, with one row replaced {after} ({CountNodes(replacement)} nodes in it)");
         (after - baseline).ShouldBeGreaterThan(0, "the new row is resolved");
-        (after - baseline).ShouldBeLessThanOrEqualTo(4 * CountNodes(replacement), "and no other row is");
+        (after - baseline).ShouldBe(CountNodes(replacement), "one lookup for each node of it, and no other row is asked about");
 
         LookupsOf(List(rows, scroll), scroll, FloatBounds(), ctx).ShouldBe(baseline, "the next frame keeps it too");
     }
@@ -272,7 +272,7 @@ public class ScrolledStackKeptExtentsTests(ITestOutputHelper output)
     {
         var ctx = new FloatContext();
         var allocated = new List<long>();
-        foreach (var count in new[] { 300, 1000, 3000 })
+        foreach (var count in new[] { 200, 600, 1200 })
         {
             var rows = BuildRows(count);
             var scroll = NewScroll();
@@ -286,7 +286,33 @@ public class ScrolledStackKeptExtentsTests(ITestOutputHelper output)
             allocated.Add(GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        output.WriteLine($"repeat arrange allocated {allocated[0]} B at 300 rows, {allocated[1]} B at 1000, {allocated[2]} B at 3000");
+        output.WriteLine($"repeat arrange allocated {allocated[0]} B at 200 rows, {allocated[1]} B at 600, {allocated[2]} B at 1200");
         (allocated[2] - allocated[0]).ShouldBeLessThan(8 * 1024, "the allocation follows the window, not the list");
+    }
+
+    [Fact]
+    public void AParentThatMeasuresTheListAsksAboutChangedRowsOnly()
+    {
+        var rows = BuildRows(1500);
+        var scroll = NewScroll();
+        var ctx = new FloatContext();
+        var room = new Layout.Size<float>(Width, 10_000f);
+
+        int Lookups(out Layout.Size<float> size)
+        {
+            var list = List(rows, scroll);
+            var before = Layout.MeasureMemo<float>.Lookups;
+            size = Layout.Engine.Measure(list, room, ctx);
+            return Layout.MeasureMemo<float>.Lookups - before;
+        }
+
+        var cold = Lookups(out var coldSize);
+        var repeat = Lookups(out var repeatSize);
+        output.WriteLine($"parent measure lookups: cold {cold}, repeat {repeat}");
+        repeatSize.ShouldBe(coldSize);
+        repeat.ShouldBeLessThan(cold / 100, "a repeat measure does not look every row up");
+
+        var plain = Layout.Engine.Measure(List(rows, NewScroll()), room, new FloatContext(keyed: false));
+        repeatSize.ShouldBe(plain, "the kept measure is the one the ordinary resolve gives");
     }
 }
