@@ -282,7 +282,6 @@ public class ScrolledStackKeptExtentsTests(ITestOutputHelper output)
             var before = GC.GetAllocatedBytesForCurrentThread();
             Arrange(list, FloatBounds(), ctx);
             allocated.Add(GC.GetAllocatedBytesForCurrentThread() - before);
-            var pr = Layout.Engine.Probe; output.WriteLine($"PROBE {count}: pre {pr[0]-before} keep {pr[1]-pr[0]} passes {pr[2]-pr[1]} place {pr[3]-pr[2]}"); //PROBE
         }
 
         output.WriteLine($"repeat arrange allocated {allocated[0]} B at 300 rows, {allocated[1]} B at 1000, {allocated[2]} B at 3000");
