@@ -317,6 +317,27 @@ public class ScrolledStackKeptExtentsTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void AParentsMeasureOfFixedAndClampedRowsMatchesTheOrdinaryMeasure()
+    {
+        var rows = new List<Layout.Node>();
+        for (var i = 0; i < 60; i++)
+        {
+            rows.Add(i % 3 == 0 ? Layout.Builder.Text("fixed", Font).WStar().HFixed(28f)
+                : i % 3 == 1 ? Row(i).HClamp(0f, 40f)
+                : Row(i));
+        }
+
+        var room = new Layout.Size<float>(Width, 10_000f);
+        var scroll = NewScroll();
+        var ctx = new FloatContext();
+        var first = Layout.Engine.Measure(List(rows, scroll), room, ctx);
+        var repeat = Layout.Engine.Measure(List(rows, scroll), room, ctx);
+        var plain = Layout.Engine.Measure(List(rows, NewScroll()), room, new FloatContext(keyed: false));
+        first.ShouldBe(plain);
+        repeat.ShouldBe(plain);
+    }
+
+    [Fact]
     public void ACollapsedChildOnTheOrdinaryPathDoesNotShortenTheScrollExtent()
     {
         // No MeasureKey: the stack takes the ordinary path, which counts included children across its two passes
