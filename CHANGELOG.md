@@ -9,6 +9,16 @@ this file disagrees with. Bump it there and add the entry here, in the same comm
 Breaking changes carry their migration steps in [MIGRATION.md](MIGRATION.md); this file says what
 changed and why.
 
+## 11.107
+
+**Text-stack footprint counters and host-settable caps, for a tiny always-resident app.** Additive; every default is unchanged, so an app that sets nothing behaves as before.
+- **Counters** (allocation-free reads): `RgbaImageRenderer.GlyphCache` (`GlyphCacheFootprint`: entries, bitmap bytes), `ManagedFontRasterizer.Footprint` (`RasterizerFootprint`: fonts, Type1 fonts, glyph rasters, identity memo entries) and `SdfFontAtlas.Footprint` (`AtlasFootprint`: pages, page edge, staging bytes, glyphs). `TextFootprintTests` pins them against a buddy-sized text set.
+- **Caps**: `RgbaImageRenderer.GlyphCacheMaxEntries` (default 65536) and `GlyphCacheMaxBytes` (default 256 MiB) bound the glyph cache; `ManagedFontRasterizer.IdentityMemoMaxEntries` (default 1048576) bounds the identity memo. Past a cap the oldest generation is dropped and a dropped glyph is rasterized again to the same pixels (tests compare a capped run with an uncapped one byte for byte). Misses are still never memoized. Setting a limit empties its cache. No record constructor changed.
+- **Tiny-app recipe** (doc comment of `SdfFontAtlas.DefaultInitialAtlasDim`): `initialPageDim: 512`, `maxPages: 4`. The first page stages 1 MiB against 4 MiB at the 1024 default (3 MiB saved), and four pages top out at 4 MiB against 64 MiB for 16 default pages. Passing them is the host's to do. Measured for the buddy set (56 distinct glyphs): one 512 page holds it, 256 takes three pages (768 KiB).
+- **Known gap: loaded fonts are counted, not weighed.** `RasterizerFootprint.Fonts` has no byte figure, so a file-loaded face (DejaVuSans is about 750 KB) is not in the numbers, and is likely the second-largest holder for a tiny app after atlas staging.
+- **`GlyphCacheMaxBytes` has a minimum** of 192 bytes (twice the per-entry overhead); below it the setter throws `ArgumentOutOfRangeException`.
+- **`RegisterPdfEncoding` now clears the whole identity memo**, not only that font's keys (the bounded cache has no per-key remove). Results are the same; a PDF host that registers encodings lazily, font by font, re-resolves the other fonts' glyphs after each registration.
+
 ## 11.106
 
 **`Builder.ButtonGroup` can size every segment to the widest option.** Additive.

@@ -18,7 +18,53 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
     private readonly bool _ownsRasterizer;
 
     // Glyph cache: (fontPath, fontSize, rune) → GlyphBitmap
-    private readonly Dictionary<(string Font, float Size, Rune Rune), GlyphBitmap> _glyphCache = new();
+    /// <summary>The default for <see cref="GlyphCacheMaxEntries"/>.</summary>
+    public const int DefaultGlyphCacheMaxEntries = 1 << 16;
+
+    /// <summary>The default for <see cref="GlyphCacheMaxBytes"/>: 256 MiB.</summary>
+    public const long DefaultGlyphCacheMaxBytes = 256L << 20;
+
+    private int _glyphCacheMaxEntries = DefaultGlyphCacheMaxEntries;
+    private long _glyphCacheMaxBytes = DefaultGlyphCacheMaxBytes;
+    private BoundedCache<(string Font, float Size, Rune Rune), GlyphBitmap> _glyphCache =
+        NewGlyphCache(DefaultGlyphCacheMaxEntries, DefaultGlyphCacheMaxBytes);
+
+    private static BoundedCache<(string Font, float Size, Rune Rune), GlyphBitmap> NewGlyphCache(int maxEntries, long maxBytes) =>
+        new(maxEntries, maxBytes, bitmap => bitmap.Rgba?.Length ?? 0);
+
+    /// <summary>
+    /// The most glyphs this renderer's cache keeps (one per font, rounded size and rune); the oldest
+    /// generation is dropped past it and a dropped glyph is rasterized again, to the same pixels. Default
+    /// <see cref="DefaultGlyphCacheMaxEntries"/>, which a document page does not reach. Setting it empties
+    /// the cache; at least 2.
+    /// </summary>
+    public int GlyphCacheMaxEntries
+    {
+        get => _glyphCacheMaxEntries;
+        set
+        {
+            _glyphCache = NewGlyphCache(value, _glyphCacheMaxBytes);
+            _glyphCacheMaxEntries = value;
+        }
+    }
+
+    /// <summary>
+    /// The most bytes this renderer's glyph cache keeps, each entry counted as its bitmap plus a fixed
+    /// per-entry overhead. Default <see cref="DefaultGlyphCacheMaxBytes"/>. Setting it empties the cache.
+    /// A tiny app can set a few MiB. Must be at least 192 (twice the 96-byte per-entry overhead), as
+    /// <see cref="GlyphCacheMaxEntries"/> must be at least 2; a lower value throws
+    /// <see cref="ArgumentOutOfRangeException"/>. A glyph whose bitmap plus the 96-byte per-entry
+    /// overhead is larger than half the limit (a generation's share) is not kept at all.
+    /// </summary>
+    public long GlyphCacheMaxBytes
+    {
+        get => _glyphCacheMaxBytes;
+        set
+        {
+            _glyphCache = NewGlyphCache(_glyphCacheMaxEntries, value);
+            _glyphCacheMaxBytes = value;
+        }
+    }
 
     // Reused per-line shaping buffer (cleared + refilled by ITextShaper.Shape each call) so
     // DrawText/MeasureText allocate nothing per call after warmup.
@@ -422,11 +468,21 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
         }
     }
 
+    /// <summary>
+    /// Entries in this renderer's glyph cache (one per font, rounded size and rune drawn or measured, evicted
+    /// only past <see cref="GlyphCacheMaxEntries"/> or <see cref="GlyphCacheMaxBytes"/>) and the bytes they
+    /// are counted as: bitmap bytes plus a fixed per-entry overhead.
+    /// </summary>
+    public GlyphCacheFootprint GlyphCache
+    {
+        get => new(_glyphCache.Count, _glyphCache.Bytes);
+    }
+
     private GlyphBitmap GetGlyph(string fontPath, float fontSize, Rune rune)
     {
         fontSize = MathF.Round(fontSize);
         var key = (fontPath, fontSize, rune);
-        if (_glyphCache.TryGetValue(key, out var cached))
+        if (_glyphCache.TryGet(key, out var cached))
             return cached;
 
         var bitmap = _rasterizer.RasterizeGlyph(fontPath, fontSize, rune);
@@ -438,7 +494,7 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
         if (bitmap.AdvanceX == 0f && Rune.IsWhiteSpace(rune))
             bitmap = new GlyphBitmap([], 0, 0, 0, 0, GetGlyph(fontPath, fontSize, new Rune('n')).AdvanceX);
 
-        _glyphCache[key] = bitmap;
+        _glyphCache.Add(key, bitmap);
         return bitmap;
     }
 
@@ -567,3 +623,6 @@ public class RgbaImageRenderer : Renderer<RgbaImage>
         _glyphCache.Clear();
     }
 }
+
+/// <summary>What an <see cref="RgbaImageRenderer"/>'s glyph cache holds: entries and bitmap bytes.</summary>
+public readonly record struct GlyphCacheFootprint(int Entries, long BitmapBytes);
